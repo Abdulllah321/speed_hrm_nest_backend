@@ -242,8 +242,8 @@ export class AvailableStockSummaryExportProcessor {
         const colsToUse = [...COLUMNS];
         if (includeCosting) {
           colsToUse.push(
-            { header: 'Cost Price', key: 'unitCost', width: 14, align: 'right' as const },
-            { header: 'Total Costing', key: 'costingValue', width: 18, align: 'right' as const }
+            { header: 'Unit Cost', key: 'unitCost', width: 14, align: 'right' as const },
+            { header: 'Unit Value', key: 'costingValue', width: 18, align: 'right' as const }
           );
         }
 
@@ -473,8 +473,8 @@ export class AvailableStockSummaryExportProcessor {
 
     if (includeCosting) {
       FLAT_COLUMNS.push(
-        { header: 'Cost Price', key: 'unitCost', width: 14, align: 'right' as const },
-        { header: 'Total Costing', key: 'costingValue', width: 18, align: 'right' as const },
+        { header: 'Unit Cost', key: 'unitCost', width: 14, align: 'right' as const },
+        { header: 'Unit Value', key: 'costingValue', width: 18, align: 'right' as const },
       );
     }
 

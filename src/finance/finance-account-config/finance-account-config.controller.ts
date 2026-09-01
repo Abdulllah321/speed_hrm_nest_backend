@@ -50,7 +50,7 @@ export class FinanceAccountConfigController {
   @UseGuards(JwtAuthGuard, PermissionGuard('erp.finance.account-config.update'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Remove an account role mapping' })
-  remove(@Param('key') key: AccountRoleKey) {
-    return this.service.remove(key);
+  remove(@Param('key') key: string) {
+    return this.service.remove(key as AccountRoleKey);
   }
 }

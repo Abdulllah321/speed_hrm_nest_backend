@@ -48,8 +48,10 @@ export class ReportsController {
     @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page  = 1,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
     @Query('sourceType') sourceType?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
-    return { status: true, data: await this.reports.getGeneralLedger(accountId, from, to, page, limit, sourceType) };
+    return { status: true, data: await this.reports.getGeneralLedger(accountId, from, to, page, limit, sourceType, sortBy, sortOrder) };
   }
 
   /**

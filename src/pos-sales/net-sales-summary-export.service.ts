@@ -16,18 +16,29 @@ const gunzipAsync = promisify(zlib.gunzip);
 
 export interface NetSalesSummaryTotals {
   orderCount: number;
+  unitPrice?: number;
   totalItemsSold: number;
   totalItemsReturned: number;
   netItems: number;
+  retailSalesValue: number;
+  wostAmount: number;
+  discountAmount: number;
+  valueExSalesTax: number;
+  taxAmount: number;
+  valueInclSalesTax: number;
+
   grossSalesAmount: number;
   returnAmount: number;
-  discountAmount: number;
-  taxAmount: number;
   netSalesAmount: number;
 }
 
 export interface NetSalesSummaryLineItem {
   id: string;
+  docNo?: string;
+  docDate?: string;
+  salesPerson?: string;
+  taxRatePercent?: number;
+  taxRateName?: string;
   sku: string;
   barCode: string;
   description: string;
@@ -38,13 +49,19 @@ export interface NetSalesSummaryLineItem {
   silhouetteName: string;
   sizeName: string;
   colorName: string;
+  unitPrice: number;
   soldQty: number;
   returnQty: number;
   netQty: number;
+  retailSalesValue: number;
+  wostAmount: number;
+  discountAmount: number;
+  valueExSalesTax: number;
+  taxAmount: number;
+  valueInclSalesTax: number;
+
   grossAmount: number;
   returnAmount: number;
-  discountAmount: number;
-  taxAmount: number;
   netAmount: number;
 }
 
@@ -68,6 +85,11 @@ export interface NetSalesSummaryLocationNode {
 
 export interface NetSalesSummaryFlatRecord {
   locationName: string;
+  docNo?: string;
+  docDate?: string;
+  salesPerson?: string;
+  taxRatePercent?: number;
+  taxRateName?: string;
   categoryName: string;
   brandName: string;
   divisionName: string;
@@ -78,13 +100,18 @@ export interface NetSalesSummaryFlatRecord {
   description: string;
   sizeName: string;
   colorName: string;
+  unitPrice?: number;
   soldQty: number;
   returnQty: number;
   netQty: number;
+  retailSalesValue?: number;
+  wostAmount?: number;
   grossAmount: number;
   returnAmount: number;
   discountAmount: number;
+  valueExSalesTax?: number;
   taxAmount: number;
+  valueInclSalesTax?: number;
   netAmount: number;
 }
 
@@ -124,7 +151,6 @@ export interface QueueNetSalesSummaryExportOptions {
 @Injectable()
 export class NetSalesSummaryExportService {
   private readonly logger = new Logger(NetSalesSummaryExportService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
 
   constructor(
     @InjectQueue('net-sales-summary-export') private readonly exportQueue: Queue,
@@ -132,10 +158,106 @@ export class NetSalesSummaryExportService {
     private readonly prismaMaster: PrismaMasterService,
     private readonly uploadService: UploadService,
     private readonly exportHistoryService: ExportHistoryService,
-  ) {
-    if (!fs.existsSync(this.previewStorageDir)) {
-      fs.mkdirSync(this.previewStorageDir, { recursive: true });
+  ) {}
+
+  async queueExport(
+    opts: QueueNetSalesSummaryExportOptions,
+  ): Promise<{ jobId: string; historyId: string }> {
+    const jobId = uuidv4();
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
+    const fileName = `net-sales-summary-report-${dateStr}.${ext}`;
+
+    const historyRecord = await this.prisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId: opts.userId,
+        fileName,
+        filePath: path.join('uploads', 'exports', `export-${jobId}.${ext}`),
+        moduleName: 'NET_SALES_SUMMARY_REPORT',
+        status: 'PENDING',
+      },
+    });
+
+    await this.exportQueue.add(
+      {
+        jobId,
+        tenantId,
+        tenantDbUrl,
+        ...opts,
+      },
+      {
+        jobId,
+        attempts: 3,
+        removeOnComplete: false,
+        removeOnFail: false,
+      },
+    );
+
+    return { jobId, historyId: historyRecord.id };
+  }
+
+  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+    const job = await this.exportQueue.getJob(jobId);
+    if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
+    const state = await job.getState();
+    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    return { state, progress };
+  }
+
+  async streamExportFile(jobId: string, res: any): Promise<void> {
+    const record = await this.prisma.exportHistory.findUnique({
+      where: { id: jobId },
+      select: { fileName: true, filePath: true },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Export record ${jobId} not found in database`);
     }
+
+    try {
+      await this.prisma.exportHistory.update({
+        where: { id: jobId },
+        data: {
+          downloadCount: { increment: 1 },
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+    }
+
+    if (record.filePath.startsWith('s3://')) {
+      const s3Key = record.filePath.replace('s3://', '');
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      return res.redirect(signedUrl, 302);
+    }
+
+    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+      return res.redirect(record.filePath, 302);
+    }
+
+    const filePath = path.join(process.cwd(), record.filePath);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+    }
+
+    const stat = fs.statSync(filePath);
+
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      this.logger.error(`[NetSalesSummaryExport] Stream error: ${err.message}`);
+    });
+
+    const isPdf = record.fileName.endsWith('.pdf');
+    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header('Content-Length', stat.size);
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+    res.send(stream);
   }
 
   async queueReportPreview(opts: {
@@ -159,93 +281,54 @@ export class NetSalesSummaryExportService {
       'generate-net-sales-summary-preview',
       {
         jobId,
-        userId: opts.userId,
         tenantId,
         tenantDbUrl,
-        locationId: opts.locationId,
-        startDate: opts.startDate,
-        endDate: opts.endDate,
-        cashierUserId: opts.cashierUserId,
-        reportType: opts.reportType || 'merged',
-        search: opts.search,
-        paymentModeGroup: opts.paymentModeGroup,
-        minAmount: opts.minAmount,
-        maxAmount: opts.maxAmount,
-        fbrOnly: opts.fbrOnly,
+        ...opts,
       },
       {
         jobId: `preview-${jobId}`,
         attempts: 1,
         removeOnComplete: false,
         removeOnFail: false,
-        timeout: 60 * 60 * 1000,
       },
     );
 
-    this.logger.log(`[NetSalesSummaryReport] Queued preview job ${jobId} for user ${opts.userId}`);
     return { jobId };
   }
 
-  async getJobQueueStatus(jobId: string): Promise<{
-    status: string;
-    state: string;
-    progress: number;
-    message: string;
-    queuePosition: number;
-    waitingCount: number;
-    failedReason?: string;
-  }> {
-    const job = await this.exportQueue.getJob(`preview-${jobId}`) || await this.exportQueue.getJob(jobId);
+  async getJobQueueStatus(jobId: string) {
+    const job = (await this.exportQueue.getJob(`preview-${jobId}`)) || (await this.exportQueue.getJob(jobId));
     if (!job) {
-      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return { status: 'completed', progress: 100 };
     }
-
     const state = await job.getState();
-    const progressRaw = job.progress();
-    let progress = 0;
-    let message = '';
-
-    if (typeof progressRaw === 'number') {
-      progress = progressRaw;
-    } else if (typeof progressRaw === 'object' && progressRaw !== null) {
-      progress = (progressRaw as any).percent || 0;
-      message = (progressRaw as any).message || '';
-    }
-
-    let queuePosition = 0;
-    let waitingCount = 0;
-
-    if (state === 'waiting' || state === 'delayed') {
-      const [waiting, active] = await Promise.all([
-        this.exportQueue.getWaiting(),
-        this.exportQueue.getActive(),
-      ]);
-      waitingCount = waiting.length;
-      const allJobs = [...active, ...waiting];
-      const idx = allJobs.findIndex((j) => j.id?.toString().includes(jobId));
-      queuePosition = idx >= 0 ? idx + 1 : 1;
-    }
-
+    const progressData = job.progress();
+    const progress = typeof progressData === 'number' ? progressData : (progressData as any)?.percent || 0;
+    const message = typeof progressData === 'object' ? (progressData as any)?.message : undefined;
     return {
       status: state,
-      state,
-      progress,
+      progress: progress || (state === 'completed' ? 100 : 0),
       message,
-      queuePosition,
-      waitingCount,
+      queuePosition: 0,
+      waitingCount: 0,
       failedReason: job.failedReason,
     };
   }
 
   async saveReportPreviewResult(jobId: string, result: NetSalesSummaryReportResult): Promise<void> {
+    const previewDir = path.join(process.cwd(), 'uploads', 'previews');
+    await fs.promises.mkdir(previewDir, { recursive: true });
+    const filePath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
+
     const jsonStr = JSON.stringify(result);
     const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
-    const filePath = path.join(this.previewStorageDir, `net-sales-summary-preview-${jobId}.json.gz`);
     await fs.promises.writeFile(filePath, compressed);
   }
 
   async getReportPreviewResult(jobId: string): Promise<NetSalesSummaryReportResult | null> {
-    const filePath = path.join(this.previewStorageDir, `net-sales-summary-preview-${jobId}.json.gz`);
+    const previewDir = path.join(process.cwd(), 'uploads', 'previews');
+    const filePath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
+
     if (!fs.existsSync(filePath)) {
       return null;
     }
@@ -378,17 +461,68 @@ export class NetSalesSummaryExportService {
       },
     });
 
+    const returnLedgerEntries = await prisma.stockLedger.findMany({
+      where: {
+        referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'POS_VOID'] },
+        createdAt: { gte: startDate, lte: endDate },
+        ...(locationId ? { locationId } : {}),
+      },
+      include: {
+        item: {
+          include: {
+            category: { select: { name: true } },
+            brand: { select: { name: true } },
+            division: { select: { name: true } },
+            gender: { select: { name: true } },
+            silhouette: { select: { name: true } },
+            size: { select: { name: true } },
+            color: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    const returnVoucherIds = [...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean))] as string[];
+    const returnVouchers = returnVoucherIds.length
+      ? await prisma.voucher.findMany({
+          where: { id: { in: returnVoucherIds } },
+        })
+      : [];
+    const sourceOrderIds = [...new Set(returnVouchers.map((v) => v.sourceOrderId).filter(Boolean))] as string[];
+    const sourceOrders = sourceOrderIds.length
+      ? await prisma.salesOrder.findMany({
+          where: { id: { in: sourceOrderIds } },
+          include: { items: true },
+        })
+      : [];
+    const sourceOrderMap = new Map<string, any>();
+    for (const so of sourceOrders) {
+      sourceOrderMap.set(so.id, so);
+    }
+    const voucherMap = new Map<string, any>();
+    for (const v of returnVouchers) {
+      voucherMap.set(v.id, {
+        ...v,
+        sourceOrder: v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null,
+      });
+    }
+
     await onProgress?.(70, 'Compiling Net Sales Summary hierarchy matrix...');
 
     const createEmptyTotals = (): NetSalesSummaryTotals => ({
       orderCount: 0,
+      unitPrice: 0,
       totalItemsSold: 0,
       totalItemsReturned: 0,
       netItems: 0,
+      retailSalesValue: 0,
+      wostAmount: 0,
+      discountAmount: 0,
+      valueExSalesTax: 0,
+      taxAmount: 0,
+      valueInclSalesTax: 0,
       grossSalesAmount: 0,
       returnAmount: 0,
-      discountAmount: 0,
-      taxAmount: 0,
       netSalesAmount: 0,
     });
 
@@ -397,10 +531,16 @@ export class NetSalesSummaryExportService {
       target.totalItemsSold += source.totalItemsSold;
       target.totalItemsReturned += source.totalItemsReturned;
       target.netItems += source.netItems;
+      target.retailSalesValue += source.retailSalesValue;
+      target.wostAmount += source.wostAmount;
+      target.discountAmount += source.discountAmount;
+      target.valueExSalesTax += source.valueExSalesTax;
+      target.taxAmount += source.taxAmount;
+      target.valueInclSalesTax += source.valueInclSalesTax;
+
+      // Legacy field aliases
       target.grossSalesAmount += source.grossSalesAmount;
       target.returnAmount += source.returnAmount;
-      target.discountAmount += source.discountAmount;
-      target.taxAmount += source.taxAmount;
       target.netSalesAmount += source.netSalesAmount;
     };
 
@@ -410,15 +550,19 @@ export class NetSalesSummaryExportService {
     const globalCategoryNodesMap = new Map<string, NetSalesSummaryCategoryNode>();
     const locationNodesMap = new Map<string, NetSalesSummaryLocationNode>();
 
+    // 1. Process Gross Sales from SalesOrders
     for (const order of rawOrders) {
-      const isReturnOrder = Boolean(
-        order.returnNumber ||
-        order.refundNumber ||
-        order.status === 'refunded' ||
-        order.status === 'returned',
-      );
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
       const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+
+      const docNo = order.orderNumber || 'N/A';
+      const docDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : 'N/A';
+
+      let salesPerson = 'Default Cashier';
+      if (order.notes) {
+        const match = order.notes.match(/SalesPerson:\s*([^|]+)/i);
+        if (match) salesPerson = match[1].trim();
+      }
 
       let locNode = locationNodesMap.get(locKey);
       if (isSeparate && !locNode) {
@@ -443,31 +587,59 @@ export class NetSalesSummaryExportService {
         const lineTotal = Number(item.lineTotal || 0);
         const disc = Number(item.discountAmount || 0);
         const tax = Number(item.taxAmount || 0);
+        const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
 
-        const soldQty = isReturnOrder ? 0 : qty;
-        const returnQty = isReturnOrder ? qty : 0;
-        const netQty = soldQty - returnQty;
+        const soldQty = qty;
+        const returnQty = 0;
+        const netQty = soldQty;
 
-        const grossAmt = isReturnOrder ? 0 : unitPrice * soldQty;
-        const retAmt = isReturnOrder ? lineTotal : 0;
-        const netSalesAmt = isReturnOrder ? -lineTotal : lineTotal;
+        const calculatedTaxPct = taxPercent > 0
+          ? taxPercent
+          : (tax > 0 && (lineTotal - tax) > 0
+              ? Math.round((tax / (lineTotal - tax)) * 100 * 100) / 100
+              : (tax > 0 ? 18 : 0));
+        const taxDivisor = 1 + calculatedTaxPct / 100;
+
+        const grossAmt = unitPrice * soldQty;
+        const retAmt = 0;
+        const retailSalesValue = unitPrice * netQty;
+
+        const wostPerUnit = unitPrice / taxDivisor;
+        const wostAmount = Math.round(wostPerUnit * soldQty * 100) / 100;
+
+        const itemDisc = disc;
+        const valueExSalesTax = Math.round((wostAmount - itemDisc) * 100) / 100;
+        const taxAmount = tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
+        const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
+
+        const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
 
         const lineTotals: NetSalesSummaryTotals = {
           orderCount: 1,
+          unitPrice,
           totalItemsSold: soldQty,
-          totalItemsReturned: returnQty,
+          totalItemsReturned: 0,
           netItems: netQty,
+          retailSalesValue,
+          wostAmount,
+          discountAmount: itemDisc,
+          valueExSalesTax,
+          taxAmount: taxAmount,
+          valueInclSalesTax,
           grossSalesAmount: grossAmt,
-          returnAmount: retAmt,
-          discountAmount: disc,
-          taxAmount: tax,
-          netSalesAmount: netSalesAmt,
+          returnAmount: 0,
+          netSalesAmount: valueInclSalesTax,
         };
 
         addTotals(grandTotals, lineTotals);
 
         const lineItemNode: NetSalesSummaryLineItem = {
           id: item.id,
+          docNo,
+          docDate,
+          salesPerson,
+          taxRatePercent: calculatedTaxPct,
+          taxRateName,
           sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
           barCode: item.item?.barCode || item.item?.sku || '-',
           description: item.item?.description || item.item?.sku || 'Article',
@@ -478,18 +650,28 @@ export class NetSalesSummaryExportService {
           silhouetteName,
           sizeName: item.item?.size?.name || 'Default',
           colorName: item.item?.color?.name || 'Default',
+          unitPrice,
           soldQty,
           returnQty,
           netQty,
+          retailSalesValue,
+          wostAmount,
+          discountAmount: itemDisc,
+          valueExSalesTax,
+          taxAmount: taxAmount,
+          valueInclSalesTax,
           grossAmount: grossAmt,
           returnAmount: retAmt,
-          discountAmount: disc,
-          taxAmount: tax,
-          netAmount: netSalesAmt,
+          netAmount: valueInclSalesTax,
         };
 
         flatItems.push({
           locationName: locName,
+          docNo,
+          docDate,
+          salesPerson,
+          taxRatePercent: calculatedTaxPct,
+          taxRateName,
           categoryName: catName,
           brandName,
           divisionName,
@@ -500,14 +682,19 @@ export class NetSalesSummaryExportService {
           description: lineItemNode.description,
           sizeName: lineItemNode.sizeName,
           colorName: lineItemNode.colorName,
+          unitPrice,
           soldQty,
           returnQty,
           netQty,
+          retailSalesValue,
+          wostAmount,
           grossAmount: grossAmt,
           returnAmount: retAmt,
           discountAmount: disc,
+          valueExSalesTax,
           taxAmount: tax,
-          netAmount: netSalesAmt,
+          valueInclSalesTax,
+          netAmount: valueInclSalesTax,
         });
 
         // Add to global category map
@@ -543,6 +730,175 @@ export class NetSalesSummaryExportService {
       }
     }
 
+    // 2. Process Returns from StockLedger Entries / Return Vouchers
+    for (const entry of returnLedgerEntries) {
+      if (!entry.item) continue;
+      const voucher = voucherMap.get(entry.referenceId);
+      const locName = entry.locationId ? locationMap.get(entry.locationId) || 'Main Outlet' : 'Main Outlet';
+      const locKey = entry.locationId ? `loc:${entry.locationId}` : 'main-outlet';
+
+      const docNo = voucher?.code || 'POS-RETURN';
+      const docDate = entry.createdAt ? new Date(entry.createdAt).toISOString().split('T')[0] : 'N/A';
+      const salesPerson = 'Default Cashier';
+
+      let locNode = locationNodesMap.get(locKey);
+      if (isSeparate && !locNode) {
+        locNode = {
+          locationKey: locKey,
+          locationId: entry.locationId || undefined,
+          locationName: locName,
+          categories: [],
+          totals: createEmptyTotals(),
+        };
+        locationNodesMap.set(locKey, locNode);
+      }
+
+      const catName = entry.item.category?.name || 'Unassigned Category';
+      const brandName = entry.item.brand?.name || 'Default Brand';
+      const divisionName = entry.item.division?.name || 'Default Division';
+      const genderName = entry.item.gender?.name || 'Default Gender';
+      const silhouetteName = entry.item.silhouette?.name || 'Default Silhouette';
+
+      const originalOi = voucher?.sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
+      const returnQty = Math.abs(Number(entry.qty || 1));
+      const soldQty = 0;
+      const netQty = -returnQty;
+
+      const unitPrice = originalOi ? Number(originalOi.unitPrice || 0) : Number(entry.item.unitPrice || 0);
+      const taxPercent = originalOi ? Number((originalOi as any).taxPercent || (originalOi as any).taxRate || 0) : 18;
+      const calculatedTaxPct = taxPercent > 0 ? taxPercent : 18;
+      const taxDivisor = 1 + calculatedTaxPct / 100;
+
+      const retailSalesValue = -Math.round(unitPrice * returnQty * 100) / 100;
+      const wostPerUnit = unitPrice / taxDivisor;
+      const wostAmount = -Math.round(wostPerUnit * returnQty * 100) / 100;
+
+      const originalQty = originalOi ? Number(originalOi.quantity || 1) : 1;
+      const discPerUnit = originalOi ? Number(originalOi.discountAmount || 0) / originalQty : 0;
+      const itemDisc = -Math.round(discPerUnit * returnQty * 100) / 100;
+
+      const valueExSalesTax = Math.round((wostAmount - itemDisc) * 100) / 100;
+      const taxPerUnit = originalOi ? Number(originalOi.taxAmount || 0) / originalQty : 0;
+      const taxAmount = originalOi
+        ? -Math.round(taxPerUnit * returnQty * 100) / 100
+        : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
+
+      const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
+      const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
+
+      const lineTotals: NetSalesSummaryTotals = {
+        orderCount: 0,
+        unitPrice,
+        totalItemsSold: 0,
+        totalItemsReturned: returnQty,
+        netItems: netQty,
+        retailSalesValue,
+        wostAmount,
+        discountAmount: itemDisc,
+        valueExSalesTax,
+        taxAmount: taxAmount,
+        valueInclSalesTax,
+        grossSalesAmount: 0,
+        returnAmount: -valueInclSalesTax,
+        netSalesAmount: valueInclSalesTax,
+      };
+
+      addTotals(grandTotals, lineTotals);
+
+      const lineItemNode: NetSalesSummaryLineItem = {
+        id: String(entry.id),
+        docNo,
+        docDate,
+        salesPerson,
+        taxRatePercent: calculatedTaxPct,
+        taxRateName,
+        sku: entry.item.sku || entry.item.barCode || 'NO-SKU',
+        barCode: entry.item.barCode || entry.item.sku || '-',
+        description: entry.item.description || entry.item.sku || 'Article',
+        categoryName: catName,
+        brandName,
+        divisionName,
+        genderName,
+        silhouetteName,
+        sizeName: entry.item.size?.name || 'Default',
+        colorName: entry.item.color?.name || 'Default',
+        unitPrice,
+        soldQty,
+        returnQty,
+        netQty,
+        retailSalesValue,
+        wostAmount,
+        discountAmount: itemDisc,
+        valueExSalesTax,
+        taxAmount: taxAmount,
+        valueInclSalesTax,
+        grossAmount: 0,
+        returnAmount: -valueInclSalesTax,
+        netAmount: valueInclSalesTax,
+      };
+
+      flatItems.push({
+        locationName: locName,
+        docNo,
+        docDate,
+        salesPerson,
+        taxRatePercent: calculatedTaxPct,
+        taxRateName,
+        categoryName: catName,
+        brandName,
+        divisionName,
+        genderName,
+        silhouetteName,
+        sku: lineItemNode.sku,
+        barCode: lineItemNode.barCode,
+        description: lineItemNode.description,
+        sizeName: lineItemNode.sizeName,
+        colorName: lineItemNode.colorName,
+        unitPrice,
+        soldQty,
+        returnQty,
+        netQty,
+        retailSalesValue,
+        wostAmount,
+        grossAmount: 0,
+        returnAmount: -valueInclSalesTax,
+        discountAmount: itemDisc,
+        valueExSalesTax,
+        taxAmount: taxAmount,
+        valueInclSalesTax,
+        netAmount: valueInclSalesTax,
+      });
+
+      let globalCat = globalCategoryNodesMap.get(catName);
+      if (!globalCat) {
+        globalCat = {
+          categoryName: catName,
+          brandName,
+          totals: createEmptyTotals(),
+          items: [],
+        };
+        globalCategoryNodesMap.set(catName, globalCat);
+      }
+      globalCat.items.push(lineItemNode);
+      addTotals(globalCat.totals, lineTotals);
+
+      if (isSeparate && locNode) {
+        let locCat = locNode.categories.find((c) => c.categoryName === catName);
+        if (!locCat) {
+          locCat = {
+            categoryName: catName,
+            brandName,
+            totals: createEmptyTotals(),
+            items: [],
+          };
+          locNode.categories.push(locCat);
+        }
+        locCat.items.push(lineItemNode);
+        addTotals(locCat.totals, lineTotals);
+        addTotals(locNode.totals, lineTotals);
+      }
+    }
+
     await onProgress?.(100, 'Net Sales Summary computation complete!');
 
     return {
@@ -559,147 +915,41 @@ export class NetSalesSummaryExportService {
   async registerClientGeneratedExport(
     prisma: PrismaService,
     userId: string,
-    opts: {
-      fileName: string;
-      fileBase64: string;
-      mimeType: string;
-    },
-  ): Promise<{ jobId: string; downloadUrl: string }> {
+    body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
     const jobId = uuidv4();
-    const fileBuffer = Buffer.from(opts.fileBase64, 'base64');
-    const localDir = path.join(process.cwd(), 'uploads', 'exports');
-    await fs.promises.mkdir(localDir, { recursive: true });
-    const localPath = path.join(localDir, `${jobId}-${opts.fileName}`);
-    await fs.promises.writeFile(localPath, fileBuffer);
+    const fileBuffer = Buffer.from(body.fileBase64, 'base64');
+    const tempDir = path.join(process.cwd(), 'uploads', 'exports');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempFilePath = path.join(tempDir, `temp-${jobId}-${body.fileName}`);
+    fs.writeFileSync(tempFilePath, fileBuffer);
 
-    await prisma.exportHistory.create({
+    const activePrisma = prisma || this.prisma;
+
+    await activePrisma.exportHistory.create({
       data: {
         id: jobId,
         userId,
-        fileName: opts.fileName,
-        filePath: localPath,
+        fileName: body.fileName,
+        filePath: path.join('uploads', 'exports', `temp-${jobId}-${body.fileName}`),
         moduleName: 'NET_SALES_SUMMARY_REPORT',
         status: 'PENDING',
       },
     });
 
-    const downloadUrl = await this.exportHistoryService.completeAndUploadExport(
-      prisma,
+    const fileUrl = await this.exportHistoryService.completeAndUploadExport(
+      activePrisma,
       jobId,
-      localPath,
-      opts.fileName,
-      opts.mimeType,
+      tempFilePath,
+      body.fileName,
+      body.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
 
-    return { jobId, downloadUrl };
-  }
-
-  async queueExport(opts: QueueNetSalesSummaryExportOptions): Promise<{ jobId: string }> {
-    const jobId = uuidv4();
-    const tenantId = this.prisma.getTenantId() ?? '';
-    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
-    const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
-
-    await this.prisma.exportHistory.create({
-      data: {
-        id: jobId,
-        userId: opts.userId,
-        fileName: `net-sales-summary-${new Date().toISOString().slice(0, 10)}.${ext}`,
-        filePath: path.join('uploads', 'exports', `export-${jobId}.${ext}`),
-        moduleName: 'NET_SALES_SUMMARY_REPORT',
-        status: 'PENDING',
-      },
-    });
-
-    await this.exportQueue.add(
-      {
-        jobId,
-        userId: opts.userId,
-        tenantId,
-        tenantDbUrl,
-        locationId: opts.locationId,
-        startDate: opts.startDate,
-        endDate: opts.endDate,
-        cashierUserId: opts.cashierUserId,
-        format: opts.format,
-        summaryOnly: !!opts.summaryOnly,
-        showSalesperson: opts.showSalesperson,
-        showYear: opts.showYear,
-        showMonth: opts.showMonth,
-        showDay: opts.showDay,
-        showDocument: opts.showDocument,
-        showBrand: opts.showBrand,
-        showDivision: opts.showDivision,
-        showSalesTax: opts.showSalesTax,
-        showCategory: opts.showCategory,
-        showGender: opts.showGender,
-        showSilhouette: opts.showSilhouette,
-        showArticle: opts.showArticle,
-        showVariant: opts.showVariant,
-      },
-      {
-        jobId,
-        attempts: 1,
-        removeOnComplete: false,
-        removeOnFail: false,
-        timeout: 2 * 60 * 60 * 1000,
-      },
-    );
-
-    this.logger.log(`[NetSalesSummaryExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
-    return { jobId };
-  }
-
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
-    const job = await this.exportQueue.getJob(jobId);
-    if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
-    const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
-    return { state, progress };
-  }
-
-  async streamExportFile(jobId: string, res: any): Promise<void> {
-    const record = await this.prisma.exportHistory.findUnique({
-      where: { id: jobId },
-      select: { fileName: true, filePath: true },
-    });
-
-    if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found`);
-    }
-
-    try {
-      await this.prisma.exportHistory.update({
-        where: { id: jobId },
-        data: { downloadCount: { increment: 1 } },
-      });
-    } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
-    }
-
-    if (record.filePath.startsWith('s3://')) {
-      const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
-      return res.redirect(signedUrl, 302);
-    }
-
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
-      return res.redirect(record.filePath, 302);
-    }
-
-    const filePath = path.join(process.cwd(), record.filePath);
-    if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found.');
-    }
-
-    const stat = fs.statSync(filePath);
-    const stream = fs.createReadStream(filePath);
-    const isPdf = record.fileName.endsWith('.pdf');
-
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
-    res.header('Content-Length', stat.size);
-    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.send(stream);
+    return {
+      historyId: jobId,
+      downloadUrl: fileUrl || `/api/warehouse/export-history/download/${jobId}`,
+    };
   }
 }

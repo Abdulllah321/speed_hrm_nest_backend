@@ -675,7 +675,7 @@ export class AvailableStockSummaryExportService {
         where: {
           transferRequest: {
             ...toLocOrWhWhere,
-            status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+            status: { in: ['PENDING', 'PENDING_CHECKER', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
             transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
           },
         },
@@ -689,7 +689,7 @@ export class AvailableStockSummaryExportService {
       }),
       // 5. Query active stock reserves
       prisma.stockReserve.groupBy({
-        by: ['itemId', ...(warehouseWhere ? ['warehouseId' as const] : [])],
+        by: ['itemId', 'warehouseId'],
         where: {
           ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
           OR: [
@@ -823,11 +823,17 @@ export class AvailableStockSummaryExportService {
     // Populate Reserve Map
     const reserveMap = new Map<string, number>();
     for (const row of reserveGroupResults) {
+      const qty = Number(row._sum.quantity || 0);
       const locKey = isSeparate
         ? (row.warehouseId ? `wh:${row.warehouseId}` : 'all')
         : 'all';
       const key = `${locKey}_${row.itemId}`;
-      reserveMap.set(key, (reserveMap.get(key) || 0) + Number(row._sum.quantity || 0));
+      reserveMap.set(key, (reserveMap.get(key) || 0) + qty);
+
+      if (!isSeparate) {
+        const allKey = `all_${row.itemId}`;
+        reserveMap.set(allKey, (reserveMap.get(allKey) || 0) + qty);
+      }
     }
 
     const movementMetricsMap = new Map<string, {
@@ -953,8 +959,13 @@ export class AvailableStockSummaryExportService {
 
         const totalTrfIn = m.fromWarehouse + m.fromOutlet;
         const totalTrfOut = m.toWarehouse + m.toOutlet;
-        const availableStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
-        const balance = availableStock + transit + reserved;
+        const physicalStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+
+        // Total Balance = Physical On-Hand Stock + In Transit
+        const balance = physicalStock + transit;
+
+        // Available Qty = Total Balance - In Transit - Reserved
+        const availableStock = balance - transit - reserved;
 
         // In separate mode, skip item entries with 0 stock across all fields for this specific location
         if (isSeparate && availableStock === 0 && transit === 0 && reserved === 0 && balance === 0) {

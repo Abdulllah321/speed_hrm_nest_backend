@@ -18,7 +18,7 @@ export class CreateLeaveApplicationDto {
   @IsString()
   leaveTypeId: string;
 
-  @ApiProperty({ enum: DayType, example: DayType.FULL_DAY })
+  @ApiProperty({ enum: DayType, enumName: 'DayType', example: DayType.FULL_DAY })
   @IsNotEmpty()
   @IsEnum(DayType)
   dayType: DayType;

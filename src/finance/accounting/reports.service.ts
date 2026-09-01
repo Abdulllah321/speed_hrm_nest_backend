@@ -440,12 +440,30 @@ export class ReportsService {
     page = 1,
     limit = 50,
     sourceType?: string,
+    sortBy?: string,
+    sortOrder?: 'asc' | 'desc',
   ) {
-    const account = await this.prisma.chartOfAccount.findUnique({
-      where: { id: accountId },
+    const accountIds = accountId
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const accounts = await this.prisma.chartOfAccount.findMany({
+      where: { id: { in: accountIds } },
       select: { id: true, code: true, name: true, type: true, balance: true },
     });
-    if (!account) throw new NotFoundException('Account not found');
+    if (accounts.length === 0) throw new NotFoundException('Account not found');
+
+    const account =
+      accounts.length === 1
+        ? accounts[0]
+        : {
+            id: accountId,
+            code: accounts.map((a) => a.code).join(', '),
+            name: `${accounts.length} Selected Sub-Accounts`,
+            type: accounts[0].type,
+            balance: accounts.reduce((sum, a) => sum + Number(a.balance), 0),
+          };
 
     const isDebitNormal =
       account.type === AccountType.ASSET ||
@@ -454,13 +472,16 @@ export class ReportsService {
     const fromDate = parseFromDate(from);
     const toDate = parseToDate(to);
 
+    const accountMatch = {
+      OR: [
+        { accountId: { in: accountIds } },
+        { tagAccountId: { in: accountIds } },
+      ],
+    };
+
     // Opening balance = sum of all transactions matching optional filters that precede the query date, plus any OPENING_BALANCE transactions.
     const openingWhere: any = {
-      AND: [
-        {
-          OR: [{ accountId }, { tagAccountId: accountId }],
-        },
-      ],
+      AND: [accountMatch],
     };
 
     if (sourceType) {
@@ -494,11 +515,7 @@ export class ReportsService {
 
     // Transaction rows within range (excluding OPENING_BALANCE transactions)
     const where: any = {
-      AND: [
-        {
-          OR: [{ accountId }, { tagAccountId: accountId }],
-        },
-      ],
+      AND: [accountMatch],
     };
 
     if (sourceType) {
@@ -515,11 +532,22 @@ export class ReportsService {
     }
 
     // Stable sort order: transactionDate, then createdAt, then id to prevent row shifting
-    const orderBy = [
-      { transactionDate: 'asc' as const },
-      { createdAt: 'asc' as const },
-      { id: 'asc' as const },
+    const dir = sortOrder === 'desc' ? ('desc' as const) : ('asc' as const);
+    let orderBy: any = [
+      { transactionDate: dir },
+      { createdAt: dir },
+      { id: dir },
     ];
+
+    if (sortBy === 'sourceRef') {
+      orderBy = [{ sourceRef: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
+    } else if (sortBy === 'sourceType') {
+      orderBy = [{ sourceType: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
+    } else if (sortBy === 'debit') {
+      orderBy = [{ debit: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
+    } else if (sortBy === 'credit') {
+      orderBy = [{ credit: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
+    }
 
     const [transactions, total, totalAgg] = await Promise.all([
       this.prisma.accountTransaction.findMany({

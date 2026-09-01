@@ -81,7 +81,7 @@ export enum AccountRoleKey {
 }
 
 export class UpsertFinanceAccountConfigDto {
-  @ApiProperty({ enum: AccountRoleKey })
+  @ApiProperty({ enum: AccountRoleKey, enumName: 'AccountRoleKey' })
   @IsEnum(AccountRoleKey)
   key: AccountRoleKey;
 

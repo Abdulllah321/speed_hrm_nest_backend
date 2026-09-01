@@ -65,16 +65,148 @@ export async function auditTagAccounts(prisma: PrismaClient, tenantLabel = 'MAIN
   });
 
   // Identify candidate Tag Accounts (sub-account leaf nodes, explicitly tagged accounts, or voucher tag references)
-  const jvTags = await safeFindMany('journalVoucherDetail', { where: { tagAccountId: { not: null } }, select: { tagAccountId: true } });
-  const pvTags = await safeFindMany('paymentVoucherDetail', { where: { tagAccountId: { not: null } }, select: { tagAccountId: true } });
-  const rvTags = await safeFindMany('receiptVoucherDetail', { where: { tagAccountId: { not: null } }, select: { tagAccountId: true } });
-  const atTags = await safeFindMany('accountTransaction', { where: { tagAccountId: { not: null } }, select: { tagAccountId: true } });
+  const jvDetailsFull = await safeFindMany('journalVoucherDetail', {
+    select: { accountId: true, tagAccountId: true, journalVoucher: { select: { jvNo: true } } },
+  });
+  const pvDetailsFull = await safeFindMany('paymentVoucherDetail', {
+    select: { accountId: true, tagAccountId: true, paymentVoucher: { select: { pvNo: true } } },
+  });
+  const rvDetailsFull = await safeFindMany('receiptVoucherDetail', {
+    select: { accountId: true, tagAccountId: true, receiptVoucher: { select: { rvNo: true } } },
+  });
+  const pvHeadersFull = await safeFindMany('paymentVoucher', {
+    select: { creditAccountId: true, pvNo: true },
+  });
+  const rvHeadersFull = await safeFindMany('receiptVoucher', {
+    select: { debitAccountId: true, rvNo: true },
+  });
+  const accountTxsFull = await safeFindMany('accountTransaction', {
+    select: { accountId: true, tagAccountId: true, sourceType: true, sourceRef: true },
+  });
 
   const referencedTagIds = new Set<string>();
-  jvTags.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
-  pvTags.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
-  rvTags.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
-  atTags.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
+  jvDetailsFull.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
+  pvDetailsFull.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
+  rvDetailsFull.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
+  accountTxsFull.forEach((t: any) => t.tagAccountId && referencedTagIds.add(t.tagAccountId));
+
+  // Build Voucher Usage Map for every account
+  interface AccountVoucherUsage {
+    rvs: Set<string>;
+    pvs: Set<string>;
+    jvs: Set<string>;
+    rsrvs: Set<string>;
+    others: Set<string>;
+  }
+
+  const accountVoucherUsageMap = new Map<string, AccountVoucherUsage>();
+
+  function getOrInitUsage(accId: string): AccountVoucherUsage {
+    let usage = accountVoucherUsageMap.get(accId);
+    if (!usage) {
+      usage = { rvs: new Set(), pvs: new Set(), jvs: new Set(), rsrvs: new Set(), others: new Set() };
+      accountVoucherUsageMap.set(accId, usage);
+    }
+    return usage;
+  }
+
+  function addVoucherRef(accId: string | null | undefined, refNumber: string | null | undefined, defaultType?: string) {
+    if (!accId || !refNumber) return;
+    const refUpper = refNumber.trim();
+    if (!refUpper) return;
+    const usage = getOrInitUsage(accId);
+
+    if (refUpper.startsWith('RV') || defaultType === 'RV') {
+      usage.rvs.add(refUpper);
+    } else if (refUpper.startsWith('PV') || refUpper.startsWith('BP') || refUpper.startsWith('CP') || defaultType === 'PV') {
+      usage.pvs.add(refUpper);
+    } else if (refUpper.startsWith('RSRV') || defaultType === 'RSRV') {
+      usage.rsrvs.add(refUpper);
+    } else if (refUpper.startsWith('JV') || defaultType === 'JV') {
+      usage.jvs.add(refUpper);
+    } else {
+      usage.others.add(refUpper);
+    }
+  }
+
+  jvDetailsFull.forEach((d: any) => {
+    const no = d.journalVoucher?.jvNo;
+    addVoucherRef(d.accountId, no, 'JV');
+    addVoucherRef(d.tagAccountId, no, 'JV');
+  });
+
+  pvDetailsFull.forEach((d: any) => {
+    const no = d.paymentVoucher?.pvNo;
+    addVoucherRef(d.accountId, no, 'PV');
+    addVoucherRef(d.tagAccountId, no, 'PV');
+  });
+
+  rvDetailsFull.forEach((d: any) => {
+    const no = d.receiptVoucher?.rvNo;
+    addVoucherRef(d.accountId, no, 'RV');
+    addVoucherRef(d.tagAccountId, no, 'RV');
+  });
+
+  pvHeadersFull.forEach((h: any) => {
+    addVoucherRef(h.creditAccountId, h.pvNo, 'PV');
+  });
+
+  rvHeadersFull.forEach((h: any) => {
+    addVoucherRef(h.debitAccountId, h.rvNo, 'RV');
+  });
+
+  accountTxsFull.forEach((tx: any) => {
+    const ref = tx.sourceRef || '';
+    const type = tx.sourceType;
+    let cat = 'OTHER';
+    if (type === 'RECEIPT_VOUCHER' || ref.startsWith('RV')) cat = 'RV';
+    else if (type === 'PAYMENT_VOUCHER' || ref.startsWith('PV') || ref.startsWith('BP') || ref.startsWith('CP')) cat = 'PV';
+    else if (type === 'JOURNAL_VOUCHER' || ref.startsWith('JV')) cat = 'JV';
+    else if (ref.startsWith('RSRV')) cat = 'RSRV';
+
+    addVoucherRef(tx.accountId, ref, cat);
+    addVoucherRef(tx.tagAccountId, ref, cat);
+  });
+
+  function getVoucherSummary(accId: string) {
+    const usage = accountVoucherUsageMap.get(accId);
+    if (!usage) {
+      return {
+        usedVouchersCount: 0,
+        jvNumbers: '-',
+        rvNumbers: '-',
+        pvNumbers: '-',
+        rsrvNumbers: '-',
+        otherVouchers: '-',
+        usedInVouchers: 'None',
+      };
+    }
+
+    const rvs = Array.from(usage.rvs).sort();
+    const pvs = Array.from(usage.pvs).sort();
+    const jvs = Array.from(usage.jvs).sort();
+    const rsrvs = Array.from(usage.rsrvs).sort();
+    const others = Array.from(usage.others).sort();
+
+    const totalCount = rvs.length + pvs.length + jvs.length + rsrvs.length + others.length;
+
+    const parts: string[] = [];
+    if (jvs.length > 0) parts.push(`JV (${jvs.length}): ${jvs.join(', ')}`);
+    if (rvs.length > 0) parts.push(`RV (${rvs.length}): ${rvs.join(', ')}`);
+    if (pvs.length > 0) parts.push(`PV (${pvs.length}): ${pvs.join(', ')}`);
+    if (rsrvs.length > 0) parts.push(`RSRV (${rsrvs.length}): ${rsrvs.join(', ')}`);
+    if (others.length > 0) parts.push(`Other (${others.length}): ${others.join(', ')}`);
+
+    return {
+      usedVouchersCount: totalCount,
+      jvNumbers: jvs.length > 0 ? jvs.join(', ') : '-',
+      rvNumbers: rvs.length > 0 ? rvs.join(', ') : '-',
+      pvNumbers: pvs.length > 0 ? pvs.join(', ') : '-',
+      rsrvNumbers: rsrvs.length > 0 ? rsrvs.join(', ') : '-',
+      otherVouchers: others.length > 0 ? others.join(', ') : '-',
+      usedInVouchers: parts.length > 0 ? parts.join(' | ') : 'None',
+    };
+  }
 
   const candidateAccounts = allAccounts.filter((a: any) => {
     // If account has children underneath it, it is a Control/Parent Account (e.g. Authorized Capital), NOT a tag sub-account
@@ -145,48 +277,46 @@ export async function auditTagAccounts(prisma: PrismaClient, tenantLabel = 'MAIN
 
     const codeMatch = codeToEntityMap.get(accCodeKey);
     const nameMatch = nameToEntityMap.get(accNameKey);
+    const vInfo = getVoucherSummary(acc.id);
+
+    const baseRow = {
+      accountId: acc.id,
+      accountCode: accCode,
+      accountName: accName,
+      parentCode: parentInfo.parentCode,
+      parentName: parentInfo.parentName,
+      vouchersCount: vInfo.usedVouchersCount,
+      usedInVouchers: vInfo.usedInVouchers,
+      jvNumbers: vInfo.jvNumbers,
+      rvNumbers: vInfo.rvNumbers,
+      pvNumbers: vInfo.pvNumbers,
+      rsrvNumbers: vInfo.rsrvNumbers,
+      otherVouchers: vInfo.otherVouchers,
+    };
 
     if (codeMatch && nameMatch && (codeMatch.code.toLowerCase() === accCodeKey && nameMatch.name.toLowerCase() === accNameKey)) {
       // Exact match
       exactMatches.push({
-        accountId: acc.id,
-        accountCode: accCode,
-        accountName: accName,
+        ...baseRow,
         entityType: codeMatch.type,
-        parentCode: parentInfo.parentCode,
-        parentName: parentInfo.parentName,
       });
     } else if (codeMatch && (!nameMatch || codeMatch.name.toLowerCase() !== accNameKey)) {
       // Code matched -> report expected entity name
       codeMatchedNameMismatch.push({
-        accountId: acc.id,
-        accountCode: accCode,
-        accountName: accName,
+        ...baseRow,
         matchedEntityType: codeMatch.type,
         expectedEntityName: codeMatch.name,
-        parentCode: parentInfo.parentCode,
-        parentName: parentInfo.parentName,
       });
     } else if (nameMatch && (!codeMatch || nameMatch.code.toLowerCase() !== accCodeKey)) {
       // Name matched -> report expected entity code
       nameMatchedCodeMismatch.push({
-        accountId: acc.id,
-        accountName: accName,
-        accountCode: accCode,
+        ...baseRow,
         matchedEntityType: nameMatch.type,
         expectedEntityCode: nameMatch.code,
-        parentCode: parentInfo.parentCode,
-        parentName: parentInfo.parentName,
       });
     } else {
       // Unmatched account -> report with parent account info
-      unmatchedAccounts.push({
-        accountId: acc.id,
-        accountCode: accCode,
-        accountName: accName,
-        parentCode: parentInfo.parentCode,
-        parentName: parentInfo.parentName,
-      });
+      unmatchedAccounts.push(baseRow);
     }
   }
 
