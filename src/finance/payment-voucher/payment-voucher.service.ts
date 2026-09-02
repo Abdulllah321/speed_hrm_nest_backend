@@ -236,6 +236,7 @@ export class PaymentVoucherService {
         { pvNo: { contains: cleanSearch, mode: 'insensitive' } },
         { folio: { contains: cleanSearch, mode: 'insensitive' } },
         { description: { contains: cleanSearch, mode: 'insensitive' } },
+        { remarks: { contains: cleanSearch, mode: 'insensitive' } },
         { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
         { chequeNo: { contains: cleanSearch, mode: 'insensitive' } },
         { creditAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } },
