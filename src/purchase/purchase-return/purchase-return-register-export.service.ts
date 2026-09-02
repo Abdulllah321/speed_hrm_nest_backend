@@ -27,6 +27,10 @@ export interface PurchaseReturnRegisterVariantRow {
   barCode: string;
   returnQty: number;
   unitPrice: number;
+  valExclTax: number;
+  salesTax: number;
+  valInclTax: number;
+  advTax: number;
   lineTotal: number;
 }
 
@@ -35,6 +39,10 @@ export interface PurchaseReturnRegisterArticleGroup {
   description: string;
   variants: PurchaseReturnRegisterVariantRow[];
   totalQuantity: number;
+  totalValExclTax: number;
+  totalSalesTax: number;
+  totalValInclTax: number;
+  totalAdvTax: number;
   totalLineTotal: number;
 }
 
@@ -42,6 +50,10 @@ export interface PurchaseReturnRegisterSilhouetteGroup {
   silhouetteName: string;
   articles: PurchaseReturnRegisterArticleGroup[];
   totalQuantity: number;
+  totalValExclTax: number;
+  totalSalesTax: number;
+  totalValInclTax: number;
+  totalAdvTax: number;
   totalLineTotal: number;
 }
 
@@ -49,6 +61,10 @@ export interface PurchaseReturnRegisterGenderGroup {
   genderName: string;
   silhouettes: PurchaseReturnRegisterSilhouetteGroup[];
   totalQuantity: number;
+  totalValExclTax: number;
+  totalSalesTax: number;
+  totalValInclTax: number;
+  totalAdvTax: number;
   totalLineTotal: number;
 }
 
@@ -57,6 +73,10 @@ export interface PurchaseReturnRegisterCategoryGroup {
   subCategoryName: string;
   genders: PurchaseReturnRegisterGenderGroup[];
   totalQuantity: number;
+  totalValExclTax: number;
+  totalSalesTax: number;
+  totalValInclTax: number;
+  totalAdvTax: number;
   totalLineTotal: number;
 }
 
@@ -64,6 +84,10 @@ export interface PurchaseReturnRegisterDivisionGroup {
   divisionName: string;
   categories: PurchaseReturnRegisterCategoryGroup[];
   totalQuantity: number;
+  totalValExclTax: number;
+  totalSalesTax: number;
+  totalValInclTax: number;
+  totalAdvTax: number;
   totalLineTotal: number;
 }
 
@@ -78,8 +102,13 @@ export interface PurchaseReturnRegisterDocumentGroup {
   returnType: string;
   status: string;
   grnNumber?: string;
+  advanceTaxRate?: number;
   divisions: PurchaseReturnRegisterDivisionGroup[];
   totalQuantity: number;
+  totalValExclTax: number;
+  totalSalesTax: number;
+  totalValInclTax: number;
+  totalAdvTax: number;
   totalLineTotal: number;
 }
 
@@ -87,6 +116,10 @@ export interface PurchaseReturnRegisterReportResult {
   documents: PurchaseReturnRegisterDocumentGroup[];
   grandTotals: {
     quantity: number;
+    valExclTax: number;
+    salesTax: number;
+    valInclTax: number;
+    advTax: number;
     lineTotal: number;
     totalDocuments: number;
   };
@@ -201,8 +234,22 @@ export class PurchaseReturnRegisterExportService {
             grnNumber: true,
           },
         },
+        purchaseInvoice: {
+          select: {
+            advanceTaxRate: true,
+          },
+        },
         items: {
           include: {
+            purchaseInvoiceItem: {
+              select: {
+                discountRate: true,
+                discountAmount: true,
+                taxRate: true,
+                taxAmount: true,
+                quantity: true,
+              },
+            },
             item: {
               include: {
                 brand: true,
@@ -228,6 +275,7 @@ export class PurchaseReturnRegisterExportService {
       const supplierLocation =
         ret.supplier?.city || ret.supplier?.address || ret.supplier?.code || 'Location N/A';
       const retDateStr = ret.returnDate ? new Date(ret.returnDate).toISOString().slice(0, 10) : '';
+      const advRate = Number((ret.purchaseInvoice as any)?.advanceTaxRate || 0.5);
 
       // Collect distinct brands for this PR document
       const brandNamesSet = new Set<string>();
@@ -250,8 +298,13 @@ export class PurchaseReturnRegisterExportService {
         returnType: ret.returnType,
         status: ret.status,
         grnNumber: ret.grn?.grnNumber || undefined,
+        advanceTaxRate: advRate,
         divisions: [],
         totalQuantity: 0,
+        totalValExclTax: 0,
+        totalSalesTax: 0,
+        totalValInclTax: 0,
+        totalAdvTax: 0,
         totalLineTotal: 0,
       };
 
@@ -271,7 +324,16 @@ export class PurchaseReturnRegisterExportService {
 
         const qty = Number(itemRow.returnQty) || 0;
         const unitPrice = Number(itemRow.unitPrice) || 0;
-        const lineTotal = Number(itemRow.lineTotal) || qty * unitPrice;
+        const discRate = Number((itemRow as any).purchaseInvoiceItem?.discountRate) || 0;
+        const discAmt = (qty * unitPrice * discRate) / 100;
+        const valExclTax = qty * unitPrice - discAmt;
+        const taxRate = Number((itemRow as any).purchaseInvoiceItem?.taxRate) || 0;
+        const salesTax = Number((itemRow as any).purchaseInvoiceItem?.taxAmount)
+          ? (Number((itemRow as any).purchaseInvoiceItem?.taxAmount) * qty) / (Number((itemRow as any).purchaseInvoiceItem?.quantity) || 1)
+          : (valExclTax * taxRate) / 100;
+        const valInclTax = valExclTax + salesTax;
+        const advTax = (valInclTax * advRate) / 100;
+        const lineTotal = Number(itemRow.lineTotal) || (valInclTax + advTax);
 
         // Division Level
         let divGroup = docGroup.divisions.find((d) => d.divisionName === divName);
@@ -280,6 +342,10 @@ export class PurchaseReturnRegisterExportService {
             divisionName: divName,
             categories: [],
             totalQuantity: 0,
+            totalValExclTax: 0,
+            totalSalesTax: 0,
+            totalValInclTax: 0,
+            totalAdvTax: 0,
             totalLineTotal: 0,
           };
           docGroup.divisions.push(divGroup);
@@ -293,6 +359,10 @@ export class PurchaseReturnRegisterExportService {
             subCategoryName: subCatName,
             genders: [],
             totalQuantity: 0,
+            totalValExclTax: 0,
+            totalSalesTax: 0,
+            totalValInclTax: 0,
+            totalAdvTax: 0,
             totalLineTotal: 0,
           };
           divGroup.categories.push(catGroup);
@@ -305,6 +375,10 @@ export class PurchaseReturnRegisterExportService {
             genderName,
             silhouettes: [],
             totalQuantity: 0,
+            totalValExclTax: 0,
+            totalSalesTax: 0,
+            totalValInclTax: 0,
+            totalAdvTax: 0,
             totalLineTotal: 0,
           };
           catGroup.genders.push(genGroup);
@@ -317,6 +391,10 @@ export class PurchaseReturnRegisterExportService {
             silhouetteName: silName,
             articles: [],
             totalQuantity: 0,
+            totalValExclTax: 0,
+            totalSalesTax: 0,
+            totalValInclTax: 0,
+            totalAdvTax: 0,
             totalLineTotal: 0,
           };
           genGroup.silhouettes.push(silGroup);
@@ -330,6 +408,10 @@ export class PurchaseReturnRegisterExportService {
             description: description.toUpperCase(),
             variants: [],
             totalQuantity: 0,
+            totalValExclTax: 0,
+            totalSalesTax: 0,
+            totalValInclTax: 0,
+            totalAdvTax: 0,
             totalLineTotal: 0,
           };
           silGroup.articles.push(artGroup);
@@ -342,31 +424,59 @@ export class PurchaseReturnRegisterExportService {
           barCode,
           returnQty: qty,
           unitPrice,
+          valExclTax,
+          salesTax,
+          valInclTax,
+          advTax,
           lineTotal,
         });
 
         // Add to Article totals
         artGroup.totalQuantity += qty;
+        artGroup.totalValExclTax += valExclTax;
+        artGroup.totalSalesTax += salesTax;
+        artGroup.totalValInclTax += valInclTax;
+        artGroup.totalAdvTax += advTax;
         artGroup.totalLineTotal += lineTotal;
 
         // Add to Silhouette totals
         silGroup.totalQuantity += qty;
+        silGroup.totalValExclTax += valExclTax;
+        silGroup.totalSalesTax += salesTax;
+        silGroup.totalValInclTax += valInclTax;
+        silGroup.totalAdvTax += advTax;
         silGroup.totalLineTotal += lineTotal;
 
         // Add to Gender totals
         genGroup.totalQuantity += qty;
+        genGroup.totalValExclTax += valExclTax;
+        genGroup.totalSalesTax += salesTax;
+        genGroup.totalValInclTax += valInclTax;
+        genGroup.totalAdvTax += advTax;
         genGroup.totalLineTotal += lineTotal;
 
         // Add to Category totals
         catGroup.totalQuantity += qty;
+        catGroup.totalValExclTax += valExclTax;
+        catGroup.totalSalesTax += salesTax;
+        catGroup.totalValInclTax += valInclTax;
+        catGroup.totalAdvTax += advTax;
         catGroup.totalLineTotal += lineTotal;
 
         // Add to Division totals
         divGroup.totalQuantity += qty;
+        divGroup.totalValExclTax += valExclTax;
+        divGroup.totalSalesTax += salesTax;
+        divGroup.totalValInclTax += valInclTax;
+        divGroup.totalAdvTax += advTax;
         divGroup.totalLineTotal += lineTotal;
 
         // Add to Document totals
         docGroup.totalQuantity += qty;
+        docGroup.totalValExclTax += valExclTax;
+        docGroup.totalSalesTax += salesTax;
+        docGroup.totalValInclTax += valInclTax;
+        docGroup.totalAdvTax += advTax;
         docGroup.totalLineTotal += lineTotal;
       }
 
@@ -378,12 +488,20 @@ export class PurchaseReturnRegisterExportService {
     const grandTotals = documents.reduce(
       (acc, d) => {
         acc.quantity += d.totalQuantity;
+        acc.valExclTax += d.totalValExclTax;
+        acc.salesTax += d.totalSalesTax;
+        acc.valInclTax += d.totalValInclTax;
+        acc.advTax += d.totalAdvTax;
         acc.lineTotal += d.totalLineTotal;
         acc.totalDocuments += 1;
         return acc;
       },
       {
         quantity: 0,
+        valExclTax: 0,
+        salesTax: 0,
+        valInclTax: 0,
+        advTax: 0,
         lineTotal: 0,
         totalDocuments: 0,
       },
