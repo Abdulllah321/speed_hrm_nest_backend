@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "postinstall": "prisma generate --schema prisma/schema",
-    "build": "nest build",
+    "build": "nest build --swc",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -56,6 +56,7 @@
     "import:returns:dry": "bun scripts/import-madison-returns.ts --dry-run",
     "update:pi-tax-dates": "bun scripts/update-pi-tax-invoice-dates.ts",
     "seed:location-center-ids": "bun scripts/seed-location-center-ids.ts",
+    "import:tenant:backup": "bun scripts/import-tenant-backup.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
