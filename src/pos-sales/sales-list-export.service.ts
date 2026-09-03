@@ -263,6 +263,10 @@ export class SalesListExportService {
     await fs.promises.writeFile(filePath, compressed);
   }
 
+  async savePreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
+    return this.saveReportPreviewResult(jobId, result);
+  }
+
   async getReportPreviewResult(jobId: string): Promise<SalesListReportResult | null> {
     const filePath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
     if (!fs.existsSync(filePath)) {
@@ -271,6 +275,26 @@ export class SalesListExportService {
     const compressed = await fs.promises.readFile(filePath);
     const decompressed = await gunzipAsync(compressed);
     return JSON.parse(decompressed.toString('utf8'));
+  }
+
+  async computeReportData(
+    opts: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+      onProgress?: (percent: number, message: string) => Promise<void> | void;
+    },
+    prismaClient?: PrismaService,
+  ): Promise<SalesListReportResult> {
+    const prisma = prismaClient || this.prisma;
+    return this.generateSalesListReportDataInternal(prisma, opts);
   }
 
   async generateSalesListReportDataInternal(
