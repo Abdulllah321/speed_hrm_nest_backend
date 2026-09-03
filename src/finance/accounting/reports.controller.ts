@@ -56,17 +56,37 @@ export class ReportsController {
 
   /**
    * GET /api/finance/reports/income-statement
-   * Profit & Loss — INCOME vs EXPENSE accounts for a period.
+   * Profit & Loss — INCOME vs EXPENSE accounts for a period with comparison & tag breakdown.
    */
   @Get('income-statement')
   @ApiOperation({ summary: 'Income Statement (Profit & Loss)' })
   @ApiQuery({ name: 'from', required: false, type: String })
-  @ApiQuery({ name: 'to',   required: false, type: String })
+  @ApiQuery({ name: 'to', required: false, type: String })
+  @ApiQuery({ name: 'compareFrom', required: false, type: String })
+  @ApiQuery({ name: 'compareTo', required: false, type: String })
+  @ApiQuery({ name: 'includeTagAccounts', required: false, type: Boolean })
+  @ApiQuery({ name: 'showZeroBalances', required: false, type: Boolean })
   async incomeStatement(
     @Query('from') from?: string,
-    @Query('to')   to?: string,
+    @Query('to') to?: string,
+    @Query('compareFrom') compareFrom?: string,
+    @Query('compareTo') compareTo?: string,
+    @Query('includeTagAccounts') includeTagAccounts?: string,
+    @Query('showZeroBalances') showZeroBalances?: string,
   ) {
-    return { status: true, data: await this.reports.getIncomeStatement(from, to) };
+    const isIncludeTags = includeTagAccounts !== undefined ? includeTagAccounts === 'true' : true;
+    const isShowZero = showZeroBalances === 'true';
+    return {
+      status: true,
+      data: await this.reports.getIncomeStatement({
+        from,
+        to,
+        compareFrom,
+        compareTo,
+        includeTagAccounts: isIncludeTags,
+        showZeroBalances: isShowZero,
+      }),
+    };
   }
 
   /**
