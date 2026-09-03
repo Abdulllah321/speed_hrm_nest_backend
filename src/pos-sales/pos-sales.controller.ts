@@ -365,6 +365,7 @@ export class PosSalesController {
       reason?: string;
       returnLocationId?: string;
       locationId?: string;
+      customerId?: string;
     },
     @Req() req: any,
   ) {
@@ -385,6 +386,7 @@ export class PosSalesController {
       body.reason,
       returnLocationId,
       ctx,
+      body.customerId,
     );
   }
 
@@ -436,9 +438,18 @@ export class PosSalesController {
       items?: { orderItemId: string; itemId: string; quantity: number }[];
       reason?: string;
       managerUserId?: string;
+      customerId?: string;
+      returnLocationId?: string;
+      locationId?: string;
     },
     @Req() req: any,
   ) {
+    const returnLocationId =
+      body.returnLocationId ||
+      body.locationId ||
+      req.user?.locationId ||
+      req.headers?.['x-location-id'] ||
+      req.headers?.['location-id'];
     const ctx = {
       userId: body.managerUserId || req.user?.id,
       ipAddress: req.ip,
@@ -450,6 +461,8 @@ export class PosSalesController {
       body.items,
       body.reason,
       ctx,
+      body.customerId,
+      returnLocationId,
     );
   }
 

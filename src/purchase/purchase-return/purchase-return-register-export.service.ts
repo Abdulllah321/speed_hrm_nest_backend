@@ -234,11 +234,6 @@ export class PurchaseReturnRegisterExportService {
             grnNumber: true,
           },
         },
-        purchaseInvoice: {
-          select: {
-            advanceTaxRate: true,
-          },
-        },
         items: {
           include: {
             purchaseInvoiceItem: {
@@ -275,7 +270,6 @@ export class PurchaseReturnRegisterExportService {
       const supplierLocation =
         ret.supplier?.city || ret.supplier?.address || ret.supplier?.code || 'Location N/A';
       const retDateStr = ret.returnDate ? new Date(ret.returnDate).toISOString().slice(0, 10) : '';
-      const advRate = Number((ret.purchaseInvoice as any)?.advanceTaxRate || 0.5);
 
       // Collect distinct brands for this PR document
       const brandNamesSet = new Set<string>();
@@ -298,7 +292,7 @@ export class PurchaseReturnRegisterExportService {
         returnType: ret.returnType,
         status: ret.status,
         grnNumber: ret.grn?.grnNumber || undefined,
-        advanceTaxRate: advRate,
+        advanceTaxRate: 0,
         divisions: [],
         totalQuantity: 0,
         totalValExclTax: 0,
@@ -330,8 +324,8 @@ export class PurchaseReturnRegisterExportService {
         const taxRate = Number((itemRow as any).purchaseInvoiceItem?.taxRate) || 0;
         const salesTax = (valExclTax * taxRate) / 100;
         const valInclTax = valExclTax + salesTax;
-        const advTax = (valInclTax * advRate) / 100;
-        const lineTotal = valInclTax + advTax;
+        const advTax = 0; // Advance tax isn't a part of return
+        const lineTotal = valInclTax;
 
         // Division Level
         let divGroup = docGroup.divisions.find((d) => d.divisionName === divName);

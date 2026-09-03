@@ -28,6 +28,8 @@ model Customer {
   posSalesOrders   SalesOrder[]
   receiptVouchers  ReceiptVoucher[]
   vouchers         Voucher[]
+  posReturns       PosReturn[]       @relation("ReturnCustomer")
+  posOriginalReturns PosReturn[]     @relation("OriginalCustomer")
 
   // Audit
   createdAt DateTime @default(now()) @map("created_at")

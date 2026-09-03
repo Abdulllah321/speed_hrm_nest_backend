@@ -98,12 +98,14 @@ export class PosSalesService implements OnModuleInit {
       cleanCode = 'LOC';
     }
 
-    // Fiscal Year Start (Pakistan: July 1st) & 2-digit FY suffix (e.g. 26)
+    // Fiscal Year (Pakistan: July 1st to June 30th)
+    // E.g. July 2026 – June 2027 is Fiscal Year 2026-27 (FY27) -> Suffix '27'
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth(); // 0-indexed, July is 6
+    const fiscalYearEndYear = month >= 6 ? year + 1 : year;
+    const fySuffix = String(fiscalYearEndYear).slice(-2);
     const fiscalYearStartYear = month >= 6 ? year : year - 1;
-    const fySuffix = String(fiscalYearStartYear).slice(-2);
     const fiscalYearStartDate = new Date(
       Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0),
     );
@@ -111,6 +113,7 @@ export class PosSalesService implements OnModuleInit {
     const effectivePrefix = prefix;
     const matchPrefix = `${effectivePrefix}-${cleanCode}${fySuffix}-`;
 
+    let maxSeq = 0;
     const lastOrder = await prismaClient.salesOrder.findFirst({
       where: {
         [fieldName]: { startsWith: matchPrefix },
@@ -119,7 +122,6 @@ export class PosSalesService implements OnModuleInit {
       select: { [fieldName]: true },
     });
 
-    let seq = 1;
     const lastVal = lastOrder
       ? ((lastOrder as any)[fieldName] as string | null)
       : null;
@@ -127,15 +129,41 @@ export class PosSalesService implements OnModuleInit {
       const parts = lastVal.split('-');
       const lastPart = parts[parts.length - 1];
       if (/^\d+$/.test(lastPart)) {
-        seq = parseInt(lastPart, 10) + 1;
+        const parsed = parseInt(lastPart, 10);
+        if (parsed > maxSeq) maxSeq = parsed;
       }
     }
 
+    if (fieldName === 'returnNumber' || fieldName === 'refundNumber') {
+      const lastReturn = await prismaClient.posReturn.findFirst({
+        where: {
+          returnNumber: { startsWith: matchPrefix },
+        },
+        orderBy: { returnNumber: 'desc' },
+        select: { returnNumber: true },
+      });
+      if (lastReturn?.returnNumber) {
+        const parts = lastReturn.returnNumber.split('-');
+        const lastPart = parts[parts.length - 1];
+        if (/^\d+$/.test(lastPart)) {
+          const parsed = parseInt(lastPart, 10);
+          if (parsed > maxSeq) maxSeq = parsed;
+        }
+      }
+    }
+
+    let seq = maxSeq + 1;
     let nextNumber = `${matchPrefix}${String(seq).padStart(5, '0')}`;
-    let exists = await prismaClient.salesOrder.findUnique({
+    let exists: any = await prismaClient.salesOrder.findUnique({
       where: { [fieldName]: nextNumber } as any,
       select: { id: true },
     });
+    if (!exists && (fieldName === 'returnNumber' || fieldName === 'refundNumber')) {
+      exists = await prismaClient.posReturn.findUnique({
+        where: { returnNumber: nextNumber },
+        select: { id: true },
+      });
+    }
 
     let attempts = 0;
     while (exists && attempts < 50) {
@@ -146,6 +174,12 @@ export class PosSalesService implements OnModuleInit {
         where: { [fieldName]: nextNumber } as any,
         select: { id: true },
       });
+      if (!exists && (fieldName === 'returnNumber' || fieldName === 'refundNumber')) {
+        exists = await prismaClient.posReturn.findUnique({
+          where: { returnNumber: nextNumber },
+          select: { id: true },
+        });
+      }
     }
 
     return nextNumber;
@@ -2130,6 +2164,13 @@ export class PosSalesService implements OnModuleInit {
         select: { salesOrderId: true },
       });
       claimsInRange.forEach((c) => targetOrderIds.add(c.salesOrderId));
+
+      // 4. PosReturn Activity in range
+      const returnsInRange = await this.prisma.posReturn.findMany({
+        where: { createdAt: ledgerRangeQuery },
+        select: { salesOrderId: true },
+      });
+      returnsInRange.forEach((r) => targetOrderIds.add(r.salesOrderId));
     }
 
     // ── Search Filters ──
@@ -2159,6 +2200,13 @@ export class PosSalesService implements OnModuleInit {
         select: { salesOrderId: true },
       });
       matchedClaims.forEach((c) => searchOrderIds.add(c.salesOrderId));
+
+      // Search by PosReturn Number
+      const matchedPosReturns = await this.prisma.posReturn.findMany({
+        where: { returnNumber: { contains: searchTerm, mode: 'insensitive' } },
+        select: { salesOrderId: true },
+      });
+      matchedPosReturns.forEach((r) => searchOrderIds.add(r.salesOrderId));
 
       // Search by Voucher Code (Issued or Redeemed)
       const matchedIssuedVouchers = await this.prisma.voucher.findMany({
@@ -2251,6 +2299,38 @@ export class PosSalesService implements OnModuleInit {
             voucher: { select: { code: true, faceValue: true } },
           },
           orderBy: { submittedAt: 'desc' },
+        },
+        posReturns: {
+          include: {
+            customer: { select: { id: true, name: true, contactNo: true } },
+            originalCustomer: {
+              select: { id: true, name: true, contactNo: true },
+            },
+            voucher: {
+              select: {
+                id: true,
+                code: true,
+                faceValue: true,
+                voucherType: true,
+                expiresAt: true,
+              },
+            },
+            items: {
+              include: {
+                item: {
+                  select: {
+                    description: true,
+                    sku: true,
+                    barCode: true,
+                    size: { select: { name: true } },
+                    color: { select: { name: true } },
+                    brand: { select: { name: true } },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -2390,119 +2470,188 @@ export class PosSalesService implements OnModuleInit {
         })),
       });
 
-      // 2. Return Activity
-      const returnLedgers = orderLedgers.filter(
-        (l) => l.referenceType === 'POS_RETURN',
-      );
-      if (order.returnNumber || returnLedgers.length > 0) {
-        const exchangeVoucher = orderVouchers.find(
-          (v) => v.voucherType === 'EXCHANGE',
+      // 2. Return & Refund Activities (from first-class PosReturn records if available)
+      if (order.posReturns && order.posReturns.length > 0) {
+        for (const ret of order.posReturns) {
+          const actType = ret.returnType === 'REFUND' ? 'refund' : 'return';
+          const returnCustomer = ret.customer || order.customer;
+          const isCustomerChanged =
+            !!(
+              ret.originalCustomerId &&
+              ret.customerId &&
+              ret.originalCustomerId !== ret.customerId
+            );
+
+          allActivities.push({
+            id: ret.id,
+            type: actType,
+            refundMode: ret.refundMode, // 'VOUCHER' | 'CASH'
+            number: ret.returnNumber,
+            date: ret.createdAt,
+            amount: Number(ret.totalRefundAmount),
+            subtotalWost: Number(ret.subtotalWost),
+            discountWost: Number(ret.discountWost),
+            taxAmount: Number(ret.taxAmount),
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            locationId: ret.locationId || order.locationId,
+            posId: ret.posId || order.posId || order.terminalId,
+            customer: returnCustomer,
+            originalCustomer: isCustomerChanged
+              ? ret.originalCustomer
+              : undefined,
+            isCustomerChanged,
+            issuedVouchers: ret.voucher
+              ? [
+                  {
+                    code: ret.voucher.code,
+                    faceValue: Number(ret.voucher.faceValue),
+                    voucherType: ret.voucher.voucherType,
+                    expiresAt: ret.voucher.expiresAt,
+                  },
+                ]
+              : [],
+            items: ret.items.map((ri: any) => ({
+              itemId: ri.itemId,
+              sku: ri.item?.sku || ri.item?.barCode || 'N/A',
+              description: ri.item?.description || 'Item',
+              quantity: ri.quantity,
+              price: Number(ri.refundPerUnit), // Accurate return price paid
+              originalUnitPrice: Number(ri.originalUnitPrice),
+              originalPaidPerUnit: Number(ri.originalPaidPerUnit),
+              priceAdjusted: ri.priceAdjusted,
+              unitPriceWost: Number(ri.unitPriceWost),
+              lineTotalWost: Number(ri.lineTotalWost),
+              discountPercent: Number(ri.discountPercent),
+              discountWost: Number(ri.discountWost),
+              taxPercent: Number(ri.taxPercent),
+              taxAmount: Number(ri.taxAmount),
+              lineTotal: Number(ri.lineTotal),
+              size: ri.item?.size?.name,
+              color: ri.item?.color?.name,
+            })),
+          });
+        }
+      } else {
+        // Fallback for legacy returns (before PosReturn table existed)
+        const returnLedgers = orderLedgers.filter(
+          (l) => l.referenceType === 'POS_RETURN',
         );
-        const returnDate =
-          returnLedgers.length > 0
-            ? returnLedgers[returnLedgers.length - 1].createdAt
-            : order.updatedAt;
-
-        const returnedItems = returnLedgers.map((l) => {
-          const orderItem = order.items.find(
-            (oi: any) => oi.itemId === l.itemId,
+        if (order.returnNumber || returnLedgers.length > 0) {
+          const exchangeVoucher = orderVouchers.find(
+            (v) => v.voucherType === 'EXCHANGE',
           );
-          return {
-            itemId: l.itemId,
-            sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
-            description: orderItem?.item?.description || 'Item',
-            quantity: Math.abs(Number(l.qty)),
-            price: orderItem ? Number(orderItem.unitPrice) : 0,
-            lineTotal: orderItem
-              ? Math.abs(Number(l.qty)) * Number(orderItem.unitPrice)
-              : 0,
-            size: orderItem?.item?.size?.name,
-            color: orderItem?.item?.color?.name,
-          };
-        });
+          const returnDate =
+            returnLedgers.length > 0
+              ? returnLedgers[returnLedgers.length - 1].createdAt
+              : order.updatedAt;
 
-        allActivities.push({
-          id: `${order.id}-return`,
-          type: 'return',
-          number: order.returnNumber || 'Return',
-          date: returnDate,
-          amount: exchangeVoucher
-            ? Number(exchangeVoucher.faceValue)
-            : returnedItems.reduce((s, i) => s + i.lineTotal, 0),
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          locationId: order.locationId,
-          posId: order.posId || order.terminalId,
-          customer: order.customer,
-          items: returnedItems,
-          issuedVouchers: exchangeVoucher
-            ? [
-                {
-                  code: exchangeVoucher.code,
-                  faceValue: Number(exchangeVoucher.faceValue),
-                  voucherType: 'EXCHANGE',
-                  expiresAt: exchangeVoucher.expiresAt,
-                },
-              ]
-            : [],
-        });
-      }
+          const returnedItems = returnLedgers.map((l) => {
+            const orderItem = order.items.find(
+              (oi: any) => oi.itemId === l.itemId,
+            );
+            return {
+              itemId: l.itemId,
+              sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
+              description: orderItem?.item?.description || 'Item',
+              quantity: Math.abs(Number(l.qty)),
+              price: orderItem ? Number(orderItem.unitPrice) : 0,
+              lineTotal: orderItem
+                ? Math.abs(Number(l.qty)) * Number(orderItem.unitPrice)
+                : 0,
+              size: orderItem?.item?.size?.name,
+              color: orderItem?.item?.color?.name,
+            };
+          });
 
-      // 3. Refund Activity
-      const refundLedgers = orderLedgers.filter(
-        (l) => l.referenceType === 'POS_REFUND',
-      );
-      if (order.refundNumber || refundLedgers.length > 0) {
-        const refundVouchers = orderVouchers.filter(
-          (v) =>
-            ['REFUND', 'CREDIT'].includes(v.voucherType) &&
-            !saleIssuedVouchers.some((sv) => sv.id === v.id),
+          allActivities.push({
+            id: `${order.id}-return`,
+            type: 'return',
+            refundMode: 'VOUCHER',
+            number: order.returnNumber || 'Return',
+            date: returnDate,
+            amount: exchangeVoucher
+              ? Number(exchangeVoucher.faceValue)
+              : returnedItems.reduce((s, i) => s + i.lineTotal, 0),
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            locationId: order.locationId,
+            posId: order.posId || order.terminalId,
+            customer: order.customer,
+            items: returnedItems,
+            issuedVouchers: exchangeVoucher
+              ? [
+                  {
+                    code: exchangeVoucher.code,
+                    faceValue: Number(exchangeVoucher.faceValue),
+                    voucherType: 'EXCHANGE',
+                    expiresAt: exchangeVoucher.expiresAt,
+                  },
+                ]
+              : [],
+          });
+        }
+
+        // Fallback for legacy refunds
+        const refundLedgers = orderLedgers.filter(
+          (l) => l.referenceType === 'POS_REFUND',
         );
-        const refundDate =
-          refundLedgers.length > 0
-            ? refundLedgers[refundLedgers.length - 1].createdAt
-            : order.updatedAt;
-
-        const refundedItems = refundLedgers.map((l) => {
-          const orderItem = order.items.find(
-            (oi: any) => oi.itemId === l.itemId,
+        if (order.refundNumber || refundLedgers.length > 0) {
+          const refundVouchers = orderVouchers.filter(
+            (v) =>
+              ['REFUND', 'CREDIT'].includes(v.voucherType) &&
+              !saleIssuedVouchers.some((sv) => sv.id === v.id),
           );
-          return {
-            itemId: l.itemId,
-            sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
-            description: orderItem?.item?.description || 'Item',
-            quantity: Math.abs(Number(l.qty)),
-            price: orderItem ? Number(orderItem.unitPrice) : 0,
-            lineTotal: orderItem
-              ? Math.abs(Number(l.qty)) * Number(orderItem.unitPrice)
-              : 0,
-            size: orderItem?.item?.size?.name,
-            color: orderItem?.item?.color?.name,
-          };
-        });
+          const refundDate =
+            refundLedgers.length > 0
+              ? refundLedgers[refundLedgers.length - 1].createdAt
+              : order.updatedAt;
 
-        allActivities.push({
-          id: `${order.id}-refund`,
-          type: 'refund',
-          number: order.refundNumber || 'Refund',
-          date: refundDate,
-          amount:
-            refundVouchers.length > 0
-              ? refundVouchers.reduce((sum, v) => sum + Number(v.faceValue), 0)
-              : refundedItems.reduce((s, i) => s + i.lineTotal, 0),
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          locationId: order.locationId,
-          posId: order.posId || order.terminalId,
-          customer: order.customer,
-          items: refundedItems,
-          issuedVouchers: refundVouchers.map((v) => ({
-            code: v.code,
-            faceValue: Number(v.faceValue),
-            voucherType: v.voucherType,
-            expiresAt: v.expiresAt,
-          })),
-        });
+          const refundedItems = refundLedgers.map((l) => {
+            const orderItem = order.items.find(
+              (oi: any) => oi.itemId === l.itemId,
+            );
+            return {
+              itemId: l.itemId,
+              sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
+              description: orderItem?.item?.description || 'Item',
+              quantity: Math.abs(Number(l.qty)),
+              price: orderItem ? Number(orderItem.unitPrice) : 0,
+              lineTotal: orderItem
+                ? Math.abs(Number(l.qty)) * Number(orderItem.unitPrice)
+                : 0,
+              size: orderItem?.item?.size?.name,
+              color: orderItem?.item?.color?.name,
+            };
+          });
+
+          allActivities.push({
+            id: `${order.id}-refund`,
+            type: 'refund',
+            refundMode: 'CASH',
+            number: order.refundNumber || 'Refund',
+            date: refundDate,
+            amount:
+              refundVouchers.length > 0
+                ? refundVouchers.reduce(
+                    (sum, v) => sum + Number(v.faceValue),
+                    0,
+                  )
+                : refundedItems.reduce((s, i) => s + i.lineTotal, 0),
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            locationId: order.locationId,
+            posId: order.posId || order.terminalId,
+            customer: order.customer,
+            items: refundedItems,
+            issuedVouchers: refundVouchers.map((v) => ({
+              code: v.code,
+              faceValue: Number(v.faceValue),
+              voucherType: v.voucherType,
+              expiresAt: v.expiresAt,
+            })),
+          });
+        }
       }
 
       // 4. Claim Activities
@@ -2877,6 +3026,7 @@ export class PosSalesService implements OnModuleInit {
     reason?: string,
     returnLocationId?: string,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+    customerId?: string,
   ) {
     try {
       const result = await this.prisma.$transaction(async (tx) => {
@@ -2935,8 +3085,13 @@ export class PosSalesService implements OnModuleInit {
           taxPercent: number;
           couponDeduction: number;
           originalPaidPerUnit: number;
+          currentPriceWithTax?: number;
           refundPerUnit: number;
           priceAdjusted: boolean;
+          unitPriceWost: number;
+          lineTotalWost: number;
+          discountWost: number;
+          lineTotal: number;
         }[] = [];
 
         // Pre-compute for proportional coupon distribution
@@ -3110,25 +3265,29 @@ export class PosSalesService implements OnModuleInit {
 
           const taxPct = Number(orderItem.taxPercent || 0);
           const taxDivisor = 1 + taxPct / 100;
-          const wostRefund =
-            (Number(orderItem.unitPrice) * returnItem.quantity) / taxDivisor;
+          const retailUnitPrice = Number(orderItem.unitPrice);
+          const wostPerUnit = retailUnitPrice / taxDivisor;
+          const lineTotalWost =
+            Math.round(wostPerUnit * returnItem.quantity * 100) / 100;
 
           const finalDiscountPercent = priceAdjusted
             ? effectiveDiscountPercent
             : Number(orderItem.discountPercent ?? 0);
           const finalDiscountAmount = priceAdjusted
-            ? wostRefund * (effectiveDiscountPercent / 100)
+            ? lineTotalWost * (effectiveDiscountPercent / 100)
             : Number(orderItem.discountAmount ?? 0) *
               (returnItem.quantity / qty);
           const finalTaxAmount = priceAdjusted
-            ? (wostRefund - finalDiscountAmount) * (taxPct / 100)
+            ? (lineTotalWost - finalDiscountAmount) * (taxPct / 100)
             : Number(orderItem.taxAmount ?? 0) * (returnItem.quantity / qty);
+          const itemLineTotal =
+            Math.round(refundPerUnit * returnItem.quantity * 100) / 100;
 
           itemRefundDetails.push({
             orderItemId: returnItem.orderItemId,
             itemId: returnItem.itemId,
             quantity: returnItem.quantity,
-            unitPrice: Math.round(Number(orderItem.unitPrice) * 100) / 100,
+            unitPrice: Math.round(retailUnitPrice * 100) / 100,
             discountAmount: Math.round(finalDiscountAmount * 100) / 100,
             discountPercent: finalDiscountPercent,
             taxAmount: Math.round(finalTaxAmount * 100) / 100,
@@ -3138,8 +3297,13 @@ export class PosSalesService implements OnModuleInit {
                 itemCouponDeduction * (returnItem.quantity / qty) * 100,
               ) / 100,
             originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
+            currentPriceWithTax: Math.round(currentPriceWithTax * 100) / 100,
             refundPerUnit: Math.round(refundPerUnit * 100) / 100,
             priceAdjusted,
+            unitPriceWost: Math.round(wostPerUnit * 10000) / 10000,
+            lineTotalWost: Math.round(lineTotalWost * 100) / 100,
+            discountWost: Math.round(finalDiscountAmount * 100) / 100,
+            lineTotal: itemLineTotal,
           });
 
           // Process stock movement, stock ledger, and inventory update via StockMovementService for all returns
@@ -3279,6 +3443,9 @@ export class PosSalesService implements OnModuleInit {
           }
         }
 
+        // ── Resolve Effective Customer for Return & Voucher ──
+        const effectiveCustomerId = customerId || order.customerId || undefined;
+
         // ── Generate Exchange Voucher for refund amount ──
         let exchangeVoucher: any = null;
         if (totalRefundAmount > 0) {
@@ -3288,7 +3455,7 @@ export class PosSalesService implements OnModuleInit {
               sourceOrderId: id,
               issuedByLocationId: effectiveLocationId || order.locationId || '',
               issuedByUserId: ctx?.userId,
-              customerId: order.customerId || undefined,
+              customerId: effectiveCustomerId,
               expiresInDays: 30,
             },
             ctx,
@@ -3298,6 +3465,73 @@ export class PosSalesService implements OnModuleInit {
             exchangeVoucher = voucherResult.data;
           }
         }
+
+        // ── Persist PosReturn and PosReturnItem records ──
+        const totalSubtotalWost = itemRefundDetails.reduce(
+          (sum, d) => sum + d.lineTotalWost,
+          0,
+        );
+        const totalDiscountWost = itemRefundDetails.reduce(
+          (sum, d) => sum + d.discountWost,
+          0,
+        );
+        const totalTaxAmount = itemRefundDetails.reduce(
+          (sum, d) => sum + d.taxAmount,
+          0,
+        );
+
+        const posReturn = await tx.posReturn.create({
+          data: {
+            returnNumber,
+            salesOrderId: id,
+            originalCustomerId: order.customerId || null,
+            customerId: effectiveCustomerId || null,
+            returnType: 'RETURN',
+            refundMode: 'VOUCHER',
+            locationId: effectiveLocationId || order.locationId || null,
+            posId: order.posId || null,
+            terminalId: order.terminalId || null,
+            cashierUserId: ctx?.userId || order.cashierUserId || null,
+            createdById: ctx?.userId || null,
+            subtotalWost: Math.round(totalSubtotalWost * 100) / 100,
+            discountWost: Math.round(totalDiscountWost * 100) / 100,
+            taxAmount: Math.round(totalTaxAmount * 100) / 100,
+            totalRefundAmount: Math.round(totalRefundAmount * 100) / 100,
+            reason: reason || null,
+            voucherId: exchangeVoucher ? exchangeVoucher.id : null,
+            isCrossLocation: !!(
+              order.locationId && order.locationId !== effectiveLocationId
+            ),
+            transferRequestId: crossLocationStn?.id || null,
+            items: {
+              create: itemRefundDetails.map((d) => ({
+                salesOrderItemId: d.orderItemId,
+                itemId: d.itemId,
+                quantity: d.quantity,
+                originalUnitPrice: d.unitPrice,
+                originalPaidPerUnit: d.originalPaidPerUnit,
+                currentPriceWithTax: d.currentPriceWithTax ?? null,
+                refundPerUnit: d.refundPerUnit,
+                priceAdjusted: d.priceAdjusted,
+                unitPriceWost: d.unitPriceWost,
+                lineTotalWost: d.lineTotalWost,
+                discountPercent: d.discountPercent,
+                discountWost: d.discountWost,
+                taxPercent: d.taxPercent,
+                taxAmount: d.taxAmount,
+                couponDeduction: d.couponDeduction,
+                lineTotal: d.lineTotal,
+                reason: reason || null,
+              })),
+            },
+          },
+          include: {
+            items: true,
+            voucher: true,
+            customer: true,
+            originalCustomer: true,
+          },
+        });
 
         let returnLocationShortCode = '';
         if (effectiveLocationId && effectiveLocationId !== order.locationId) {
@@ -3313,6 +3547,7 @@ export class PosSalesService implements OnModuleInit {
         return {
           status: true,
           data: updatedOrder,
+          posReturn,
           returnRef: returnNumber,
           refundAmount: Math.round(totalRefundAmount * 100) / 100,
           itemRefundDetails,
@@ -3436,6 +3671,85 @@ export class PosSalesService implements OnModuleInit {
       });
 
       if (!order) return { status: false, message: 'Order not found' };
+
+      // ── Check if a persisted PosReturn record exists first ──
+      const targetReturnType =
+        type === 'refund' ? 'REFUND' : type === 'return' ? 'RETURN' : undefined;
+      const latestPosReturn = await this.prisma.posReturn.findFirst({
+        where: {
+          salesOrderId: orderId,
+          ...(targetReturnType ? { returnType: targetReturnType } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          items: {
+            include: {
+              item: {
+                select: {
+                  description: true,
+                  sku: true,
+                  barCode: true,
+                  unitPrice: true,
+                  brand: { select: { name: true } },
+                  size: { select: { name: true } },
+                  color: { select: { name: true } },
+                },
+              },
+            },
+          },
+          voucher: true,
+          customer: true,
+          originalCustomer: true,
+        },
+      });
+
+      if (latestPosReturn) {
+        return {
+          status: true,
+          data: {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            returnNumber: latestPosReturn.returnNumber,
+            refundNumber:
+              latestPosReturn.returnType === 'REFUND'
+                ? latestPosReturn.returnNumber
+                : undefined,
+            returnType: latestPosReturn.returnType,
+            refundMode: latestPosReturn.refundMode,
+            customer: latestPosReturn.customer || (order as any).customer,
+            originalCustomer: latestPosReturn.originalCustomer,
+            items: latestPosReturn.items.map((ri) => ({
+              orderItemId: ri.salesOrderItemId,
+              itemId: ri.itemId,
+              item: ri.item,
+              quantity: ri.quantity,
+              returnableQty: ri.quantity,
+              unitPrice: Number(ri.originalUnitPrice),
+              discountAmount: Number(ri.discountWost),
+              discountPercent: Number(ri.discountPercent),
+              taxAmount: Number(ri.taxAmount),
+              taxPercent: Number(ri.taxPercent),
+              lineTotal: Number(ri.lineTotal),
+              unitPriceWost: Number(ri.unitPriceWost),
+              lineTotalWost: Number(ri.lineTotalWost),
+              couponDeduction: Number(ri.couponDeduction),
+              originalPaidPerUnit: Number(ri.originalPaidPerUnit),
+              refundPerUnit: Number(ri.refundPerUnit),
+              priceAdjusted: ri.priceAdjusted,
+              refundAmount: Number(ri.lineTotal),
+            })),
+            reason: latestPosReturn.reason || order.notes,
+            exchangeVoucher: latestPosReturn.voucher
+              ? {
+                  code: latestPosReturn.voucher.code,
+                  faceValue: Number(latestPosReturn.voucher.faceValue),
+                  expiresAt: latestPosReturn.voucher.expiresAt,
+                }
+              : undefined,
+            returnedAt: latestPosReturn.createdAt.toISOString(),
+          },
+        };
+      }
 
       // Fetch ALREADY-RETURNED quantities from stock ledger
       const returnEntries = await this.prisma.stockLedger.findMany({
@@ -4102,6 +4416,8 @@ export class PosSalesService implements OnModuleInit {
     items?: { orderItemId: string; itemId: string; quantity: number }[],
     reason?: string,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+    customerId?: string,
+    returnLocationId?: string,
   ) {
     try {
       const order = await this.prisma.salesOrder.findUnique({
@@ -4118,8 +4434,6 @@ export class PosSalesService implements OnModuleInit {
       if (order.status === 'voided') throw new Error('Order is already voided');
       if (refundAmount <= 0)
         throw new Error('Refund amount must be greater than 0');
-      // if (refundAmount > Number(order.grandTotal))
-      //   throw new Error('Refund amount exceeds order total');
       if (refundAmount > Number(order.grandTotal)) {
         // Cap it to grandTotal if it's within a small tolerance (e.g. 5 PKR) for rounding/precision discrepancies
         if (refundAmount - Number(order.grandTotal) <= 5) {
@@ -4137,7 +4451,7 @@ export class PosSalesService implements OnModuleInit {
         });
         if (!warehouse) throw new Error('No active warehouse found');
 
-        const effectiveLocationId = order.locationId;
+        const effectiveLocationId = returnLocationId || order.locationId;
 
         // Generate sequential refund number if not set
         let refundNumber = (order as any).refundNumber;
@@ -4173,8 +4487,75 @@ export class PosSalesService implements OnModuleInit {
           }));
         }
 
+        const lineTotalsSum = order.items.reduce(
+          (s, i) => s + Number(i.lineTotal),
+          0,
+        );
+        const orderLevelDiscount = lineTotalsSum - Number(order.grandTotal);
+        const isAllianceOrNoGlobalDisc =
+          Math.abs(lineTotalsSum - Number(order.grandTotal)) <= 5;
+
+        const refundedItemDetails: any[] = [];
         for (const orderItem of processingItems) {
           if (!orderItem.itemId) continue;
+
+          const origOi = order.items.find(
+            (i) =>
+              i.id === orderItem.orderItemId || i.itemId === orderItem.itemId,
+          );
+          if (!origOi) continue;
+
+          const qty = Number(origOi.quantity);
+          const lineTotal = Number(origOi.lineTotal);
+          const itemCouponDeduction =
+            isAllianceOrNoGlobalDisc || lineTotalsSum <= 0
+              ? 0
+              : (lineTotal / lineTotalsSum) * orderLevelDiscount;
+          const itemShare = lineTotal - itemCouponDeduction;
+          const originalPaidPerUnit = isAllianceOrNoGlobalDisc
+            ? lineTotal / qty
+            : itemShare / qty;
+
+          const taxPct = Number(origOi.taxPercent || 0);
+          const taxDivisor = 1 + taxPct / 100;
+          const retailUnitPrice = Number(origOi.unitPrice);
+          const wostPerUnit = retailUnitPrice / taxDivisor;
+          const lineTotalWost =
+            Math.round(wostPerUnit * orderItem.quantity * 100) / 100;
+          const finalDiscountPercent = Number(origOi.discountPercent || 0);
+          const finalDiscountAmount =
+            Math.round(
+              lineTotalWost * (finalDiscountPercent / 100) * 100,
+            ) / 100;
+          const finalTaxAmount =
+            Math.round(
+              (lineTotalWost - finalDiscountAmount) * (taxPct / 100) * 100,
+            ) / 100;
+          const refundPerUnit = originalPaidPerUnit;
+          const itemRefundLineTotal =
+            Math.round(refundPerUnit * orderItem.quantity * 100) / 100;
+
+          refundedItemDetails.push({
+            salesOrderItemId: origOi.id,
+            itemId: orderItem.itemId,
+            quantity: orderItem.quantity,
+            originalUnitPrice: Math.round(retailUnitPrice * 100) / 100,
+            originalPaidPerUnit: Math.round(originalPaidPerUnit * 100) / 100,
+            currentPriceWithTax: Math.round(retailUnitPrice * 100) / 100,
+            refundPerUnit: Math.round(refundPerUnit * 100) / 100,
+            priceAdjusted: false,
+            unitPriceWost: Math.round(wostPerUnit * 10000) / 10000,
+            lineTotalWost: Math.round(lineTotalWost * 100) / 100,
+            discountPercent: finalDiscountPercent,
+            discountWost: finalDiscountAmount,
+            taxPercent: taxPct,
+            taxAmount: finalTaxAmount,
+            couponDeduction:
+              Math.round(
+                itemCouponDeduction * (orderItem.quantity / qty) * 100,
+              ) / 100,
+            lineTotal: itemRefundLineTotal,
+          });
 
           // Update returned qty map
           const current = alreadyReturnedMap.get(orderItem.itemId) || 0;
@@ -4231,6 +4612,9 @@ export class PosSalesService implements OnModuleInit {
         });
         const newStatus = allItemsReturned ? 'refunded' : 'partially_returned';
 
+        // ── Resolve Effective Customer for Refund & Voucher ──
+        const effectiveCustomerId = customerId || order.customerId || undefined;
+
         // ── Generate REFUND Voucher (record-only, cash refunded to customer) ──
         let refundVoucher: any = null;
         if (refundAmount > 0) {
@@ -4238,9 +4622,9 @@ export class PosSalesService implements OnModuleInit {
             {
               faceValue: Math.round(refundAmount * 100) / 100,
               sourceOrderId: id,
-              issuedByLocationId: order.locationId || '',
+              issuedByLocationId: effectiveLocationId || order.locationId || '',
               issuedByUserId: ctx?.userId,
-              customerId: order.customerId || undefined,
+              customerId: effectiveCustomerId,
             },
             ctx,
           );
@@ -4249,6 +4633,69 @@ export class PosSalesService implements OnModuleInit {
             refundVoucher = voucherResult.data;
           }
         }
+
+        // ── Persist PosReturn and PosReturnItem records ──
+        const totalSubtotalWost = refundedItemDetails.reduce(
+          (sum, d) => sum + d.lineTotalWost,
+          0,
+        );
+        const totalDiscountWost = refundedItemDetails.reduce(
+          (sum, d) => sum + d.discountWost,
+          0,
+        );
+        const totalTaxAmount = refundedItemDetails.reduce(
+          (sum, d) => sum + d.taxAmount,
+          0,
+        );
+
+        const posReturn = await tx.posReturn.create({
+          data: {
+            returnNumber: refundNumber,
+            salesOrderId: id,
+            originalCustomerId: order.customerId || null,
+            customerId: effectiveCustomerId || null,
+            returnType: 'REFUND',
+            refundMode: 'CASH',
+            locationId: effectiveLocationId || order.locationId || null,
+            posId: order.posId || null,
+            terminalId: order.terminalId || null,
+            cashierUserId: ctx?.userId || order.cashierUserId || null,
+            createdById: ctx?.userId || null,
+            subtotalWost: Math.round(totalSubtotalWost * 100) / 100,
+            discountWost: Math.round(totalDiscountWost * 100) / 100,
+            taxAmount: Math.round(totalTaxAmount * 100) / 100,
+            totalRefundAmount: Math.round(refundAmount * 100) / 100,
+            reason: reason || null,
+            voucherId: refundVoucher ? refundVoucher.id : null,
+            items: {
+              create: refundedItemDetails.map((d) => ({
+                salesOrderItemId: d.salesOrderItemId,
+                itemId: d.itemId,
+                quantity: d.quantity,
+                originalUnitPrice: d.originalUnitPrice,
+                originalPaidPerUnit: d.originalPaidPerUnit,
+                currentPriceWithTax: d.currentPriceWithTax,
+                refundPerUnit: d.refundPerUnit,
+                priceAdjusted: d.priceAdjusted,
+                unitPriceWost: d.unitPriceWost,
+                lineTotalWost: d.lineTotalWost,
+                discountPercent: d.discountPercent,
+                discountWost: d.discountWost,
+                taxPercent: d.taxPercent,
+                taxAmount: d.taxAmount,
+                couponDeduction: d.couponDeduction,
+                lineTotal: d.lineTotal,
+                reason: reason || null,
+              })),
+            },
+          },
+          include: {
+            items: true,
+            voucher: true,
+            customer: true,
+            originalCustomer: true,
+          },
+        });
 
         const updatedOrder = await tx.salesOrder.update({
           where: { id },
@@ -4263,7 +4710,7 @@ export class PosSalesService implements OnModuleInit {
           },
         });
 
-        return { updatedOrder, refundVoucher, refundNumber };
+        return { updatedOrder, refundVoucher, refundNumber, posReturn };
       });
 
       runInBackground(
@@ -5382,6 +5829,8 @@ export class PosSalesService implements OnModuleInit {
             notes = notes.replace(/Card:.*?($|\n)/, '').trim();
             notes = notes ? `${notes}\n${cardNote}` : cardNote;
           }
+        } else if (!tenders.some((t) => t.method === 'card' || t.method === 'bank_transfer')) {
+          notes = notes.replace(/Card:.*?($|\n)/, '').trim();
         }
 
         // ── Sync VoucherRedemption records ──
@@ -5486,13 +5935,13 @@ export class PosSalesService implements OnModuleInit {
           data: {
             paymentMethod,
             tenderType: paymentMethod,
-            cashAmount: cashAmount || undefined,
-            cardAmount: cardAmount || undefined,
-            voucherAmount: voucherAmount || undefined,
-            changeAmount: changeAmount || undefined,
+            cashAmount: cashAmount > 0 ? cashAmount : null,
+            cardAmount: cardAmount > 0 ? cardAmount : null,
+            voucherAmount: voucherAmount > 0 ? voucherAmount : null,
+            changeAmount: changeAmount > 0 ? changeAmount : null,
             paymentStatus,
-            merchantId: merchantId || undefined,
-            notes: notes || undefined,
+            merchantId: cardAmount > 0 ? (merchantId || null) : null,
+            notes: notes || null,
           },
         });
       });

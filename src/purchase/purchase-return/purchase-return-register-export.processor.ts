@@ -166,7 +166,6 @@ export class PurchaseReturnRegisterExportProcessor {
       { header: 'Val Excl Tax', key: 'valExclTax', width: 16 },
       { header: 'Sales Tax', key: 'salesTax', width: 14 },
       { header: 'Val Incl Tax', key: 'valInclTax', width: 16 },
-      { header: 'Adv Tax', key: 'advTax', width: 14 },
       { header: 'Line Total', key: 'lineTotal', width: 18 },
     ];
 
@@ -178,10 +177,10 @@ export class PurchaseReturnRegisterExportProcessor {
     };
 
     // Title Row
-    const titleRow = worksheet.addRow(['Purchase Return Register', '', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    const titleRow = worksheet.addRow(['Purchase Return Register', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
     titleRow.height = 30;
     titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
-    titleRow.getCell(11).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.getCell(10).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
     titleRow.commit();
 
     worksheet.addRow([]).commit();
@@ -220,11 +219,10 @@ export class PurchaseReturnRegisterExportProcessor {
         'Val Excl Tax',
         'Sales Tax',
         'Val Incl Tax',
-        'Adv Tax',
         'Line Total',
       ]);
       colHeaderRow.height = 22;
-      for (let c = 1; c <= 11; c++) {
+      for (let c = 1; c <= 10; c++) {
         const cell = colHeaderRow.getCell(c);
         cell.font = { bold: true, color: { argb: 'FF333333' } };
         cell.border = { bottom: { style: 'medium' } };
@@ -245,7 +243,6 @@ export class PurchaseReturnRegisterExportProcessor {
             cat.totalValExclTax,
             cat.totalSalesTax,
             cat.totalValInclTax,
-            cat.totalAdvTax,
             cat.totalLineTotal,
           ]);
           catRow.height = 22;
@@ -253,7 +250,7 @@ export class PurchaseReturnRegisterExportProcessor {
           catRow.getCell(5).font = { bold: true, color: { argb: 'FF008000' } };
           catRow.getCell(5).alignment = { horizontal: 'right' };
           catRow.getCell(5).numFmt = '#,##0';
-          for (const colIdx of [7, 8, 9, 10, 11]) {
+          for (const colIdx of [7, 8, 9, 10]) {
             catRow.getCell(colIdx).font = { bold: true, color: { argb: 'FF008000' } };
             catRow.getCell(colIdx).alignment = { horizontal: 'right' };
             catRow.getCell(colIdx).numFmt = '#,##0';
@@ -274,7 +271,6 @@ export class PurchaseReturnRegisterExportProcessor {
                   art.totalValExclTax,
                   art.totalSalesTax,
                   art.totalValInclTax,
-                  art.totalAdvTax,
                   art.totalLineTotal,
                 ]);
                 artRow.height = 20;
@@ -282,7 +278,7 @@ export class PurchaseReturnRegisterExportProcessor {
                 artRow.getCell(5).font = { bold: true, color: { argb: 'FF0000FF' } };
                 artRow.getCell(5).alignment = { horizontal: 'right' };
                 artRow.getCell(5).numFmt = '#,##0';
-                for (const colIdx of [7, 8, 9, 10, 11]) {
+                for (const colIdx of [7, 8, 9, 10]) {
                   artRow.getCell(colIdx).font = { bold: true, color: { argb: 'FF0000FF' } };
                   artRow.getCell(colIdx).alignment = { horizontal: 'right' };
                   artRow.getCell(colIdx).numFmt = '#,##0';
@@ -301,7 +297,6 @@ export class PurchaseReturnRegisterExportProcessor {
                     v.valExclTax,
                     v.salesTax,
                     v.valInclTax,
-                    v.advTax,
                     v.lineTotal,
                   ]);
                   vRow.height = 18;
@@ -310,11 +305,11 @@ export class PurchaseReturnRegisterExportProcessor {
                   vRow.getCell(4).alignment = { horizontal: 'center' };
                   vRow.getCell(5).alignment = { horizontal: 'right' };
                   vRow.getCell(5).numFmt = '#,##0';
-                  for (const colIdx of [6, 7, 8, 9, 10, 11]) {
+                  for (const colIdx of [6, 7, 8, 9, 10]) {
                     vRow.getCell(colIdx).alignment = { horizontal: 'right' };
                     vRow.getCell(colIdx).numFmt = '#,##0';
                   }
-                  for (let c = 1; c <= 11; c++) {
+                  for (let c = 1; c <= 10; c++) {
                     vRow.getCell(c).border = borderThin;
                   }
                   vRow.commit();
@@ -336,11 +331,10 @@ export class PurchaseReturnRegisterExportProcessor {
         doc.totalValExclTax,
         doc.totalSalesTax,
         doc.totalValInclTax,
-        doc.totalAdvTax,
         doc.totalLineTotal,
       ]);
       docTotRow.height = 22;
-      for (let c = 1; c <= 11; c++) {
+      for (let c = 1; c <= 10; c++) {
         const cell = docTotRow.getCell(c);
         cell.font = { bold: true, size: 10, color: { argb: 'FFCC0000' } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0F0' } };
@@ -348,7 +342,7 @@ export class PurchaseReturnRegisterExportProcessor {
       }
       docTotRow.getCell(5).alignment = { horizontal: 'right' };
       docTotRow.getCell(5).numFmt = '#,##0';
-      for (const colIdx of [7, 8, 9, 10, 11]) {
+      for (const colIdx of [7, 8, 9, 10]) {
         docTotRow.getCell(colIdx).alignment = { horizontal: 'right' };
         docTotRow.getCell(colIdx).numFmt = '#,##0';
       }
@@ -368,11 +362,10 @@ export class PurchaseReturnRegisterExportProcessor {
       reportData.grandTotals.valExclTax,
       reportData.grandTotals.salesTax,
       reportData.grandTotals.valInclTax,
-      reportData.grandTotals.advTax,
       reportData.grandTotals.lineTotal,
     ]);
     grandRow.height = 26;
-    for (let c = 1; c <= 11; c++) {
+    for (let c = 1; c <= 10; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -380,7 +373,7 @@ export class PurchaseReturnRegisterExportProcessor {
     }
     grandRow.getCell(5).alignment = { horizontal: 'right' };
     grandRow.getCell(5).numFmt = '#,##0';
-    for (const colIdx of [7, 8, 9, 10, 11]) {
+    for (const colIdx of [7, 8, 9, 10]) {
       grandRow.getCell(colIdx).alignment = { horizontal: 'right' };
       grandRow.getCell(colIdx).numFmt = '#,##0';
     }
@@ -423,7 +416,6 @@ export class PurchaseReturnRegisterExportProcessor {
       { header: 'Val Excl Tax', key: 'valExclTax', width: 16 },
       { header: 'Sales Tax', key: 'salesTax', width: 14 },
       { header: 'Val Incl Tax', key: 'valInclTax', width: 16 },
-      { header: 'Adv Tax', key: 'advTax', width: 14 },
       { header: 'Line Total', key: 'lineTotal', width: 18 },
     ];
 
@@ -435,10 +427,10 @@ export class PurchaseReturnRegisterExportProcessor {
     };
 
     // Title Row
-    const titleRow = worksheet.addRow(['Purchase Return Register (Flat Data)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    const titleRow = worksheet.addRow(['Purchase Return Register (Flat Data)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
     titleRow.height = 30;
     titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
-    titleRow.getCell(26).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.getCell(25).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
     titleRow.commit();
 
     worksheet.addRow([]).commit();
@@ -469,11 +461,10 @@ export class PurchaseReturnRegisterExportProcessor {
       'Val Excl Tax',
       'Sales Tax',
       'Val Incl Tax',
-      'Adv Tax',
       'Line Total',
     ]);
     colHeaderRow.height = 24;
-    for (let c = 1; c <= 26; c++) {
+    for (let c = 1; c <= 25; c++) {
       const cell = colHeaderRow.getCell(c);
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
@@ -516,11 +507,10 @@ export class PurchaseReturnRegisterExportProcessor {
                     v.valExclTax,
                     v.salesTax,
                     v.valInclTax,
-                    v.advTax,
                     v.lineTotal,
                   ]);
                   row.height = 19;
-                  for (let c = 1; c <= 26; c++) {
+                  for (let c = 1; c <= 25; c++) {
                     const cell = row.getCell(c);
                     cell.border = borderThin;
                     if (c >= 17 && c <= 19) cell.alignment = { horizontal: 'center' };
@@ -567,11 +557,10 @@ export class PurchaseReturnRegisterExportProcessor {
       reportData.grandTotals.valExclTax,
       reportData.grandTotals.salesTax,
       reportData.grandTotals.valInclTax,
-      reportData.grandTotals.advTax,
       reportData.grandTotals.lineTotal,
     ]);
     grandRow.height = 26;
-    for (let c = 1; c <= 26; c++) {
+    for (let c = 1; c <= 25; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -654,7 +643,6 @@ export class PurchaseReturnRegisterExportProcessor {
                       <td class="text-right">${v.valExclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       <td class="text-right">${v.salesTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       <td class="text-right">${v.valInclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                      <td class="text-right">${v.advTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       <td class="text-right font-bold text-emerald-600">${v.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     </tr>
                   `;
@@ -674,7 +662,6 @@ export class PurchaseReturnRegisterExportProcessor {
                     <td class="text-right font-bold text-blue-600">${art.totalValExclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     <td class="text-right font-bold text-blue-600">${art.totalSalesTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     <td class="text-right font-bold text-blue-600">${art.totalValInclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td class="text-right font-bold text-blue-600">${art.totalAdvTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     <td class="text-right font-bold text-blue-600">${art.totalLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                   </tr>
                   ${variantHtml}
@@ -698,7 +685,6 @@ export class PurchaseReturnRegisterExportProcessor {
               <td class="text-right cat-qty">${cat.totalValExclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
               <td class="text-right cat-qty">${cat.totalSalesTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
               <td class="text-right cat-qty">${cat.totalValInclTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-              <td class="text-right cat-qty">${cat.totalAdvTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
               <td class="text-right cat-qty">${cat.totalLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
             </tr>
             ${genHtml}
@@ -739,17 +725,16 @@ export class PurchaseReturnRegisterExportProcessor {
 
           <table class="report-table">
             <colgroup>
-              <col style="width: 24%;" />
+              <col style="width: 25%;" />
               <col style="width: 8%;" />
               <col style="width: 6%;" />
               <col style="width: 9%;" />
-              <col style="width: 6%;" />
+              <col style="width: 7%;" />
+              <col style="width: 9%;" />
+              <col style="width: 10%;" />
               <col style="width: 8%;" />
               <col style="width: 9%;" />
-              <col style="width: 8%;" />
               <col style="width: 9%;" />
-              <col style="width: 5%;" />
-              <col style="width: 8%;" />
             </colgroup>
             <thead>
               <tr>
@@ -762,7 +747,6 @@ export class PurchaseReturnRegisterExportProcessor {
                 <th class="text-right">Val Excl Tax</th>
                 <th class="text-right">Sales Tax</th>
                 <th class="text-right">Val Incl Tax</th>
-                <th class="text-right">Adv Tax</th>
                 <th class="text-right">Line Total</th>
               </tr>
             </thead>
