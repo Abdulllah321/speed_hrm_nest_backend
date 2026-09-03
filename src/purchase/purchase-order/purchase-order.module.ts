@@ -15,6 +15,9 @@ import { NotificationsModule } from '../../notifications/notifications.module';
 import { UploadModule } from '../../upload/upload.module';
 import { PoRegisterExportService } from './po-register-export.service';
 import { PoRegisterExportProcessor } from './po-register-export.processor';
+import { PurchaseOrderExportService } from './purchase-order-export.service';
+import { PurchaseOrderExportProcessor } from './purchase-order-export.processor';
+import { PurchaseOrderExportController } from './purchase-order-export.controller';
 
 @Module({
   imports: [
@@ -26,9 +29,10 @@ import { PoRegisterExportProcessor } from './po-register-export.processor';
     BullModule.registerQueue(
       { name: 'po-upload' },
       { name: 'po-register-export' },
+      { name: 'purchase-order-export' },
     ),
   ],
-  controllers: [PurchaseOrderController, PoBulkUploadController],
+  controllers: [PurchaseOrderController, PoBulkUploadController, PurchaseOrderExportController],
   providers: [
     PurchaseOrderService,
     PoBulkUploadService,
@@ -38,7 +42,9 @@ import { PoRegisterExportProcessor } from './po-register-export.processor';
     UploadEventsService,
     PoRegisterExportService,
     PoRegisterExportProcessor,
+    PurchaseOrderExportService,
+    PurchaseOrderExportProcessor,
   ],
-  exports: [PurchaseOrderService, PoRegisterExportService],
+  exports: [PurchaseOrderService, PoRegisterExportService, PurchaseOrderExportService],
 })
 export class PurchaseOrderModule {}
