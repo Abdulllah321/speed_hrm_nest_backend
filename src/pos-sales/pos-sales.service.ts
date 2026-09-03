@@ -7085,6 +7085,8 @@ export class PosSalesService implements OnModuleInit {
 
       const tenderDocs = parseTenderDocs(notesStr, order.alliance);
 
+      const creditSale = (balance > 0 || order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0;
+
       rows.push({
         id: order.id,
         invoiceNo: order.orderNumber,
@@ -7106,6 +7108,18 @@ export class PosSalesService implements OnModuleInit {
         fbr,
         netSale,
         tenderDocuments: tenderDocs,
+        cashSale: cash,
+        cashReturn: 0,
+        cardSale: card,
+        creditSale,
+        giftVoucherAmount: giftVoucher,
+        creditVoucherAmount: creditVoucher,
+        exchangeVoucherAmount: exchangeVoucher,
+        claimVoucherAmount: claimVoucher,
+        giftVoucherCorporate: corporateVoucher,
+        creditVoucherIssuedAmount: issuedCredit,
+        rewardVoucherAmount: rewardVoucher,
+        onCreditAmount: onCredit,
       });
     }
 
@@ -7201,6 +7215,18 @@ export class PosSalesService implements OnModuleInit {
         fbr: 0,
         netSale: -netSale,
         tenderDocuments: '',
+        cashSale: 0,
+        cashReturn: isRefund ? -cash : 0,
+        cardSale: 0,
+        creditSale: 0,
+        giftVoucherAmount: 0,
+        creditVoucherAmount: 0,
+        exchangeVoucherAmount: exchangeVoucher,
+        claimVoucherAmount: 0,
+        giftVoucherCorporate: 0,
+        creditVoucherIssuedAmount: issuedCredit,
+        rewardVoucherAmount: 0,
+        onCreditAmount: 0,
       });
     }
 
