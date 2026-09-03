@@ -109,27 +109,34 @@ export class SalesListExportProcessor {
       fbrOnly,
     } = job.data;
 
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
+
     try {
       this.logger.log(`[SalesListPreview] Starting generation for preview job ${jobId}`);
       await job.progress(10);
 
-      const result = await this.salesListExportService.computeReportData({
-        locationId,
-        startDate,
-        endDate,
-        cashierUserId,
-        reportType,
-        search,
-        paymentModeGroup,
-        minAmount,
-        maxAmount,
-        fbrOnly,
-        onProgress: async (p, msg) => {
-          await job.progress(Math.min(95, Math.max(10, p)));
+      const result = await this.salesListExportService.generateSalesListReportDataInternal(
+        prisma as any,
+        {
+          locationId,
+          startDate,
+          endDate,
+          cashierUserId,
+          reportType,
+          search,
+          paymentModeGroup,
+          minAmount,
+          maxAmount,
+          fbrOnly,
+          onProgress: async (p, msg) => {
+            await job.progress(Math.min(95, Math.max(10, p)));
+          },
         },
-      });
+      );
 
-      await this.salesListExportService.savePreviewResult(jobId, result);
+      await this.salesListExportService.saveReportPreviewResult(jobId, result);
       await job.progress(100);
       this.logger.log(`[SalesListPreview] Successfully completed and stored preview job ${jobId}`);
     } catch (err: any) {
