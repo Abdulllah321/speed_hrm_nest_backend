@@ -32,37 +32,57 @@ const COLUMNS = [
   { header: 'Discount',          key: 'discount',        width: 12, align: 'right', numFmt: '#,##0.00' },
   { header: 'S. Tax',            key: 'sTax',            width: 12, align: 'right', numFmt: '#,##0.00' },
   { header: 'Net Sale',          key: 'netSale',         width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash',              key: 'cash',            width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Card',              key: 'card',            width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Prefix Card No.',   key: 'prefixCardNo',    width: 18 },
-  { header: 'Auth ID',           key: 'authId',          width: 10, align: 'center' },
-  { header: 'Card No.',          key: 'cardNo',          width: 10, align: 'center' },
+  { header: 'Cash Sale',         key: 'cashSale',        width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Cash Return',       key: 'cashReturn',      width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Card Sale',         key: 'cardSale',        width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Sale',       key: 'creditSale',      width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Gift Voucher',      key: 'giftVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Voucher',    key: 'creditVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Exchange Voucher',  key: 'exchangeVoucherAmount', width: 16, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Claim Voucher',     key: 'claimVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Corporate Voucher', key: 'giftVoucherCorporate', width: 16, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Issued',     key: 'creditVoucherIssuedAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Reward Voucher',    key: 'rewardVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'On Credit',         key: 'onCreditAmount',  width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'BIN No.',           key: 'binNo',           width: 18 },
+  { header: 'Card No.',          key: 'cardNo',          width: 12, align: 'center' },
+  { header: 'Card Name',         key: 'cardName',        width: 20 },
+  { header: 'Auth ID',           key: 'authId',          width: 14, align: 'center' },
   { header: 'Alliance Option',   key: 'allianceOption',  width: 40 },
   { header: 'Remarks',           key: 'remarks',         width: 35 },
   { header: 'Gift Voucher No.',  key: 'giftVoucherCode', width: 18 },
-  { header: 'Amount',            key: 'giftVoucherAmt',  width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Credit Voucher No.', key: 'creditCode',      width: 18 },
-  { header: 'Amount',            key: 'creditAmt',       width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Claim Voucher No.',  key: 'claimCode',       width: 18 },
-  { header: 'Amount',            key: 'claimAmt',        width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Corporate Voucher No.', key: 'corporateCode', width: 18 },
-  { header: 'Amount',            key: 'corporateAmt',    width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Exchange Voucher No.', key: 'exchangeCode',   width: 18 },
-  { header: 'Amount',            key: 'exchangeAmt',     width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Credit Voucher Issued', key: 'creditVoucherIssued', width: 22 },
-  { header: 'Amount',            key: 'creditVoucherIssuedAmt', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Issued No.', key: 'creditVoucherIssued', width: 22 },
 ];
 
 // ─── Helper to parse alliance metadata from the notes field ──────────────────
-function parseAllianceNotes(notes: string | null) {
+function parseAllianceNotes(notes: string | null, order?: any) {
   const notesStr = notes || '';
   const binMatch     = notesStr.match(/BIN:\s*([\d\-]+)/i);
-  const slipMatch    = notesStr.match(/Slip:\s*(\d{6})/i);
-  const cardMatch    = notesStr.match(/Card:\s*\*{4}(\d{4})/i);
+  const slipMatch    = notesStr.match(/(?:Slip|Auth\s*ID|Auth|Approval):\s*([a-zA-Z0-9]+)/i);
+  const cardMatch    = notesStr.match(/(?:Card|Last4|CardLast4|Card#):\s*(?:\*{4})?(\d{4})/i);
+  const cardholderMatch = notesStr.match(/(?:Cardholder|Card\s*Name|Bank|Card\s*Type):\s*([^|\],]+)/i);
+
+  let binNumber = binMatch ? binMatch[1] : '';
+  if (!binNumber && order?.alliance?.binNumbers && Array.isArray(order.alliance.binNumbers) && order.alliance.binNumbers.length > 0) {
+    binNumber = order.alliance.binNumbers[0];
+  }
+
+  const authId = slipMatch ? slipMatch[1] : '';
+  const cardLast4 = cardMatch ? cardMatch[1] : '';
+  let cardName = cardholderMatch ? cardholderMatch[1].trim() : '';
+  if (!cardName) {
+    cardName = order?.merchant?.bankName || order?.alliance?.partnerName || '';
+  }
+
   return {
-    binNumber: binMatch  ? binMatch[1]  : '',
-    authId:    slipMatch ? slipMatch[1] : '',
-    cardLast4: cardMatch ? cardMatch[1] : '',
+    binNumber,
+    binNo: binNumber,
+    authId,
+    cardLast4,
+    cardNo: cardLast4,
+    cardName,
   };
 }
 
@@ -179,7 +199,6 @@ export class AllianceRegisterExportProcessor {
         ? await prisma.voucher.findMany({
             where: {
               sourceOrderId: { in: orderIds },
-              voucherType: 'CREDIT',
               isDeleted: false,
             },
           })
@@ -206,19 +225,54 @@ export class AllianceRegisterExportProcessor {
           retailPrice += Number(item.unitPrice || 0) * Number(item.quantity || 1);
         }
 
-        // Parse BIN / Auth ID / Card Last 4 from notes
-        const { binNumber, authId, cardLast4 } = parseAllianceNotes(order.notes);
+        const notesStr = order.notes || '';
+        // Parse BIN / Auth ID / Card Last 4 / Card Name from notes & relations
+        const { binNo, authId, cardLast4, cardName } = parseAllianceNotes(notesStr, order);
 
         // Alliance Option label
         let allianceOption = '';
         if (order.alliance) {
           const pct = Number(order.alliance.discountPercent);
           const cap = order.alliance.maxDiscount ? ` cap ${Number(order.alliance.maxDiscount).toLocaleString()}` : '';
-          const bin = binNumber ? ` | BIN: ${binNumber}` : '';
+          const bin = binNo ? ` | BIN: ${binNo}` : '';
           allianceOption = `${order.alliance.partnerName} ${pct}%${cap}${bin}`;
         } else if (order.manualDiscountNote) {
           // Manual alliance: strip the prefix tag and show note
           allianceOption = order.manualDiscountNote.replace(/\[Manual Alliance\]/gi, '').trim();
+        }
+
+        // Balance / OnCredit
+        let balance = 0;
+        const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+        if (balanceMatch) {
+          balance = Number(balanceMatch[1]);
+        } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
+          balance = Number(order.grandTotal);
+        }
+
+        let cashSale = Number(order.cashAmount || 0);
+        let cardSale = Number(order.cardAmount || 0);
+        let onCreditAmount = balance;
+        let creditSale = (balance > 0 || order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0;
+        let cashReturn = 0;
+
+        if (cashSale === 0) {
+          const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+          if (cashMatch) cashSale = Number(cashMatch[1]);
+        }
+        if (cardSale === 0) {
+          const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+          if (cardMatch) cardSale = Number(cardMatch[1]);
+        }
+
+        let rewardVoucherAmount = 0;
+        if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+          rewardVoucherAmount = Number(order.grandTotal);
+        } else if (notesStr.includes('[Reward Voucher]')) {
+          const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+          if (amtMatch) {
+            rewardVoucherAmount = Number(amtMatch[1]);
+          }
         }
 
         // Vouchers Used / Redeemed mapping
@@ -247,7 +301,7 @@ export class AllianceRegisterExportProcessor {
           if (type === 'GIFT' || type === 'OUTLET_GIFT') {
             giftVoucherAmt += amt;
             giftCodes.push(code);
-          } else if (type === 'CREDIT') {
+          } else if (type === 'CREDIT' || type === 'REFUND') {
             creditAmt += amt;
             creditCodes.push(code);
           } else if (type === 'CLAIM') {
@@ -259,6 +313,28 @@ export class AllianceRegisterExportProcessor {
           } else if (type === 'EXCHANGE') {
             exchangeAmt += amt;
             exchCodes.push(code);
+          } else if (type === 'REWARD') {
+            rewardVoucherAmount += amt;
+          }
+        }
+
+        // Unallocated voucher amount fallback
+        const totalRedeemedVoucher = giftVoucherAmt + creditAmt + exchangeAmt + claimAmt + corporateAmt + rewardVoucherAmount;
+        const orderVoucherAmt = Number(order.voucherAmount || 0);
+        if (orderVoucherAmt > totalRedeemedVoucher) {
+          const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
+          if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
+            exchangeAmt += remVoucher;
+          } else if (notesStr.match(/Claim|CLM-/i)) {
+            claimAmt += remVoucher;
+          } else if (notesStr.match(/Corporate/i)) {
+            corporateAmt += remVoucher;
+          } else if (notesStr.match(/Gift/i)) {
+            giftVoucherAmt += remVoucher;
+          } else if (notesStr.match(/Reward/i)) {
+            rewardVoucherAmount += remVoucher;
+          } else {
+            creditAmt += remVoucher;
           }
         }
 
@@ -268,10 +344,33 @@ export class AllianceRegisterExportProcessor {
         corporateCode = corpCodes.join(', ');
         exchangeCode = exchCodes.join(', ');
 
+        // Fallback if all tenders are 0
+        const totalTenders = cashSale + cardSale + giftVoucherAmt + creditAmt + exchangeAmt + claimAmt + corporateAmt + rewardVoucherAmount + onCreditAmount;
+        if (totalTenders === 0) {
+          const payMethod = (order.paymentMethod || 'cash').toLowerCase();
+          if (payMethod.includes('cash')) cashSale = Number(order.grandTotal);
+          else if (payMethod.includes('card') || payMethod.includes('bank')) cardSale = Number(order.grandTotal);
+          else if (payMethod.includes('credit')) {
+            creditSale = Number(order.grandTotal);
+            onCreditAmount = Number(order.grandTotal);
+          } else if (payMethod.includes('voucher')) {
+            creditAmt = Number(order.grandTotal);
+          } else {
+            cashSale = Number(order.grandTotal);
+          }
+        }
+
         // Credit Voucher Issued mapping
         const orderIssued = issuedVouchersMap.get(order.id) || [];
         const creditVoucherIssued = orderIssued.map(v => v.code).join(', ');
-        const creditVoucherIssuedAmt = orderIssued.reduce((sum, v) => sum + Number(v.faceValue || 0), 0);
+        let creditVoucherIssuedAmt = 0;
+        for (const iv of orderIssued) {
+          const type = iv.voucherType;
+          const faceVal = Number(iv.faceValue || 0);
+          if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
+            creditVoucherIssuedAmt += faceVal;
+          }
+        }
 
         const createdAt = new Date(order.createdAt);
 
@@ -284,11 +383,26 @@ export class AllianceRegisterExportProcessor {
           discount:      Number(order.discountAmount || 0),
           sTax:          Number(order.taxAmount || 0),
           netSale:       Number(order.grandTotal || 0),
-          cash:          Number(order.cashAmount || 0),
-          card:          Number(order.cardAmount || 0),
-          prefixCardNo:  binNumber,
+          cash:          cashSale,
+          card:          cardSale,
+          cashSale,
+          cashReturn,
+          cardSale,
+          creditSale,
+          giftVoucherAmount: giftVoucherAmt,
+          creditVoucherAmount: creditAmt,
+          exchangeVoucherAmount: exchangeAmt,
+          claimVoucherAmount: claimAmt,
+          giftVoucherCorporate: corporateAmt,
+          creditVoucherIssuedAmount: creditVoucherIssuedAmt,
+          rewardVoucherAmount,
+          onCreditAmount,
+          binNo,
+          prefixCardNo:  binNo,
           authId,
           cardNo:        cardLast4,
+          cardLast4,
+          cardName,
           allianceOption,
           remarks:       order.manualDiscountNote || order.notes || '',
           giftVoucherCode,
@@ -321,6 +435,18 @@ export class AllianceRegisterExportProcessor {
           acc.netSale     += r.netSale;
           acc.cash        += r.cash;
           acc.card        += r.card;
+          acc.cashSale    += r.cashSale;
+          acc.cashReturn  += r.cashReturn;
+          acc.cardSale    += r.cardSale;
+          acc.creditSale  += r.creditSale;
+          acc.giftVoucherAmount += r.giftVoucherAmount;
+          acc.creditVoucherAmount += r.creditVoucherAmount;
+          acc.exchangeVoucherAmount += r.exchangeVoucherAmount;
+          acc.claimVoucherAmount += r.claimVoucherAmount;
+          acc.giftVoucherCorporate += r.giftVoucherCorporate;
+          acc.creditVoucherIssuedAmount += r.creditVoucherIssuedAmount;
+          acc.rewardVoucherAmount += r.rewardVoucherAmount;
+          acc.onCreditAmount += r.onCreditAmount;
           acc.giftVoucherAmt += r.giftVoucherAmt;
           acc.creditAmt      += r.creditAmt;
           acc.claimAmt       += r.claimAmt;
@@ -331,6 +457,9 @@ export class AllianceRegisterExportProcessor {
         },
         {
           retailPrice: 0, retailWost: 0, discount: 0, sTax: 0, netSale: 0, cash: 0, card: 0,
+          cashSale: 0, cashReturn: 0, cardSale: 0, creditSale: 0,
+          giftVoucherAmount: 0, creditVoucherAmount: 0, exchangeVoucherAmount: 0, claimVoucherAmount: 0,
+          giftVoucherCorporate: 0, creditVoucherIssuedAmount: 0, rewardVoucherAmount: 0, onCreditAmount: 0,
           giftVoucherAmt: 0, creditAmt: 0, claimAmt: 0, corporateAmt: 0, exchangeAmt: 0, creditVoucherIssuedAmt: 0
         },
       );
@@ -416,25 +545,28 @@ export class AllianceRegisterExportProcessor {
             discount:     r.discount,
             sTax:         r.sTax,
             netSale:      r.netSale,
-            cash:         r.cash,
-            card:         r.card,
-            prefixCardNo: r.prefixCardNo,
-            authId:       r.authId,
-            cardNo:       r.cardNo,
+            cashSale:     r.cashSale,
+            cashReturn:   r.cashReturn,
+            cardSale:     r.cardSale,
+            creditSale:   r.creditSale,
+            giftVoucherAmount: r.giftVoucherAmount,
+            creditVoucherAmount: r.creditVoucherAmount,
+            exchangeVoucherAmount: r.exchangeVoucherAmount,
+            claimVoucherAmount: r.claimVoucherAmount,
+            giftVoucherCorporate: r.giftVoucherCorporate,
+            creditVoucherIssuedAmount: r.creditVoucherIssuedAmount,
+            rewardVoucherAmount: r.rewardVoucherAmount,
+            onCreditAmount: r.onCreditAmount,
+            binNo:        r.binNo || r.prefixCardNo || '',
+            cardNo:       r.cardNo || '',
+            cardName:     r.cardName || '',
+            authId:       r.authId || '',
             allianceOption: r.allianceOption,
             remarks:      r.remarks,
             giftVoucherCode: r.giftVoucherCode,
-            giftVoucherAmt: r.giftVoucherAmt,
             creditCode:   r.creditCode,
-            creditAmt:    r.creditAmt,
             claimCode:    r.claimCode,
-            claimAmt:     r.claimAmt,
-            corporateCode: r.corporateCode,
-            corporateAmt: r.corporateAmt,
-            exchangeCode: r.exchangeCode,
-            exchangeAmt:  r.exchangeAmt,
             creditVoucherIssued: r.creditVoucherIssued,
-            creditVoucherIssuedAmt: r.creditVoucherIssuedAmt,
           };
 
           const row = ws.addRow(rowData);
@@ -463,25 +595,28 @@ export class AllianceRegisterExportProcessor {
           discount:      grandTotals.discount,
           sTax:          grandTotals.sTax,
           netSale:       grandTotals.netSale,
-          cash:          grandTotals.cash,
-          card:          grandTotals.card,
-          prefixCardNo:  '',
-          authId:        '',
+          cashSale:      grandTotals.cashSale,
+          cashReturn:    grandTotals.cashReturn,
+          cardSale:      grandTotals.cardSale,
+          creditSale:    grandTotals.creditSale,
+          giftVoucherAmount: grandTotals.giftVoucherAmount,
+          creditVoucherAmount: grandTotals.creditVoucherAmount,
+          exchangeVoucherAmount: grandTotals.exchangeVoucherAmount,
+          claimVoucherAmount: grandTotals.claimVoucherAmount,
+          giftVoucherCorporate: grandTotals.giftVoucherCorporate,
+          creditVoucherIssuedAmount: grandTotals.creditVoucherIssuedAmount,
+          rewardVoucherAmount: grandTotals.rewardVoucherAmount,
+          onCreditAmount: grandTotals.onCreditAmount,
+          binNo:         '',
           cardNo:        '',
+          cardName:      '',
+          authId:        '',
           allianceOption: `${rows.length} transaction(s)`,
           remarks:       '',
           giftVoucherCode: '',
-          giftVoucherAmt: grandTotals.giftVoucherAmt,
           creditCode:   '',
-          creditAmt:    grandTotals.creditAmt,
           claimCode:    '',
-          claimAmt:     grandTotals.claimAmt,
-          corporateCode: '',
-          corporateAmt: grandTotals.corporateAmt,
-          exchangeCode: '',
-          exchangeAmt:  grandTotals.exchangeAmt,
           creditVoucherIssued: '',
-          creditVoucherIssuedAmt: grandTotals.creditVoucherIssuedAmt,
         });
 
         for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
@@ -570,25 +705,28 @@ export class AllianceRegisterExportProcessor {
           <td class="num disc">${r.discount > 0 ? formatVal(r.discount) : '-'}</td>
           <td class="num">${formatVal(r.sTax)}</td>
           <td class="num bold">${formatVal(r.netSale)}</td>
-          <td class="num">${r.cash > 0 ? formatVal(r.cash) : '-'}</td>
-          <td class="num">${r.card > 0 ? formatVal(r.card) : '-'}</td>
-          <td class="center mono">${r.prefixCardNo || '-'}</td>
+          <td class="num">${r.cashSale > 0 ? formatVal(r.cashSale) : '-'}</td>
+          <td class="num disc">${r.cashReturn > 0 ? formatVal(r.cashReturn) : '-'}</td>
+          <td class="num">${r.cardSale > 0 ? formatVal(r.cardSale) : '-'}</td>
+          <td class="num">${r.creditSale > 0 ? formatVal(r.creditSale) : '-'}</td>
+          <td class="num">${r.giftVoucherAmount > 0 ? formatVal(r.giftVoucherAmount) : '-'}</td>
+          <td class="num">${r.creditVoucherAmount > 0 ? formatVal(r.creditVoucherAmount) : '-'}</td>
+          <td class="num">${r.exchangeVoucherAmount > 0 ? formatVal(r.exchangeVoucherAmount) : '-'}</td>
+          <td class="num">${r.claimVoucherAmount > 0 ? formatVal(r.claimVoucherAmount) : '-'}</td>
+          <td class="num">${r.giftVoucherCorporate > 0 ? formatVal(r.giftVoucherCorporate) : '-'}</td>
+          <td class="num disc">${r.creditVoucherIssuedAmount > 0 ? formatVal(r.creditVoucherIssuedAmount) : '-'}</td>
+          <td class="num">${r.rewardVoucherAmount > 0 ? formatVal(r.rewardVoucherAmount) : '-'}</td>
+          <td class="num">${r.onCreditAmount > 0 ? formatVal(r.onCreditAmount) : '-'}</td>
+          <td class="center mono">${r.binNo || r.prefixCardNo || '-'}</td>
+          <td class="center mono">${r.cardNo || '-'}</td>
+          <td class="alliance">${r.cardName || '-'}</td>
           <td class="center mono">${r.authId || '-'}</td>
-          <td class="center mono">${r.cardNo ? '****' + r.cardNo : '-'}</td>
           <td class="alliance">${r.allianceOption || '-'}</td>
           <td class="remarks">${r.remarks || '-'}</td>
           <td class="mono">${r.giftVoucherCode || '-'}</td>
-          <td class="num">${formatVal(r.giftVoucherAmt)}</td>
           <td class="mono">${r.creditCode || '-'}</td>
-          <td class="num">${formatVal(r.creditAmt)}</td>
           <td class="mono">${r.claimCode || '-'}</td>
-          <td class="num">${formatVal(r.claimAmt)}</td>
-          <td class="mono">${r.corporateCode || '-'}</td>
-          <td class="num">${formatVal(r.corporateAmt)}</td>
-          <td class="mono">${r.exchangeCode || '-'}</td>
-          <td class="num">${formatVal(r.exchangeAmt)}</td>
           <td class="mono">${r.creditVoucherIssued || '-'}</td>
-          <td class="num">${formatVal(r.creditVoucherIssuedAmt)}</td>
         </tr>
       `;
     }
@@ -649,34 +787,6 @@ export class AllianceRegisterExportProcessor {
             border-collapse: collapse;
             table-layout: fixed;
           }
-          /* Define specific widths for 27 columns to fit landscape A4 nicely */
-          colgroup col:nth-child(1)  { width: 5.0%; } /* Invoice */
-          colgroup col:nth-child(2)  { width: 3.5%; } /* Date */
-          colgroup col:nth-child(3)  { width: 2.5%; } /* Time */
-          colgroup col:nth-child(4)  { width: 3.5%; } /* Retail Price */
-          colgroup col:nth-child(5)  { width: 3.8%; } /* Retail WOST */
-          colgroup col:nth-child(6)  { width: 3.2%; } /* Discount */
-          colgroup col:nth-child(7)  { width: 3.2%; } /* Tax */
-          colgroup col:nth-child(8)  { width: 3.5%; } /* Net Sale */
-          colgroup col:nth-child(9)  { width: 3.2%; } /* Cash */
-          colgroup col:nth-child(10) { width: 3.2%; } /* Card */
-          colgroup col:nth-child(11) { width: 4.5%; } /* Prefix Card No */
-          colgroup col:nth-child(12) { width: 3.0%; } /* Auth ID */
-          colgroup col:nth-child(13) { width: 3.0%; } /* Card No */
-          colgroup col:nth-child(14) { width: 7.0%; } /* Alliance Option */
-          colgroup col:nth-child(15) { width: 5.0%; } /* Remarks */
-          colgroup col:nth-child(16) { width: 4.0%; } /* Gift No */
-          colgroup col:nth-child(17) { width: 3.0%; } /* Gift Amt */
-          colgroup col:nth-child(18) { width: 4.0%; } /* Credit No */
-          colgroup col:nth-child(19) { width: 3.0%; } /* Credit Amt */
-          colgroup col:nth-child(20) { width: 4.0%; } /* Claim No */
-          colgroup col:nth-child(21) { width: 3.0%; } /* Claim Amt */
-          colgroup col:nth-child(22) { width: 4.0%; } /* Corp No */
-          colgroup col:nth-child(23) { width: 3.0%; } /* Corp Amt */
-          colgroup col:nth-child(24) { width: 4.0%; } /* Exch No */
-          colgroup col:nth-child(25) { width: 3.0%; } /* Exch Amt */
-          colgroup col:nth-child(26) { width: 4.5%; } /* Issued No */
-          colgroup col:nth-child(27) { width: 3.5%; } /* Issued Amt */
 
           thead { display: table-header-group; }
           th {
@@ -734,12 +844,6 @@ export class AllianceRegisterExportProcessor {
           </div>
         </div>
         <table>
-          <colgroup>
-            <col/><col/><col/><col/><col/><col/><col/>
-            <col/><col/><col/><col/><col/><col/><col/>
-            <col/><col/><col/><col/><col/><col/><col/>
-            <col/><col/><col/><col/><col/><col/>
-          </colgroup>
           <thead>
             <tr class="header-row">
               <th>Sales Tax Invoice</th>
@@ -750,25 +854,28 @@ export class AllianceRegisterExportProcessor {
               <th>Discount</th>
               <th>S. Tax</th>
               <th>Net Sale</th>
-              <th>Cash</th>
-              <th>Card</th>
-              <th>Prefix Card No.</th>
-              <th>Auth ID</th>
+              <th>Cash Sale</th>
+              <th>Cash Return</th>
+              <th>Card Sale</th>
+              <th>Credit Sale</th>
+              <th>Gift Voucher</th>
+              <th>Credit Voucher</th>
+              <th>Exchange Voucher</th>
+              <th>Claim Voucher</th>
+              <th>Corp Voucher</th>
+              <th>Credit Issued</th>
+              <th>Reward Voucher</th>
+              <th>On Credit</th>
+              <th>BIN No.</th>
               <th>Card No.</th>
+              <th>Card Name</th>
+              <th>Auth ID</th>
               <th>Alliance Option</th>
               <th>Remarks</th>
               <th>Gift Voucher No.</th>
-              <th>Amt</th>
               <th>Credit Voucher No.</th>
-              <th>Amt</th>
               <th>Claim Voucher No.</th>
-              <th>Amt</th>
-              <th>Corp Voucher No.</th>
-              <th>Amt</th>
-              <th>Exch Voucher No.</th>
-              <th>Amt</th>
               <th>Credit Issued</th>
-              <th>Amt</th>
             </tr>
           </thead>
           <tbody>
@@ -780,25 +887,28 @@ export class AllianceRegisterExportProcessor {
               <td class="num disc">${formatVal(grandTotals.discount)}</td>
               <td class="num">${formatVal(grandTotals.sTax)}</td>
               <td class="num bold">${formatVal(grandTotals.netSale)}</td>
-              <td class="num">${formatVal(grandTotals.cash)}</td>
-              <td class="num">${formatVal(grandTotals.card)}</td>
+              <td class="num">${formatVal(grandTotals.cashSale)}</td>
+              <td class="num disc">${formatVal(grandTotals.cashReturn)}</td>
+              <td class="num">${formatVal(grandTotals.cardSale)}</td>
+              <td class="num">${formatVal(grandTotals.creditSale)}</td>
+              <td class="num">${formatVal(grandTotals.giftVoucherAmount)}</td>
+              <td class="num">${formatVal(grandTotals.creditVoucherAmount)}</td>
+              <td class="num">${formatVal(grandTotals.exchangeVoucherAmount)}</td>
+              <td class="num">${formatVal(grandTotals.claimVoucherAmount)}</td>
+              <td class="num">${formatVal(grandTotals.giftVoucherCorporate)}</td>
+              <td class="num disc">${formatVal(grandTotals.creditVoucherIssuedAmount)}</td>
+              <td class="num">${formatVal(grandTotals.rewardVoucherAmount)}</td>
+              <td class="num">${formatVal(grandTotals.onCreditAmount)}</td>
               <td>-</td>
               <td>-</td>
               <td>-</td>
               <td>-</td>
               <td>-</td>
               <td>-</td>
-              <td class="num">${formatVal(grandTotals.giftVoucherAmt)}</td>
               <td>-</td>
-              <td class="num">${formatVal(grandTotals.creditAmt)}</td>
               <td>-</td>
-              <td class="num">${formatVal(grandTotals.claimAmt)}</td>
               <td>-</td>
-              <td class="num">${formatVal(grandTotals.corporateAmt)}</td>
               <td>-</td>
-              <td class="num">${formatVal(grandTotals.exchangeAmt)}</td>
-              <td>-</td>
-              <td class="num">${formatVal(grandTotals.creditVoucherIssuedAmt)}</td>
             </tr>
           </tbody>
         </table>
