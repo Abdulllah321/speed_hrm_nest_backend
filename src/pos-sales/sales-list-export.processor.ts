@@ -49,6 +49,7 @@ export interface SalesListPreviewJobData {
 const COLUMNS = [
   { header: 'Date & Time', key: 'date', width: 22, align: 'center' },
   { header: 'Invoice #', key: 'invoiceNo', width: 14, align: 'left' },
+  { header: 'Merchant', key: 'merchant', width: 16, align: 'left' },
   { header: 'NetTotal', key: 'netTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Balance', key: 'balance', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Cash', key: 'tenderCash', width: 12, align: 'right', numFmt: '#,##0.00' },
@@ -100,51 +101,44 @@ export class SalesListExportProcessor {
       startDate,
       endDate,
       cashierUserId,
-      reportType,
+      reportType = 'merged',
       search,
       paymentModeGroup,
       minAmount,
       maxAmount,
       fbrOnly,
     } = job.data;
-    this.logger.log(`[SalesListPreview ${jobId}] Starting background sales-list preview computation`);
-
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      await job.progress({ percent: 10, message: 'Queueing sales list preview computation task...' });
+      this.logger.log(`[SalesListPreview] Starting generation for preview job ${jobId}`);
+      await job.progress(10);
 
-      const result = await this.salesListExportService.generateSalesListReportDataInternal(
-        prisma as any,
-        {
-          locationId,
-          startDate,
-          endDate,
-          cashierUserId,
-          reportType,
-          search,
-          paymentModeGroup,
-          minAmount,
-          maxAmount,
-          fbrOnly,
-          onProgress: async (percent, message) => {
-            await job.progress({ percent, message });
-          },
+      const result = await this.salesListExportService.computeReportData({
+        locationId,
+        startDate,
+        endDate,
+        cashierUserId,
+        reportType,
+        search,
+        paymentModeGroup,
+        minAmount,
+        maxAmount,
+        fbrOnly,
+        onProgress: async (p, msg) => {
+          await job.progress(Math.min(95, Math.max(10, p)));
         },
-      );
+      });
 
-      await this.salesListExportService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Successfully generated sales-list preview result' });
-      this.logger.log(`[SalesListPreview ${jobId}] Successfully generated and saved preview result`);
+      await this.salesListExportService.savePreviewResult(jobId, result);
+      await job.progress(100);
+      this.logger.log(`[SalesListPreview] Successfully completed and stored preview job ${jobId}`);
     } catch (err: any) {
-      this.logger.error(`[SalesListPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      this.logger.error(`[SalesListPreview] Failed preview job ${jobId}: ${err.message}`, err.stack);
       throw err;
     }
   }
 
-  @Process({ concurrency: 1 })
+  @Process('generate-sales-list-export')
   async handleExport(job: Job<SalesListExportJobData>): Promise<void> {
     const {
       jobId,
@@ -162,9 +156,10 @@ export class SalesListExportProcessor {
       maxAmount,
       fbrOnly,
     } = job.data;
-    this.logger.log(`[SalesListExport ${jobId}] Starting ${format.toUpperCase()} export`);
 
-    const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma = new PrismaService();
+    (prisma as any).tenantDbUrl = tenantDbUrl;
+    (prisma as any).tenantId = tenantId;
     const prismaMaster = new PrismaMasterService();
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
@@ -202,6 +197,7 @@ export class SalesListExportProcessor {
           },
           include: {
             alliance: true,
+            merchant: true,
             voucherRedemptions: {
               include: {
                 voucher: true,
@@ -245,6 +241,7 @@ export class SalesListExportProcessor {
             include: {
               items: { include: { item: true } },
               alliance: true,
+              merchant: true,
               voucherRedemptions: { include: { voucher: true } },
             },
           })
@@ -321,7 +318,30 @@ export class SalesListExportProcessor {
         let cash = Number(order.cashAmount || 0);
         let card = Number(order.cardAmount || 0);
         let onCredit = balance;
+
+        if (cash === 0) {
+          const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+          if (cashMatch) cash = Number(cashMatch[1]);
+        }
+        if (card === 0) {
+          const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+          if (cardMatch) card = Number(cardMatch[1]);
+        }
+
         let rewardVoucher = 0;
+        if (
+          order.paymentMethod === 'reward_voucher' ||
+          order.tenderType === 'reward_voucher'
+        ) {
+          rewardVoucher = Number(order.grandTotal);
+        } else if (notesStr.includes('[Reward Voucher]')) {
+          const amtMatch = notesStr.match(
+            /\[Reward Voucher\].*?Amount:\s*([\d.]+)/i,
+          );
+          if (amtMatch) {
+            rewardVoucher = Number(amtMatch[1]);
+          }
+        }
         
         let giftVoucher = 0;
         let creditVoucher = 0;
@@ -329,7 +349,7 @@ export class SalesListExportProcessor {
         let claimVoucher = 0;
         let corporateVoucher = 0;
 
-        for (const red of order.voucherRedemptions) {
+        for (const red of (order.voucherRedemptions || [])) {
           const type = red.voucher?.voucherType;
           const amt = Number(red.amountUsed);
 
@@ -343,6 +363,41 @@ export class SalesListExportProcessor {
             corporateVoucher += amt;
           } else if (type === 'EXCHANGE') {
             exchangeVoucher += amt;
+          } else if (type === 'REWARD') {
+            rewardVoucher += amt;
+          }
+        }
+
+        const totalRedeemedVoucher = giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher;
+        const orderVoucherAmt = Number(order.voucherAmount || 0);
+        if (orderVoucherAmt > totalRedeemedVoucher) {
+          const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
+          if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
+            exchangeVoucher += remVoucher;
+          } else if (notesStr.match(/Claim|CLM-/i)) {
+            claimVoucher += remVoucher;
+          } else if (notesStr.match(/Corporate/i)) {
+            corporateVoucher += remVoucher;
+          } else if (notesStr.match(/Gift/i)) {
+            giftVoucher += remVoucher;
+          } else if (notesStr.match(/Reward/i)) {
+            rewardVoucher += remVoucher;
+          } else {
+            creditVoucher += remVoucher;
+          }
+        }
+
+        const totalTenders = cash + card + giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher + onCredit;
+        if (totalTenders === 0) {
+          const payMethod = (order.paymentMethod || 'cash').toLowerCase();
+          if (payMethod.includes('cash')) cash = Number(order.grandTotal);
+          else if (payMethod.includes('card') || payMethod.includes('bank')) card = Number(order.grandTotal);
+          else if (payMethod.includes('credit')) {
+            onCredit = Number(order.grandTotal);
+          } else if (payMethod.includes('voucher')) {
+            creditVoucher = Number(order.grandTotal);
+          } else {
+            cash = Number(order.grandTotal);
           }
         }
 
@@ -363,10 +418,21 @@ export class SalesListExportProcessor {
 
         const tenderDocs = parseTenderDocs(notesStr, order.alliance);
 
+        let merchantName = (order as any).merchant?.bankName || ((order as any).merchant?.description ? (order as any).merchant.description.split('|')[1]?.trim() || (order as any).merchant.description : '');
+        if (!merchantName && notesStr) {
+          const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i);
+          if (merchMatch) merchantName = merchMatch[1].trim();
+        }
+        if (!merchantName && order.alliance?.partnerName) {
+          merchantName = order.alliance.partnerName;
+        }
+        merchantName = merchantName || '-';
+
         rows.push({
           id: order.id,
           invoiceNo: order.orderNumber,
           date: order.createdAt,
+          merchant: merchantName,
           netTotal: Number(order.grandTotal),
           balance,
           tenderCash: cash,
