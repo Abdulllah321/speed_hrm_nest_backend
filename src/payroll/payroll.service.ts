@@ -1126,10 +1126,10 @@ export class PayrollService {
       }),
       );
 
-      // Trigger Email Notifications (Async)
-      this.sendPayslipEmails(payroll.id).catch((err) =>
-        this.logger.error('Failed to trigger payslip emails', err),
-      );
+      // Email/In-App notifications disabled per requirement
+      // this.sendPayslipEmails(payroll.id).catch((err) =>
+      //   this.logger.error('Failed to trigger payslip emails', err),
+      // );
 
       return payroll;
     } catch (error) {
@@ -1340,101 +1340,8 @@ export class PayrollService {
   }
 
   private async sendPayslipEmails(payrollId: string) {
-    const payroll = await this.prisma.payroll.findUnique({
-      where: { id: payrollId },
-      include: {
-        details: {
-          include: {
-            employee: true,
-          },
-        },
-      },
-    });
-
-    if (!payroll) return;
-
-    // Collect IDs for Master Data fetching
-    const departmentIds = new Set<string>();
-    const designationIds = new Set<string>();
-    const employeeIds = new Set<string>();
-
-    payroll.details.forEach((d) => {
-      if (d.employee) {
-        if (d.employee.departmentId) departmentIds.add(d.employee.departmentId);
-        if (d.employee.designationId)
-          designationIds.add(d.employee.designationId);
-        if (d.employee.employeeId) employeeIds.add(d.employee.employeeId);
-      }
-    });
-
-    // Fetch Master Data
-    const [departments, designations, users] = await Promise.all([
-      this.prisma.department.findMany({
-        where: { id: { in: Array.from(departmentIds) } },
-      }),
-      this.prisma.designation.findMany({
-        where: { id: { in: Array.from(designationIds) } },
-      }),
-      this.prismaMaster.user.findMany({
-        where: {
-          employeeId: { in: Array.from(employeeIds) },
-          status: 'active',
-        },
-      }),
-    ]);
-
-    const deptMap = new Map(departments.map((d) => [d.id, d]));
-    const desMap = new Map(designations.map((d) => [d.id, d]));
-    const userMap = new Map(users.map((u) => [u.employeeId, u]));
-
-    for (const detail of payroll.details) {
-      if (!detail.employee) continue;
-
-      // Find mapped User by employeeId
-      const user = userMap.get(detail.employee.employeeId);
-
-      if (user) {
-        // Construct composite employee object for HTML generation
-        const compositeEmployee = {
-          ...detail.employee,
-          department: detail.employee.departmentId
-            ? deptMap.get(detail.employee.departmentId)
-            : null,
-          designation: detail.employee.designationId
-            ? desMap.get(detail.employee.designationId)
-            : null,
-          user: user, // Attach user if needed mostly for ID
-        };
-        const compositeDetail = { ...detail, employee: compositeEmployee };
-
-        // Generate simplified HTML for email body (mimicking the slip)
-        const htmlContent = this.generatePayslipHTML(
-          compositeDetail,
-          payroll.month,
-          payroll.year,
-        );
-
-        // Use NotificationsService to create a notification record (In-App only to avoid duplicate email)
-        await this.notificationsService.create({
-          userId: user.id!,
-          title: `Payslip for ${payroll.month}/${payroll.year}`,
-          message: `Your payslip for ${payroll.month}/${payroll.year} is ready. Net Salary: ${detail.netSalary}`,
-          category: 'payroll',
-          priority: 'high',
-          channels: ['inApp'], // Only in-app here, we send custom email below
-          actionType: 'payroll.view',
-          entityType: 'PayrollDetail',
-          entityId: detail.id,
-        });
-
-        const emailSubject = `Payslip - ${payroll.month}/${payroll.year}`;
-        await this.notificationsService.sendEmail({
-          userId: user.id!,
-          subject: emailSubject,
-          body: htmlContent,
-        });
-      }
-    }
+    // Disabled: No notifications or emails should be sent on payroll confirmation/preview
+    return;
   }
 
   private generatePayslipHTML(

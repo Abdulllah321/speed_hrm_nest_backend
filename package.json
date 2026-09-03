@@ -33,6 +33,7 @@
     "seed:opening-balances": "bun scripts/seed-opening-balances.ts",
     "seed:hscodes": "bun scripts/seed-hscodes.ts",
     "update:employee-locations": "bun scripts/update-employee-locations.ts",
+    "restore:salaries": "bun scripts/restore-employee-salaries.ts",
     "find:missing-tag-rv": "bun scripts/find-missing-tag-account-rv.ts",
     "seed:brands-divisions": "bun scripts/seed-brands-divisions.ts",
     "seed:categories": "bun scripts/seed-categories.ts",
@@ -57,6 +58,7 @@
     "update:pi-tax-dates": "bun scripts/update-pi-tax-invoice-dates.ts",
     "seed:location-center-ids": "bun scripts/seed-location-center-ids.ts",
     "import:tenant:backup": "bun scripts/import-tenant-backup.ts",
+    "update:permissions": "bun scripts/update-permission.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
