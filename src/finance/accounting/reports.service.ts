@@ -454,84 +454,9 @@ export class ReportsService {
     });
     if (accounts.length === 0) throw new NotFoundException('Account not found');
 
-    const account =
-      accounts.length === 1
-        ? accounts[0]
-        : {
-            id: accountId,
-            code: accounts.map((a) => a.code).join(', '),
-            name: `${accounts.length} Selected Sub-Accounts`,
-            type: accounts[0].type,
-            balance: accounts.reduce((sum, a) => sum + Number(a.balance), 0),
-          };
-
-    const isDebitNormal =
-      account.type === AccountType.ASSET ||
-      account.type === AccountType.EXPENSE;
-
     const fromDate = parseFromDate(from);
     const toDate = parseToDate(to);
 
-    const accountMatch = {
-      OR: [
-        { accountId: { in: accountIds } },
-        { tagAccountId: { in: accountIds } },
-      ],
-    };
-
-    // Opening balance = sum of all transactions matching optional filters that precede the query date, plus any OPENING_BALANCE transactions.
-    const openingWhere: any = {
-      AND: [accountMatch],
-    };
-
-    if (sourceType) {
-      openingWhere.AND.push({ sourceType });
-      if (fromDate) {
-        openingWhere.AND.push({ transactionDate: { lt: fromDate } });
-      }
-    } else {
-      openingWhere.AND.push({
-        OR: [
-          { sourceType: 'OPENING_BALANCE' },
-          ...(fromDate
-            ? [
-                {
-                  transactionDate: { lt: fromDate },
-                  sourceType: { not: 'OPENING_BALANCE' },
-                },
-              ]
-            : []),
-        ],
-      });
-    }
-
-    const before = await this.prisma.accountTransaction.aggregate({
-      where: openingWhere,
-      _sum: { debit: true, credit: true },
-    });
-    const d = Number(before._sum.debit ?? 0);
-    const c = Number(before._sum.credit ?? 0);
-    const openingBalance = d - c;
-
-    // Transaction rows within range (excluding OPENING_BALANCE transactions)
-    const where: any = {
-      AND: [accountMatch],
-    };
-
-    if (sourceType) {
-      where.AND.push({ sourceType });
-    } else {
-      where.AND.push({ sourceType: { not: 'OPENING_BALANCE' } });
-    }
-
-    if (fromDate || toDate) {
-      const dateConditions: any = {};
-      if (fromDate) dateConditions.gte = fromDate;
-      if (toDate) dateConditions.lte = toDate;
-      where.AND.push({ transactionDate: dateConditions });
-    }
-
-    // Stable sort order: transactionDate, then createdAt, then id to prevent row shifting
     const dir = sortOrder === 'desc' ? ('desc' as const) : ('asc' as const);
     let orderBy: any = [
       { transactionDate: dir },
@@ -549,108 +474,204 @@ export class ReportsService {
       orderBy = [{ credit: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
     }
 
-    const [transactions, total, totalAgg] = await Promise.all([
-      this.prisma.accountTransaction.findMany({
-        where,
-        orderBy,
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          tagAccount: {
-            select: { id: true, code: true, name: true, type: true },
-          },
-        },
+    // Process each account independently so multi-selected sub-accounts get separate ledgers
+    const ledgers = await Promise.all(
+      accounts.map(async (acc) => {
+        const accountMatch = {
+          OR: [
+            { accountId: acc.id },
+            { tagAccountId: acc.id },
+          ],
+        };
+
+        const openingWhere: any = { AND: [accountMatch] };
+        if (sourceType) {
+          openingWhere.AND.push({ sourceType });
+          if (fromDate) openingWhere.AND.push({ transactionDate: { lt: fromDate } });
+        } else {
+          openingWhere.AND.push({
+            OR: [
+              { sourceType: 'OPENING_BALANCE' },
+              ...(fromDate
+                ? [
+                    {
+                      transactionDate: { lt: fromDate },
+                      sourceType: { not: 'OPENING_BALANCE' },
+                    },
+                  ]
+                : []),
+            ],
+          });
+        }
+
+        const before = await this.prisma.accountTransaction.aggregate({
+          where: openingWhere,
+          _sum: { debit: true, credit: true },
+        });
+        const d = Number(before._sum.debit ?? 0);
+        const c = Number(before._sum.credit ?? 0);
+        const openingBalance = d - c;
+
+        const where: any = { AND: [accountMatch] };
+        if (sourceType) where.AND.push({ sourceType });
+        else where.AND.push({ sourceType: { not: 'OPENING_BALANCE' } });
+
+        if (fromDate || toDate) {
+          const dateConditions: any = {};
+          if (fromDate) dateConditions.gte = fromDate;
+          if (toDate) dateConditions.lte = toDate;
+          where.AND.push({ transactionDate: dateConditions });
+        }
+
+        const [transactions, total, totalAgg] = await Promise.all([
+          this.prisma.accountTransaction.findMany({
+            where,
+            orderBy,
+            skip: (page - 1) * limit,
+            take: limit,
+            include: {
+              tagAccount: {
+                select: { id: true, code: true, name: true, type: true },
+              },
+            },
+          }),
+          this.prisma.accountTransaction.count({ where }),
+          this.prisma.accountTransaction.aggregate({
+            where,
+            _sum: { debit: true, credit: true },
+          }),
+        ]);
+
+        let pageStartingBalance = openingBalance;
+        if (page > 1) {
+          const skippedTx = await this.prisma.accountTransaction.findMany({
+            where,
+            orderBy,
+            skip: 0,
+            take: (page - 1) * limit,
+            select: { debit: true, credit: true },
+          });
+          for (const tx of skippedTx) {
+            pageStartingBalance += Number(tx.debit) - Number(tx.credit);
+          }
+        }
+
+        const pvIds = transactions
+          .filter((tx) => tx.sourceType === 'PAYMENT_VOUCHER')
+          .map((tx) => tx.sourceId);
+        const rvIds = transactions
+          .filter((tx) => tx.sourceType === 'RECEIPT_VOUCHER')
+          .map((tx) => tx.sourceId);
+
+        const [pvs, rvs] = await Promise.all([
+          this.prisma.paymentVoucher.findMany({
+            where: { id: { in: pvIds } },
+            select: { id: true, chequeNo: true },
+          }),
+          this.prisma.receiptVoucher.findMany({
+            where: { id: { in: rvIds } },
+            select: { id: true, chequeNo: true },
+          }),
+        ]);
+
+        const chequeMap = new Map<string, string>();
+        pvs.forEach((pv) => {
+          if (pv.chequeNo) chequeMap.set(pv.id, pv.chequeNo);
+        });
+        rvs.forEach((rv) => {
+          if (rv.chequeNo) chequeMap.set(rv.id, rv.chequeNo);
+        });
+
+        let running = pageStartingBalance;
+        const rows = transactions.map((tx) => {
+          const deb = Number(tx.debit);
+          const cred = Number(tx.credit);
+          running += deb - cred;
+          return {
+            ...tx,
+            debit: deb,
+            credit: cred,
+            runningBalance: running,
+            chequeNo: chequeMap.get(tx.sourceId) || '',
+          };
+        });
+
+        const rangeTotalDebit = Number(totalAgg._sum.debit ?? 0);
+        const rangeTotalCredit = Number(totalAgg._sum.credit ?? 0);
+        const rangeClosingBalance =
+          openingBalance + rangeTotalDebit - rangeTotalCredit;
+
+        return {
+          account: { ...acc, balance: Number(acc.balance) },
+          openingBalance,
+          rows,
+          closingBalance: running,
+          rangeTotalDebit,
+          rangeTotalCredit,
+          rangeClosingBalance,
+          pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        };
       }),
-      this.prisma.accountTransaction.count({ where }),
-      this.prisma.accountTransaction.aggregate({
-        where,
-        _sum: { debit: true, credit: true },
-      }),
-    ]);
+    );
 
-    // Calculate starting balance for this specific page by summing transactions skipped
-    let pageStartingBalance = openingBalance;
-    if (page > 1) {
-      const skippedTx = await this.prisma.accountTransaction.findMany({
-        where,
-        orderBy,
-        skip: 0,
-        take: (page - 1) * limit,
-        select: { debit: true, credit: true },
-      });
-      for (const tx of skippedTx) {
-        const d = Number(tx.debit),
-          c = Number(tx.credit);
-        pageStartingBalance += d - c;
-      }
-    }
-
-    // Fetch matching cheque numbers for vouchers
-    const pvIds = transactions
-      .filter((tx) => tx.sourceType === 'PAYMENT_VOUCHER')
-      .map((tx) => tx.sourceId);
-    const rvIds = transactions
-      .filter((tx) => tx.sourceType === 'RECEIPT_VOUCHER')
-      .map((tx) => tx.sourceId);
-
-    const [pvs, rvs] = await Promise.all([
-      this.prisma.paymentVoucher.findMany({
-        where: { id: { in: pvIds } },
-        select: { id: true, chequeNo: true },
-      }),
-      this.prisma.receiptVoucher.findMany({
-        where: { id: { in: rvIds } },
-        select: { id: true, chequeNo: true },
-      }),
-    ]);
-
-    const chequeMap = new Map<string, string>();
-    pvs.forEach((pv) => {
-      if (pv.chequeNo) chequeMap.set(pv.id, pv.chequeNo);
-    });
-    rvs.forEach((rv) => {
-      if (rv.chequeNo) chequeMap.set(rv.id, rv.chequeNo);
-    });
-
-    // Compute running balance per row on current page
-    let running = pageStartingBalance;
-    const rows = transactions.map((tx) => {
-      const d = Number(tx.debit),
-        c = Number(tx.credit);
-      running += d - c;
-      return {
-        ...tx,
-        debit: d,
-        credit: c,
-        runningBalance: running,
-        chequeNo: chequeMap.get(tx.sourceId) || '',
-      };
-    });
-
-    const rangeTotalDebit = Number(totalAgg._sum.debit ?? 0);
-    const rangeTotalCredit = Number(totalAgg._sum.credit ?? 0);
-    const rangeClosingBalance =
-      openingBalance + rangeTotalDebit - rangeTotalCredit;
+    const primaryLedger = ledgers[0];
+    const combinedAccount =
+      accounts.length === 1
+        ? primaryLedger.account
+        : {
+            id: accountId,
+            code: accounts.map((a) => a.code).join(', '),
+            name: `${accounts.length} Selected Sub-Accounts`,
+            type: accounts[0].type,
+            balance: accounts.reduce((sum, a) => sum + Number(a.balance), 0),
+          };
 
     return {
-      account: { ...account, balance: Number(account.balance) },
-      openingBalance,
-      rows,
-      closingBalance: running,
-      rangeTotalDebit,
-      rangeTotalCredit,
-      rangeClosingBalance,
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      account: combinedAccount,
+      openingBalance: ledgers.reduce((sum, l) => sum + l.openingBalance, 0),
+      rows: primaryLedger.rows,
+      closingBalance: primaryLedger.closingBalance,
+      rangeTotalDebit: ledgers.reduce((sum, l) => sum + l.rangeTotalDebit, 0),
+      rangeTotalCredit: ledgers.reduce((sum, l) => sum + l.rangeTotalCredit, 0),
+      rangeClosingBalance: ledgers.reduce((sum, l) => sum + l.rangeClosingBalance, 0),
+      pagination: primaryLedger.pagination,
+      ledgers,
     };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // INCOME STATEMENT  (Profit & Loss)
   // ─────────────────────────────────────────────────────────────────────────
-  async getIncomeStatement(from?: string, to?: string) {
-    const accounts = await this.prisma.chartOfAccount.findMany({
+  // ─────────────────────────────────────────────────────────────────────────
+  // INCOME STATEMENT  (Profit & Loss — Market-Standard Hierarchical & Tag-Aware)
+  // ─────────────────────────────────────────────────────────────────────────
+  async getIncomeStatement(
+    params?: string | {
+      from?: string;
+      to?: string;
+      compareFrom?: string;
+      compareTo?: string;
+      includeTagAccounts?: boolean;
+      showZeroBalances?: boolean;
+    },
+    toParam?: string,
+  ) {
+    const opts = typeof params === 'object' ? params : { from: params, to: toParam };
+    const fromStr = opts.from;
+    const toStr = opts.to;
+    const compareFromStr = opts.compareFrom;
+    const compareToStr = opts.compareTo;
+    const includeTagAccounts = opts.includeTagAccounts ?? true;
+    const showZeroBalances = opts.showZeroBalances ?? false;
+
+    const fromDate = parseToDate(fromStr);
+    const toDate = parseToDate(toStr);
+    const compareFromDate = parseToDate(compareFromStr);
+    const compareToDate = parseToDate(compareToStr);
+
+    // 1. Fetch all INCOME and EXPENSE Chart of Accounts
+    const allAccounts = await this.prisma.chartOfAccount.findMany({
       where: {
-        isGroup: false,
         isActive: true,
         type: { in: [AccountType.INCOME, AccountType.EXPENSE] },
       },
@@ -660,43 +681,345 @@ export class ReportsService {
         name: true,
         type: true,
         balance: true,
-        parent: { select: { id: true, code: true, name: true } },
+        isGroup: true,
+        isTagAccount: true,
+        parentId: true,
       },
       orderBy: { code: 'asc' },
     });
 
-    const amounts = await this.resolveAmounts(
-      accounts.map((a) => a.id),
-      from,
-      to,
+    const accountMap = new Map<string, any>(
+      allAccounts.map((a) => [a.id, { ...a, balance: Number(a.balance) }]),
     );
 
-    const income: any[] = [];
-    const expense: any[] = [];
-    let totalIncome = 0,
-      totalExpense = 0;
+    // 2. Fetch transaction sums for primary period
+    const wherePrimary: any = {};
+    if (fromDate || toDate) {
+      wherePrimary.transactionDate = {};
+      if (fromDate) wherePrimary.transactionDate.gte = fromDate;
+      if (toDate) wherePrimary.transactionDate.lte = toDate;
+    }
 
-    for (const a of accounts) {
-      const { debit, credit } = amounts.get(a.id) ?? { debit: 0, credit: 0 };
-      if (a.type === AccountType.INCOME) {
-        const amount = credit - debit; // income increases with credit
-        totalIncome += amount;
-        income.push({ ...a, amount });
-      } else {
-        const amount = debit - credit; // expense increases with debit
-        totalExpense += amount;
-        expense.push({ ...a, amount });
+    const primaryRaw = await this.prisma.accountTransaction.groupBy({
+      by: ['accountId', 'tagAccountId'],
+      where: wherePrimary,
+      _sum: { debit: true, credit: true },
+    });
+
+    // 3. Fetch transaction sums for comparison period if requested
+    let compareRaw: any[] = [];
+    if (compareFromDate || compareToDate) {
+      const whereCompare: any = {};
+      whereCompare.transactionDate = {};
+      if (compareFromDate) whereCompare.transactionDate.gte = compareFromDate;
+      if (compareToDate) whereCompare.transactionDate.lte = compareToDate;
+
+      compareRaw = await (this.prisma.accountTransaction.groupBy as any)({
+        by: ['accountId', 'tagAccountId'],
+        where: whereCompare,
+        _sum: { debit: true, credit: true },
+      });
+    }
+
+    // Determine target account ID for leaf attribution:
+    // If tagAccountId is specified and exists in COA, attribute to tagAccountId (Level 3/4 sub-account), else accountId.
+    const getLeafId = (row: { accountId: string; tagAccountId?: string | null }) => {
+      if (row.tagAccountId && accountMap.has(row.tagAccountId)) {
+        return row.tagAccountId;
+      }
+      return row.accountId;
+    };
+
+    // Amounts Map for Primary Period
+    const amountsMap = new Map<string, { debit: number; credit: number }>();
+    for (const r of primaryRaw) {
+      const targetId = getLeafId(r as any);
+      if (!amountsMap.has(targetId)) amountsMap.set(targetId, { debit: 0, credit: 0 });
+      const entry = amountsMap.get(targetId)!;
+      entry.debit += Number(r._sum.debit ?? 0);
+      entry.credit += Number(r._sum.credit ?? 0);
+    }
+
+    // Amounts Map for Comparison Period
+    const compareMap = new Map<string, { debit: number; credit: number }>();
+    for (const r of compareRaw) {
+      const targetId = getLeafId(r as any);
+      if (!compareMap.has(targetId)) compareMap.set(targetId, { debit: 0, credit: 0 });
+      const entry = compareMap.get(targetId)!;
+      entry.debit += Number(r._sum.debit ?? 0);
+      entry.credit += Number(r._sum.credit ?? 0);
+    }
+
+    // 4. Tag breakdown map
+    const tagBreakdownMap = new Map<
+      string, // accountId
+      Map<string, { primaryDebit: number; primaryCredit: number; compareDebit: number; compareCredit: number }>
+    >();
+
+    if (includeTagAccounts) {
+      const upsertTag = (accountId: string, tagId: string) => {
+        if (!tagBreakdownMap.has(accountId)) tagBreakdownMap.set(accountId, new Map());
+        const inner = tagBreakdownMap.get(accountId)!;
+        if (!inner.has(tagId)) inner.set(tagId, { primaryDebit: 0, primaryCredit: 0, compareDebit: 0, compareCredit: 0 });
+        return inner.get(tagId)!;
+      };
+
+      for (const r of primaryRaw) {
+        const tagId = (r as any).tagAccountId as string | null;
+        if (tagId && tagId !== r.accountId && accountMap.has(tagId)) {
+          const e = upsertTag(r.accountId, tagId);
+          e.primaryDebit += Number(r._sum.debit ?? 0);
+          e.primaryCredit += Number(r._sum.credit ?? 0);
+        }
+      }
+
+      for (const r of compareRaw) {
+        const tagId = (r as any).tagAccountId as string | null;
+        if (tagId && tagId !== r.accountId && accountMap.has(tagId)) {
+          const e = upsertTag(r.accountId, tagId);
+          e.compareDebit += Number(r._sum.debit ?? 0);
+          e.compareCredit += Number(r._sum.credit ?? 0);
+        }
       }
     }
+
+    // Helper for net calculation based on account type
+    const calcNet = (type: AccountType, debit: number, credit: number) => {
+      return type === AccountType.INCOME ? credit - debit : debit - credit;
+    };
+
+    // 5. Build node map
+    const nodeMap = new Map<string, any>();
+
+    for (const acc of allAccounts) {
+      const vPri = amountsMap.get(acc.id) ?? { debit: 0, credit: 0 };
+      const vComp = compareMap.get(acc.id) ?? { debit: 0, credit: 0 };
+
+      let amtPri = calcNet(acc.type as AccountType, vPri.debit, vPri.credit);
+      let amtComp = calcNet(acc.type as AccountType, vComp.debit, vComp.credit);
+
+      // If no date range specified and 0 transactions, fallback to stored balance
+      if (!fromStr && !toStr && vPri.debit === 0 && vPri.credit === 0) {
+        amtPri = Number(acc.balance);
+      }
+
+      const tags = Array.from(
+        (tagBreakdownMap.get(acc.id) ?? new Map()).entries(),
+        ([tagAccountId, val]) => ({
+          tagAccountId,
+          amount: calcNet(acc.type as AccountType, val.primaryDebit, val.primaryCredit),
+          compareAmount: calcNet(acc.type as AccountType, val.compareDebit, val.compareCredit),
+        }),
+      );
+
+      nodeMap.set(acc.id, {
+        ...acc,
+        amount: amtPri,
+        compareAmount: amtComp,
+        _tagBreakdown: tags,
+      });
+    }
+
+    // Ensure all parent group nodes exist in nodeMap
+    const ensureAncestors = (nodeId: string) => {
+      const acc = accountMap.get(nodeId);
+      if (!acc) return;
+      if (!nodeMap.has(nodeId)) {
+        nodeMap.set(nodeId, {
+          ...acc,
+          amount: 0,
+          compareAmount: 0,
+          _tagBreakdown: [],
+        });
+      }
+      if (acc.parentId) ensureAncestors(acc.parentId);
+    };
+
+    for (const nodeId of Array.from(nodeMap.keys())) {
+      const node = nodeMap.get(nodeId);
+      if (node?.parentId) ensureAncestors(node.parentId);
+    }
+
+    const childMap = new Map<string, any[]>();
+    for (const node of nodeMap.values()) {
+      if (node.parentId) {
+        if (!childMap.has(node.parentId)) childMap.set(node.parentId, []);
+        childMap.get(node.parentId)!.push(node);
+      }
+    }
+
+    // Rollup group account totals recursively
+    const rollUp = (nodeId: string) => {
+      const node = nodeMap.get(nodeId);
+      if (!node) return;
+
+      const children = childMap.get(nodeId) || [];
+      if (children.length > 0) {
+        node.amount = 0;
+        node.compareAmount = 0;
+      }
+
+      for (const child of children) {
+        rollUp(child.id);
+        node.amount += child.amount || 0;
+        node.compareAmount += child.compareAmount || 0;
+      }
+    };
+
+    const roots = Array.from(nodeMap.values()).filter((n) => !n.parentId);
+    for (const root of roots) {
+      rollUp(root.id);
+    }
+
+    // 6. Flatten tree for Income & Expense sections
+    const flattenTree = (type: AccountType) => {
+      const typeRoots = roots.filter((r) => r.type === type);
+      typeRoots.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+      const list: any[] = [];
+
+      const traverse = (nodeId: string, level = 0) => {
+        const node = nodeMap.get(nodeId);
+        if (!node) return;
+
+        const variance = node.amount - (node.compareAmount || 0);
+        const percentageChange =
+          node.compareAmount && node.compareAmount !== 0
+            ? (variance / Math.abs(node.compareAmount)) * 100
+            : 0;
+
+        const rowObj = {
+          id: node.id,
+          code: node.code,
+          name: node.name,
+          type: node.type,
+          isGroup: node.isGroup ?? false,
+          isTagAccount: node.isTagAccount ?? false,
+          parentId: node.parentId,
+          level,
+          amount: node.amount,
+          compareAmount: node.compareAmount || 0,
+          variance,
+          percentageChange,
+          parent: node.parentId ? accountMap.get(node.parentId) : null,
+        };
+
+        if (showZeroBalances || Math.abs(node.amount) > 0.001 || Math.abs(node.compareAmount || 0) > 0.001) {
+          list.push(rowObj);
+        }
+
+        // Sub-ledger tag account sub-rows (excluding self-referencing tag IDs and accounts already in childMap)
+        const childIds = new Set((childMap.get(nodeId) || []).map((c) => c.id));
+        if (!node.isGroup && includeTagAccounts && node._tagBreakdown?.length > 0) {
+          const tags: Array<{ tagAccountId: string; amount: number; compareAmount: number }> =
+            node._tagBreakdown.filter(
+              (t: any) => t.tagAccountId !== node.id && !childIds.has(t.tagAccountId),
+            );
+          tags.sort((a, b) => {
+            const ta = accountMap.get(a.tagAccountId);
+            const tb = accountMap.get(b.tagAccountId);
+            return (ta?.code ?? '').localeCompare(tb?.code ?? '');
+          });
+
+          for (const tag of tags) {
+            const tagAcc = accountMap.get(tag.tagAccountId);
+            const tagVar = tag.amount - tag.compareAmount;
+            const tagPct = tag.compareAmount !== 0 ? (tagVar / Math.abs(tag.compareAmount)) * 100 : 0;
+
+            if (showZeroBalances || Math.abs(tag.amount) > 0.001 || Math.abs(tag.compareAmount) > 0.001) {
+              list.push({
+                id: `${node.id}_${tag.tagAccountId}`,
+                code: tagAcc ? tagAcc.code : tag.tagAccountId,
+                name: tagAcc ? tagAcc.name : `Tag: ${tag.tagAccountId}`,
+                type: node.type,
+                isGroup: false,
+                isTagAccount: true,
+                parentId: node.id,
+                level: level + 1,
+                amount: tag.amount,
+                compareAmount: tag.compareAmount,
+                variance: tagVar,
+                percentageChange: tagPct,
+                parent: { id: node.id, code: node.code, name: node.name },
+              });
+            }
+          }
+        }
+
+        const children = childMap.get(nodeId) || [];
+        children.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+        for (const child of children) {
+          traverse(child.id, level + 1);
+        }
+      };
+
+      for (const root of typeRoots) {
+        traverse(root.id, 0);
+      }
+
+      return list;
+    };
+
+    const income = flattenTree(AccountType.INCOME);
+    const expense = flattenTree(AccountType.EXPENSE);
+
+    // Sum top-level root totals for total Income and total Expense
+    const totalIncome = roots
+      .filter((r) => r.type === AccountType.INCOME)
+      .reduce((acc, r) => acc + (r.amount || 0), 0);
+    const compareTotalIncome = roots
+      .filter((r) => r.type === AccountType.INCOME)
+      .reduce((acc, r) => acc + (r.compareAmount || 0), 0);
+
+    const totalExpense = roots
+      .filter((r) => r.type === AccountType.EXPENSE)
+      .reduce((acc, r) => acc + (r.amount || 0), 0);
+    const compareTotalExpense = roots
+      .filter((r) => r.type === AccountType.EXPENSE)
+      .reduce((acc, r) => acc + (r.compareAmount || 0), 0);
+
+    // Estimate COGS / Direct Costs (look for accounts named / coded under COGS or Direct Expenses if present)
+    const cogsRoots = roots.filter(
+      (r) =>
+        r.type === AccountType.EXPENSE &&
+        (r.name.toLowerCase().includes('cogs') ||
+          r.name.toLowerCase().includes('cost of goods') ||
+          r.name.toLowerCase().includes('direct cost') ||
+          r.code.startsWith('51') ||
+          r.code.startsWith('50')),
+    );
+    const totalCogs = cogsRoots.reduce((acc, r) => acc + (r.amount || 0), 0);
+    const compareTotalCogs = cogsRoots.reduce((acc, r) => acc + (r.compareAmount || 0), 0);
+
+    const grossProfit = totalIncome - totalCogs;
+    const compareGrossProfit = compareTotalIncome - compareTotalCogs;
+
+    const netProfit = totalIncome - totalExpense;
+    const compareNetProfit = compareTotalIncome - compareTotalExpense;
+
+    const varianceNetProfit = netProfit - compareNetProfit;
+    const percentageNetProfit = compareNetProfit !== 0 ? (varianceNetProfit / Math.abs(compareNetProfit)) * 100 : 0;
 
     return {
       income,
       totalIncome,
+      compareTotalIncome,
       expense,
       totalExpense,
-      netProfit: totalIncome - totalExpense,
-      from,
-      to,
+      compareTotalExpense,
+      totalCogs,
+      compareTotalCogs,
+      grossProfit,
+      compareGrossProfit,
+      netProfit,
+      compareNetProfit,
+      varianceNetProfit,
+      percentageNetProfit,
+      from: fromStr,
+      to: toStr,
+      compareFrom: compareFromStr,
+      compareTo: compareToStr,
+      includeTagAccounts,
+      showZeroBalances,
     };
   }
 
@@ -727,6 +1050,7 @@ export class ReportsService {
         type: true,
         balance: true,
         isGroup: true,
+        isTagAccount: true,
         parentId: true,
       },
       orderBy: { code: 'asc' },
@@ -758,23 +1082,20 @@ export class ReportsService {
 
     }
 
-    const effectiveId = (row: { accountId: string; tagAccountId?: string | null }) =>
-      (row as any).tagAccountId || row.accountId;
-
-    // Canonical map for asOf totals
+    // Canonical map for asOf totals (indexed by accountId)
     const amountsMap = new Map<string, { debit: number; credit: number }>();
     for (const r of asOfRaw) {
-      const eid = effectiveId(r as any);
+      const eid = r.accountId;
       if (!amountsMap.has(eid)) amountsMap.set(eid, { debit: 0, credit: 0 });
       const entry = amountsMap.get(eid)!;
       entry.debit += Number(r._sum.debit ?? 0);
       entry.credit += Number(r._sum.credit ?? 0);
     }
 
-    // Canonical map for compare totals
+    // Canonical map for compare totals (indexed by accountId)
     const compareMap = new Map<string, { debit: number; credit: number }>();
     for (const r of compareRaw) {
-      const eid = effectiveId(r as any);
+      const eid = r.accountId;
       if (!compareMap.has(eid)) compareMap.set(eid, { debit: 0, credit: 0 });
       const entry = compareMap.get(eid)!;
       entry.debit += Number(r._sum.debit ?? 0);
@@ -993,9 +1314,13 @@ export class ReportsService {
           list.push(rowObj);
         }
 
-        // Tag Account display sub-rows
+        // Tag Account display sub-rows (excluding self-referencing tag IDs and accounts already in childMap)
+        const childIds = new Set((childMap.get(nodeId) || []).map((c) => c.id));
         if (!node.isGroup && includeTagAccounts && node._tagBreakdown?.length > 0) {
-          const tags: Array<{ tagAccountId: string; amount: number; compareAmount: number }> = node._tagBreakdown;
+          const tags: Array<{ tagAccountId: string; amount: number; compareAmount: number }> =
+            node._tagBreakdown.filter(
+              (t: any) => t.tagAccountId !== node.id && !childIds.has(t.tagAccountId),
+            );
           tags.sort((a, b) => {
             const ta = accountMap.get(a.tagAccountId);
             const tb = accountMap.get(b.tagAccountId);
