@@ -347,7 +347,36 @@ export class PosSalesActivityExportProcessor {
                 voucher: { select: { code: true, faceValue: true } }
               },
               orderBy: { submittedAt: 'desc' },
-            }
+            },
+            posReturns: {
+              include: {
+                customer: { select: { id: true, name: true, contactNo: true } },
+                originalCustomer: { select: { id: true, name: true, contactNo: true } },
+                voucher: {
+                  select: {
+                    id: true,
+                    code: true,
+                    faceValue: true,
+                    voucherType: true,
+                    expiresAt: true,
+                  },
+                },
+                items: {
+                  include: {
+                    item: {
+                      select: {
+                        description: true,
+                        sku: true,
+                        barCode: true,
+                        size: { select: { name: true } },
+                        color: { select: { name: true } },
+                      },
+                    },
+                  },
+                },
+              },
+              orderBy: { createdAt: 'desc' },
+            },
           },
         });
 
@@ -487,94 +516,145 @@ export class PosSalesActivityExportProcessor {
             }))
           });
 
-          // 2. Return Activity
-          const returnLedgers = orderLedgers.filter(l => l.referenceType === 'POS_RETURN');
-          if (order.returnNumber || returnLedgers.length > 0) {
-            const exchangeVoucher = orderVouchers.find(v => v.voucherType === 'EXCHANGE');
-            const returnDate = returnLedgers.length > 0 ? returnLedgers[returnLedgers.length - 1].createdAt : order.updatedAt;
+          // 2. Return & Refund Activities (from first-class PosReturn records if available)
+          if ((order as any).posReturns && (order as any).posReturns.length > 0) {
+            for (const ret of (order as any).posReturns) {
+              const actType = ret.returnType === 'REFUND' ? 'refund' : 'return';
+              const returnCustomer = ret.customer || order.customer;
+              const isCustomerChanged =
+                !!(
+                  ret.originalCustomerId &&
+                  ret.customerId &&
+                  ret.originalCustomerId !== ret.customerId
+                );
 
-            const returnedItems = returnLedgers.map(l => {
-              const orderItem = order.items.find((oi: any) => oi.itemId === l.itemId);
-              return {
-                itemId: l.itemId,
-                sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
-                description: orderItem?.item?.description || 'Item',
-                quantity: Math.abs(Number(l.qty)),
-                price: orderItem ? Number(orderItem.unitPrice) : 0,
-                lineTotal: orderItem ? Math.abs(Number(l.qty)) * Number(orderItem.unitPrice) : 0,
-                size: orderItem?.item?.size?.name,
-                color: orderItem?.item?.color?.name,
-                taxPercent: orderItem ? Number(orderItem.taxPercent || 0) : 0,
-                taxAmount: orderItem ? (Math.abs(Number(l.qty)) / Number(orderItem.quantity)) * Number(orderItem.taxAmount || 0) : 0,
-                discountAmount: orderItem ? (Math.abs(Number(l.qty)) / Number(orderItem.quantity)) * Number(orderItem.discountAmount || 0) : 0,
-              };
-            });
+              chunkActivities.push({
+                id: ret.id,
+                type: actType,
+                refundMode: ret.refundMode,
+                number: ret.returnNumber,
+                date: ret.createdAt,
+                amount: Number(ret.totalRefundAmount),
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                locationId: ret.locationId || order.locationId,
+                posId: ret.posId || order.posId || order.terminalId,
+                customer: returnCustomer,
+                originalCustomer: isCustomerChanged ? ret.originalCustomer : undefined,
+                cashierName,
+                items: ret.items.map((ri: any) => ({
+                  itemId: ri.itemId,
+                  sku: ri.item?.sku || ri.item?.barCode || 'N/A',
+                  description: ri.item?.description || 'Item',
+                  quantity: ri.quantity,
+                  price: Number(ri.refundPerUnit),
+                  lineTotal: Number(ri.lineTotal),
+                  size: ri.item?.size?.name,
+                  color: ri.item?.color?.name,
+                  taxPercent: Number(ri.taxPercent || 0),
+                  taxAmount: Number(ri.taxAmount || 0),
+                  discountAmount: Number(ri.discountWost || 0),
+                })),
+                issuedVouchers: ret.voucher ? [{
+                  code: ret.voucher.code,
+                  faceValue: Number(ret.voucher.faceValue),
+                  voucherType: ret.voucher.voucherType,
+                  expiresAt: ret.voucher.expiresAt
+                }] : []
+              });
+            }
+          } else {
+            // Fallback for legacy returns
+            const returnLedgers = orderLedgers.filter(l => l.referenceType === 'POS_RETURN');
+            if (order.returnNumber || returnLedgers.length > 0) {
+              const exchangeVoucher = orderVouchers.find(v => v.voucherType === 'EXCHANGE');
+              const returnDate = returnLedgers.length > 0 ? returnLedgers[returnLedgers.length - 1].createdAt : order.updatedAt;
 
-            chunkActivities.push({
-              id: `${order.id}-return`,
-              type: 'return',
-              number: order.returnNumber || 'Return',
-              date: returnDate,
-              amount: exchangeVoucher ? Number(exchangeVoucher.faceValue) : returnedItems.reduce((s, i) => s + i.lineTotal, 0),
-              orderId: order.id,
-              orderNumber: order.orderNumber,
-              locationId: order.locationId,
-              posId: order.posId || order.terminalId,
-              customer: order.customer,
-              cashierName,
-              items: returnedItems,
-              issuedVouchers: exchangeVoucher ? [{
-                code: exchangeVoucher.code,
-                faceValue: Number(exchangeVoucher.faceValue),
-                voucherType: 'EXCHANGE',
-                expiresAt: exchangeVoucher.expiresAt
-              }] : []
-            });
-          }
+              const returnedItems = returnLedgers.map(l => {
+                const orderItem = order.items.find((oi: any) => oi.itemId === l.itemId);
+                return {
+                  itemId: l.itemId,
+                  sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
+                  description: orderItem?.item?.description || 'Item',
+                  quantity: Math.abs(Number(l.qty)),
+                  price: orderItem ? Number(orderItem.unitPrice) : 0,
+                  lineTotal: orderItem ? Math.abs(Number(l.qty)) * Number(orderItem.unitPrice) : 0,
+                  size: orderItem?.item?.size?.name,
+                  color: orderItem?.item?.color?.name,
+                  taxPercent: orderItem ? Number(orderItem.taxPercent || 0) : 0,
+                  taxAmount: orderItem ? (Math.abs(Number(l.qty)) / Number(orderItem.quantity)) * Number(orderItem.taxAmount || 0) : 0,
+                  discountAmount: orderItem ? (Math.abs(Number(l.qty)) / Number(orderItem.quantity)) * Number(orderItem.discountAmount || 0) : 0,
+                };
+              });
 
-          // 3. Refund Activity
-          const refundLedgers = orderLedgers.filter(l => l.referenceType === 'POS_REFUND');
-          if (order.refundNumber || refundLedgers.length > 0) {
-            const refundVouchers = orderVouchers.filter(v => ['REFUND', 'CREDIT'].includes(v.voucherType) && !saleIssuedVouchers.some(sv => sv.id === v.id));
-            const refundDate = refundLedgers.length > 0 ? refundLedgers[refundLedgers.length - 1].createdAt : order.updatedAt;
+              chunkActivities.push({
+                id: `${order.id}-return`,
+                type: 'return',
+                refundMode: 'VOUCHER',
+                number: order.returnNumber || 'Return',
+                date: returnDate,
+                amount: exchangeVoucher ? Number(exchangeVoucher.faceValue) : returnedItems.reduce((s, i) => s + i.lineTotal, 0),
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                locationId: order.locationId,
+                posId: order.posId || order.terminalId,
+                customer: order.customer,
+                cashierName,
+                items: returnedItems,
+                issuedVouchers: exchangeVoucher ? [{
+                  code: exchangeVoucher.code,
+                  faceValue: Number(exchangeVoucher.faceValue),
+                  voucherType: 'EXCHANGE',
+                  expiresAt: exchangeVoucher.expiresAt
+                }] : []
+              });
+            }
 
-            const refundedItems = refundLedgers.map(l => {
-              const orderItem = order.items.find((oi: any) => oi.itemId === l.itemId);
-              return {
-                itemId: l.itemId,
-                sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
-                description: orderItem?.item?.description || 'Item',
-                quantity: Math.abs(Number(l.qty)),
-                price: orderItem ? Number(orderItem.unitPrice) : 0,
-                lineTotal: orderItem ? Math.abs(Number(l.qty)) * Number(orderItem.unitPrice) : 0,
-                size: orderItem?.item?.size?.name,
-                color: orderItem?.item?.color?.name,
-                taxPercent: orderItem ? Number(orderItem.taxPercent || 0) : 0,
-                taxAmount: orderItem ? (Math.abs(Number(l.qty)) / Number(orderItem.quantity)) * Number(orderItem.taxAmount || 0) : 0,
-                discountAmount: orderItem ? (Math.abs(Number(l.qty)) / Number(orderItem.quantity)) * Number(orderItem.discountAmount || 0) : 0,
-              };
-            });
+            // Fallback for legacy refunds
+            const refundLedgers = orderLedgers.filter(l => l.referenceType === 'POS_REFUND');
+            if (order.refundNumber || refundLedgers.length > 0) {
+              const refundVouchers = orderVouchers.filter(v => ['REFUND', 'CREDIT'].includes(v.voucherType) && !saleIssuedVouchers.some(sv => sv.id === v.id));
+              const refundDate = refundLedgers.length > 0 ? refundLedgers[refundLedgers.length - 1].createdAt : order.updatedAt;
 
-            chunkActivities.push({
-              id: `${order.id}-refund`,
-              type: 'refund',
-              number: order.refundNumber || 'Refund',
-              date: refundDate,
-              amount: refundVouchers.length > 0 ? refundVouchers.reduce((sum, v) => sum + Number(v.faceValue), 0) : refundedItems.reduce((s, i) => s + i.lineTotal, 0),
-              orderId: order.id,
-              orderNumber: order.orderNumber,
-              locationId: order.locationId,
-              posId: order.posId || order.terminalId,
-              customer: order.customer,
-              cashierName,
-              items: refundedItems,
-              issuedVouchers: refundVouchers.map(v => ({
-                code: v.code,
-                faceValue: Number(v.faceValue),
-                voucherType: v.voucherType,
-                expiresAt: v.expiresAt
-              }))
-            });
+              const refundedItems = refundLedgers.map(l => {
+                const orderItem = order.items.find((oi: any) => oi.itemId === l.itemId);
+                return {
+                  itemId: l.itemId,
+                  sku: orderItem?.item?.sku || orderItem?.item?.barCode || 'N/A',
+                  description: orderItem?.item?.description || 'Item',
+                  quantity: Math.abs(Number(l.qty)),
+                  price: orderItem ? Number(orderItem.unitPrice) : 0,
+                  lineTotal: orderItem ? Math.abs(Number(l.qty)) * Number(orderItem.unitPrice) : 0,
+                  size: orderItem?.item?.size?.name,
+                  color: orderItem?.item?.color?.name,
+                  taxPercent: orderItem ? Number(orderItem.taxPercent || 0) : 0,
+                  taxAmount: orderItem ? (Math.abs(Number(l.qty)) / Number(orderItem.quantity)) * Number(orderItem.taxAmount || 0) : 0,
+                  discountAmount: orderItem ? (Math.abs(Number(l.qty)) / Number(orderItem.quantity)) * Number(orderItem.discountAmount || 0) : 0,
+                };
+              });
+
+              chunkActivities.push({
+                id: `${order.id}-refund`,
+                type: 'refund',
+                refundMode: 'CASH',
+                number: order.refundNumber || 'Refund',
+                date: refundDate,
+                amount: refundVouchers.length > 0 ? refundVouchers.reduce((sum, v) => sum + Number(v.faceValue), 0) : refundedItems.reduce((s, i) => s + i.lineTotal, 0),
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                locationId: order.locationId,
+                posId: order.posId || order.terminalId,
+                customer: order.customer,
+                cashierName,
+                items: refundedItems,
+                issuedVouchers: refundVouchers.map(v => ({
+                  code: v.code,
+                  faceValue: Number(v.faceValue),
+                  voucherType: v.voucherType,
+                  expiresAt: v.expiresAt
+                }))
+              });
+            }
           }
 
           // 4. Claim Activities

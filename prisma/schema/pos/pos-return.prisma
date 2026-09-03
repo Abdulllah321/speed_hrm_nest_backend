@@ -1,0 +1,73 @@
+model PosReturn {
+  id                 String           @id @default(uuid())
+  returnNumber       String           @unique @map("return_number")
+  salesOrderId       String           @map("sales_order_id")
+  originalCustomerId String?          @map("original_customer_id")
+  customerId         String?          @map("customer_id")
+  returnType         String           @default("RETURN") @map("return_type") // RETURN | REFUND
+  refundMode         String           @default("VOUCHER") @map("refund_mode") // VOUCHER | CASH
+  locationId         String?          @map("location_id")
+  posId              String?          @map("pos_id")
+  terminalId         String?          @map("terminal_id")
+  cashierUserId      String?          @map("cashier_user_id")
+  createdById        String?          @map("created_by_id")
+  subtotalWost       Decimal          @default(0) @map("subtotal_wost") @db.Decimal(15, 2)
+  discountWost       Decimal          @default(0) @map("discount_wost") @db.Decimal(15, 2)
+  taxAmount          Decimal          @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  totalRefundAmount  Decimal          @default(0) @map("total_refund_amount") @db.Decimal(15, 2)
+  reason             String?
+  voucherId          String?          @unique @map("voucher_id")
+  isCrossLocation    Boolean          @default(false) @map("is_cross_location")
+  transferRequestId  String?          @map("transfer_request_id")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  salesOrder         SalesOrder       @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  customer           Customer?        @relation("ReturnCustomer", fields: [customerId], references: [id])
+  originalCustomer   Customer?        @relation("OriginalCustomer", fields: [originalCustomerId], references: [id])
+  voucher            Voucher?         @relation(fields: [voucherId], references: [id])
+  items              PosReturnItem[]
+
+  @@index([salesOrderId])
+  @@index([returnNumber])
+  @@index([locationId])
+  @@index([customerId])
+  @@index([originalCustomerId])
+  @@index([createdAt])
+  @@index([returnType])
+  @@index([refundMode])
+  @@map("pos_returns")
+}
+
+model PosReturnItem {
+  id                  String         @id @default(uuid())
+  posReturnId         String         @map("pos_return_id")
+  salesOrderItemId    String         @map("sales_order_item_id")
+  itemId              String         @map("item_id")
+  quantity            Int            @default(1)
+  originalUnitPrice   Decimal        @map("original_unit_price") @db.Decimal(15, 2)
+  originalPaidPerUnit Decimal        @map("original_paid_per_unit") @db.Decimal(15, 2)
+  currentPriceWithTax Decimal?       @map("current_price_with_tax") @db.Decimal(15, 2)
+  refundPerUnit       Decimal        @map("refund_per_unit") @db.Decimal(15, 2)
+  priceAdjusted       Boolean        @default(false) @map("price_adjusted")
+  unitPriceWost       Decimal        @default(0) @map("unit_price_wost") @db.Decimal(15, 4)
+  lineTotalWost       Decimal        @default(0) @map("line_total_wost") @db.Decimal(15, 2)
+  discountPercent     Decimal        @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  discountWost        Decimal        @default(0) @map("discount_wost") @db.Decimal(15, 2)
+  taxPercent          Decimal        @default(0) @map("tax_percent") @db.Decimal(5, 2)
+  taxAmount           Decimal        @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  couponDeduction     Decimal        @default(0) @map("coupon_deduction") @db.Decimal(15, 2)
+  lineTotal           Decimal        @map("line_total") @db.Decimal(15, 2)
+  reason              String?
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  posReturn           PosReturn      @relation(fields: [posReturnId], references: [id], onDelete: Cascade)
+  salesOrderItem      SalesOrderItem @relation(fields: [salesOrderItemId], references: [id], onDelete: Cascade)
+  item                Item           @relation(fields: [itemId], references: [id])
+
+  @@index([posReturnId])
+  @@index([salesOrderItemId])
+  @@index([itemId])
+  @@map("pos_return_items")
+}
