@@ -26,6 +26,19 @@ export interface SalesListTotals {
   cardAmount: number;
   walletAmount: number;
   creditAmount: number;
+  // Requested breakdown columns
+  cashSale: number;
+  cashReturn: number;
+  cardSale: number;
+  creditSale: number;
+  giftVoucherAmount: number;
+  creditVoucherAmount: number;
+  exchangeVoucherAmount: number;
+  claimVoucherAmount: number;
+  giftVoucherCorporate: number;
+  creditVoucherIssuedAmount: number;
+  rewardVoucherAmount: number;
+  onCreditAmount: number;
 }
 
 export interface SalesListLineItem {
@@ -50,6 +63,7 @@ export interface SalesListInvoiceNode {
   customerPhone: string;
   cashierName: string;
   paymentMethod: string;
+  merchant?: string;
   fbrInvoiceNumber: string;
   fbrStatus: string;
   totals: SalesListTotals;
@@ -72,6 +86,7 @@ export interface SalesListFlatRecord {
   customerName: string;
   customerPhone: string;
   paymentMethod: string;
+  merchant?: string;
   fbrInvoiceNumber: string;
   fbrStatus: string;
   sku: string;
@@ -87,6 +102,18 @@ export interface SalesListFlatRecord {
   orderDiscountAmount: number;
   orderNetAmount: number;
   orderTaxAmount: number;
+  cashSale: number;
+  cashReturn: number;
+  cardSale: number;
+  creditSale: number;
+  giftVoucherAmount: number;
+  creditVoucherAmount: number;
+  exchangeVoucherAmount: number;
+  claimVoucherAmount: number;
+  giftVoucherCorporate: number;
+  creditVoucherIssuedAmount: number;
+  rewardVoucherAmount: number;
+  onCreditAmount: number;
 }
 
 export interface SalesListReportResult {
@@ -362,6 +389,13 @@ export class SalesListExportService {
       orderBy: { createdAt: 'desc' },
       include: {
         customer: { select: { name: true, contactNo: true } },
+        alliance: true,
+        merchant: true,
+        voucherRedemptions: {
+          include: {
+            voucher: true,
+          },
+        },
         items: {
           include: {
             item: {
@@ -378,6 +412,25 @@ export class SalesListExportService {
       },
     });
 
+    // Query issued vouchers for these orders
+    const orderIds = rawOrders.map((o) => o.id);
+    const issuedVouchers = orderIds.length
+      ? await prisma.voucher.findMany({
+          where: {
+            sourceOrderId: { in: orderIds },
+            isDeleted: false,
+          },
+        })
+      : [];
+
+    const issuedVoucherMap = new Map<string, any[]>();
+    for (const v of issuedVouchers) {
+      if (!v.sourceOrderId) continue;
+      const list = issuedVoucherMap.get(v.sourceOrderId) || [];
+      list.push(v);
+      issuedVoucherMap.set(v.sourceOrderId, list);
+    }
+
     await onProgress?.(70, 'Building sales invoice hierarchy matrix...');
 
     const createEmptyTotals = (): SalesListTotals => ({
@@ -392,6 +445,18 @@ export class SalesListExportService {
       cardAmount: 0,
       walletAmount: 0,
       creditAmount: 0,
+      cashSale: 0,
+      cashReturn: 0,
+      cardSale: 0,
+      creditSale: 0,
+      giftVoucherAmount: 0,
+      creditVoucherAmount: 0,
+      exchangeVoucherAmount: 0,
+      claimVoucherAmount: 0,
+      giftVoucherCorporate: 0,
+      creditVoucherIssuedAmount: 0,
+      rewardVoucherAmount: 0,
+      onCreditAmount: 0,
     });
 
     const addTotals = (target: SalesListTotals, source: SalesListTotals) => {
@@ -406,6 +471,18 @@ export class SalesListExportService {
       target.cardAmount += source.cardAmount;
       target.walletAmount += source.walletAmount;
       target.creditAmount += source.creditAmount;
+      target.cashSale += source.cashSale;
+      target.cashReturn += source.cashReturn;
+      target.cardSale += source.cardSale;
+      target.creditSale += source.creditSale;
+      target.giftVoucherAmount += source.giftVoucherAmount;
+      target.creditVoucherAmount += source.creditVoucherAmount;
+      target.exchangeVoucherAmount += source.exchangeVoucherAmount;
+      target.claimVoucherAmount += source.claimVoucherAmount;
+      target.giftVoucherCorporate += source.giftVoucherCorporate;
+      target.creditVoucherIssuedAmount += source.creditVoucherIssuedAmount;
+      target.rewardVoucherAmount += source.rewardVoucherAmount;
+      target.onCreditAmount += source.onCreditAmount;
     };
 
     const grandTotals = createEmptyTotals();
@@ -428,17 +505,118 @@ export class SalesListExportService {
       const tax = Number(order.taxAmount || 0);
       const paid = net;
 
-      let cashAmt = Number(order.cashAmount || 0);
-      let cardAmt = Number(order.cardAmount || 0);
-      let walletAmt = Number(order.voucherAmount || 0);
-      let creditAmt = 0;
+      const notesStr = order.notes || '';
 
-      if (cashAmt === 0 && cardAmt === 0 && walletAmt === 0) {
-        if (payMethod.includes('CASH')) cashAmt = paid;
-        else if (payMethod.includes('CARD') || payMethod.includes('BANK')) cardAmt = paid;
-        else if (payMethod.includes('WALLET') || payMethod.includes('ONLINE')) walletAmt = paid;
-        else creditAmt = paid;
+      // Balance / OnCredit
+      let balance = 0;
+      const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+      if (balanceMatch) {
+        balance = Number(balanceMatch[1]);
+      } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
+        balance = Number(order.grandTotal);
       }
+
+      let cashSale = Number(order.cashAmount || 0);
+      let cardSale = Number(order.cardAmount || 0);
+      let onCreditAmount = balance;
+      let creditSale = (balance > 0 || order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0;
+      let cashReturn = 0;
+
+      // Extract tender amounts from notes if not present in separate columns
+      if (cashSale === 0) {
+        const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+        if (cashMatch) cashSale = Number(cashMatch[1]);
+      }
+      if (cardSale === 0) {
+        const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+        if (cardMatch) cardSale = Number(cardMatch[1]);
+      }
+
+      let rewardVoucherAmount = 0;
+      if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+        rewardVoucherAmount = Number(order.grandTotal);
+      } else if (notesStr.includes('[Reward Voucher]')) {
+        const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        if (amtMatch) {
+          rewardVoucherAmount = Number(amtMatch[1]);
+        }
+      }
+
+      let giftVoucherAmount = 0;
+      let creditVoucherAmount = 0;
+      let exchangeVoucherAmount = 0;
+      let claimVoucherAmount = 0;
+      let giftVoucherCorporate = 0;
+
+      for (const red of (order.voucherRedemptions || [])) {
+        const type = red.voucher?.voucherType;
+        const amt = Number(red.amountUsed);
+
+        if (type === 'GIFT' || type === 'OUTLET_GIFT') {
+          giftVoucherAmount += amt;
+        } else if (type === 'CREDIT' || type === 'REFUND') {
+          creditVoucherAmount += amt;
+        } else if (type === 'CLAIM') {
+          claimVoucherAmount += amt;
+        } else if (type === 'CORPORATE') {
+          giftVoucherCorporate += amt;
+        } else if (type === 'EXCHANGE') {
+          exchangeVoucherAmount += amt;
+        } else if (type === 'REWARD') {
+          rewardVoucherAmount += amt;
+        }
+      }
+
+      // If voucherAmount was stored on order but not broken down in voucherRedemptions
+      const totalRedeemedVoucher = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
+      const orderVoucherAmt = Number(order.voucherAmount || 0);
+      if (orderVoucherAmt > totalRedeemedVoucher) {
+        const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
+        if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
+          exchangeVoucherAmount += remVoucher;
+        } else if (notesStr.match(/Claim|CLM-/i)) {
+          claimVoucherAmount += remVoucher;
+        } else if (notesStr.match(/Corporate/i)) {
+          giftVoucherCorporate += remVoucher;
+        } else if (notesStr.match(/Gift/i)) {
+          giftVoucherAmount += remVoucher;
+        } else if (notesStr.match(/Reward/i)) {
+          rewardVoucherAmount += remVoucher;
+        } else {
+          creditVoucherAmount += remVoucher;
+        }
+      }
+
+      let creditVoucherIssuedAmount = 0;
+      const orderIssued = issuedVoucherMap.get(order.id) || [];
+      for (const iv of orderIssued) {
+        const type = iv.voucherType;
+        const faceVal = Number(iv.faceValue || 0);
+
+        if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
+          creditVoucherIssuedAmount += faceVal;
+        }
+      }
+
+      // Fallback if amounts were completely 0 and no split amounts were provided
+      const totalTenders = cashSale + cardSale + giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount + onCreditAmount;
+      if (totalTenders === 0) {
+        if (payMethod.includes('CASH')) cashSale = paid;
+        else if (payMethod.includes('CARD') || payMethod.includes('BANK')) cardSale = paid;
+        else if (payMethod.includes('CREDIT')) {
+          creditSale = paid;
+          onCreditAmount = paid;
+        } else if (payMethod.includes('VOUCHER')) {
+          creditVoucherAmount = paid;
+        } else {
+          cashSale = paid;
+        }
+      }
+
+      let cashAmt = cashSale;
+      let cardAmt = cardSale;
+      let walletAmt = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
+      let creditAmt = onCreditAmount;
 
       const lineItems: SalesListLineItem[] = (order.items || []).map((item) => ({
         id: item.id,
@@ -456,6 +634,16 @@ export class SalesListExportService {
 
       const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
 
+      let merchantName = (order as any).merchant?.bankName || ((order as any).merchant?.description ? (order as any).merchant.description.split('|')[1]?.trim() || (order as any).merchant.description : '');
+      if (!merchantName && notesStr) {
+        const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i);
+        if (merchMatch) merchantName = merchMatch[1].trim();
+      }
+      if (!merchantName && order.alliance?.partnerName) {
+        merchantName = order.alliance.partnerName;
+      }
+      merchantName = merchantName || '-';
+
       const orderTotals: SalesListTotals = {
         orderCount: 1,
         totalItems: totalItemsCount,
@@ -468,6 +656,18 @@ export class SalesListExportService {
         cardAmount: cardAmt,
         walletAmount: walletAmt,
         creditAmount: creditAmt,
+        cashSale,
+        cashReturn,
+        cardSale,
+        creditSale,
+        giftVoucherAmount,
+        creditVoucherAmount,
+        exchangeVoucherAmount,
+        claimVoucherAmount,
+        giftVoucherCorporate,
+        creditVoucherIssuedAmount,
+        rewardVoucherAmount,
+        onCreditAmount,
       };
 
       addTotals(grandTotals, orderTotals);
@@ -480,6 +680,7 @@ export class SalesListExportService {
         customerPhone: custPhone,
         cashierName,
         paymentMethod: payMethod,
+        merchant: merchantName,
         fbrInvoiceNumber: fbrInv,
         fbrStatus,
         totals: orderTotals,
@@ -497,6 +698,7 @@ export class SalesListExportService {
           customerName: custName,
           customerPhone: custPhone,
           paymentMethod: payMethod,
+          merchant: merchantName,
           fbrInvoiceNumber: fbrInv,
           fbrStatus,
           sku: line.sku,
@@ -512,6 +714,18 @@ export class SalesListExportService {
           orderDiscountAmount: disc,
           orderNetAmount: net,
           orderTaxAmount: tax,
+          cashSale,
+          cashReturn,
+          cardSale,
+          creditSale,
+          giftVoucherAmount,
+          creditVoucherAmount,
+          exchangeVoucherAmount,
+          claimVoucherAmount,
+          giftVoucherCorporate,
+          creditVoucherIssuedAmount,
+          rewardVoucherAmount,
+          onCreditAmount,
         });
       }
 
