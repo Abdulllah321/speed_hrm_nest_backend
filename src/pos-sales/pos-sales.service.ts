@@ -6686,6 +6686,7 @@ export class PosSalesService implements OnModuleInit {
       },
       include: {
         alliance: true,
+        merchant: true,
         items: true,
         voucherRedemptions: {
           include: {
@@ -6702,7 +6703,6 @@ export class PosSalesService implements OnModuleInit {
         ? await this.prisma.voucher.findMany({
             where: {
               sourceOrderId: { in: orderIds },
-              voucherType: 'CREDIT',
               isDeleted: false,
             },
           })
@@ -6724,14 +6724,23 @@ export class PosSalesService implements OnModuleInit {
         retailPrice += Number(item.unitPrice || 0) * Number(item.quantity || 1);
       }
 
-      // Parse BIN / Auth ID / Card last 4 from notes field
+      // Parse BIN / Auth ID / 4-Digit Card No / Card Name from notes & relations
       const notesStr = order.notes || '';
       const binMatch = notesStr.match(/BIN:\s*([\d\-]+)/i);
-      const slipMatch = notesStr.match(/Slip:\s*(\d{6})/i);
-      const cardMatch = notesStr.match(/Card:\s*\*{4}(\d{4})/i);
-      const binNumber = binMatch ? binMatch[1] : '';
+      const slipMatch = notesStr.match(/(?:Slip|Auth\s*ID|Auth|Approval):\s*([a-zA-Z0-9]+)/i);
+      const cardMatch = notesStr.match(/(?:Card|Last4|CardLast4|Card#):\s*(?:\*{4})?(\d{4})/i);
+      const cardholderMatch = notesStr.match(/(?:Cardholder|Card\s*Name|Bank|Card\s*Type):\s*([^|\],]+)/i);
+
+      let binNo = binMatch ? binMatch[1] : '';
+      if (!binNo && order.alliance?.binNumbers && Array.isArray(order.alliance.binNumbers) && order.alliance.binNumbers.length > 0) {
+        binNo = order.alliance.binNumbers[0];
+      }
       const authId = slipMatch ? slipMatch[1] : '';
       const cardLast4 = cardMatch ? cardMatch[1] : '';
+      let cardName = cardholderMatch ? cardholderMatch[1].trim() : '';
+      if (!cardName) {
+        cardName = (order as any).merchant?.bankName || order.alliance?.partnerName || '';
+      }
 
       // Build alliance option label
       let allianceOption = '';
@@ -6740,12 +6749,46 @@ export class PosSalesService implements OnModuleInit {
         const cap = order.alliance.maxDiscount
           ? ` cap ${Number(order.alliance.maxDiscount).toLocaleString()}`
           : '';
-        const bin = binNumber ? ` | BIN: ${binNumber}` : '';
+        const bin = binNo ? ` | BIN: ${binNo}` : '';
         allianceOption = `${order.alliance.partnerName} ${pct}%${cap}${bin}`;
       } else if (order.manualDiscountNote) {
         allianceOption = (order.manualDiscountNote as string)
           .replace(/\[Manual Alliance\]/gi, '')
           .trim();
+      }
+
+      // Balance / OnCredit
+      let balance = 0;
+      const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+      if (balanceMatch) {
+        balance = Number(balanceMatch[1]);
+      } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
+        balance = Number(order.grandTotal);
+      }
+
+      let cashSale = Number(order.cashAmount || 0);
+      let cardSale = Number(order.cardAmount || 0);
+      let onCreditAmount = balance;
+      let creditSale = (balance > 0 || order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0;
+      let cashReturn = 0;
+
+      if (cashSale === 0) {
+        const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+        if (cashMatch) cashSale = Number(cashMatch[1]);
+      }
+      if (cardSale === 0) {
+        const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+        if (cardMatch) cardSale = Number(cardMatch[1]);
+      }
+
+      let rewardVoucherAmount = 0;
+      if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+        rewardVoucherAmount = Number(order.grandTotal);
+      } else if (notesStr.includes('[Reward Voucher]')) {
+        const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        if (amtMatch) {
+          rewardVoucherAmount = Number(amtMatch[1]);
+        }
       }
 
       // Vouchers Used / Redeemed mapping
@@ -6774,7 +6817,7 @@ export class PosSalesService implements OnModuleInit {
         if (type === 'GIFT' || type === 'OUTLET_GIFT') {
           giftVoucherAmt += amt;
           giftCodes.push(code);
-        } else if (type === 'CREDIT') {
+        } else if (type === 'CREDIT' || type === 'REFUND') {
           creditAmt += amt;
           creditCodes.push(code);
         } else if (type === 'CLAIM') {
@@ -6786,6 +6829,28 @@ export class PosSalesService implements OnModuleInit {
         } else if (type === 'EXCHANGE') {
           exchangeAmt += amt;
           exchCodes.push(code);
+        } else if (type === 'REWARD') {
+          rewardVoucherAmount += amt;
+        }
+      }
+
+      // Unallocated voucher amount fallback
+      const totalRedeemedVoucher = giftVoucherAmt + creditAmt + exchangeAmt + claimAmt + corporateAmt + rewardVoucherAmount;
+      const orderVoucherAmt = Number(order.voucherAmount || 0);
+      if (orderVoucherAmt > totalRedeemedVoucher) {
+        const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
+        if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
+          exchangeAmt += remVoucher;
+        } else if (notesStr.match(/Claim|CLM-/i)) {
+          claimAmt += remVoucher;
+        } else if (notesStr.match(/Corporate/i)) {
+          corporateAmt += remVoucher;
+        } else if (notesStr.match(/Gift/i)) {
+          giftVoucherAmt += remVoucher;
+        } else if (notesStr.match(/Reward/i)) {
+          rewardVoucherAmount += remVoucher;
+        } else {
+          creditAmt += remVoucher;
         }
       }
 
@@ -6795,13 +6860,33 @@ export class PosSalesService implements OnModuleInit {
       corporateCode = corpCodes.join(', ');
       exchangeCode = exchCodes.join(', ');
 
+      // Fallback if all tenders are 0
+      const totalTenders = cashSale + cardSale + giftVoucherAmt + creditAmt + exchangeAmt + claimAmt + corporateAmt + rewardVoucherAmount + onCreditAmount;
+      if (totalTenders === 0) {
+        const payMethod = (order.paymentMethod || 'cash').toLowerCase();
+        if (payMethod.includes('cash')) cashSale = Number(order.grandTotal);
+        else if (payMethod.includes('card') || payMethod.includes('bank')) cardSale = Number(order.grandTotal);
+        else if (payMethod.includes('credit')) {
+          creditSale = Number(order.grandTotal);
+          onCreditAmount = Number(order.grandTotal);
+        } else if (payMethod.includes('voucher')) {
+          creditAmt = Number(order.grandTotal);
+        } else {
+          cashSale = Number(order.grandTotal);
+        }
+      }
+
       // Credit Voucher Issued mapping
       const orderIssued = issuedVouchersMap.get(order.id) || [];
       const creditVoucherIssued = orderIssued.map((v) => v.code).join(', ');
-      const creditVoucherIssuedAmt = orderIssued.reduce(
-        (sum, v) => sum + Number(v.faceValue || 0),
-        0,
-      );
+      let creditVoucherIssuedAmt = 0;
+      for (const iv of orderIssued) {
+        const type = iv.voucherType;
+        const faceVal = Number(iv.faceValue || 0);
+        if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
+          creditVoucherIssuedAmt += faceVal;
+        }
+      }
 
       const createdAt = new Date(order.createdAt);
 
@@ -6823,11 +6908,26 @@ export class PosSalesService implements OnModuleInit {
         discount: Number(order.discountAmount || 0),
         sTax: Number(order.taxAmount || 0),
         netSale: Number(order.grandTotal || 0),
-        cash: Number(order.cashAmount || 0),
-        card: Number(order.cardAmount || 0),
-        prefixCardNo: binNumber,
+        cash: cashSale,
+        card: cardSale,
+        cashSale,
+        cashReturn,
+        cardSale,
+        creditSale,
+        giftVoucherAmount: giftVoucherAmt,
+        creditVoucherAmount: creditAmt,
+        exchangeVoucherAmount: exchangeAmt,
+        claimVoucherAmount: claimAmt,
+        giftVoucherCorporate: corporateAmt,
+        creditVoucherIssuedAmount: creditVoucherIssuedAmt,
+        rewardVoucherAmount,
+        onCreditAmount,
+        binNo,
+        prefixCardNo: binNo,
         authId,
         cardNo: cardLast4,
+        cardLast4,
+        cardName,
         allianceOption,
         remarks: order.manualDiscountNote || order.notes || '',
         giftVoucherCode,
@@ -7025,6 +7125,16 @@ export class PosSalesService implements OnModuleInit {
       let cash = Number(order.cashAmount || 0);
       let card = Number(order.cardAmount || 0);
       let onCredit = balance;
+
+      if (cash === 0) {
+        const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+        if (cashMatch) cash = Number(cashMatch[1]);
+      }
+      if (card === 0) {
+        const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+        if (cardMatch) card = Number(cardMatch[1]);
+      }
+
       let rewardVoucher = 0;
       if (
         order.paymentMethod === 'reward_voucher' ||
@@ -7060,6 +7170,41 @@ export class PosSalesService implements OnModuleInit {
           corporateVoucher += amt;
         } else if (type === 'EXCHANGE') {
           exchangeVoucher += amt;
+        } else if (type === 'REWARD') {
+          rewardVoucher += amt;
+        }
+      }
+
+      const totalRedeemedVoucher = giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher;
+      const orderVoucherAmt = Number(order.voucherAmount || 0);
+      if (orderVoucherAmt > totalRedeemedVoucher) {
+        const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
+        if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
+          exchangeVoucher += remVoucher;
+        } else if (notesStr.match(/Claim|CLM-/i)) {
+          claimVoucher += remVoucher;
+        } else if (notesStr.match(/Corporate/i)) {
+          corporateVoucher += remVoucher;
+        } else if (notesStr.match(/Gift/i)) {
+          giftVoucher += remVoucher;
+        } else if (notesStr.match(/Reward/i)) {
+          rewardVoucher += remVoucher;
+        } else {
+          creditVoucher += remVoucher;
+        }
+      }
+
+      const totalTenders = cash + card + giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher + onCredit;
+      if (totalTenders === 0) {
+        const payMethod = (order.paymentMethod || 'cash').toLowerCase();
+        if (payMethod.includes('cash')) cash = Number(order.grandTotal);
+        else if (payMethod.includes('card') || payMethod.includes('bank')) card = Number(order.grandTotal);
+        else if (payMethod.includes('credit')) {
+          onCredit = Number(order.grandTotal);
+        } else if (payMethod.includes('voucher')) {
+          creditVoucher = Number(order.grandTotal);
+        } else {
+          cash = Number(order.grandTotal);
         }
       }
 
