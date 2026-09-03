@@ -328,12 +328,10 @@ export class PurchaseReturnRegisterExportService {
         const discAmt = (qty * unitPrice * discRate) / 100;
         const valExclTax = qty * unitPrice - discAmt;
         const taxRate = Number((itemRow as any).purchaseInvoiceItem?.taxRate) || 0;
-        const salesTax = Number((itemRow as any).purchaseInvoiceItem?.taxAmount)
-          ? (Number((itemRow as any).purchaseInvoiceItem?.taxAmount) * qty) / (Number((itemRow as any).purchaseInvoiceItem?.quantity) || 1)
-          : (valExclTax * taxRate) / 100;
+        const salesTax = (valExclTax * taxRate) / 100;
         const valInclTax = valExclTax + salesTax;
         const advTax = (valInclTax * advRate) / 100;
-        const lineTotal = Number(itemRow.lineTotal) || (valInclTax + advTax);
+        const lineTotal = valInclTax + advTax;
 
         // Division Level
         let divGroup = docGroup.divisions.find((d) => d.divisionName === divName);
