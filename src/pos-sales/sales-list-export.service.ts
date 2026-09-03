@@ -63,6 +63,7 @@ export interface SalesListInvoiceNode {
   customerPhone: string;
   cashierName: string;
   paymentMethod: string;
+  merchant?: string;
   fbrInvoiceNumber: string;
   fbrStatus: string;
   totals: SalesListTotals;
@@ -85,6 +86,7 @@ export interface SalesListFlatRecord {
   customerName: string;
   customerPhone: string;
   paymentMethod: string;
+  merchant?: string;
   fbrInvoiceNumber: string;
   fbrStatus: string;
   sku: string;
@@ -388,6 +390,7 @@ export class SalesListExportService {
       include: {
         customer: { select: { name: true, contactNo: true } },
         alliance: true,
+        merchant: true,
         voucherRedemptions: {
           include: {
             voucher: true,
@@ -631,6 +634,16 @@ export class SalesListExportService {
 
       const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
 
+      let merchantName = (order as any).merchant?.bankName || ((order as any).merchant?.description ? (order as any).merchant.description.split('|')[1]?.trim() || (order as any).merchant.description : '');
+      if (!merchantName && notesStr) {
+        const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i);
+        if (merchMatch) merchantName = merchMatch[1].trim();
+      }
+      if (!merchantName && order.alliance?.partnerName) {
+        merchantName = order.alliance.partnerName;
+      }
+      merchantName = merchantName || '-';
+
       const orderTotals: SalesListTotals = {
         orderCount: 1,
         totalItems: totalItemsCount,
@@ -667,6 +680,7 @@ export class SalesListExportService {
         customerPhone: custPhone,
         cashierName,
         paymentMethod: payMethod,
+        merchant: merchantName,
         fbrInvoiceNumber: fbrInv,
         fbrStatus,
         totals: orderTotals,
@@ -684,6 +698,7 @@ export class SalesListExportService {
           customerName: custName,
           customerPhone: custPhone,
           paymentMethod: payMethod,
+          merchant: merchantName,
           fbrInvoiceNumber: fbrInv,
           fbrStatus,
           sku: line.sku,
