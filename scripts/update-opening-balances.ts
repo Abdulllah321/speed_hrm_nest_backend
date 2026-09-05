@@ -72,16 +72,17 @@ async function processOpeningsForTenant(
     locationFilter?: string | null;
     warehouseCodeOverride?: string | null;
     openingDateStr?: string;
+    filePath?: string;
   },
 ) {
   const pool = new Pool({ connectionString });
   const client: PoolClient = await pool.connect();
 
   try {
-    const { isDryRun, locationFilter, warehouseCodeOverride } = options;
-    const isFy2526 = filePath.includes('25-26') || filePath.includes('2526');
+    const { isDryRun, locationFilter, warehouseCodeOverride, filePath, openingDateStr } = options;
+    const isFy2526 = filePath ? (filePath.includes('25-26') || filePath.includes('2526')) : false;
     const defaultDateStr = isFy2526 ? '2025-06-30T19:00:00.000Z' : '2026-06-30T19:00:00.000Z';
-    const openingDate = options.openingDateStr ? new Date(options.openingDateStr) : new Date(defaultDateStr);
+    const openingDate = openingDateStr ? new Date(openingDateStr) : new Date(defaultDateStr);
 
     // Group rows by Location code (normalized uppercase)
     const byLocation = new Map<string, Array<{ barcode: string; qty: number }>>();
@@ -405,6 +406,21 @@ async function processOpeningsForTenant(
   }
 }
 
+function getArgValue(args: string[], flags: string[]): string | undefined {
+  for (const flag of flags) {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (arg === flag && i + 1 < args.length && !args[i + 1].startsWith('--')) {
+        return args[i + 1];
+      }
+      if (arg.startsWith(`${flag}=`)) {
+        return arg.slice(flag.length + 1);
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * CLI Runner
  */
@@ -413,9 +429,9 @@ async function main() {
   const isDryRun = args.includes('--dry-run');
 
   let filePath = '';
-  const fileArgIdx = args.indexOf('--file');
-  if (fileArgIdx !== -1 && args[fileArgIdx + 1]) {
-    filePath = path.resolve(process.cwd(), args[fileArgIdx + 1]);
+  const fileArg = getArgValue(args, ['--file', '-f']);
+  if (fileArg) {
+    filePath = path.isAbsolute(fileArg) ? fileArg : path.resolve(process.cwd(), fileArg);
   } else {
     // Default candidate
     const defaultCand = path.resolve(__dirname, '..', 'data', 'SS_LG_25-26_opening.json');
@@ -425,21 +441,14 @@ async function main() {
   }
 
   if (!filePath || !fs.existsSync(filePath)) {
-    console.error(`❌ File not found at: ${filePath}. Please supply via --file <path>`);
+    console.error(`❌ File not found at: ${filePath}. Please supply via --file <path> or --file=<path>`);
     process.exit(1);
   }
 
-  const locArgIdx = args.indexOf('--location');
-  const locationFilter = locArgIdx !== -1 ? args[locArgIdx + 1] : null;
-
-  const whArgIdx = args.indexOf('--warehouse');
-  const warehouseOverride = whArgIdx !== -1 ? args[whArgIdx + 1] : null;
-
-  const dateArgIdx = args.indexOf('--date');
-  const openingDateStr = dateArgIdx !== -1 ? args[dateArgIdx + 1] : undefined;
-
-  const tenantArgIdx = args.indexOf('--tenant');
-  const tenantFilter = tenantArgIdx !== -1 ? args[tenantArgIdx + 1] : null;
+  const locationFilter = getArgValue(args, ['--location', '-l']) || null;
+  const warehouseOverride = getArgValue(args, ['--warehouse', '-w']) || null;
+  const openingDateStr = getArgValue(args, ['--opening-date', '--date', '-d']) || undefined;
+  const tenantFilter = getArgValue(args, ['--tenant', '-t']) || null;
 
   console.log(`========================================================================`);
   console.log(`📦 Speed (pvt.) Limited - Previous Year Opening Balance Uploader`);
@@ -463,6 +472,7 @@ async function main() {
       locationFilter,
       warehouseCodeOverride: warehouseOverride,
       openingDateStr,
+      filePath,
     });
     return;
   }
@@ -475,6 +485,7 @@ async function main() {
         locationFilter,
         warehouseCodeOverride: warehouseOverride,
         openingDateStr,
+        filePath,
       });
       return;
     }
@@ -521,6 +532,7 @@ async function main() {
         locationFilter,
         warehouseCodeOverride: warehouseOverride,
         openingDateStr,
+        filePath,
       });
     }
   } finally {
