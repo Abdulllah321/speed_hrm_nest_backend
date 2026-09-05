@@ -482,12 +482,24 @@ export class NetSalesSummaryExportService {
       },
     });
 
-    const returnVoucherIds = [...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean))] as string[];
-    const returnVouchers = returnVoucherIds.length
-      ? await prisma.voucher.findMany({
-          where: { id: { in: returnVoucherIds } },
-        })
-      : [];
+    const returnRefIds = [...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean))] as string[];
+    const [returnVouchers, returnPosReturns] = await Promise.all([
+      returnRefIds.length
+        ? await prisma.voucher.findMany({
+            where: { id: { in: returnRefIds } },
+          })
+        : [],
+      returnRefIds.length
+        ? await (prisma as any).posReturn.findMany({
+            where: { id: { in: returnRefIds } },
+            include: {
+              salesOrder: { include: { items: true } },
+              items: true,
+            },
+          })
+        : [],
+    ]);
+
     const sourceOrderIds = [...new Set(returnVouchers.map((v) => v.sourceOrderId).filter(Boolean))] as string[];
     const sourceOrders = sourceOrderIds.length
       ? await prisma.salesOrder.findMany({
@@ -504,6 +516,14 @@ export class NetSalesSummaryExportService {
       voucherMap.set(v.id, {
         ...v,
         sourceOrder: v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null,
+      });
+    }
+    for (const pr of returnPosReturns) {
+      voucherMap.set(pr.id, {
+        id: pr.id,
+        code: pr.returnNumber,
+        sourceOrder: pr.salesOrder,
+        posReturn: pr,
       });
     }
 
@@ -759,29 +779,43 @@ export class NetSalesSummaryExportService {
       const genderName = entry.item.gender?.name || 'Default Gender';
       const silhouetteName = entry.item.silhouette?.name || 'Default Silhouette';
 
-      const originalOi = voucher?.sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
+      const matchedPrItem = voucher?.posReturn?.items?.find((pi: any) => pi.itemId === entry.itemId);
+      const originalOi = matchedPrItem || voucher?.sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
       const returnQty = Math.abs(Number(entry.qty || 1));
       const soldQty = 0;
       const netQty = -returnQty;
 
-      const unitPrice = originalOi ? Number(originalOi.unitPrice || 0) : Number(entry.item.unitPrice || 0);
-      const taxPercent = originalOi ? Number((originalOi as any).taxPercent || (originalOi as any).taxRate || 0) : 18;
+      const unitPrice = matchedPrItem
+        ? Number(matchedPrItem.originalUnitPrice || matchedPrItem.originalPaidPerUnit || 0)
+        : originalOi
+          ? Number(originalOi.unitPrice || 0)
+          : Number(entry.item.unitPrice || 0);
+      const taxPercent = matchedPrItem
+        ? Number(matchedPrItem.taxPercent || 0)
+        : originalOi
+          ? Number((originalOi as any).taxPercent || (originalOi as any).taxRate || 0)
+          : 18;
       const calculatedTaxPct = taxPercent > 0 ? taxPercent : 18;
       const taxDivisor = 1 + calculatedTaxPct / 100;
 
       const retailSalesValue = -Math.round(unitPrice * returnQty * 100) / 100;
       const wostPerUnit = unitPrice / taxDivisor;
-      const wostAmount = -Math.round(wostPerUnit * returnQty * 100) / 100;
+      const wostAmount = matchedPrItem && Number(matchedPrItem.lineTotalWost) !== 0
+        ? -Number(matchedPrItem.lineTotalWost)
+        : -Math.round(wostPerUnit * returnQty * 100) / 100;
 
-      const originalQty = originalOi ? Number(originalOi.quantity || 1) : 1;
-      const discPerUnit = originalOi ? Number(originalOi.discountAmount || 0) / originalQty : 0;
-      const itemDisc = -Math.round(discPerUnit * returnQty * 100) / 100;
+      const itemDisc = matchedPrItem
+        ? -Number(matchedPrItem.discountWost || 0)
+        : originalOi
+          ? -Math.round((Number(originalOi.discountAmount || 0) / (Number(originalOi.quantity) || 1)) * returnQty * 100) / 100
+          : 0;
 
       const valueExSalesTax = Math.round((wostAmount - itemDisc) * 100) / 100;
-      const taxPerUnit = originalOi ? Number(originalOi.taxAmount || 0) / originalQty : 0;
-      const taxAmount = originalOi
-        ? -Math.round(taxPerUnit * returnQty * 100) / 100
-        : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
+      const taxAmount = matchedPrItem
+        ? -Number(matchedPrItem.taxAmount || 0)
+        : originalOi
+          ? -Math.round((Number(originalOi.taxAmount || 0) / (Number(originalOi.quantity) || 1)) * returnQty * 100) / 100
+          : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
 
       const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
       const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';

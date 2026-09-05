@@ -508,12 +508,24 @@ export class CostOfSalesExportService {
       prisma.location.findMany({ select: { id: true, name: true } }),
     ]);
 
-    const returnVoucherIds = [...new Set(returnLedgerEntries.map((e: any) => e.referenceId).filter(Boolean))] as string[];
-    const returnVouchers = returnVoucherIds.length
-      ? await (prisma as any).voucher.findMany({
-          where: { id: { in: returnVoucherIds } },
-        })
-      : [];
+    const returnRefIds = [...new Set(returnLedgerEntries.map((e: any) => e.referenceId).filter(Boolean))] as string[];
+    const [returnVouchers, returnPosReturns] = await Promise.all([
+      returnRefIds.length
+        ? await (prisma as any).voucher.findMany({
+            where: { id: { in: returnRefIds } },
+          })
+        : [],
+      returnRefIds.length
+        ? await (prisma as any).posReturn.findMany({
+            where: { id: { in: returnRefIds } },
+            include: {
+              salesOrder: { include: { items: true } },
+              items: true,
+            },
+          })
+        : [],
+    ]);
+
     const sourceOrderIds = [...new Set(returnVouchers.map((v: any) => v.sourceOrderId).filter(Boolean))] as string[];
     const sourceOrders = sourceOrderIds.length
       ? await prisma.salesOrder.findMany({
@@ -530,6 +542,14 @@ export class CostOfSalesExportService {
       voucherMap.set(v.id, {
         ...v,
         sourceOrder: v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null,
+      });
+    }
+    for (const pr of returnPosReturns) {
+      voucherMap.set(pr.id, {
+        id: pr.id,
+        code: pr.returnNumber,
+        sourceOrder: pr.salesOrder,
+        posReturn: pr,
       });
     }
 
@@ -733,7 +753,8 @@ export class CostOfSalesExportService {
       locationsSet.add(entry.locationId || 'default');
 
       const voucher = voucherMap.get(entry.referenceId);
-      const originalOi = voucher?.sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
+      const matchedPrItem = voucher?.posReturn?.items?.find((oi: any) => oi.itemId === entry.itemId);
+      const originalOi = matchedPrItem || voucher?.sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
 
       const retQty = Math.abs(Number(entry.qty || 1));
       const netQty = -retQty;

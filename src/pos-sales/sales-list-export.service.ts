@@ -543,55 +543,73 @@ export class SalesListExportService {
       let cashSale = Number(order.cashAmount || 0);
       let cardSale = Number(order.cardAmount || 0);
       let onCreditAmount = balance;
-      let creditSale = (balance > 0 || order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0;
+      let creditSale = balance > 0 ? balance : ((order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0);
       let cashReturn = 0;
+
+      const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+      if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
 
       // Extract tender amounts from notes if not present in separate columns
       if (cashSale === 0) {
-        const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+        const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
         if (cashMatch) cashSale = Number(cashMatch[1]);
       }
       if (cardSale === 0) {
-        const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+        const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
         if (cardMatch) cardSale = Number(cardMatch[1]);
       }
 
-      let rewardVoucherAmount = 0;
-      if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
-        rewardVoucherAmount = Number(order.grandTotal);
-      } else if (notesStr.includes('[Reward Voucher]')) {
-        const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
-        if (amtMatch) {
-          rewardVoucherAmount = Number(amtMatch[1]);
-        }
-      }
-
+      // Check structured voucher tags from notes
       let giftVoucherAmount = 0;
       let creditVoucherAmount = 0;
       let exchangeVoucherAmount = 0;
       let claimVoucherAmount = 0;
       let giftVoucherCorporate = 0;
+      let rewardVoucherAmount = 0;
 
+      const exMatch = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
+      if (exMatch) exchangeVoucherAmount = Number(exMatch[1]);
+
+      const clmMatch = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
+      if (clmMatch) claimVoucherAmount = Number(clmMatch[1]);
+
+      const corpMatch = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+      if (corpMatch) giftVoucherCorporate = Number(corpMatch[1]);
+
+      const giftMatch = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
+      if (giftMatch) giftVoucherAmount = Number(giftMatch[1]);
+
+      const rewMatch = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+      if (rewMatch) {
+        rewardVoucherAmount = Number(rewMatch[1]);
+      } else if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+        rewardVoucherAmount = Number(order.grandTotal);
+      }
+
+      const credVouchMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
+      if (credVouchMatch) creditVoucherAmount = Number(credVouchMatch[1]);
+
+      // If not parsed from explicit tags, check voucherRedemptions
       for (const red of (order.voucherRedemptions || [])) {
         const type = red.voucher?.voucherType;
         const amt = Number(red.amountUsed);
 
         if (type === 'GIFT' || type === 'OUTLET_GIFT') {
-          giftVoucherAmount += amt;
+          if (!giftMatch) giftVoucherAmount += amt;
         } else if (type === 'CREDIT' || type === 'REFUND') {
-          creditVoucherAmount += amt;
+          if (!credVouchMatch) creditVoucherAmount += amt;
         } else if (type === 'CLAIM') {
-          claimVoucherAmount += amt;
+          if (!clmMatch) claimVoucherAmount += amt;
         } else if (type === 'CORPORATE') {
-          giftVoucherCorporate += amt;
+          if (!corpMatch) giftVoucherCorporate += amt;
         } else if (type === 'EXCHANGE') {
-          exchangeVoucherAmount += amt;
+          if (!exMatch) exchangeVoucherAmount += amt;
         } else if (type === 'REWARD') {
-          rewardVoucherAmount += amt;
+          if (!rewMatch) rewardVoucherAmount += amt;
         }
       }
 
-      // If voucherAmount was stored on order but not broken down in voucherRedemptions
+      // If voucherAmount was stored on order but not broken down in voucherRedemptions or notes
       const totalRedeemedVoucher = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
       const orderVoucherAmt = Number(order.voucherAmount || 0);
       if (orderVoucherAmt > totalRedeemedVoucher) {
@@ -612,13 +630,17 @@ export class SalesListExportService {
       }
 
       let creditVoucherIssuedAmount = 0;
+      const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+      if (issuedMatch) {
+        creditVoucherIssuedAmount = Number(issuedMatch[1]);
+      }
       const orderIssued = issuedVoucherMap.get(order.id) || [];
       for (const iv of orderIssued) {
         const type = iv.voucherType;
         const faceVal = Number(iv.faceValue || 0);
 
-        if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
-          creditVoucherIssuedAmount += faceVal;
+        if (type === 'CREDIT' || type === 'REFUND') {
+          if (!issuedMatch) creditVoucherIssuedAmount += faceVal;
         }
       }
 
