@@ -8421,7 +8421,56 @@ export class PosSalesService implements OnModuleInit {
       levels.push('product');
     }
 
-    // 1. Fetch Returns/Refunds from StockLedger
+    // 1. Fetch Returns/Refunds directly from PosReturn
+    const posReturnWhere: any = {
+      createdAt: { gte: startDate, lte: endDate },
+      ...(locationWhere && { locationId: locationWhere }),
+      ...(cashierUserId && {
+        OR: [{ cashierUserId }, { salesOrder: { cashierUserId } }],
+      }),
+      ...(fbrOnly && { salesOrder: { fbrInvoiceNumber: { not: null } } }),
+      ...(paymentModeGroup && paymentModeGroup !== 'all' && {
+        refundMode: { equals: paymentModeGroup, mode: 'insensitive' },
+      }),
+      ...(minAmount !== undefined || maxAmount !== undefined
+        ? {
+            totalRefundAmount: {
+              ...(minAmount !== undefined ? { gte: Number(minAmount) } : {}),
+              ...(maxAmount !== undefined ? { lte: Number(maxAmount) } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const posReturns = await db.posReturn.findMany({
+      where: posReturnWhere,
+      include: {
+        salesOrder: {
+          include: {
+            items: true,
+          },
+        },
+        items: {
+          include: {
+            item: {
+              include: {
+                brand: true,
+                division: true,
+                gender: true,
+                silhouette: true,
+                size: true,
+                color: true,
+                category: true,
+                hsCode: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // 2. Also fetch Returns/Refunds from StockLedger (to catch any orphan returns)
     const returnLedgerEntries = await db.stockLedger.findMany({
       where: {
         referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
@@ -8444,8 +8493,19 @@ export class PosSalesService implements OnModuleInit {
       },
     });
 
+    const handledPosReturnIds = new Set<string>(posReturns.map((r: any) => r.id));
+    const handledSalesOrderIds = new Set<string>(
+      posReturns.map((r: any) => r.salesOrderId).filter(Boolean),
+    );
+
+    const orphanEntries = returnLedgerEntries.filter(
+      (e: any) =>
+        !handledPosReturnIds.has(e.referenceId) &&
+        !handledSalesOrderIds.has(e.referenceId),
+    );
+
     const referenceOrderIds = [
-      ...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean)),
+      ...new Set(orphanEntries.map((e: any) => e.referenceId).filter(Boolean)),
     ];
     const referenceOrders = referenceOrderIds.length
       ? await db.salesOrder.findMany({
@@ -8464,7 +8524,7 @@ export class PosSalesService implements OnModuleInit {
       refOrderMap.set(o.id, o);
     }
 
-    // 2. Fetch Approved Claims from PosClaim
+    // 3. Fetch Approved Claims from PosClaim
     const claims = await db.posClaim.findMany({
       where: {
         status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
@@ -8501,8 +8561,9 @@ export class PosSalesService implements OnModuleInit {
 
     // Cashier Names mapping
     const orderCashierIds = [
-      ...referenceOrders.map((o) => o.cashierUserId),
-      ...claims.map((c) => c.salesOrder.cashierUserId),
+      ...posReturns.map((r: any) => r.cashierUserId || r.salesOrder?.cashierUserId),
+      ...referenceOrders.map((o: any) => o.cashierUserId),
+      ...claims.map((c: any) => c.salesOrder?.cashierUserId),
     ].filter(Boolean);
     const cashierUserIds = [...new Set(orderCashierIds)] as string[];
     const cashierMap = new Map<string, string>();
@@ -8695,12 +8756,68 @@ export class PosSalesService implements OnModuleInit {
       }
     };
 
-    // Process StockLedger Returns
-    for (const entry of returnLedgerEntries) {
+    // 1. Process first-class PosReturns
+    for (const ret of posReturns) {
+      const order = ret.salesOrder;
+      const salesPerson = (ret.cashierUserId && cashierMap.get(ret.cashierUserId)) ||
+        (order?.cashierUserId && cashierMap.get(order.cashierUserId)) ||
+        'Unknown';
+      const docNum = ret.returnNumber;
+      const fbr = order?.fbrInvoiceNumber ? 1 : 0;
+
+      for (const retItem of ret.items) {
+        const it = retItem.item;
+        if (!it) continue;
+
+        const qty = Math.abs(Number(retItem.quantity || 1));
+        const retailPrice = Number(retItem.originalUnitPrice || retItem.originalPaidPerUnit || 0);
+        const taxPercent = Number(retItem.taxPercent || 0);
+        const discountAmount = Number(retItem.discountWost || 0);
+        const taxAmount = Number(retItem.taxAmount || 0);
+        const lineTotal = Number(retItem.lineTotal || 0);
+        const totalPriceWost = Number(retItem.lineTotalWost) !== 0
+          ? Number(retItem.lineTotalWost)
+          : Math.round(Number(retItem.unitPriceWost || 0) * qty * 100) / 100;
+        const excludingSalesTax = totalPriceWost - discountAmount;
+        const salesTaxAmount = taxAmount;
+        const furtherTaxAmount = 0;
+        const totalTax = taxAmount;
+        const includingSalesTax = lineTotal;
+
+        const itemHsCode = it.hsCodeStr || it.hsCode?.hsCode || '-';
+        const itemBarcode = it.barCode || '-';
+
+        const leaf = {
+          invoiceNo: docNum,
+          date: ret.createdAt,
+          size: it.size?.name || '-',
+          color: it.color?.name || '-',
+          hsCode: itemHsCode,
+          barcode: itemBarcode,
+          qty,
+          retailPrice,
+          totalPriceWost,
+          discountAmount,
+          excludingSalesTax,
+          salesTaxPercent: taxPercent,
+          salesTaxAmount,
+          furtherTaxAmount,
+          totalTax,
+          includingSalesTax,
+          salesPerson,
+          fbr,
+        };
+
+        addLeafToTree(leaf, it);
+      }
+    }
+
+    // 2. Process any orphan StockLedger Returns
+    for (const entry of orphanEntries) {
       const order = refOrderMap.get(entry.referenceId);
       if (!order) continue;
 
-      const originalItem = order.items.find((oi) => oi.itemId === entry.itemId);
+      const originalItem = order.items.find((oi: any) => oi.itemId === entry.itemId);
       if (!originalItem) continue;
 
       const qty = Math.abs(Number(entry.qty));
