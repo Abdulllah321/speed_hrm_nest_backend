@@ -5,6 +5,28 @@ import { Pool } from 'pg';
 import { PrismaClient, MovementType } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
+import * as crypto from 'crypto';
+
+function decrypt(encryptedText: string, masterKeyString: string): string {
+  if (!masterKeyString || masterKeyString.length < 32) {
+    throw new Error('MASTER_ENCRYPTION_KEY must be at least 32 characters');
+  }
+  const masterKey = Buffer.from(masterKeyString.slice(0, 32), 'utf-8');
+  const parts = encryptedText.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted text format');
+  }
+  const iv = Buffer.from(parts[0], 'hex');
+  const authTag = Buffer.from(parts[1], 'hex');
+  const encrypted = parts[2];
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', masterKey, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
 // Parse command line arguments
 const args = process.argv.slice(2);
 const isDryRun = args.includes('--dry-run');
@@ -12,6 +34,8 @@ const salesOnly = args.includes('--sales-only');
 const returnsOnly = args.includes('--returns-only');
 const limitArg = args.find((a) => a.startsWith('--limit='));
 const recordLimit = limitArg ? parseInt(limitArg.split('=')[1], 10) : null;
+const tenantArg = args.find((a) => a.startsWith('--tenant='));
+const targetTenantDb = tenantArg ? tenantArg.split('=')[1] : 'tenant_speed_main_mox1gfsi';
 
 const salesFilePath = path.join(__dirname, '../data/SS_LG_2526_SALES.json');
 const returnsFilePath = path.join(__dirname, '../data/SS_LG2526_Sales_return.json');
@@ -124,20 +148,46 @@ async function main() {
   console.log(`========================================================================`);
   console.log(`⚙️ Options: Dry-Run: ${isDryRun} | Sales-Only: ${salesOnly} | Returns-Only: ${returnsOnly}`);
 
-  // 1. Connect to Management DB and get tenant DB URL
-  const managementUrl = process.env.DATABASE_URL_MANAGEMENT!;
-  const mgmtPool = new Pool({ connectionString: managementUrl });
-  const compRes = await mgmtPool.query(`
-    SELECT "dbUrl" FROM "Company" WHERE status = 'active' AND "dbName" = 'tenant_speed_main_mox1gfsi'
-  `);
-  await mgmtPool.end();
+  // 1. Connect to Tenant DB (via Management DB or direct DATABASE_URL)
+  const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
+  const masterKey = process.env.MASTER_ENCRYPTION_KEY;
+  const directDbUrl = process.env.DATABASE_URL;
 
-  if (!compRes.rows[0]?.dbUrl) {
-    console.error('❌ Could not find tenant database URL');
+  let tenantConnStr = '';
+  if (directDbUrl && (!managementUrl || args.includes('--single-db'))) {
+    console.log(`🔗 Connecting directly via DATABASE_URL...`);
+    tenantConnStr = directDbUrl;
+  } else if (managementUrl) {
+    console.log(`🏢 Resolving tenant DB '${targetTenantDb}' via Management DB...`);
+    const mgmtPool = new Pool({ connectionString: managementUrl });
+    const compRes = await mgmtPool.query(`
+      SELECT id, name, code, "dbName", "dbUser", "dbPassword", "dbHost", "dbPort", "dbUrl"
+      FROM "Company"
+      WHERE status = 'active' AND "dbName" = '${targetTenantDb}'
+    `);
+    await mgmtPool.end();
+
+    if (!compRes.rows[0]) {
+      console.error(`❌ Could not find tenant company for db: ${targetTenantDb}`);
+      process.exit(1);
+    }
+    const company = compRes.rows[0];
+    tenantConnStr = company.dbUrl;
+    if (company.dbPassword && masterKey) {
+      try {
+        const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
+        tenantConnStr = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+      } catch {
+        console.warn(`  ⚠️ Decryption failed, using default dbUrl`);
+      }
+    }
+  } else if (directDbUrl) {
+    tenantConnStr = directDbUrl;
+  } else {
+    console.error('❌ Neither DATABASE_URL nor DATABASE_URL_MANAGEMENT found in .env');
     process.exit(1);
   }
 
-  const tenantConnStr = compRes.rows[0].dbUrl;
   const tenantPool = new Pool({ connectionString: tenantConnStr });
   const adapter = new PrismaPg(tenantPool);
   const prisma = new PrismaClient({ adapter });
@@ -246,25 +296,29 @@ async function main() {
 
         totalSalesRevenue += grandTotal;
 
-        // Payment tenders
-        const cashAmount = parseFloat(String(sample.CashSale || 0)) || 0;
-        const cardAmount = parseFloat(String(sample.CardSale || 0)) || 0;
-        const creditAmount = parseFloat(String(sample.CreditSale || 0)) || 0;
-        const voucherAmount =
-          (parseFloat(String(sample.ExchangeVoucherAmount || 0)) || 0) +
-          (parseFloat(String(sample.GiftVoucherAmount || 0)) || 0) +
-          (parseFloat(String(sample.CreditVoucherAmount || 0)) || 0) +
-          (parseFloat(String(sample.ClaimVoucherAmount || 0)) || 0) +
-          (parseFloat(String(sample.GiftVoucherAmount_Corporate || 0)) || 0) +
-          (parseFloat(String(sample.RewardVoucherAmount || 0)) || 0);
+        // Payment tenders (accumulate across all rows of the cash memo)
+        const cashAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.CashSale)) || 0), 0);
+        const cardAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.CardSale)) || 0), 0);
+        const creditAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.CreditSale)) || 0), 0);
+        const exchangeAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.ExchangeVoucherAmount)) || 0), 0);
+        const giftAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.GiftVoucherAmount)) || 0), 0);
+        const claimAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.ClaimVoucherAmount)) || 0), 0);
+        const corpAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.GiftVoucherAmount_Corporate)) || 0), 0);
+        const creditVoucherAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.CreditVoucherAmount)) || 0), 0);
+        const rewardAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.RewardVoucherAmount)) || 0), 0);
+        const creditIssuedAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.CreditVoucherIssuedAmount)) || 0), 0);
+        const cashReturnAmount = groupRows.reduce((acc, r) => acc + (parseFloat(String(r.CashRetrun)) || 0), 0);
+
+        const totalVoucherAmount =
+          exchangeAmount + giftAmount + claimAmount + corpAmount + creditVoucherAmount + rewardAmount;
 
         let paymentMethod = 'cash';
-        const tendersCount = [cashAmount > 0, cardAmount > 0, voucherAmount > 0, creditAmount > 0].filter(Boolean).length;
+        const tendersCount = [cashAmount > 0, cardAmount > 0, totalVoucherAmount > 0, creditAmount > 0].filter(Boolean).length;
         if (tendersCount > 1) {
           paymentMethod = 'split';
         } else if (cardAmount > 0) {
           paymentMethod = 'card';
-        } else if (voucherAmount > 0) {
+        } else if (totalVoucherAmount > 0) {
           paymentMethod = 'voucher';
         } else if (creditAmount > 0) {
           paymentMethod = 'credit_account';
@@ -279,6 +333,19 @@ async function main() {
         if (sample.FKExchangeVoucherNumber && sample.FKExchangeVoucherNumber.trim()) {
           notesParts.push(`ExVoucherRef: ${sample.FKExchangeVoucherNumber.trim()}`);
         }
+
+        // Structured tags for exact parsing in reports
+        if (cashAmount > 0) notesParts.push(`[Cash Sale] Amount: ${cashAmount.toFixed(2)}`);
+        if (cardAmount > 0) notesParts.push(`[Card Sale] Amount: ${cardAmount.toFixed(2)}`);
+        if (exchangeAmount > 0) notesParts.push(`[Exchange Voucher] Amount: ${exchangeAmount.toFixed(2)}`);
+        if (claimAmount > 0) notesParts.push(`[Claim Voucher] Amount: ${claimAmount.toFixed(2)}`);
+        if (corpAmount > 0) notesParts.push(`[Corporate Voucher] Amount: ${corpAmount.toFixed(2)}`);
+        if (giftAmount > 0) notesParts.push(`[Gift Voucher] Amount: ${giftAmount.toFixed(2)}`);
+        if (creditVoucherAmount > 0) notesParts.push(`[Credit Voucher] Amount: ${creditVoucherAmount.toFixed(2)}`);
+        if (rewardAmount > 0) notesParts.push(`[Reward Voucher] Amount: ${rewardAmount.toFixed(2)}`);
+        if (creditAmount > 0) notesParts.push(`[Credit Sale] Balance: ${creditAmount.toFixed(2)}`);
+        if (creditIssuedAmount > 0) notesParts.push(`[Credit Voucher Issued] Amount: ${creditIssuedAmount.toFixed(2)}`);
+        if (cashReturnAmount > 0) notesParts.push(`[Cash Return] Amount: ${cashReturnAmount.toFixed(2)}`);
 
         const fbrInv = sample['FBR Invoice#'] ? sample['FBR Invoice#'].replace(/^'/, '').trim() : null;
 
@@ -317,9 +384,9 @@ async function main() {
             status: 'completed',
             notes: notesParts.join(' | '),
             fbrInvoiceNumber: fbrInv,
-            cashAmount: cashAmount > 0 ? cashAmount : undefined,
-            cardAmount: cardAmount > 0 ? cardAmount : undefined,
-            voucherAmount: voucherAmount > 0 ? voucherAmount : undefined,
+            cashAmount: cashAmount > 0 ? Math.round(cashAmount * 100) / 100 : undefined,
+            cardAmount: cardAmount > 0 ? Math.round(cardAmount * 100) / 100 : undefined,
+            voucherAmount: totalVoucherAmount > 0 ? Math.round(totalVoucherAmount * 100) / 100 : undefined,
             createdAt: docDate,
           },
         });
