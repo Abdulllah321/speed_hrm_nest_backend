@@ -55,6 +55,43 @@ export interface SalesListLineItem {
   subTotal: number;
 }
 
+export interface CardTenderInfo {
+  merchant?: string;
+  cardholderName?: string;
+  cardLast4?: string;
+  authId?: string;
+  binNo?: string;
+  amount?: number;
+}
+
+export interface VoucherTenderInfo {
+  code: string;
+  amount: number;
+  description?: string;
+  companyName?: string;
+  remarks?: string;
+}
+
+export interface SalesListTenderDetails {
+  card?: CardTenderInfo;
+  giftVouchers?: VoucherTenderInfo[];
+  exchangeVouchers?: VoucherTenderInfo[];
+  claimVouchers?: VoucherTenderInfo[];
+  creditVouchers?: VoucherTenderInfo[];
+  corporateVouchers?: VoucherTenderInfo[];
+  rewardVouchers?: VoucherTenderInfo[];
+  creditSale?: {
+    customerName?: string;
+    customerPhone?: string;
+    balance?: number;
+  };
+  creditIssued?: VoucherTenderInfo[];
+  cashReturn?: {
+    amount?: number;
+    reason?: string;
+  };
+}
+
 export interface SalesListInvoiceNode {
   id: string;
   orderNumber: string;
@@ -68,6 +105,7 @@ export interface SalesListInvoiceNode {
   fbrStatus: string;
   totals: SalesListTotals;
   items: SalesListLineItem[];
+  tenderDetails?: SalesListTenderDetails;
 }
 
 export interface SalesListLocationNode {
@@ -718,6 +756,187 @@ export class SalesListExportService {
 
       addTotals(grandTotals, orderTotals);
 
+      // Build structured tender details for interactive hover inspect
+      let cardInfo: CardTenderInfo | undefined;
+      if (cardSale > 0) {
+        let cardholderName: string | undefined;
+        const chMatch = notesStr.match(/(?:Cardholder|Card\s*Name|Holder):\s*([^|\],]+)/i);
+        if (chMatch) cardholderName = chMatch[1].trim();
+
+        let cardLast4: string | undefined;
+        const cMatch = notesStr.match(/(?:Card|Last4|CardLast4|Card#):\s*(?:\*{4})?(\d{4})/i);
+        if (cMatch) {
+          cardLast4 = cMatch[1];
+        } else {
+          const remMatch = notesStr.match(/Remarks:\s*(\d{4})(?:-\d+-\d+)?;/i);
+          if (remMatch) cardLast4 = remMatch[1];
+        }
+
+        let authId: string | undefined;
+        const authMatch = notesStr.match(/(?:Slip|Auth|AuthID|Approval|ApprovalCode):\s*([A-Za-z0-9]+)/i);
+        if (authMatch) {
+          authId = authMatch[1];
+        } else {
+          const remSlipMatch = notesStr.match(/Remarks:\s*\d{4}-\d+-(\d+);/i);
+          if (remSlipMatch) authId = remSlipMatch[1];
+        }
+
+        let binNo: string | undefined;
+        const binMatch = notesStr.match(/BIN:\s*(\d+)/i);
+        if (binMatch) binNo = binMatch[1];
+
+        cardInfo = {
+          merchant: merchantName !== '-' ? merchantName : undefined,
+          cardholderName,
+          cardLast4,
+          authId,
+          binNo,
+          amount: cardSale,
+        };
+      }
+
+      const giftVouchersList: VoucherTenderInfo[] = [];
+      const giftReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'GIFT' || r.voucher?.voucherType === 'OUTLET_GIFT');
+      for (const gr of giftReds) {
+        giftVouchersList.push({
+          code: gr.voucher?.code || 'GFT-VOUCHER',
+          amount: Number(gr.amountUsed || 0),
+          description: gr.voucher?.description || undefined,
+        });
+      }
+      if (giftVouchersList.length === 0 && giftVoucherAmount > 0) {
+        const gCodeMatch = notesStr.match(/GiftVoucherRef:\s*([^|\],]+)/i);
+        giftVouchersList.push({
+          code: gCodeMatch ? gCodeMatch[1].trim() : 'GIFT-VOUCHER',
+          amount: giftVoucherAmount,
+        });
+      }
+
+      const exchangeVouchersList: VoucherTenderInfo[] = [];
+      const exReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'EXCHANGE');
+      for (const er of exReds) {
+        exchangeVouchersList.push({
+          code: er.voucher?.code || 'EXC-VOUCHER',
+          amount: Number(er.amountUsed || 0),
+          description: er.voucher?.description || undefined,
+        });
+      }
+      if (exchangeVouchersList.length === 0 && exchangeVoucherAmount > 0) {
+        const exRefMatch = notesStr.match(/ExVoucherRef:\s*([^|\],]+)/i);
+        exchangeVouchersList.push({
+          code: exRefMatch ? exRefMatch[1].trim() : 'EXCHANGE-VOUCHER',
+          amount: exchangeVoucherAmount,
+        });
+      }
+
+      const claimVouchersList: VoucherTenderInfo[] = [];
+      const clmReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'CLAIM');
+      for (const cr of clmReds) {
+        claimVouchersList.push({
+          code: cr.voucher?.code || 'CLM-VOUCHER',
+          amount: Number(cr.amountUsed || 0),
+          description: cr.voucher?.description || undefined,
+        });
+      }
+      if (claimVouchersList.length === 0 && claimVoucherAmount > 0) {
+        const clmRefMatch = notesStr.match(/ClaimVoucherRef:\s*([^|\],]+)/i);
+        claimVouchersList.push({
+          code: clmRefMatch ? clmRefMatch[1].trim() : 'CLAIM-VOUCHER',
+          amount: claimVoucherAmount,
+        });
+      }
+
+      const creditVouchersList: VoucherTenderInfo[] = [];
+      const credReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'CREDIT' || r.voucher?.voucherType === 'REFUND');
+      for (const cr of credReds) {
+        creditVouchersList.push({
+          code: cr.voucher?.code || 'CRD-VOUCHER',
+          amount: Number(cr.amountUsed || 0),
+          description: cr.voucher?.description || undefined,
+        });
+      }
+      if (creditVouchersList.length === 0 && creditVoucherAmount > 0) {
+        const crRefMatch = notesStr.match(/CreditVoucherRef:\s*([^|\],]+)/i);
+        creditVouchersList.push({
+          code: crRefMatch ? crRefMatch[1].trim() : 'CREDIT-VOUCHER',
+          amount: creditVoucherAmount,
+        });
+      }
+
+      const corporateVouchersList: VoucherTenderInfo[] = [];
+      const corpReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'CORPORATE');
+      for (const cr of corpReds) {
+        corporateVouchersList.push({
+          code: cr.voucher?.code || 'CORP-VOUCHER',
+          amount: Number(cr.amountUsed || 0),
+          companyName: cr.voucher?.companyName || undefined,
+        });
+      }
+      if (corporateVouchersList.length === 0 && giftVoucherCorporate > 0) {
+        const corpRefMatch = notesStr.match(/CorporateRef:\s*([^|\],]+)/i);
+        corporateVouchersList.push({
+          code: corpRefMatch ? corpRefMatch[1].trim() : 'CORPORATE-VOUCHER',
+          amount: giftVoucherCorporate,
+        });
+      }
+
+      const rewardVouchersList: VoucherTenderInfo[] = [];
+      const rewReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'REWARD');
+      for (const rr of rewReds) {
+        rewardVouchersList.push({
+          code: rr.voucher?.code || 'REWARD-VOUCHER',
+          amount: Number(rr.amountUsed || 0),
+          description: rr.voucher?.description || undefined,
+        });
+      }
+      if (rewardVouchersList.length === 0 && rewardVoucherAmount > 0) {
+        const rewNotesMatch = notesStr.match(/\[Reward Voucher\]\s*([^|\],]+)/i);
+        rewardVouchersList.push({
+          code: 'REWARD-VOUCHER',
+          amount: rewardVoucherAmount,
+          remarks: rewNotesMatch ? rewNotesMatch[1].trim() : undefined,
+        });
+      }
+
+      const creditSaleInfo = (creditSale > 0 || onCreditAmount > 0) ? {
+        customerName: custName !== 'Walk-in Customer' ? custName : undefined,
+        customerPhone: custPhone !== '-' ? custPhone : undefined,
+        balance: creditSale || onCreditAmount,
+      } : undefined;
+
+      const creditIssuedList: VoucherTenderInfo[] = [];
+      for (const iv of orderIssued) {
+        creditIssuedList.push({
+          code: iv.code,
+          amount: Number(iv.faceValue || 0),
+          description: iv.description || undefined,
+        });
+      }
+      if (creditIssuedList.length === 0 && creditVoucherIssuedAmount > 0) {
+        creditIssuedList.push({
+          code: 'ISSUED-CREDIT-VOUCHER',
+          amount: creditVoucherIssuedAmount,
+        });
+      }
+
+      const cashReturnInfo = cashReturn > 0 ? {
+        amount: cashReturn,
+        reason: 'Cash returned during invoice settlement',
+      } : undefined;
+
+      const tenderDetails: SalesListTenderDetails = {
+        card: cardInfo,
+        giftVouchers: giftVouchersList.length > 0 ? giftVouchersList : undefined,
+        exchangeVouchers: exchangeVouchersList.length > 0 ? exchangeVouchersList : undefined,
+        claimVouchers: claimVouchersList.length > 0 ? claimVouchersList : undefined,
+        creditVouchers: creditVouchersList.length > 0 ? creditVouchersList : undefined,
+        corporateVouchers: corporateVouchersList.length > 0 ? corporateVouchersList : undefined,
+        rewardVouchers: rewardVouchersList.length > 0 ? rewardVouchersList : undefined,
+        creditSale: creditSaleInfo,
+        creditIssued: creditIssuedList.length > 0 ? creditIssuedList : undefined,
+        cashReturn: cashReturnInfo,
+      };
+
       const invNode: SalesListInvoiceNode = {
         id: order.id,
         orderNumber: order.orderNumber,
@@ -731,6 +950,7 @@ export class SalesListExportService {
         fbrStatus,
         totals: orderTotals,
         items: lineItems,
+        tenderDetails,
       };
 
       invoiceNodes.push(invNode);
