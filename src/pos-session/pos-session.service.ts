@@ -746,20 +746,30 @@ export class PosSessionService {
 
       let cash = rawCash;
       let card = rawCard;
-      if (excess > 0) {
-        if (card > 0) {
-          card = Math.max(0, card - excess);
-        } else {
-          cash = Math.max(0, cash - excess);
-        }
-      }
 
-      // Fallback for non-split orders with empty cash/card amounts in DB
+      // Enforce single tender method if non-split, preventing double-counting from stale DB columns
       if (order.tenderType !== 'split' && order.paymentMethod) {
         if (order.paymentMethod === 'cash') {
+          card = 0;
           if (cash === 0) cash = Math.max(0, grandTotal - voucherRedemptionsSum);
         } else if (order.paymentMethod === 'card' || order.paymentMethod === 'bank_transfer') {
+          cash = 0;
           if (card === 0) card = Math.max(0, grandTotal - voucherRedemptionsSum);
+        } else if (order.paymentMethod === 'voucher') {
+          cash = 0;
+          card = 0;
+        }
+      } else {
+        const excess = Math.max(
+          0,
+          cash + card + voucherRedemptionsSum - (grandTotal + change),
+        );
+        if (excess > 0) {
+          if (card > 0) {
+            card = Math.max(0, card - excess);
+          } else {
+            cash = Math.max(0, cash - excess);
+          }
         }
       }
 
@@ -1419,19 +1429,30 @@ export class PosSessionService {
 
         let cash = rawCash;
         let card = rawCard;
-        if (excess > 0) {
-          if (card > 0) {
-            card = Math.max(0, card - excess);
-          } else {
-            cash = Math.max(0, cash - excess);
-          }
-        }
 
+        // Enforce single tender method if non-split, preventing double-counting from stale DB columns
         if (order.tenderType !== 'split' && order.paymentMethod) {
           if (order.paymentMethod === 'cash') {
+            card = 0;
             if (cash === 0) cash = Math.max(0, grandTotal - voucherRedemptionsSum);
           } else if (order.paymentMethod === 'card' || order.paymentMethod === 'bank_transfer') {
+            cash = 0;
             if (card === 0) card = Math.max(0, grandTotal - voucherRedemptionsSum);
+          } else if (order.paymentMethod === 'voucher') {
+            cash = 0;
+            card = 0;
+          }
+        } else {
+          const excess = Math.max(
+            0,
+            cash + card + voucherRedemptionsSum - (grandTotal + change),
+          );
+          if (excess > 0) {
+            if (card > 0) {
+              card = Math.max(0, card - excess);
+            } else {
+              cash = Math.max(0, cash - excess);
+            }
           }
         }
 

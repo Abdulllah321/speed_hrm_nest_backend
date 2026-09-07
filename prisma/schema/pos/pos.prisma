@@ -105,6 +105,7 @@ model SalesOrder {
   isVoucherRestored     Boolean             @default(false) @map("is_voucher_restored")
   claims                PosClaim[]
   voucherRedemptions    VoucherRedemption[]
+  posReturns            PosReturn[]
 
   @@index([posId])
   @@index([terminalId])
@@ -132,6 +133,7 @@ model SalesOrderItem {
   createdAt               DateTime   @default(now()) @map("created_at")
   item                    Item       @relation(fields: [itemId], references: [id])
   salesOrder              SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  returnItems             PosReturnItem[]
 
   @@index([salesOrderId])
   @@index([itemId])
@@ -306,6 +308,7 @@ model Voucher {
   transactions VoucherTransaction[]
   redemptions  VoucherRedemption[]
   claims       PosClaim[] // Claims that generated this voucher
+  posReturn    PosReturn?
 
   @@index([code])
   @@index([customerId])
