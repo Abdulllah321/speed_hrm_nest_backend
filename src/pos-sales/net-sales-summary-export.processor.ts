@@ -300,20 +300,49 @@ export class NetSalesSummaryExportProcessor {
       });
 
       const referenceOrderIds = [...new Set(returnLedgerEntries.map(e => e.referenceId).filter(Boolean))];
-      const referenceOrders = referenceOrderIds.length
-        ? await prisma.salesOrder.findMany({
-            where: {
-              id: { in: referenceOrderIds },
-              ...(cashierUserId ? { cashierUserId } : {}),
-            },
-            include: {
-              items: true,
-            },
-          })
-        : [];
+      const [posReturnsForLedger, referenceOrders] = await Promise.all([
+        referenceOrderIds.length
+          ? (prisma as any).posReturn.findMany({
+              where: { id: { in: referenceOrderIds } },
+              include: {
+                salesOrder: { include: { items: true } },
+                items: true,
+              },
+            })
+          : [],
+        referenceOrderIds.length
+          ? prisma.salesOrder.findMany({
+              where: {
+                id: { in: referenceOrderIds },
+                ...(cashierUserId ? { cashierUserId } : {}),
+              },
+              include: {
+                items: true,
+              },
+            })
+          : [],
+      ]);
+
       const referenceOrderMap = new Map<string, any>();
       for (const order of referenceOrders) {
         referenceOrderMap.set(order.id, order);
+      }
+      for (const ret of posReturnsForLedger) {
+        referenceOrderMap.set(ret.id, {
+          ...(ret.salesOrder || {}),
+          id: ret.id,
+          posReturn: ret,
+          orderNumber: ret.returnNumber,
+          cashierUserId: ret.cashierUserId || ret.salesOrder?.cashierUserId,
+          items: ret.items.map((pi: any) => ({
+            itemId: pi.itemId,
+            unitPrice: pi.originalUnitPrice,
+            taxPercent: pi.taxPercent,
+            discountAmount: pi.discountWost,
+            taxAmount: pi.taxAmount,
+            quantity: pi.quantity,
+          })),
+        });
       }
 
       await job.progress(35);

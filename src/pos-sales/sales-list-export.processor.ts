@@ -83,7 +83,7 @@ export class SalesListExportProcessor {
         const { exec } = require('child_process');
         exec(
           'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
-          () => {}
+          () => { }
         );
       } catch (e: any) {
         this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
@@ -130,15 +130,15 @@ export class SalesListExportProcessor {
           minAmount,
           maxAmount,
           fbrOnly,
-          onProgress: async (percent, message) => {
-            await job.progress({ percent, message });
+          onProgress: async (p, msg) => {
+            await job.progress(Math.min(95, Math.max(10, p)));
           },
         },
       );
 
       await this.salesListExportService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Successfully generated sales-list preview result' });
-      this.logger.log(`[SalesListPreview ${jobId}] Successfully generated and saved preview result`);
+      await job.progress(100);
+      this.logger.log(`[SalesListPreview] Successfully completed and stored preview job ${jobId}`);
     } catch (err: any) {
       this.logger.error(`[SalesListPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
       throw err;
@@ -241,17 +241,17 @@ export class SalesListExportProcessor {
 
       const referenceOrders = referenceOrderIds.length
         ? await prisma.salesOrder.findMany({
-            where: {
-              id: { in: referenceOrderIds },
-              ...(cashierUserId ? { cashierUserId } : {}),
-            },
-            include: {
-              items: { include: { item: true } },
-              alliance: true,
-              merchant: true,
-              voucherRedemptions: { include: { voucher: true } },
-            },
-          })
+          where: {
+            id: { in: referenceOrderIds },
+            ...(cashierUserId ? { cashierUserId } : {}),
+          },
+          include: {
+            items: { include: { item: true } },
+            alliance: true,
+            merchant: true,
+            voucherRedemptions: { include: { voucher: true } },
+          },
+        })
         : [];
 
       const referenceOrderMap = new Map<string, any>();
@@ -266,11 +266,11 @@ export class SalesListExportProcessor {
       ];
       const issuedVouchers = allOrderIds.length
         ? await prisma.voucher.findMany({
-            where: {
-              sourceOrderId: { in: allOrderIds },
-              isDeleted: false,
-            },
-          })
+          where: {
+            sourceOrderId: { in: allOrderIds },
+            isDeleted: false,
+          },
+        })
         : [];
 
       const issuedVoucherMap = new Map<string, any[]>();
@@ -286,20 +286,20 @@ export class SalesListExportProcessor {
       // Helper to parse tender documents (Auth, Bin, last 4 digits)
       const parseTenderDocs = (notes: string | null, alliance: any): string => {
         if (!notes) return '';
-        
+
         const cardMatch = notes.match(/Card:\s*\*\*\*\*(\d{4})/i);
         const cardLast4 = cardMatch ? cardMatch[1] : '';
-        
+
         const slipMatch = notes.match(/Slip:\s*(\w+)/i);
         const authId = slipMatch ? slipMatch[1] : '';
-        
+
         const binMatch = notes.match(/BIN:\s*(\d+)/i);
         const binNumber = binMatch ? binMatch[1] : '';
 
         if (authId && cardLast4) {
           if (binNumber) {
-            const formattedBin = binNumber.length >= 6 
-              ? (binNumber.slice(0, 4) + '-' + binNumber.slice(4)) 
+            const formattedBin = binNumber.length >= 6
+              ? (binNumber.slice(0, 4) + '-' + binNumber.slice(4))
               : binNumber;
             return `${authId},${formattedBin}**-****-${cardLast4}`;
           }
@@ -325,53 +325,65 @@ export class SalesListExportProcessor {
         let cash = Number(order.cashAmount || 0);
         let card = Number(order.cardAmount || 0);
         let onCredit = balance;
+        let cashReturn = 0;
+
+        const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+        if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
 
         if (cash === 0) {
-          const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+          const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
           if (cashMatch) cash = Number(cashMatch[1]);
         }
         if (card === 0) {
-          const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+          const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
           if (cardMatch) card = Number(cardMatch[1]);
         }
 
-        let rewardVoucher = 0;
-        if (
-          order.paymentMethod === 'reward_voucher' ||
-          order.tenderType === 'reward_voucher'
-        ) {
-          rewardVoucher = Number(order.grandTotal);
-        } else if (notesStr.includes('[Reward Voucher]')) {
-          const amtMatch = notesStr.match(
-            /\[Reward Voucher\].*?Amount:\s*([\d.]+)/i,
-          );
-          if (amtMatch) {
-            rewardVoucher = Number(amtMatch[1]);
-          }
-        }
-        
         let giftVoucher = 0;
         let creditVoucher = 0;
         let exchangeVoucher = 0;
         let claimVoucher = 0;
         let corporateVoucher = 0;
+        let rewardVoucher = 0;
+
+        const exMatch = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
+        if (exMatch) exchangeVoucher = Number(exMatch[1]);
+
+        const clmMatch = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
+        if (clmMatch) claimVoucher = Number(clmMatch[1]);
+
+        const corpMatch = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+        if (corpMatch) corporateVoucher = Number(corpMatch[1]);
+
+        const giftMatch = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
+        if (giftMatch) giftVoucher = Number(giftMatch[1]);
+
+        const rewMatch = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        if (rewMatch) {
+          rewardVoucher = Number(rewMatch[1]);
+        } else if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+          rewardVoucher = Number(order.grandTotal);
+        }
+
+        const credVouchMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
+        if (credVouchMatch) creditVoucher = Number(credVouchMatch[1]);
 
         for (const red of (order.voucherRedemptions || [])) {
           const type = red.voucher?.voucherType;
           const amt = Number(red.amountUsed);
 
           if (type === 'GIFT' || type === 'OUTLET_GIFT') {
-            giftVoucher += amt;
+            if (!giftMatch) giftVoucher += amt;
           } else if (type === 'CREDIT' || type === 'REFUND') {
-            creditVoucher += amt;
+            if (!credVouchMatch) creditVoucher += amt;
           } else if (type === 'CLAIM') {
-            claimVoucher += amt;
+            if (!clmMatch) claimVoucher += amt;
           } else if (type === 'CORPORATE') {
-            corporateVoucher += amt;
+            if (!corpMatch) corporateVoucher += amt;
           } else if (type === 'EXCHANGE') {
-            exchangeVoucher += amt;
+            if (!exMatch) exchangeVoucher += amt;
           } else if (type === 'REWARD') {
-            rewardVoucher += amt;
+            if (!rewMatch) rewardVoucher += amt;
           }
         }
 
@@ -411,6 +423,11 @@ export class SalesListExportProcessor {
         let issuedGift = 0;
         let issuedCredit = 0;
 
+        const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+        if (issuedMatch) {
+          issuedCredit = Number(issuedMatch[1]);
+        }
+
         const orderIssued = issuedVoucherMap.get(order.id) || [];
         for (const iv of orderIssued) {
           const type = iv.voucherType;
@@ -418,8 +435,8 @@ export class SalesListExportProcessor {
 
           if (type === 'GIFT' || type === 'CORPORATE' || type === 'OUTLET_GIFT') {
             issuedGift += faceVal;
-          } else if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
-            issuedCredit += faceVal;
+          } else if (type === 'CREDIT' || type === 'REFUND') {
+            if (!issuedMatch) issuedCredit += faceVal;
           }
         }
 
@@ -678,13 +695,13 @@ export class SalesListExportProcessor {
         const groupRow = ws.getRow(1);
         ws.mergeCells('A1:D1');
         groupRow.getCell(1).value = 'Sale';
-        
+
         ws.mergeCells('E1:M1');
         groupRow.getCell(5).value = 'Tender';
-        
+
         ws.mergeCells('N1:O1');
         groupRow.getCell(14).value = 'Issued';
-        
+
         ['A1', 'E1', 'N1'].forEach(cellRef => {
           const cell = ws.getCell(cellRef);
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
