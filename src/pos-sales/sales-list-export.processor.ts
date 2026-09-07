@@ -109,31 +109,38 @@ export class SalesListExportProcessor {
       fbrOnly,
     } = job.data;
 
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
+
     try {
-      this.logger.log(`[SalesListPreview] Starting generation for preview job ${jobId}`);
-      await job.progress(10);
+      this.logger.log(`[SalesListPreview ${jobId}] Starting background sales-list preview computation`);
+      await job.progress({ percent: 10, message: 'Queueing sales list preview computation task...' });
 
-      const result = await this.salesListExportService.computeReportData({
-        locationId,
-        startDate,
-        endDate,
-        cashierUserId,
-        reportType,
-        search,
-        paymentModeGroup,
-        minAmount,
-        maxAmount,
-        fbrOnly,
-        onProgress: async (p, msg) => {
-          await job.progress(Math.min(95, Math.max(10, p)));
+      const result = await this.salesListExportService.generateSalesListReportDataInternal(
+        prisma as any,
+        {
+          locationId,
+          startDate,
+          endDate,
+          cashierUserId,
+          reportType,
+          search,
+          paymentModeGroup,
+          minAmount,
+          maxAmount,
+          fbrOnly,
+          onProgress: async (percent, message) => {
+            await job.progress({ percent, message });
+          },
         },
-      });
+      );
 
-      await this.salesListExportService.savePreviewResult(jobId, result);
-      await job.progress(100);
-      this.logger.log(`[SalesListPreview] Successfully completed and stored preview job ${jobId}`);
+      await this.salesListExportService.saveReportPreviewResult(jobId, result);
+      await job.progress({ percent: 100, message: 'Successfully generated sales-list preview result' });
+      this.logger.log(`[SalesListPreview ${jobId}] Successfully generated and saved preview result`);
     } catch (err: any) {
-      this.logger.error(`[SalesListPreview] Failed preview job ${jobId}: ${err.message}`, err.stack);
+      this.logger.error(`[SalesListPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
       throw err;
     }
   }
