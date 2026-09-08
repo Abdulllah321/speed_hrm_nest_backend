@@ -39,10 +39,11 @@ export class CreateCprDto {
   @ApiProperty({
     description: 'CPR Number',
     example: 'IT-20260529-0101-1714853',
+    required: false,
   })
   @IsString()
-  @IsNotEmpty()
-  cprNo: string;
+  @IsOptional()
+  cprNo?: string;
 
   @ApiProperty({
     description: 'Car Amount',
