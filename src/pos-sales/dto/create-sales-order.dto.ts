@@ -102,6 +102,11 @@ export class TenderItemDto {
     @IsNumber()
     @Min(0)
     voucherFaceValue?: number;
+
+    @ApiPropertyOptional({ description: 'Voucher type (EXCHANGE, GIFT, CREDIT, CLAIM, etc.)' })
+    @IsOptional()
+    @IsString()
+    voucherType?: string;
 }
 
 // ── Alliance / bank card meta ─────────────────────────────────────────────
