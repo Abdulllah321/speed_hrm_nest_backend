@@ -457,7 +457,7 @@ model CprTax {
   cnic                String
   name                String
   city                String?
-  cprNo               String
+  cprNo               String?
   carAmount           Decimal?  @db.Decimal(15, 2)
   ntn                 String?
   taxableAmountAnnual Decimal?  @db.Decimal(15, 2)
