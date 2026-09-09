@@ -1175,24 +1175,42 @@ async function main() {
           targetOrderId = originalSalesOrder.id;
           linkedReturnsToSales++;
 
-          await prisma.salesOrder.update({
-            where: { id: originalSalesOrder.id },
-            data: {
-              status: 'returned',
-              returnNumber: voucherCode,
-            },
-          });
+          try {
+            // Only set returnNumber if not already taken by another sales order
+            const isTaken = await prisma.salesOrder.findFirst({
+              where: { returnNumber: voucherCode, id: { not: originalSalesOrder.id } },
+              select: { id: true },
+            });
+
+            await prisma.salesOrder.update({
+              where: { id: originalSalesOrder.id },
+              data: {
+                status: 'returned',
+                ...(!isTaken && !originalSalesOrder.returnNumber ? { returnNumber: voucherCode } : {}),
+              },
+            });
+          } catch {
+            await prisma.salesOrder.update({
+              where: { id: originalSalesOrder.id },
+              data: { status: 'returned' },
+            });
+          }
         } else {
-          const fallbackOrderNumber = `RET-${cleanLocationCode}-${padDoc}`;
+          const fallbackOrderNumber = `RET-${subTypePrefix}-${cleanLocationCode}-${padDoc}`;
+          const isTaken = await prisma.salesOrder.findFirst({
+            where: { returnNumber: voucherCode, orderNumber: { not: fallbackOrderNumber } },
+            select: { id: true },
+          });
+
           const fallbackOrder = await prisma.salesOrder.upsert({
             where: { orderNumber: fallbackOrderNumber },
             update: {
-              returnNumber: voucherCode,
               status: 'returned',
+              ...(!isTaken ? { returnNumber: voucherCode } : {}),
             },
             create: {
               orderNumber: fallbackOrderNumber,
-              returnNumber: voucherCode,
+              ...(!isTaken ? { returnNumber: voucherCode } : {}),
               locationId: location.id,
               subtotal: Math.round(returnTotalWost * 100) / 100,
               discountAmount: Math.round(returnTotalDiscount * 100) / 100,
