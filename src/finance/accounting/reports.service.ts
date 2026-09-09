@@ -443,7 +443,8 @@ export class ReportsService {
     sortBy?: string,
     sortOrder?: 'asc' | 'desc',
   ) {
-    const accountIds = accountId
+    const decodedId = decodeURIComponent(accountId || '');
+    const accountIds = decodedId
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -609,20 +610,26 @@ export class ReportsService {
 
         const pvIds = transactions
           .filter((tx) => tx.sourceType === 'PAYMENT_VOUCHER')
-          .map((tx) => tx.sourceId);
+          .map((tx) => tx.sourceId)
+          .filter((id): id is string => Boolean(id && typeof id === 'string' && id.trim()));
         const rvIds = transactions
           .filter((tx) => tx.sourceType === 'RECEIPT_VOUCHER')
-          .map((tx) => tx.sourceId);
+          .map((tx) => tx.sourceId)
+          .filter((id): id is string => Boolean(id && typeof id === 'string' && id.trim()));
 
         const [pvs, rvs] = await Promise.all([
-          this.prisma.paymentVoucher.findMany({
-            where: { id: { in: pvIds } },
-            select: { id: true, chequeNo: true },
-          }),
-          this.prisma.receiptVoucher.findMany({
-            where: { id: { in: rvIds } },
-            select: { id: true, chequeNo: true },
-          }),
+          pvIds.length > 0
+            ? this.prisma.paymentVoucher.findMany({
+                where: { id: { in: pvIds } },
+                select: { id: true, chequeNo: true },
+              })
+            : Promise.resolve([] as Array<{ id: string; chequeNo: string | null }>),
+          rvIds.length > 0
+            ? this.prisma.receiptVoucher.findMany({
+                where: { id: { in: rvIds } },
+                select: { id: true, chequeNo: true },
+              })
+            : Promise.resolve([] as Array<{ id: string; chequeNo: string | null }>),
         ]);
 
         const chequeMap = new Map<string, string>();
@@ -723,11 +730,30 @@ export class ReportsService {
 
     const heads = Array.from(headsMap.values());
 
+    let combinedRows = primaryLedger.rows;
+    if (ledgers.length > 1) {
+      const allRows = ledgers.flatMap((l) => l.rows);
+      allRows.sort((a, b) => {
+        const tA = new Date(a.transactionDate).getTime();
+        const tB = new Date(b.transactionDate).getTime();
+        if (tA !== tB) return tA - tB;
+        return (a.id || '').localeCompare(b.id || '');
+      });
+      let runningBal = ledgers.reduce((sum, l) => sum + l.openingBalance, 0);
+      combinedRows = allRows.map((r) => {
+        runningBal += Number(r.debit) - Number(r.credit);
+        return { ...r, runningBalance: runningBal };
+      });
+    }
+
     return {
       account: combinedAccount,
       openingBalance: ledgers.reduce((sum, l) => sum + l.openingBalance, 0),
-      rows: primaryLedger.rows,
-      closingBalance: primaryLedger.closingBalance,
+      rows: combinedRows,
+      closingBalance:
+        combinedRows.length > 0
+          ? combinedRows[combinedRows.length - 1].runningBalance
+          : primaryLedger.closingBalance,
       rangeTotalDebit: ledgers.reduce((sum, l) => sum + l.rangeTotalDebit, 0),
       rangeTotalCredit: ledgers.reduce((sum, l) => sum + l.rangeTotalCredit, 0),
       rangeClosingBalance: ledgers.reduce((sum, l) => sum + l.rangeClosingBalance, 0),
