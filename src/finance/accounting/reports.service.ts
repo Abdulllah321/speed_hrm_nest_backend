@@ -448,11 +448,62 @@ export class ReportsService {
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const accounts = await this.prisma.chartOfAccount.findMany({
+    const initialAccounts = await this.prisma.chartOfAccount.findMany({
       where: { id: { in: accountIds } },
-      select: { id: true, code: true, name: true, type: true, balance: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        type: true,
+        balance: true,
+        isGroup: true,
+        parentId: true,
+        parent: { select: { id: true, code: true, name: true } },
+      },
     });
-    if (accounts.length === 0) throw new NotFoundException('Account not found');
+    if (initialAccounts.length === 0) throw new NotFoundException('Account not found');
+
+    // If any selected accounts are groups, fetch their active leaf child accounts
+    const groupAccountIds = initialAccounts.filter((a) => a.isGroup).map((a) => a.id);
+    let resolvedAccounts = [...initialAccounts];
+
+    if (groupAccountIds.length > 0) {
+      const childAccounts = await this.prisma.chartOfAccount.findMany({
+        where: {
+          parentId: { in: groupAccountIds },
+          isActive: true,
+        },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          type: true,
+          balance: true,
+          isGroup: true,
+          parentId: true,
+          parent: { select: { id: true, code: true, name: true } },
+        },
+      });
+
+      const existingIds = new Set(initialAccounts.map((a) => a.id));
+      const newChildren = childAccounts.filter((c) => !existingIds.has(c.id));
+      const groupsWithChildren = new Set(childAccounts.map((c) => c.parentId).filter(Boolean));
+
+      resolvedAccounts = [
+        ...initialAccounts.filter((a) => !groupsWithChildren.has(a.id)),
+        ...newChildren,
+      ];
+    }
+
+    // Sort accounts hierarchically by Head code, then Account code
+    resolvedAccounts.sort((a, b) => {
+      const headCodeA = a.parent?.code ?? a.code;
+      const headCodeB = b.parent?.code ?? b.code;
+      if (headCodeA !== headCodeB) return headCodeA.localeCompare(headCodeB);
+      return a.code.localeCompare(b.code);
+    });
+
+    const accounts = resolvedAccounts;
 
     const fromDate = parseFromDate(from);
     const toDate = parseToDate(to);
@@ -601,8 +652,13 @@ export class ReportsService {
         const rangeClosingBalance =
           openingBalance + rangeTotalDebit - rangeTotalCredit;
 
+        const headInfo = acc.parent
+          ? { id: acc.parent.id, code: acc.parent.code, name: acc.parent.name }
+          : { id: acc.id, code: acc.code, name: acc.name };
+
         return {
           account: { ...acc, balance: Number(acc.balance) },
+          head: headInfo,
           openingBalance,
           rows,
           closingBalance: running,
@@ -626,6 +682,47 @@ export class ReportsService {
             balance: accounts.reduce((sum, a) => sum + Number(a.balance), 0),
           };
 
+    // Group ledgers by Head
+    const headsMap = new Map<
+      string,
+      {
+        head: { id: string; code: string; name: string };
+        openingBalance: number;
+        rangeTotalDebit: number;
+        rangeTotalCredit: number;
+        rangeClosingBalance: number;
+        ledgerCount: number;
+        transactionCount: number;
+        ledgers: typeof ledgers;
+      }
+    >();
+
+    for (const lg of ledgers) {
+      const hKey = lg.head.id;
+      if (!headsMap.has(hKey)) {
+        headsMap.set(hKey, {
+          head: lg.head,
+          openingBalance: 0,
+          rangeTotalDebit: 0,
+          rangeTotalCredit: 0,
+          rangeClosingBalance: 0,
+          ledgerCount: 0,
+          transactionCount: 0,
+          ledgers: [],
+        });
+      }
+      const hGroup = headsMap.get(hKey)!;
+      hGroup.openingBalance += lg.openingBalance;
+      hGroup.rangeTotalDebit += lg.rangeTotalDebit;
+      hGroup.rangeTotalCredit += lg.rangeTotalCredit;
+      hGroup.rangeClosingBalance += lg.rangeClosingBalance;
+      hGroup.ledgerCount += 1;
+      hGroup.transactionCount += (lg.pagination?.total ?? lg.rows.length);
+      hGroup.ledgers.push(lg);
+    }
+
+    const heads = Array.from(headsMap.values());
+
     return {
       account: combinedAccount,
       openingBalance: ledgers.reduce((sum, l) => sum + l.openingBalance, 0),
@@ -636,6 +733,7 @@ export class ReportsService {
       rangeClosingBalance: ledgers.reduce((sum, l) => sum + l.rangeClosingBalance, 0),
       pagination: primaryLedger.pagination,
       ledgers,
+      heads,
     };
   }
 
