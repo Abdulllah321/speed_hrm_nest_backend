@@ -114,22 +114,28 @@ async function bootstrap() {
         enableImplicitConversion: true, // Enable implicit type conversion
       },
       exceptionFactory: (errors) => {
-        // Custom error formatting for validation errors
-        const formattedErrors = errors.map((error) => {
-          const constraints = error.constraints || {};
-          return {
-            field: error.property,
-            messages: Object.values(constraints),
-          };
-        });
+        const flattenErrors = (errorList: any[], parent = ''): { field: string; messages: string[] }[] => {
+          const result: { field: string; messages: string[] }[] = [];
+          for (const err of errorList) {
+            const fieldPath = parent ? `${parent}.${err.property}` : err.property;
+            if (err.constraints) {
+              result.push({
+                field: fieldPath,
+                messages: Object.values(err.constraints),
+              });
+            }
+            if (err.children && err.children.length > 0) {
+              result.push(...flattenErrors(err.children, fieldPath));
+            }
+          }
+          return result;
+        };
 
-        const messages = errors.map((error) => {
-          const constraints = error.constraints || {};
-          return Object.values(constraints).join(', ');
-        });
+        const formattedErrors = flattenErrors(errors);
+        const messages = formattedErrors.flatMap((e) => e.messages.map((m) => `${e.field}: ${m}`));
 
         return new BadRequestException({
-          message: messages.join('; '),
+          message: messages.join('; ') || 'Validation failed',
           errors: formattedErrors,
         });
       },
