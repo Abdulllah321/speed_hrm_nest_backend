@@ -32,20 +32,44 @@ export class ReportsController {
 
   /**
    * GET /api/finance/reports/general-ledger/:accountId
-   * Full transaction history for one account with opening & closing balance.
+   * Full transaction history for one or multiple accounts with opening & closing balance.
    */
   @Get('general-ledger/:accountId')
-  @ApiOperation({ summary: 'General Ledger for a single account' })
+  @ApiOperation({ summary: 'General Ledger for single or multiple accounts' })
   @ApiQuery({ name: 'from',  required: false, type: String })
   @ApiQuery({ name: 'to',    required: false, type: String })
   @ApiQuery({ name: 'page',  required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'sourceType', required: false, type: String })
+  @ApiQuery({ name: 'accountId', required: false, type: String })
   async generalLedger(
     @Param('accountId') accountId: string,
     @Query('from')  from?: string,
     @Query('to')    to?: string,
     @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page  = 1,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
+    @Query('sourceType') sourceType?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+    @Query('accountId') queryAccountId?: string,
+  ) {
+    const effectiveId = queryAccountId || accountId;
+    return { status: true, data: await this.reports.getGeneralLedger(effectiveId, from, to, page, limit, sourceType, sortBy, sortOrder) };
+  }
+
+  @Get('general-ledger')
+  @ApiOperation({ summary: 'General Ledger for multiple accounts via query parameter' })
+  @ApiQuery({ name: 'accountId', required: true, type: String })
+  @ApiQuery({ name: 'from', required: false, type: String })
+  @ApiQuery({ name: 'to', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'sourceType', required: false, type: String })
+  async generalLedgerQuery(
+    @Query('accountId') accountId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
     @Query('sourceType') sourceType?: string,
     @Query('sortBy') sortBy?: string,

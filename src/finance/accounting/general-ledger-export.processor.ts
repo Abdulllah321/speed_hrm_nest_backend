@@ -414,7 +414,7 @@ export class GeneralLedgerExportProcessor {
           opRow.getCell(1).value = '';
           opRow.getCell(2).value = '';
           opRow.getCell(3).value = '—';
-          opRow.getCell(4).value = 'Opening Balance';
+          opRow.getCell(4).value = '—';
           opRow.getCell(5).value = '';
           opRow.getCell(6).value = '';
           opRow.getCell(7).value = '';
