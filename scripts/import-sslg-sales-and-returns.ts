@@ -47,7 +47,9 @@ Options:
   --sales-only             Only import sales orders
   --returns-only           Only import returns & exchanges
   --limit=<number>         Limit number of orders/returns per location (for testing)
+  --limit=<number>         Limit number of orders/returns per location (for testing)
   --batch-size=<number>    Progress batch logging size [default: 100]
+  --resume                 Skip stores that are already 100% imported in the database
   --tenant=<dbName>        Tenant DB name [default: tenant_speed_main_mox1gfsi]
   --single-db              Connect directly via DATABASE_URL without management DB
   --help, -h               Show this help message
@@ -56,6 +58,7 @@ Options:
 }
 
 const isDryRun = args.includes('--dry-run');
+const isResume = args.includes('--resume') || args.includes('--skip-completed');
 const salesOnly = args.includes('--sales-only');
 const returnsOnly = args.includes('--returns-only');
 const limitArg = args.find((a) => a.startsWith('--limit='));
@@ -717,6 +720,39 @@ async function main() {
     console.log(`🏭 Central Warehouse: ${warehouse.name} (${warehouse.code})`);
     console.log(`========================================================================`);
 
+    const storeSalesRows = salesByLocationId.get(locId)?.rows || [];
+    const storeReturnRows = returnsByLocationId.get(locId)?.rows || [];
+
+    // Skip store if --resume is specified and store is already 100% completed
+    if (isResume) {
+      const distinctSalesInFile = new Set(storeSalesRows.map((s) => String(s.DocumentNumber).trim())).size;
+      const distinctReturnsInFile = new Set(
+        storeReturnRows.map(
+          (r) =>
+            (r['Sub Type'] || r['SUB Type'] || 'Exchange').trim() + '_' + String(r.DocumentNumber).trim(),
+        ),
+      ).size;
+
+      const dbSalesCount = await prisma.salesOrder.count({ where: { locationId: location.id } });
+      const dbReturnsCount = await prisma.posReturn.count({ where: { locationId: location.id } });
+
+      const salesComplete = returnsOnly || distinctSalesInFile === 0 || dbSalesCount >= distinctSalesInFile;
+      const returnsComplete = salesOnly || distinctReturnsInFile === 0 || dbReturnsCount >= distinctReturnsInFile;
+
+      if (salesComplete && returnsComplete) {
+        console.log(
+          `⏭️ [RESUME] Skipping Store ${location.name} (${location.code}) — already 100% completed (${dbSalesCount} sales orders, ${dbReturnsCount} return docs in DB).`,
+        );
+        grandTotalSalesOrders += dbSalesCount;
+        grandTotalReturnsCount += dbReturnsCount;
+        continue;
+      } else {
+        console.log(
+          `🔄 [RESUME] Incomplete Store ${location.name} (${location.code}): DB has ${dbSalesCount}/${distinctSalesInFile} sales, ${dbReturnsCount}/${distinctReturnsInFile} returns. Processing...`,
+        );
+      }
+    }
+
     // Pre-cache InventoryItems for this store
     const initialInvItems = await prisma.inventoryItem.findMany({
       where: { locationId: location.id, status: 'AVAILABLE' },
@@ -734,7 +770,6 @@ async function main() {
     // --------------------------------------------------------------------
     // PHASE 1: SALES ORDERS
     // --------------------------------------------------------------------
-    const storeSalesRows = salesByLocationId.get(locId)?.rows || [];
     if (!returnsOnly && storeSalesRows.length > 0) {
       console.log(`\n📥 [PHASE 1] Processing ${storeSalesRows.length.toLocaleString()} Sales Rows...`);
 
@@ -1028,7 +1063,6 @@ async function main() {
     // --------------------------------------------------------------------
     // PHASE 2: RETURNS & EXCHANGES
     // --------------------------------------------------------------------
-    const storeReturnRows = returnsByLocationId.get(locId)?.rows || [];
     if (!salesOnly && storeReturnRows.length > 0) {
       console.log(`\n📥 [PHASE 2] Processing ${storeReturnRows.length.toLocaleString()} Return Rows...`);
 

@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import { promisify } from 'util';
+import { pipeline } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
@@ -99,6 +100,9 @@ export interface SalesListInvoiceNode {
   customerName: string;
   customerPhone: string;
   cashierName: string;
+  cashierUserId?: string;
+  locationId?: string;
+  locationName?: string;
   paymentMethod: string;
   merchant?: string;
   fbrInvoiceNumber: string;
@@ -158,7 +162,7 @@ export interface SalesListReportResult {
   reportType: 'merged' | 'separate';
   locations?: SalesListLocationNode[];
   invoices: SalesListInvoiceNode[];
-  flatItems: SalesListFlatRecord[];
+  flatItems?: SalesListFlatRecord[];
   grandTotals: SalesListTotals;
   dateRange: { startDate?: string; endDate?: string };
   locationNames: string;
@@ -195,6 +199,13 @@ export class SalesListExportService {
     }
   }
 
+  private readonly cancelledPreviewJobIds = new Set<string>();
+
+  isJobCancelled(jobId?: string): boolean {
+    if (!jobId) return false;
+    return this.cancelledPreviewJobIds.has(jobId);
+  }
+
   async queueReportPreview(opts: {
     userId: string;
     locationId?: string;
@@ -207,10 +218,35 @@ export class SalesListExportService {
     minAmount?: number;
     maxAmount?: number;
     fbrOnly?: boolean;
+    fiscalYear?: string;
+    year?: number | string;
   }): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+
+    // Clean up previous obsolete preview jobs of the same user so the queue is never flooded
+    if (opts.userId) {
+      try {
+        const [waitingJobs, activeJobs] = await Promise.all([
+          this.exportQueue.getWaiting(),
+          this.exportQueue.getActive(),
+        ]);
+
+        for (const wJob of waitingJobs) {
+          if (wJob.data?.userId === opts.userId && wJob.name === 'generate-sales-list-preview') {
+            await wJob.remove();
+          }
+        }
+        for (const aJob of activeJobs) {
+          if (aJob.data?.userId === opts.userId && aJob.name === 'generate-sales-list-preview') {
+            this.cancelledPreviewJobIds.add(aJob.data?.jobId);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Failed cleaning up obsolete preview jobs: ${err.message}`);
+      }
+    }
 
     await this.exportQueue.add(
       'generate-sales-list-preview',
@@ -229,6 +265,8 @@ export class SalesListExportService {
         minAmount: opts.minAmount,
         maxAmount: opts.maxAmount,
         fbrOnly: opts.fbrOnly,
+        fiscalYear: opts.fiscalYear,
+        year: opts.year,
       },
       {
         jobId: `preview-${jobId}`,
@@ -294,11 +332,80 @@ export class SalesListExportService {
     };
   }
 
+  getPreviewFilePath(jobId: string): string {
+    const ndjsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
+    if (fs.existsSync(ndjsonPath)) return ndjsonPath;
+    return path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+  }
+
+  getPreviewNdjsonFilePath(jobId: string): string {
+    return path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
+  }
+
   async saveReportPreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
-    const jsonStr = JSON.stringify(result);
-    const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
-    const filePath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
-    await fs.promises.writeFile(filePath, compressed);
+    const filePath = this.getPreviewNdjsonFilePath(jobId);
+    const gzip = zlib.createGzip({ level: 6 });
+    const writeStream = fs.createWriteStream(filePath);
+
+    await new Promise<void>((resolve, reject) => {
+      pipeline(gzip, writeStream, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+
+      const writeData = async () => {
+        try {
+          const safeWrite = async (chunk: string): Promise<void> => {
+            if (!gzip.write(chunk)) {
+              await new Promise((r) => gzip.once('drain', r));
+            }
+          };
+
+          const invoices = result.invoices || [];
+
+          // Line 1: Meta header with total invoice count
+          const metaLine = JSON.stringify({
+            type: 'meta',
+            reportType: result.reportType,
+            dateRange: result.dateRange,
+            locationNames: result.locationNames,
+            locations: result.locations,
+            totalInvoices: invoices.length,
+          }) + '\n';
+          await safeWrite(metaLine);
+
+          // Lines 2..N: Invoices chunked into batches of 100
+          const CHUNK = 100;
+          for (let i = 0; i < invoices.length; i += CHUNK) {
+            const slice = invoices.slice(i, i + CHUNK);
+            const chunkLine = JSON.stringify({
+              type: 'invoices',
+              startIndex: i,
+              count: slice.length,
+              invoices: slice,
+            }) + '\n';
+            await safeWrite(chunkLine);
+            // Yield to event loop
+            await new Promise((res) => setImmediate(res));
+          }
+
+          // Final Line: Verified Grand Totals
+          const totalsLine = JSON.stringify({
+            type: 'totals',
+            grandTotals: result.grandTotals,
+            totalInvoices: invoices.length,
+            done: true,
+          }) + '\n';
+          await safeWrite(totalsLine);
+
+          gzip.end();
+        } catch (e) {
+          gzip.destroy(e as any);
+        }
+      };
+
+      writeData();
+    });
   }
 
   async savePreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
@@ -306,13 +413,50 @@ export class SalesListExportService {
   }
 
   async getReportPreviewResult(jobId: string): Promise<SalesListReportResult | null> {
-    const filePath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+    const filePath = this.getPreviewFilePath(jobId);
     if (!fs.existsSync(filePath)) {
       return null;
     }
     const compressed = await fs.promises.readFile(filePath);
     const decompressed = await gunzipAsync(compressed);
-    return JSON.parse(decompressed.toString('utf8'));
+    const rawText = decompressed.toString('utf8');
+
+    // Check if NDJSON
+    if (filePath.endsWith('.ndjson.gz') || rawText.startsWith('{"type":')) {
+      const lines = rawText.split('\n');
+      let meta: any = {};
+      let allInvoices: any[] = [];
+      let grandTotals: any = {};
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const obj = JSON.parse(line);
+          if (obj.type === 'meta') {
+            meta = obj;
+          } else if (obj.type === 'invoices' && Array.isArray(obj.invoices)) {
+            allInvoices.push(...obj.invoices);
+          } else if (obj.type === 'totals') {
+            grandTotals = obj.grandTotals || {};
+          }
+        } catch {
+          // ignore malformed line
+        }
+      }
+
+      return {
+        reportType: meta.reportType || 'merged',
+        dateRange: meta.dateRange || {},
+        locationNames: meta.locationNames || '',
+        locations: meta.locations || [],
+        grandTotals,
+        invoices: allInvoices,
+        flatItems: [],
+      };
+    }
+
+    const parsed = JSON.parse(rawText);
+    return parsed.data || parsed;
   }
 
   async computeReportData(
@@ -327,6 +471,8 @@ export class SalesListExportService {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: number | string;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
     prismaClient?: PrismaService,
@@ -348,6 +494,10 @@ export class SalesListExportService {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: number | string;
+      previewJobId?: string;
+      isAborted?: () => boolean;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
   ): Promise<SalesListReportResult> {
@@ -362,6 +512,8 @@ export class SalesListExportService {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
       onProgress,
     } = opts;
 
@@ -389,8 +541,47 @@ export class SalesListExportService {
       return new Date(`${dateStr}${timePart}`);
     };
 
-    const startDate = parseLocalDate(startStr, false);
-    const endDate = parseLocalDate(endStr, true);
+    // Determine Pakistan Fiscal Year bounds: July 1 to June 30
+    const getFiscalYearBounds = (fyStr?: string): { start: Date; end: Date } => {
+      let startYear: number;
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth(); // 0 = Jan, 6 = July
+      const defaultStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+
+      if (!fyStr || fyStr === 'current' || fyStr === 'current_fiscal') {
+        startYear = defaultStartYear;
+      } else if (fyStr === 'previous' || fyStr === 'previous_fiscal') {
+        startYear = defaultStartYear - 1;
+      } else {
+        const match = fyStr.match(/(\d{4})/);
+        startYear = match ? parseInt(match[1], 10) : defaultStartYear;
+      }
+
+      const start = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(startYear + 1, 5, 30, 23, 59, 59, 999));
+      return { start, end };
+    };
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (fiscalYear) {
+      const bounds = getFiscalYearBounds(fiscalYear);
+      startDate = bounds.start;
+      endDate = bounds.end;
+    } else if (year) {
+      const yr = typeof year === 'string' ? parseInt(year, 10) : year;
+      const targetYear = !isNaN(yr) && yr > 2000 ? yr : now.getFullYear();
+      startDate = new Date(Date.UTC(targetYear, 0, 1, 0, 0, 0, 0));
+      endDate = new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999));
+    } else if (startStr || endStr) {
+      startDate = parseLocalDate(startStr, false);
+      endDate = parseLocalDate(endStr, true);
+    } else {
+      const bounds = getFiscalYearBounds('current');
+      startDate = bounds.start;
+      endDate = bounds.end;
+    }
 
     const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
@@ -414,8 +605,6 @@ export class SalesListExportService {
       locationNames = locs.map((l) => l.name).join(', ');
     }
     if (!locationNames) locationNames = 'All Outlets (Stores)';
-
-    await onProgress?.(30, 'Querying POS sales invoices from database...');
 
     const where: any = {
       status: { notIn: ['hold', 'hold_expired', 'hold_cancelled'] },
@@ -446,44 +635,71 @@ export class SalesListExportService {
       ];
     }
 
-    const rawOrders = await prisma.salesOrder.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        customer: { select: { name: true, contactNo: true } },
-        alliance: true,
-        merchant: true,
-        voucherRedemptions: {
+    await onProgress?.(25, 'Counting matching sales orders...');
+    const totalOrdersCount = await prisma.salesOrder.count({ where });
+
+    const rawOrders: any[] = [];
+    if (totalOrdersCount > 0) {
+      const CHUNK = 1000;
+      for (let skip = 0; skip < totalOrdersCount; skip += CHUNK) {
+        if (opts.isAborted?.() || (opts.previewJobId && this.isJobCancelled(opts.previewJobId))) {
+          throw new Error('JOB_CANCELLED');
+        }
+
+        const chunkOrders = await prisma.salesOrder.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: CHUNK,
           include: {
-            voucher: true,
-          },
-        },
-        items: {
-          include: {
-            item: {
-              select: {
-                description: true,
-                sku: true,
-                barCode: true,
-                size: { select: { name: true } },
-                color: { select: { name: true } },
+            customer: { select: { name: true, contactNo: true } },
+            alliance: true,
+            merchant: true,
+            voucherRedemptions: {
+              include: {
+                voucher: true,
+              },
+            },
+            items: {
+              include: {
+                item: {
+                  select: {
+                    description: true,
+                    sku: true,
+                    barCode: true,
+                    size: { select: { name: true } },
+                    color: { select: { name: true } },
+                  },
+                },
               },
             },
           },
-        },
-      },
-    });
+        });
 
-    // Query issued vouchers for these orders
+        rawOrders.push(...chunkOrders);
+        const processed = rawOrders.length;
+        const pct = Math.min(65, Math.round(25 + (processed / totalOrdersCount) * 40));
+        await onProgress?.(pct, `Loading sales orders: ${processed.toLocaleString()} of ${totalOrdersCount.toLocaleString()} (${pct}%)...`);
+        await new Promise((res) => setImmediate(res));
+      }
+    }
+
+    // Query issued vouchers for these orders (batched in chunks of 2000)
     const orderIds = rawOrders.map((o) => o.id);
-    const issuedVouchers = orderIds.length
-      ? await prisma.voucher.findMany({
+    const issuedVouchers: any[] = [];
+    if (orderIds.length > 0) {
+      const CHUNK_SIZE = 2000;
+      for (let i = 0; i < orderIds.length; i += CHUNK_SIZE) {
+        const chunk = orderIds.slice(i, i + CHUNK_SIZE);
+        const chunkVouchers = await prisma.voucher.findMany({
           where: {
-            sourceOrderId: { in: orderIds },
+            sourceOrderId: { in: chunk },
             isDeleted: false,
           },
-        })
-      : [];
+        });
+        issuedVouchers.push(...chunkVouchers);
+      }
+    }
 
     const issuedVoucherMap = new Map<string, any[]>();
     for (const v of issuedVouchers) {
@@ -944,6 +1160,9 @@ export class SalesListExportService {
         customerName: custName,
         customerPhone: custPhone,
         cashierName,
+        cashierUserId: order.cashierUserId || undefined,
+        locationId: order.locationId || undefined,
+        locationName: locName,
         paymentMethod: payMethod,
         merchant: merchantName,
         fbrInvoiceNumber: fbrInv,
@@ -955,69 +1174,27 @@ export class SalesListExportService {
 
       invoiceNodes.push(invNode);
 
-      for (const line of lineItems) {
-        flatItems.push({
+      // Accumulate location totals without duplicating invoice objects in memory
+      const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+      let locNode = locationNodesMap.get(locKey);
+      if (!locNode) {
+        locNode = {
+          locationKey: locKey,
+          locationId: order.locationId || undefined,
           locationName: locName,
-          orderNumber: order.orderNumber,
-          orderDate: order.createdAt.toISOString(),
-          cashierName,
-          customerName: custName,
-          customerPhone: custPhone,
-          paymentMethod: payMethod,
-          merchant: merchantName,
-          fbrInvoiceNumber: fbrInv,
-          fbrStatus,
-          sku: line.sku,
-          barCode: line.barCode,
-          description: line.description,
-          sizeName: line.sizeName,
-          colorName: line.colorName,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          discountAmount: line.discountAmount,
-          subTotal: line.subTotal,
-          orderGrossAmount: gross,
-          orderDiscountAmount: disc,
-          orderNetAmount: net,
-          orderTaxAmount: tax,
-          cashSale,
-          cashReturn,
-          cardSale,
-          creditSale,
-          giftVoucherAmount,
-          creditVoucherAmount,
-          exchangeVoucherAmount,
-          claimVoucherAmount,
-          giftVoucherCorporate,
-          creditVoucherIssuedAmount,
-          rewardVoucherAmount,
-          onCreditAmount,
-        });
+          invoices: [],
+          totals: createEmptyTotals(),
+        };
+        locationNodesMap.set(locKey, locNode);
       }
-
-      if (isSeparate) {
-        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
-        let locNode = locationNodesMap.get(locKey);
-        if (!locNode) {
-          locNode = {
-            locationKey: locKey,
-            locationId: order.locationId || undefined,
-            locationName: locName,
-            invoices: [],
-            totals: createEmptyTotals(),
-          };
-          locationNodesMap.set(locKey, locNode);
-        }
-        locNode.invoices.push(invNode);
-        addTotals(locNode.totals, orderTotals);
-      }
+      addTotals(locNode.totals, orderTotals);
     }
 
     await onProgress?.(100, 'Sales List report computation complete!');
 
     return {
       reportType,
-      locations: isSeparate ? Array.from(locationNodesMap.values()) : undefined,
+      locations: Array.from(locationNodesMap.values()),
       invoices: invoiceNodes,
       flatItems,
       grandTotals,

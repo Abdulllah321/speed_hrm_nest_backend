@@ -18,7 +18,7 @@ export class InventoryAgingExportProcessor {
 
   @Process('generate-report-preview')
   async handleGenerateReportPreview(job: Job<any>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate, endDate, reportType } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate, endDate, asOfDate, fiscalYear, reportType } = job.data;
     this.logger.log(`[InventoryAgingProcessor] Processing preview calculation for job ${jobId} (user: ${userId})`);
 
     const prisma = (tenantId && tenantDbUrl)
@@ -40,6 +40,8 @@ export class InventoryAgingExportProcessor {
         warehouseId,
         startDate,
         endDate,
+        asOfDate,
+        fiscalYear,
         reportType,
         previewJobId: jobId,
         isAborted: () => this.inventoryAgingExportService.isJobCancelled(jobId),
@@ -48,9 +50,10 @@ export class InventoryAgingExportProcessor {
 
       const dir = path.join(process.cwd(), 'uploads', 'previews');
       fs.mkdirSync(dir, { recursive: true });
-      const filePath = path.join(dir, `preview-${jobId}.json.gz`);
+      const filePath = this.inventoryAgingExportService.getPreviewFilePath(jobId);
 
-      const jsonStr = JSON.stringify(reportData);
+      const payload = (reportData as any)?.status !== undefined ? reportData : { status: true, data: reportData };
+      const jsonStr = JSON.stringify(payload);
       const gzipped = zlib.gzipSync(Buffer.from(jsonStr, 'utf-8'));
       fs.writeFileSync(filePath, gzipped);
 

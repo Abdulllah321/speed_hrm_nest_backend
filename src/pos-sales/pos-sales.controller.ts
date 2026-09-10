@@ -37,6 +37,9 @@ import {
   CreateCustomerDto,
   UpdateCustomerDto,
 } from '../sales/customer/dto/customer-dto';
+import * as fs from 'fs';
+import * as zlib from 'zlib';
+import type { Response } from 'express';
 import * as jwt from 'jsonwebtoken';
 
 @ApiTags('POS Sales')
@@ -1580,6 +1583,8 @@ export class PosSalesController {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: number | string;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
@@ -1637,16 +1642,58 @@ export class PosSalesController {
 
   @Get('reports/sales-list/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getSalesListResult(@Param('jobId') jobId: string) {
-    const data =
-      await this.salesListExportService.getReportPreviewResult(jobId);
-    if (!data) {
-      return {
-        status: false,
-        message: 'Sales list preview result not found or expired',
-      };
+  async getSalesListResult(
+    @Param('jobId') jobId: string,
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const filePath = this.salesListExportService.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      if (typeof res.status === 'function') {
+        const errPayload = {
+          status: false,
+          message: 'Sales list preview result not found or expired',
+        };
+        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
+      }
+      throw new NotFoundException('Sales list preview result not found or expired');
     }
-    return { status: true, data };
+
+    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
+    const isNdjson = filePath.endsWith('.ndjson.gz') || (req.headers?.['accept'] || '').includes('application/x-ndjson');
+    const contentType = isNdjson ? 'application/x-ndjson' : 'application/json';
+
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', contentType);
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', contentType);
+    } else if (res.raw?.setHeader) {
+      res.raw.setHeader('Content-Type', contentType);
+    }
+
+    const stream = fs.createReadStream(filePath);
+
+    if (acceptsGzip) {
+      if (typeof res.header === 'function') {
+        res.header('Content-Encoding', 'gzip');
+      } else if (typeof res.setHeader === 'function') {
+        res.setHeader('Content-Encoding', 'gzip');
+      } else if (res.raw?.setHeader) {
+        res.raw.setHeader('Content-Encoding', 'gzip');
+      }
+
+      if (typeof res.send === 'function') {
+        return res.send(stream);
+      }
+      return stream.pipe(res);
+    } else {
+      const gunzip = zlib.createGunzip();
+      const unzipped = stream.pipe(gunzip);
+      if (typeof res.send === 'function') {
+        return res.send(unzipped);
+      }
+      return unzipped.pipe(res);
+    }
   }
 
   @Post('reports/sales-list/export/register-client-export')

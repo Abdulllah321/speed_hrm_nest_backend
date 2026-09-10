@@ -56,7 +56,14 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
             { name: 'net-sales-summary-export' },
             { name: 'pos-sales-activity-export' },
             { name: 'sales-register-export' },
-            { name: 'sales-list-export' },
+            { 
+              name: 'sales-list-export',
+              settings: {
+                lockDuration: 300000,
+                stalledInterval: 120000,
+                maxStalledCount: 1,
+              },
+            },
             { name: 'gross-sales-export' },
             { name: 'alliance-register-export' },
             { name: 'cost-of-sales-export' },
