@@ -44,6 +44,8 @@ export interface SalesListPreviewJobData {
   minAmount?: number;
   maxAmount?: number;
   fbrOnly?: boolean;
+  fiscalYear?: string;
+  year?: number | string;
 }
 
 const COLUMNS = [
@@ -107,6 +109,8 @@ export class SalesListExportProcessor {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
     } = job.data;
 
     const prisma = (tenantId && tenantDbUrl)
@@ -116,6 +120,13 @@ export class SalesListExportProcessor {
     try {
       this.logger.log(`[SalesListPreview ${jobId}] Starting background sales-list preview computation`);
       await job.progress({ percent: 10, message: 'Queueing sales list preview computation task...' });
+
+      const onProgress = async (percent: number, message: string) => {
+        if (this.salesListExportService.isJobCancelled(jobId)) {
+          throw new Error('JOB_CANCELLED');
+        }
+        await job.progress({ percent: Math.min(95, Math.max(10, percent)), message });
+      };
 
       const result = await this.salesListExportService.generateSalesListReportDataInternal(
         prisma as any,
@@ -130,16 +141,22 @@ export class SalesListExportProcessor {
           minAmount,
           maxAmount,
           fbrOnly,
-          onProgress: async (p, msg) => {
-            await job.progress(Math.min(95, Math.max(10, p)));
-          },
+          fiscalYear,
+          year,
+          previewJobId: jobId,
+          isAborted: () => this.salesListExportService.isJobCancelled(jobId),
+          onProgress,
         },
       );
 
       await this.salesListExportService.saveReportPreviewResult(jobId, result);
-      await job.progress(100);
+      await job.progress({ percent: 100, message: 'Sales list preview calculation completed.' });
       this.logger.log(`[SalesListPreview] Successfully completed and stored preview job ${jobId}`);
     } catch (err: any) {
+      if (err.message === 'JOB_CANCELLED') {
+        this.logger.log(`[SalesListPreview ${jobId}] Job was superseded or cancelled.`);
+        return;
+      }
       this.logger.error(`[SalesListPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
       throw err;
     }
