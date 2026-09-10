@@ -40,6 +40,7 @@ import { CreditVoucherExportProcessor } from './credit-voucher-export.processor'
 import { VoucherRegisterExportService } from './voucher-register-export.service';
 import { VoucherRegisterExportProcessor } from './voucher-register-export.processor';
 import { WarehouseModule } from '../warehouse/warehouse.module';
+import { ReportPreviewCleanupService } from '../common/services/report-preview-cleanup.service';
 
 @Module({
     imports: [
@@ -108,6 +109,7 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         CreditVoucherExportProcessor,
         VoucherRegisterExportService,
         VoucherRegisterExportProcessor,
+        ReportPreviewCleanupService,
     ],
     exports: [
         PosSalesService, 
@@ -122,6 +124,7 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         CorporateVoucherExportService,
         CreditVoucherExportService,
         VoucherRegisterExportService,
+        ReportPreviewCleanupService,
     ],
 })
 export class PosSalesModule { }
