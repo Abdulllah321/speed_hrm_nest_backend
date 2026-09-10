@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { redisStore } from 'cache-manager-redis-yet';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -145,6 +146,7 @@ import { VoucherExportModule } from './finance/voucher-export/voucher-export.mod
       },
     }),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     QueueModule,
     DatabaseModule,
     PrismaModule,

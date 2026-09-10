@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { UploadService } from '../upload/upload.service';
 import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
+import { ReportPreviewCleanupService } from '../common/services/report-preview-cleanup.service';
 
 const gzipAsync = promisify(zlib.gzip);
 const gunzipAsync = promisify(zlib.gunzip);
@@ -193,6 +194,7 @@ export class SalesListExportService {
     private readonly prismaMaster: PrismaMasterService,
     private readonly uploadService: UploadService,
     private readonly exportHistoryService: ExportHistoryService,
+    private readonly previewCleanupService: ReportPreviewCleanupService,
   ) {
     if (!fs.existsSync(this.previewStorageDir)) {
       fs.mkdirSync(this.previewStorageDir, { recursive: true });
@@ -235,12 +237,18 @@ export class SalesListExportService {
 
         for (const wJob of waitingJobs) {
           if (wJob.data?.userId === opts.userId && wJob.name === 'generate-sales-list-preview') {
+            if (wJob.data?.jobId) {
+              await this.previewCleanupService.deletePreviewByJobId(wJob.data.jobId);
+            }
             await wJob.remove();
           }
         }
         for (const aJob of activeJobs) {
           if (aJob.data?.userId === opts.userId && aJob.name === 'generate-sales-list-preview') {
             this.cancelledPreviewJobIds.add(aJob.data?.jobId);
+            if (aJob.data?.jobId) {
+              await this.previewCleanupService.deletePreviewByJobId(aJob.data.jobId);
+            }
           }
         }
       } catch (err: any) {
@@ -344,6 +352,10 @@ export class SalesListExportService {
 
   async saveReportPreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
     const filePath = this.getPreviewNdjsonFilePath(jobId);
+    if ((!result.invoices || result.invoices.length === 0) && fs.existsSync(filePath)) {
+      // Preview was already streamed directly to disk in chunks during computation
+      return;
+    }
     const gzip = zlib.createGzip({ level: 6 });
     const writeStream = fs.createWriteStream(filePath);
 
@@ -638,79 +650,6 @@ export class SalesListExportService {
     await onProgress?.(25, 'Counting matching sales orders...');
     const totalOrdersCount = await prisma.salesOrder.count({ where });
 
-    const rawOrders: any[] = [];
-    if (totalOrdersCount > 0) {
-      const CHUNK = 1000;
-      for (let skip = 0; skip < totalOrdersCount; skip += CHUNK) {
-        if (opts.isAborted?.() || (opts.previewJobId && this.isJobCancelled(opts.previewJobId))) {
-          throw new Error('JOB_CANCELLED');
-        }
-
-        const chunkOrders = await prisma.salesOrder.findMany({
-          where,
-          orderBy: { createdAt: 'desc' },
-          skip,
-          take: CHUNK,
-          include: {
-            customer: { select: { name: true, contactNo: true } },
-            alliance: true,
-            merchant: true,
-            voucherRedemptions: {
-              include: {
-                voucher: true,
-              },
-            },
-            items: {
-              include: {
-                item: {
-                  select: {
-                    description: true,
-                    sku: true,
-                    barCode: true,
-                    size: { select: { name: true } },
-                    color: { select: { name: true } },
-                  },
-                },
-              },
-            },
-          },
-        });
-
-        rawOrders.push(...chunkOrders);
-        const processed = rawOrders.length;
-        const pct = Math.min(65, Math.round(25 + (processed / totalOrdersCount) * 40));
-        await onProgress?.(pct, `Loading sales orders: ${processed.toLocaleString()} of ${totalOrdersCount.toLocaleString()} (${pct}%)...`);
-        await new Promise((res) => setImmediate(res));
-      }
-    }
-
-    // Query issued vouchers for these orders (batched in chunks of 2000)
-    const orderIds = rawOrders.map((o) => o.id);
-    const issuedVouchers: any[] = [];
-    if (orderIds.length > 0) {
-      const CHUNK_SIZE = 2000;
-      for (let i = 0; i < orderIds.length; i += CHUNK_SIZE) {
-        const chunk = orderIds.slice(i, i + CHUNK_SIZE);
-        const chunkVouchers = await prisma.voucher.findMany({
-          where: {
-            sourceOrderId: { in: chunk },
-            isDeleted: false,
-          },
-        });
-        issuedVouchers.push(...chunkVouchers);
-      }
-    }
-
-    const issuedVoucherMap = new Map<string, any[]>();
-    for (const v of issuedVouchers) {
-      if (!v.sourceOrderId) continue;
-      const list = issuedVoucherMap.get(v.sourceOrderId) || [];
-      list.push(v);
-      issuedVoucherMap.set(v.sourceOrderId, list);
-    }
-
-    await onProgress?.(70, 'Building sales invoice hierarchy matrix...');
-
     const createEmptyTotals = (): SalesListTotals => ({
       orderCount: 0,
       totalItems: 0,
@@ -763,12 +702,10 @@ export class SalesListExportService {
       target.onCreditAmount += source.onCreditAmount;
     };
 
-    const grandTotals = createEmptyTotals();
-    const flatItems: SalesListFlatRecord[] = [];
-    const invoiceNodes: SalesListInvoiceNode[] = [];
-    const locationNodesMap = new Map<string, SalesListLocationNode>();
-
-    for (const order of rawOrders) {
+    const transformSingleOrder = (
+      order: any,
+      orderIssued: any[],
+    ): { invNode: SalesListInvoiceNode; orderTotals: SalesListTotals } => {
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
       const cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
       const custName = order.customer?.name || 'Walk-in Customer';
@@ -803,7 +740,6 @@ export class SalesListExportService {
       const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
       if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
 
-      // Extract tender amounts from notes if not present in separate columns
       if (cashSale === 0) {
         const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
         if (cashMatch) cashSale = Number(cashMatch[1]);
@@ -813,7 +749,6 @@ export class SalesListExportService {
         if (cardMatch) cardSale = Number(cardMatch[1]);
       }
 
-      // Check structured voucher tags from notes
       let giftVoucherAmount = 0;
       let creditVoucherAmount = 0;
       let exchangeVoucherAmount = 0;
@@ -843,7 +778,6 @@ export class SalesListExportService {
       const credVouchMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
       if (credVouchMatch) creditVoucherAmount = Number(credVouchMatch[1]);
 
-      // If not parsed from explicit tags, check voucherRedemptions
       for (const red of (order.voucherRedemptions || [])) {
         const type = red.voucher?.voucherType;
         const amt = Number(red.amountUsed);
@@ -863,7 +797,6 @@ export class SalesListExportService {
         }
       }
 
-      // If voucherAmount was stored on order but not broken down in voucherRedemptions or notes
       const totalRedeemedVoucher = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
       const orderVoucherAmt = Number(order.voucherAmount || 0);
       if (orderVoucherAmt > totalRedeemedVoucher) {
@@ -888,7 +821,6 @@ export class SalesListExportService {
       if (issuedMatch) {
         creditVoucherIssuedAmount = Number(issuedMatch[1]);
       }
-      const orderIssued = issuedVoucherMap.get(order.id) || [];
       for (const iv of orderIssued) {
         const type = iv.voucherType;
         const faceVal = Number(iv.faceValue || 0);
@@ -898,7 +830,6 @@ export class SalesListExportService {
         }
       }
 
-      // Fallback if amounts were completely 0 and no split amounts were provided
       const totalTenders = cashSale + cardSale + giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount + onCreditAmount;
       if (totalTenders === 0) {
         if (payMethod.includes('CASH')) cashSale = paid;
@@ -918,7 +849,7 @@ export class SalesListExportService {
       let walletAmt = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
       let creditAmt = onCreditAmount;
 
-      const lineItems: SalesListLineItem[] = (order.items || []).map((item) => ({
+      const lineItems: SalesListLineItem[] = (order.items || []).map((item: any) => ({
         id: item.id,
         orderNumber: order.orderNumber,
         sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
@@ -970,9 +901,6 @@ export class SalesListExportService {
         onCreditAmount,
       };
 
-      addTotals(grandTotals, orderTotals);
-
-      // Build structured tender details for interactive hover inspect
       let cardInfo: CardTenderInfo | undefined;
       if (cardSale > 0) {
         let cardholderName: string | undefined;
@@ -1172,22 +1100,171 @@ export class SalesListExportService {
         tenderDetails,
       };
 
-      invoiceNodes.push(invNode);
+      return { invNode, orderTotals };
+    };
 
-      // Accumulate location totals without duplicating invoice objects in memory
-      const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
-      let locNode = locationNodesMap.get(locKey);
-      if (!locNode) {
-        locNode = {
-          locationKey: locKey,
-          locationId: order.locationId || undefined,
-          locationName: locName,
-          invoices: [],
-          totals: createEmptyTotals(),
-        };
-        locationNodesMap.set(locKey, locNode);
+    const grandTotals = createEmptyTotals();
+    const locationNodesMap = new Map<string, SalesListLocationNode>();
+    const inMemoryInvoices: SalesListInvoiceNode[] = [];
+
+    const isDirectDiskStream = Boolean(opts.previewJobId);
+    let gzipStream: zlib.Gzip | null = null;
+    let writeStream: fs.WriteStream | null = null;
+    let streamPromise: Promise<void> | null = null;
+
+    const safeWrite = async (chunk: string): Promise<void> => {
+      if (!gzipStream) return;
+      if (!gzipStream.write(chunk)) {
+        await new Promise((r) => gzipStream!.once('drain', r));
       }
-      addTotals(locNode.totals, orderTotals);
+    };
+
+    if (isDirectDiskStream) {
+      const filePath = this.getPreviewNdjsonFilePath(opts.previewJobId!);
+      gzipStream = zlib.createGzip({ level: 6 });
+      writeStream = fs.createWriteStream(filePath);
+
+      streamPromise = new Promise<void>((resolve, reject) => {
+        pipeline(gzipStream!, writeStream!, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      // Line 1: Meta header written immediately
+      const metaLine = JSON.stringify({
+        type: 'meta',
+        reportType,
+        dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+        locationNames,
+        locations: allLocations,
+        totalInvoices: totalOrdersCount,
+      }) + '\n';
+      await safeWrite(metaLine);
+    }
+
+    let processedOrders = 0;
+    if (totalOrdersCount > 0) {
+      const CHUNK = 1000;
+      for (let skip = 0; skip < totalOrdersCount; skip += CHUNK) {
+        if (opts.isAborted?.() || (opts.previewJobId && this.isJobCancelled(opts.previewJobId))) {
+          if (gzipStream) {
+            gzipStream.destroy();
+          }
+          throw new Error('JOB_CANCELLED');
+        }
+
+        const chunkOrders = await prisma.salesOrder.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: CHUNK,
+          include: {
+            customer: { select: { name: true, contactNo: true } },
+            alliance: true,
+            merchant: true,
+            voucherRedemptions: {
+              include: {
+                voucher: true,
+              },
+            },
+            items: {
+              include: {
+                item: {
+                  select: {
+                    description: true,
+                    sku: true,
+                    barCode: true,
+                    size: { select: { name: true } },
+                    color: { select: { name: true } },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        // Query issued vouchers for ONLY this chunk of 1000 orders
+        const chunkOrderIds = chunkOrders.map((o) => o.id);
+        const chunkVouchers = chunkOrderIds.length > 0
+          ? await prisma.voucher.findMany({
+              where: {
+                sourceOrderId: { in: chunkOrderIds },
+                isDeleted: false,
+              },
+            })
+          : [];
+
+        const chunkVoucherMap = new Map<string, any[]>();
+        for (const v of chunkVouchers) {
+          if (!v.sourceOrderId) continue;
+          const list = chunkVoucherMap.get(v.sourceOrderId) || [];
+          list.push(v);
+          chunkVoucherMap.set(v.sourceOrderId, list);
+        }
+
+        const chunkInvoiceNodes: SalesListInvoiceNode[] = [];
+        for (const order of chunkOrders) {
+          const orderIssued = chunkVoucherMap.get(order.id) || [];
+          const { invNode, orderTotals } = transformSingleOrder(order, orderIssued);
+          addTotals(grandTotals, orderTotals);
+
+          const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+          let locNode = locationNodesMap.get(locKey);
+          if (!locNode) {
+            locNode = {
+              locationKey: locKey,
+              locationId: order.locationId || undefined,
+              locationName: invNode.locationName,
+              invoices: [],
+              totals: createEmptyTotals(),
+            };
+            locationNodesMap.set(locKey, locNode);
+          }
+          addTotals(locNode.totals, orderTotals);
+
+          if (isDirectDiskStream) {
+            chunkInvoiceNodes.push(invNode);
+          } else {
+            inMemoryInvoices.push(invNode);
+          }
+        }
+
+        // If direct disk streaming, write chunked invoice batches to gzip and free memory immediately
+        if (isDirectDiskStream && chunkInvoiceNodes.length > 0) {
+          const SUB_CHUNK = 100;
+          for (let sub = 0; sub < chunkInvoiceNodes.length; sub += SUB_CHUNK) {
+            const batch = chunkInvoiceNodes.slice(sub, sub + SUB_CHUNK);
+            const chunkLine = JSON.stringify({
+              type: 'invoices',
+              startIndex: skip + sub,
+              count: batch.length,
+              invoices: batch,
+            }) + '\n';
+            await safeWrite(chunkLine);
+          }
+          chunkInvoiceNodes.length = 0; // Discard immediately from memory
+        }
+
+        processedOrders += chunkOrders.length;
+        const pct = Math.min(95, Math.round(25 + (processedOrders / totalOrdersCount) * 70));
+        await onProgress?.(pct, `Processed ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} invoices (${pct}%)...`);
+        await new Promise((res) => setImmediate(res));
+      }
+    }
+
+    if (isDirectDiskStream && gzipStream) {
+      // Final Line: Verified Grand Totals
+      const totalsLine = JSON.stringify({
+        type: 'totals',
+        grandTotals,
+        totalInvoices: totalOrdersCount,
+        done: true,
+      }) + '\n';
+      await safeWrite(totalsLine);
+
+      gzipStream.end();
+      await streamPromise;
     }
 
     await onProgress?.(100, 'Sales List report computation complete!');
@@ -1195,8 +1272,8 @@ export class SalesListExportService {
     return {
       reportType,
       locations: Array.from(locationNodesMap.values()),
-      invoices: invoiceNodes,
-      flatItems,
+      invoices: inMemoryInvoices,
+      flatItems: [],
       grandTotals,
       dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
       locationNames,
