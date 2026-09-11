@@ -1215,7 +1215,7 @@ export class SalesListExportService {
             locNode = {
               locationKey: locKey,
               locationId: order.locationId || undefined,
-              locationName: invNode.locationName,
+              locationName: invNode.locationName || (order.locationId ? locationMap.get(order.locationId) : undefined) || 'Main Outlet',
               invoices: [],
               totals: createEmptyTotals(),
             };
