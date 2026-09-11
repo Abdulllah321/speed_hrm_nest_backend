@@ -276,6 +276,8 @@ export class PurchaseInvoiceService {
       if (updateDto.invoiceDate) updateData.invoiceDate = new Date(updateDto.invoiceDate);
       if (updateDto.dueDate !== undefined) updateData.dueDate = updateDto.dueDate ? new Date(updateDto.dueDate) : null;
       if (updateDto.staxEInvoiceDate !== undefined) updateData.staxEInvoiceDate = updateDto.staxEInvoiceDate ? new Date(updateDto.staxEInvoiceDate) : null;
+      if (updateDto.staxEInvoiceNumber !== undefined) updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber || null;
+      if (updateDto.notes !== undefined) updateData.notes = updateDto.notes || null;
       
       if (updateDto.items || updateDto.advanceTaxRate !== undefined || updateDto.discountAmount !== undefined) {
         const dtoForCalc = {
