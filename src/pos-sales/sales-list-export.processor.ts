@@ -214,7 +214,7 @@ export class SalesListExportProcessor {
         const chunk = await prisma.salesOrder.findMany({
           where: {
             locationId,
-            status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged'] },
+            status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
             createdAt: { gte: startDate, lte: endDate },
             ...(cashierUserId ? { cashierUserId } : {}),
             ...(search ? { orderNumber: { contains: search, mode: 'insensitive' } } : {}),
@@ -228,7 +228,7 @@ export class SalesListExportProcessor {
               },
             },
           },
-          orderBy: { createdAt: 'asc' },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           skip,
           take: CHUNK,
         });
