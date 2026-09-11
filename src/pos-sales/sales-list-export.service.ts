@@ -619,7 +619,7 @@ export class SalesListExportService {
     if (!locationNames) locationNames = 'All Outlets (Stores)';
 
     const where: any = {
-      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled'] },
+      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -1156,7 +1156,7 @@ export class SalesListExportService {
 
         const chunkOrders = await prisma.salesOrder.findMany({
           where,
-          orderBy: { createdAt: 'desc' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           skip,
           take: CHUNK,
           include: {
