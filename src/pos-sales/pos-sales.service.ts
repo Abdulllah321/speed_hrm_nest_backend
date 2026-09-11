@@ -2993,10 +2993,27 @@ export class PosSalesService implements OnModuleInit {
       }
     }
 
-    // Fetch any vouchers issued from this order
+    // Fetch any credit vouchers issued from this order at checkout (unused voucher balance)
     const creditVouchers = await this.prisma.voucher.findMany({
+      where: {
+        sourceOrderId: id,
+        isDeleted: false,
+        voucherType: { in: ['CREDIT', 'CORPORATE'] },
+        posReturn: null,
+      },
+      select: {
+        code: true,
+        faceValue: true,
+        expiresAt: true,
+        voucherType: true,
+      },
+    });
+
+    // Fetch all vouchers issued from this order (including return exchange vouchers) for audit/lock checks
+    const allIssuedVouchers = await this.prisma.voucher.findMany({
       where: { sourceOrderId: id, isDeleted: false },
       select: {
+        id: true,
         code: true,
         faceValue: true,
         expiresAt: true,
@@ -3011,7 +3028,7 @@ export class PosSalesService implements OnModuleInit {
         items: enrichedItems,
         tenders,
         creditVouchers,
-        issuedVouchers: creditVouchers,
+        issuedVouchers: allIssuedVouchers,
         hasReturn,
         hasRefund,
         cashier,
@@ -7325,16 +7342,15 @@ export class PosSalesService implements OnModuleInit {
         }
       }
 
-      // Credit Voucher Issued mapping
+      // Credit Voucher Issued mapping (only CREDIT and REFUND, not EXCHANGE from return)
       const orderIssued = issuedVouchersMap.get(order.id) || [];
-      const creditVoucherIssued = orderIssued.map((v) => v.code).join(', ');
+      const creditIssuedList = orderIssued.filter(
+        (v) => v.voucherType === 'CREDIT' || v.voucherType === 'REFUND',
+      );
+      const creditVoucherIssued = creditIssuedList.map((v) => v.code).join(', ');
       let creditVoucherIssuedAmt = 0;
-      for (const iv of orderIssued) {
-        const type = iv.voucherType;
-        const faceVal = Number(iv.faceValue || 0);
-        if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
-          creditVoucherIssuedAmt += faceVal;
-        }
+      for (const iv of creditIssuedList) {
+        creditVoucherIssuedAmt += Number(iv.faceValue || 0);
       }
 
       const createdAt = new Date(order.createdAt);
@@ -7670,7 +7686,6 @@ export class PosSalesService implements OnModuleInit {
           issuedGift += faceVal;
         } else if (
           type === 'CREDIT' ||
-          type === 'EXCHANGE' ||
           type === 'REFUND'
         ) {
           issuedCredit += faceVal;
