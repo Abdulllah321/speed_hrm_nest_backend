@@ -7,7 +7,7 @@ import * as zlib from 'zlib';
 import * as readline from 'readline';
 import * as ExcelJS from 'exceljs';
 import { promisify } from 'util';
-import { pipeline } from 'stream';
+import { pipeline, PassThrough } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
@@ -1404,7 +1404,7 @@ export class SalesListExportService {
 
     if (record.filePath.startsWith('s3://')) {
       const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
       return res.redirect(signedUrl, 302);
     }
 
@@ -1454,7 +1454,7 @@ export class SalesListExportService {
     const dateStr = new Date().toISOString().split('T')[0];
     const fileName = `sales-list-${exportType}-${dateStr}.xlsx`;
 
-    const dest = res.raw || res;
+    const passThrough = new PassThrough();
     if (typeof res.header === 'function') {
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.header('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -1465,8 +1465,14 @@ export class SalesListExportService {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
+    if (typeof res.send === 'function') {
+      res.send(passThrough);
+    } else if (typeof res.pipe === 'function') {
+      passThrough.pipe(res);
+    }
+
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-      stream: dest,
+      stream: passThrough,
       useStyles: true,
       useSharedStrings: false,
     });

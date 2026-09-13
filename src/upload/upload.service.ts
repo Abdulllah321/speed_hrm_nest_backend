@@ -301,11 +301,18 @@ export class UploadService {
     return USE_S3;
   }
 
-  async getSignedUrlForDownload(key: string): Promise<string> {
+  async getSignedUrlForDownload(key: string, fileName?: string): Promise<string> {
     if (!USE_S3) return `/uploads/${key}`;
+    const commandParams: any = { Bucket: S3_BUCKET, Key: key };
+    if (fileName) {
+      commandParams.ResponseContentDisposition = `attachment; filename="${fileName}"`;
+      commandParams.ResponseContentType = fileName.endsWith('.pdf')
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
     return getSignedUrl(
       s3Client!,
-      new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }),
+      new GetObjectCommand(commandParams),
       { expiresIn: SIGNED_URL_EXPIRES },
     );
   }

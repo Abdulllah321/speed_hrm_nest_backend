@@ -984,7 +984,7 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get('reports/sales-list/export/:jobId/download')
+  @Get(['reports/sales-list/export/:jobId/download', 'reports/sales-list/export/:jobId/download/:fileName'])
   @ApiOperation({ summary: 'Download Sales List Export' })
   async downloadSalesListExport(
     @Param('jobId') jobId: string,
@@ -1217,7 +1217,7 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get('reports/gross-sales-export/:jobId/download')
+  @Get(['reports/gross-sales-export/:jobId/download', 'reports/gross-sales-export/:jobId/download/:fileName'])
   @ApiOperation({ summary: 'Download Gross Sales Export' })
   async downloadGrossSalesExport(
     @Param('jobId') jobId: string,
@@ -1708,7 +1708,7 @@ export class PosSalesController {
     }
   }
 
-  @Get('reports/sales-list/stream-preview-excel/:jobId')
+  @Get(['reports/sales-list/stream-preview-excel/:jobId', 'reports/sales-list/stream-preview-excel/:jobId/:fileName'])
   @ApiOperation({ summary: 'Stream filtered preview Excel for Sales List' })
   async streamSalesListPreviewExcel(
     @Param('jobId') jobId: string,
@@ -1988,7 +1988,7 @@ export class PosSalesController {
     }
   }
 
-  @Get('reports/gross-sales-return/stream-preview-excel/:jobId')
+  @Get(['reports/gross-sales-return/stream-preview-excel/:jobId', 'reports/gross-sales-return/stream-preview-excel/:jobId/:fileName'])
   @ApiOperation({ summary: 'Stream filtered preview Excel for Gross Sales Return' })
   async streamGrossSalesReturnPreviewExcel(
     @Param('jobId') jobId: string,
@@ -2166,7 +2166,7 @@ export class PosSalesController {
     }
   }
 
-  @Get('reports/gross-sales-summary/stream-preview-excel/:jobId')
+  @Get(['reports/gross-sales-summary/stream-preview-excel/:jobId', 'reports/gross-sales-summary/stream-preview-excel/:jobId/:fileName'])
   @ApiOperation({ summary: 'Stream filtered preview Excel for Gross Sales Summary' })
   async streamGrossSalesSummaryPreviewExcel(
     @Param('jobId') jobId: string,
