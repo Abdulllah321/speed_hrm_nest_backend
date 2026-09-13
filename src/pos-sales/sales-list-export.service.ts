@@ -4,6 +4,8 @@ import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
+import * as readline from 'readline';
+import * as ExcelJS from 'exceljs';
 import { promisify } from 'util';
 import { pipeline } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
@@ -172,6 +174,7 @@ export interface SalesListReportResult {
 export interface QueueSalesListExportOptions {
   userId: string;
   locationId?: string;
+  locationIds?: string[];
   startDate?: string;
   endDate?: string;
   cashierUserId?: string;
@@ -181,6 +184,7 @@ export interface QueueSalesListExportOptions {
   minAmount?: number;
   maxAmount?: number;
   fbrOnly?: boolean;
+  exportType?: 'flat' | 'hierarchical';
 }
 
 @Injectable()
@@ -1342,6 +1346,7 @@ export class SalesListExportService {
         tenantId,
         tenantDbUrl,
         locationId: opts.locationId,
+        locationIds: opts.locationIds,
         startDate: opts.startDate,
         endDate: opts.endDate,
         cashierUserId: opts.cashierUserId,
@@ -1351,6 +1356,7 @@ export class SalesListExportService {
         minAmount: opts.minAmount,
         maxAmount: opts.maxAmount,
         fbrOnly: opts.fbrOnly,
+        exportType: opts.exportType || 'hierarchical',
       },
       {
         jobId,
@@ -1365,12 +1371,14 @@ export class SalesListExportService {
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(jobId: string): Promise<{ state: string; progress: number; message?: string }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
-    return { state, progress };
+    const rawProg: any = job.progress();
+    const progress = typeof rawProg === 'number' ? rawProg : typeof rawProg === 'object' && rawProg?.percent !== undefined ? Number(rawProg.percent) : 0;
+    const message = typeof rawProg === 'object' && rawProg?.message ? String(rawProg.message) : undefined;
+    return { state, progress, message };
   }
 
   async streamExportFile(jobId: string, res: any): Promise<void> {
@@ -1423,5 +1431,276 @@ export class SalesListExportService {
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
+  }
+
+  async streamFilteredPreviewExcel(
+    jobId: string,
+    options: {
+      exportType?: 'flat' | 'hierarchical';
+      search?: string;
+      paymentMode?: string;
+      fbrOnly?: boolean;
+      locationId?: string;
+      cashierId?: string;
+    },
+    res: any,
+  ): Promise<void> {
+    const filePath = this.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Sales list preview result not found or expired');
+    }
+
+    const exportType = options.exportType || 'flat';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = `sales-list-${exportType}-${dateStr}.xlsx`;
+
+    const dest = res.raw || res;
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: dest,
+      useStyles: true,
+      useSharedStrings: false,
+    });
+
+    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Flat Items' : 'Invoices');
+
+    if (exportType === 'flat') {
+      sheet.columns = [
+        { header: 'Outlet / Location', key: 'locationName', width: 22 },
+        { header: 'Invoice #', key: 'orderNumber', width: 16 },
+        { header: 'Order Date', key: 'orderDate', width: 20 },
+        { header: 'Cashier', key: 'cashierName', width: 16 },
+        { header: 'Customer', key: 'customerName', width: 18 },
+        { header: 'Phone', key: 'customerPhone', width: 14 },
+        { header: 'Payment Mode', key: 'paymentMethod', width: 14 },
+        { header: 'Merchant', key: 'merchant', width: 16 },
+        { header: 'FBR Inv #', key: 'fbrInvoiceNumber', width: 16 },
+        { header: 'FBR Status', key: 'fbrStatus', width: 12 },
+        { header: 'SKU', key: 'sku', width: 16 },
+        { header: 'Barcode', key: 'barCode', width: 16 },
+        { header: 'Description', key: 'description', width: 26 },
+        { header: 'Size', key: 'sizeName', width: 10 },
+        { header: 'Color', key: 'colorName', width: 12 },
+        { header: 'Quantity', key: 'quantity', width: 10 },
+        { header: 'Unit Price', key: 'unitPrice', width: 12 },
+        { header: 'Discount', key: 'discountAmount', width: 12 },
+        { header: 'SubTotal', key: 'subTotal', width: 14 },
+        { header: 'Order Gross', key: 'orderGrossAmount', width: 14 },
+        { header: 'Order Net', key: 'orderNetAmount', width: 14 },
+        { header: 'Cash Sale', key: 'cashSale', width: 14 },
+        { header: 'Cash Return', key: 'cashReturn', width: 14 },
+        { header: 'Card Sale', key: 'cardSale', width: 14 },
+        { header: 'Credit Sale', key: 'creditSale', width: 14 },
+        { header: 'Gift Voucher', key: 'giftVoucherAmount', width: 14 },
+        { header: 'Credit Voucher', key: 'creditVoucherAmount', width: 14 },
+        { header: 'Exchange Voucher', key: 'exchangeVoucherAmount', width: 16 },
+        { header: 'Claim Voucher', key: 'claimVoucherAmount', width: 14 },
+        { header: 'Corporate Voucher', key: 'giftVoucherCorporate', width: 16 },
+        { header: 'Credit Issued', key: 'creditVoucherIssuedAmount', width: 14 },
+        { header: 'Reward Voucher', key: 'rewardVoucherAmount', width: 14 },
+        { header: 'On Credit', key: 'onCreditAmount', width: 14 },
+      ];
+    } else {
+      sheet.columns = [
+        { header: 'Date & Time', key: 'date', width: 22 },
+        { header: 'Invoice #', key: 'invoiceNo', width: 16 },
+        { header: 'Location', key: 'location', width: 18 },
+        { header: 'Cashier', key: 'cashier', width: 16 },
+        { header: 'Customer', key: 'customer', width: 18 },
+        { header: 'Merchant', key: 'merchant', width: 16 },
+        { header: 'Net Total', key: 'netTotal', width: 14 },
+        { header: 'Balance', key: 'balance', width: 14 },
+        { header: 'Cash', key: 'tenderCash', width: 12 },
+        { header: 'Card', key: 'tenderCard', width: 12 },
+        { header: 'Reward Voucher', key: 'tenderRewardVoucher', width: 15 },
+        { header: 'On Credit', key: 'tenderOnCredit', width: 12 },
+        { header: 'Gift Voucher', key: 'tenderGiftVoucher', width: 14 },
+        { header: 'Credit Voucher', key: 'tenderCreditVoucher', width: 14 },
+        { header: 'Exchange Voucher', key: 'tenderExchangeVoucher', width: 16 },
+        { header: 'Claim Voucher', key: 'tenderClaimVoucher', width: 14 },
+        { header: 'Corporate Voucher', key: 'tenderCorporateVoucher', width: 18 },
+        { header: 'Return', key: 'returnAmount', width: 12 },
+        { header: 'FBR', key: 'fbr', width: 14 },
+        { header: 'Net Sale', key: 'netSale', width: 14 },
+      ];
+    }
+
+    // Filter Predicates
+    const q = (options.search || '').trim().toLowerCase();
+    const pMode = options.paymentMode && options.paymentMode !== 'all' ? options.paymentMode.toUpperCase() : null;
+    const isFbrOnly = options.fbrOnly === true;
+    const locSet = options.locationId && options.locationId !== 'all'
+      ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
+      : null;
+    const cashierFilter = options.cashierId && options.cashierId !== 'all'
+      ? options.cashierId.trim().toLowerCase()
+      : null;
+
+    let totalQty = 0;
+    let totalGross = 0;
+    let totalDiscount = 0;
+    let totalNet = 0;
+
+    const fileStream = fs.createReadStream(filePath);
+    const gunzip = zlib.createGunzip();
+    const lineReader = readline.createInterface({
+      input: fileStream.pipe(gunzip),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of lineReader) {
+      if (!line || !line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.type === 'invoices' && Array.isArray(parsed.invoices)) {
+          for (const inv of parsed.invoices) {
+            // Location filter
+            if (locSet) {
+              const locId = (inv.locationId || '').toLowerCase();
+              const locName = (inv.locationName || '').toLowerCase();
+              if (!locSet.has(locId) && !locSet.has(locName)) continue;
+            }
+            // Cashier filter
+            if (cashierFilter) {
+              const cId = (inv.cashierUserId || '').toLowerCase();
+              const cName = (inv.cashierName || '').toLowerCase();
+              if (cId !== cashierFilter && cName !== cashierFilter) continue;
+            }
+            // Payment mode filter
+            if (pMode && (inv.paymentMethod || '').toUpperCase() !== pMode) continue;
+            // FBR Only
+            if (isFbrOnly && (!inv.fbrInvoiceNumber || inv.fbrInvoiceNumber === '-' || inv.fbrInvoiceNumber.trim() === '')) continue;
+            // Search query
+            if (q) {
+              const matchesHeader =
+                (inv.orderNumber || '').toLowerCase().includes(q) ||
+                (inv.customerName || '').toLowerCase().includes(q) ||
+                (inv.customerPhone || '').toLowerCase().includes(q) ||
+                (inv.cashierName || '').toLowerCase().includes(q) ||
+                (inv.fbrInvoiceNumber || '').toLowerCase().includes(q);
+
+              const matchesItems = (inv.items || []).some((it: any) =>
+                (it.sku || '').toLowerCase().includes(q) ||
+                (it.barCode || '').toLowerCase().includes(q) ||
+                (it.description || '').toLowerCase().includes(q)
+              );
+
+              if (!matchesHeader && !matchesItems) continue;
+            }
+
+            if (exportType === 'flat') {
+              const items = inv.items && inv.items.length > 0 ? inv.items : [{}];
+              for (const item of items) {
+                const qty = Number(item.quantity || 0);
+                const subTotal = Number(item.subTotal || 0);
+                const disc = Number(item.discountAmount || 0);
+                const unitPrice = Number(item.unitPrice || 0);
+                totalQty += qty;
+                totalGross += unitPrice ? unitPrice * qty : subTotal;
+                totalDiscount += disc;
+                totalNet += subTotal;
+
+                const row = sheet.addRow({
+                  locationName: inv.locationName || '-',
+                  orderNumber: inv.orderNumber,
+                  orderDate: inv.createdAt ? new Date(inv.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                  cashierName: inv.cashierName || '-',
+                  customerName: inv.customerName || 'Walk-in',
+                  customerPhone: inv.customerPhone || '-',
+                  paymentMethod: inv.paymentMethod || '-',
+                  merchant: inv.merchant || '-',
+                  fbrInvoiceNumber: inv.fbrInvoiceNumber || '-',
+                  fbrStatus: inv.fbrStatus || '-',
+                  sku: item.sku || '-',
+                  barCode: item.barCode || '-',
+                  description: item.description || '-',
+                  sizeName: item.sizeName || '-',
+                  colorName: item.colorName || '-',
+                  quantity: qty,
+                  unitPrice: unitPrice,
+                  discountAmount: disc,
+                  subTotal: subTotal,
+                  orderGrossAmount: Number(inv.totals?.grossAmount || 0),
+                  orderNetAmount: Number(inv.totals?.netAmount || 0),
+                  cashSale: Number(inv.totals?.cashSale || 0),
+                  cashReturn: Number(inv.totals?.cashReturn || 0),
+                  cardSale: Number(inv.totals?.cardSale || 0),
+                  creditSale: Number(inv.totals?.creditSale || 0),
+                  giftVoucherAmount: Number(inv.totals?.giftVoucherAmount || 0),
+                  creditVoucherAmount: Number(inv.totals?.creditVoucherAmount || 0),
+                  exchangeVoucherAmount: Number(inv.totals?.exchangeVoucherAmount || 0),
+                  claimVoucherAmount: Number(inv.totals?.claimVoucherAmount || 0),
+                  giftVoucherCorporate: Number(inv.totals?.giftVoucherCorporate || 0),
+                  creditVoucherIssuedAmount: Number(inv.totals?.creditVoucherIssuedAmount || 0),
+                  rewardVoucherAmount: Number(inv.totals?.rewardVoucherAmount || 0),
+                  onCreditAmount: Number(inv.totals?.onCreditAmount || 0),
+                });
+                row.commit();
+              }
+            } else {
+              const net = Number(inv.totals?.netAmount || 0);
+              totalNet += net;
+              const row = sheet.addRow({
+                date: inv.createdAt ? new Date(inv.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                invoiceNo: inv.orderNumber,
+                location: inv.locationName || '-',
+                cashier: inv.cashierName || '-',
+                customer: inv.customerName || 'Walk-in',
+                merchant: inv.merchant || '-',
+                netTotal: net,
+                balance: Number(inv.totals?.balance || 0),
+                tenderCash: Number(inv.totals?.cashSale || 0),
+                tenderCard: Number(inv.totals?.cardSale || 0),
+                tenderRewardVoucher: Number(inv.totals?.rewardVoucherAmount || 0),
+                tenderOnCredit: Number(inv.totals?.onCreditAmount || 0),
+                tenderGiftVoucher: Number(inv.totals?.giftVoucherAmount || 0),
+                tenderCreditVoucher: Number(inv.totals?.creditVoucherAmount || 0),
+                tenderExchangeVoucher: Number(inv.totals?.exchangeVoucherAmount || 0),
+                tenderClaimVoucher: Number(inv.totals?.claimVoucherAmount || 0),
+                tenderCorporateVoucher: Number(inv.totals?.giftVoucherCorporate || 0),
+                returnAmount: Number(inv.totals?.cashReturn || 0),
+                fbr: inv.fbrInvoiceNumber || '-',
+                netSale: net,
+              });
+              row.commit();
+            }
+          }
+        }
+      } catch (e) {
+        // Skip unparseable lines
+      }
+    }
+
+    // Totals Summary Row
+    if (exportType === 'flat') {
+      const summaryRow = sheet.addRow({
+        locationName: 'FILTERED TOTALS',
+        quantity: totalQty,
+        discountAmount: totalDiscount,
+        subTotal: totalNet,
+      });
+      summaryRow.font = { bold: true };
+      summaryRow.commit();
+    } else {
+      const summaryRow = sheet.addRow({
+        date: 'FILTERED TOTALS',
+        netTotal: totalNet,
+        netSale: totalNet,
+      });
+      summaryRow.font = { bold: true };
+      summaryRow.commit();
+    }
+
+    sheet.commit();
+    await workbook.commit();
   }
 }
