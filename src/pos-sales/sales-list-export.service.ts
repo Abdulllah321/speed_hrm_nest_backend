@@ -651,6 +651,7 @@ export class SalesListExportService {
       ];
     }
 
+
     await onProgress?.(25, 'Counting matching sales orders...');
     const totalOrdersCount = await prisma.salesOrder.count({ where });
 
@@ -1150,7 +1151,9 @@ export class SalesListExportService {
     let processedOrders = 0;
     if (totalOrdersCount > 0) {
       const CHUNK = 1000;
-      for (let skip = 0; skip < totalOrdersCount; skip += CHUNK) {
+      let lastId: string | undefined;
+
+      while (true) {
         if (opts.isAborted?.() || (opts.previewJobId && this.isJobCancelled(opts.previewJobId))) {
           if (gzipStream) {
             gzipStream.destroy();
@@ -1158,22 +1161,47 @@ export class SalesListExportService {
           throw new Error('JOB_CANCELLED');
         }
 
-        const chunkOrders = await prisma.salesOrder.findMany({
+        const chunkOrders: any[] = await prisma.salesOrder.findMany({
           where,
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          skip,
+          cursor: lastId ? { id: lastId } : undefined,
+          skip: lastId ? 1 : 0,
           take: CHUNK,
-          include: {
+          select: {
+            id: true,
+            orderNumber: true,
+            createdAt: true,
+            locationId: true,
+            cashierUserId: true,
+            paymentMethod: true,
+            tenderType: true,
+            subtotal: true,
+            discountAmount: true,
+            taxAmount: true,
+            grandTotal: true,
+            cashAmount: true,
+            cardAmount: true,
+            voucherAmount: true,
+            notes: true,
+            fbrInvoiceNumber: true,
+            fbrStatus: true,
             customer: { select: { name: true, contactNo: true } },
-            alliance: true,
-            merchant: true,
+            merchant: { select: { bankName: true, description: true } },
             voucherRedemptions: {
-              include: {
-                voucher: true,
+              select: {
+                amountUsed: true,
+                voucher: {
+                  select: { code: true, voucherType: true, description: true, companyName: true },
+                },
               },
             },
             items: {
-              include: {
+              select: {
+                id: true,
+                quantity: true,
+                unitPrice: true,
+                discountAmount: true,
+                lineTotal: true,
                 item: {
                   select: {
                     description: true,
@@ -1188,29 +1216,12 @@ export class SalesListExportService {
           },
         });
 
-        // Query issued vouchers for ONLY this chunk of 1000 orders
-        const chunkOrderIds = chunkOrders.map((o) => o.id);
-        const chunkVouchers = chunkOrderIds.length > 0
-          ? await prisma.voucher.findMany({
-              where: {
-                sourceOrderId: { in: chunkOrderIds },
-                isDeleted: false,
-              },
-            })
-          : [];
-
-        const chunkVoucherMap = new Map<string, any[]>();
-        for (const v of chunkVouchers) {
-          if (!v.sourceOrderId) continue;
-          const list = chunkVoucherMap.get(v.sourceOrderId) || [];
-          list.push(v);
-          chunkVoucherMap.set(v.sourceOrderId, list);
-        }
+        if (!chunkOrders.length) break;
+        lastId = chunkOrders[chunkOrders.length - 1].id;
 
         const chunkInvoiceNodes: SalesListInvoiceNode[] = [];
         for (const order of chunkOrders) {
-          const orderIssued = chunkVoucherMap.get(order.id) || [];
-          const { invNode, orderTotals } = transformSingleOrder(order, orderIssued);
+          const { invNode, orderTotals } = transformSingleOrder(order, []);
           addTotals(grandTotals, orderTotals);
 
           const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
@@ -1241,7 +1252,7 @@ export class SalesListExportService {
             const batch = chunkInvoiceNodes.slice(sub, sub + SUB_CHUNK);
             const chunkLine = JSON.stringify({
               type: 'invoices',
-              startIndex: skip + sub,
+              startIndex: processedOrders + sub,
               count: batch.length,
               invoices: batch,
             }) + '\n';
@@ -1254,6 +1265,8 @@ export class SalesListExportService {
         const pct = Math.min(95, Math.round(25 + (processedOrders / totalOrdersCount) * 70));
         await onProgress?.(pct, `Processed ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} invoices (${pct}%)...`);
         await new Promise((res) => setImmediate(res));
+
+        if (chunkOrders.length < CHUNK) break;
       }
     }
 

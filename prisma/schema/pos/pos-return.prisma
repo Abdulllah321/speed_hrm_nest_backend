@@ -34,6 +34,7 @@ model PosReturn {
   @@index([customerId])
   @@index([originalCustomerId])
   @@index([createdAt])
+  @@index([locationId, createdAt])
   @@index([returnType])
   @@index([refundMode])
   @@map("pos_returns")

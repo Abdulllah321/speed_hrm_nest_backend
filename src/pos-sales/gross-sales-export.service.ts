@@ -1210,6 +1210,11 @@ export class GrossSalesExportService {
       ];
     }
 
+    await (prisma as any).$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS idx_sales_orders_created_at ON sales_orders(created_at);
+      CREATE INDEX IF NOT EXISTS idx_sales_orders_loc_created ON sales_orders(location_id, created_at);
+    `).catch(() => {});
+
     await onProgress?.(25, 'Counting matching POS sales orders...');
     const totalOrdersCount = await prisma.salesOrder.count({ where });
 
@@ -1242,12 +1247,16 @@ export class GrossSalesExportService {
     const globalCategoryNodesMap = new Map<string, GrossSalesSummaryCategoryNode>();
     const locationNodesMap = new Map<string, GrossSalesSummaryLocationNode>();
 
-    const CHUNK = 1000;
-    for (let skip = 0; skip < totalOrdersCount; skip += CHUNK) {
-      const chunkOrders = await prisma.salesOrder.findMany({
+    const CHUNK = 3000;
+    let lastId: string | undefined;
+    let processedCount = 0;
+
+    while (true) {
+      const chunkOrders: any[] = await prisma.salesOrder.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        skip,
+        cursor: lastId ? { id: lastId } : undefined,
+        skip: lastId ? 1 : 0,
         take: CHUNK,
         include: {
           items: {
@@ -1270,6 +1279,9 @@ export class GrossSalesExportService {
           },
         },
       });
+
+      if (!chunkOrders.length) break;
+      lastId = chunkOrders[chunkOrders.length - 1].id;
 
       for (const order of chunkOrders) {
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
@@ -1402,7 +1414,7 @@ export class GrossSalesExportService {
         }
       }
 
-      const processedCount = skip + chunkOrders.length;
+      processedCount += chunkOrders.length;
       const percent = Math.min(95, Math.round(30 + (processedCount / (totalOrdersCount || 1)) * 65));
       await onProgress?.(percent, `Processing sales items (${processedCount.toLocaleString()} of ${totalOrdersCount.toLocaleString()} orders)...`);
     }

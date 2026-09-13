@@ -605,10 +605,18 @@ export class NetSalesSummaryExportService {
     const globalCategoryNodesMap = new Map<string, NetSalesSummaryCategoryNode>();
     const locationNodesMap = new Map<string, NetSalesSummaryLocationNode>();
 
+    await (prisma as any).$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS idx_sales_orders_created_at ON sales_orders(created_at);
+      CREATE INDEX IF NOT EXISTS idx_sales_orders_loc_created ON sales_orders(location_id, created_at);
+    `).catch(() => {});
+
     const totalOrderCount = await prisma.salesOrder.count({ where });
-    const CHUNK = 1000;
-    for (let processed = 0; processed < totalOrderCount; processed += CHUNK) {
-      const chunk = await prisma.salesOrder.findMany({
+    const CHUNK = 2500;
+    let lastId: string | undefined;
+    let processed = 0;
+
+    while (true) {
+      const chunk: any[] = await prisma.salesOrder.findMany({
         where,
         include: {
           items: {
@@ -631,9 +639,13 @@ export class NetSalesSummaryExportService {
           },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        skip: processed,
+        cursor: lastId ? { id: lastId } : undefined,
+        skip: lastId ? 1 : 0,
         take: CHUNK,
       });
+
+      if (!chunk.length) break;
+      lastId = chunk[chunk.length - 1].id;
 
       for (const order of chunk) {
         const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
@@ -837,8 +849,9 @@ export class NetSalesSummaryExportService {
         }
       }
 
-      const percent = Math.min(65, 30 + Math.round(((processed + chunk.length) / (totalOrderCount || 1)) * 35));
-      await onProgress?.(percent, `Processed ${(processed + chunk.length).toLocaleString()} of ${totalOrderCount.toLocaleString()} sales orders...`);
+      processed += chunk.length;
+      const percent = Math.min(65, 30 + Math.round((processed / (totalOrderCount || 1)) * 35));
+      await onProgress?.(percent, `Processed ${processed.toLocaleString()} of ${totalOrderCount.toLocaleString()} sales orders...`);
     }
 
     const returnLedgerEntries = await prisma.stockLedger.findMany({

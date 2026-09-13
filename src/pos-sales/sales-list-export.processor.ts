@@ -406,24 +406,6 @@ export class SalesListExportProcessor {
 
           if (chunkOrders.length === 0) break;
 
-          const chunkOrderIds = chunkOrders.map((o) => o.id);
-          const chunkVouchers = chunkOrderIds.length > 0
-            ? await prisma.voucher.findMany({
-                where: {
-                  sourceOrderId: { in: chunkOrderIds },
-                  isDeleted: false,
-                },
-              })
-            : [];
-
-          const chunkVoucherMap = new Map<string, any[]>();
-          for (const v of chunkVouchers) {
-            if (!v.sourceOrderId) continue;
-            const list = chunkVoucherMap.get(v.sourceOrderId) || [];
-            list.push(v);
-            chunkVoucherMap.set(v.sourceOrderId, list);
-          }
-
           for (const order of chunkOrders) {
             const notesStr = order.notes || '';
             const fbr = order.fbrInvoiceNumber ? 1 : 0;
@@ -543,17 +525,6 @@ export class SalesListExportProcessor {
               issuedCredit = Number(issuedMatch[1]);
             }
 
-            const orderIssued = chunkVoucherMap.get(order.id) || [];
-            for (const iv of orderIssued) {
-              const type = iv.voucherType;
-              const faceVal = Number(iv.faceValue || 0);
-
-              if (type === 'GIFT' || type === 'CORPORATE' || type === 'OUTLET_GIFT') {
-                issuedGift += faceVal;
-              } else if (type === 'CREDIT' || type === 'REFUND') {
-                if (!issuedMatch) issuedCredit += faceVal;
-              }
-            }
 
             const tenderDocs = parseTenderDocs(notesStr, order.alliance);
 
