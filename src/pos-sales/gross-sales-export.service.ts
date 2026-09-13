@@ -10,7 +10,7 @@ import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
-import { pipeline } from 'stream';
+import { pipeline, PassThrough } from 'stream';
 import { UploadService } from '../upload/upload.service';
 import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
 
@@ -1544,7 +1544,7 @@ export class GrossSalesExportService {
 
     if (record.filePath.startsWith('s3://')) {
       const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
       return res.redirect(signedUrl, 302);
     }
 
@@ -1587,7 +1587,7 @@ export class GrossSalesExportService {
     const dateStr = new Date().toISOString().split('T')[0];
     const fileName = `gross-sales-summary-${exportType}-${dateStr}.xlsx`;
 
-    const dest = res.raw || res;
+    const passThrough = new PassThrough();
     if (typeof res.header === 'function') {
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.header('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -1598,8 +1598,14 @@ export class GrossSalesExportService {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
+    if (typeof res.send === 'function') {
+      res.send(passThrough);
+    } else if (typeof res.pipe === 'function') {
+      passThrough.pipe(res);
+    }
+
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-      stream: dest,
+      stream: passThrough,
       useStyles: true,
       useSharedStrings: false,
     });
@@ -1740,7 +1746,7 @@ export class GrossSalesExportService {
     const dateStr = new Date().toISOString().split('T')[0];
     const fileName = `gross-sales-return-${exportType}-${dateStr}.xlsx`;
 
-    const dest = res.raw || res;
+    const passThrough = new PassThrough();
     if (typeof res.header === 'function') {
       res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.header('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -1751,8 +1757,14 @@ export class GrossSalesExportService {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
+    if (typeof res.send === 'function') {
+      res.send(passThrough);
+    } else if (typeof res.pipe === 'function') {
+      passThrough.pipe(res);
+    }
+
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-      stream: dest,
+      stream: passThrough,
       useStyles: true,
       useSharedStrings: false,
     });
