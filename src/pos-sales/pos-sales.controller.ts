@@ -13,6 +13,7 @@ import {
   Patch,
   Sse,
   MessageEvent,
+  Logger,
 } from '@nestjs/common';
 import { Observable, interval, map, switchMap, takeWhile } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,6 +48,8 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PosSalesController {
+  private readonly logger = new Logger(PosSalesController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly posSalesService: PosSalesService,
@@ -2169,6 +2172,9 @@ export class PosSalesController {
     }
 
     const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      this.logger.error(`GrossSalesSummary stream error ${jobId}: ${err.message}`);
+    });
 
     if (acceptsGzip) {
       if (typeof res.header === 'function') {
@@ -2185,6 +2191,9 @@ export class PosSalesController {
       return stream.pipe(res);
     } else {
       const gunzip = zlib.createGunzip();
+      gunzip.on('error', (err) => {
+        this.logger.error(`GrossSalesSummary gunzip error ${jobId}: ${err.message}`);
+      });
       const unzipped = stream.pipe(gunzip);
       if (typeof res.send === 'function') {
         return res.send(unzipped);
@@ -2357,6 +2366,9 @@ export class PosSalesController {
     }
 
     const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      this.logger.error(`NetSalesSummary stream error ${jobId}: ${err.message}`);
+    });
 
     if (acceptsGzip) {
       if (typeof res.header === 'function') {
@@ -2373,6 +2385,9 @@ export class PosSalesController {
       return stream.pipe(res);
     } else {
       const gunzip = zlib.createGunzip();
+      gunzip.on('error', (err) => {
+        this.logger.error(`NetSalesSummary gunzip error ${jobId}: ${err.message}`);
+      });
       const unzipped = stream.pipe(gunzip);
       if (typeof res.send === 'function') {
         return res.send(unzipped);

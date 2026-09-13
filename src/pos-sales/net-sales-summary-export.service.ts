@@ -600,7 +600,7 @@ export class NetSalesSummaryExportService {
     };
 
     const grandTotals = createEmptyTotals();
-    const flatItems: NetSalesSummaryFlatRecord[] = [];
+    const flatItemsMap = new Map<string, NetSalesSummaryFlatRecord>();
 
     const globalCategoryNodesMap = new Map<string, NetSalesSummaryCategoryNode>();
     const locationNodesMap = new Map<string, NetSalesSummaryLocationNode>();
@@ -749,40 +749,62 @@ export class NetSalesSummaryExportService {
             netAmount: valueInclSalesTax,
           };
 
-          flatItems.push({
-            locationId: order.locationId || undefined,
-            locationName: locName,
-            cashierUserId: order.cashierUserId || undefined,
-            createdAt: order.createdAt,
-            docNo,
-            docDate,
-            salesPerson,
-            taxRatePercent: calculatedTaxPct,
-            taxRateName,
-            categoryName: catName,
-            brandName,
-            divisionName,
-            genderName,
-            silhouetteName,
-            sku: lineItemNode.sku,
-            barCode: lineItemNode.barCode,
-            description: lineItemNode.description,
-            sizeName: lineItemNode.sizeName,
-            colorName: lineItemNode.colorName,
-            unitPrice,
-            soldQty,
-            returnQty,
-            netQty,
-            retailSalesValue,
-            wostAmount,
-            grossAmount: grossAmt,
-            returnAmount: retAmt,
-            discountAmount: disc,
-            valueExSalesTax,
-            taxAmount: tax,
-            valueInclSalesTax,
-            netAmount: valueInclSalesTax,
-          });
+          const sku = lineItemNode.sku;
+          const barCode = lineItemNode.barCode;
+          const description = lineItemNode.description;
+          const sizeName = lineItemNode.sizeName;
+          const colorName = lineItemNode.colorName;
+          const monthKey = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
+          const variantKey = `${order.locationId || 'main'}|${monthKey}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}|${calculatedTaxPct}`;
+
+          let existingRecord = flatItemsMap.get(variantKey);
+          if (!existingRecord) {
+            existingRecord = {
+              locationId: order.locationId || undefined,
+              locationName: locName,
+              docDate: `${monthKey}-01`,
+              taxRatePercent: calculatedTaxPct,
+              taxRateName,
+              categoryName: catName,
+              brandName,
+              divisionName,
+              genderName,
+              silhouetteName,
+              sku,
+              barCode,
+              description,
+              sizeName,
+              colorName,
+              unitPrice,
+              soldQty: 0,
+              returnQty: 0,
+              netQty: 0,
+              retailSalesValue: 0,
+              wostAmount: 0,
+              grossAmount: 0,
+              returnAmount: 0,
+              discountAmount: 0,
+              valueExSalesTax: 0,
+              taxAmount: 0,
+              valueInclSalesTax: 0,
+              netAmount: 0,
+            };
+            flatItemsMap.set(variantKey, existingRecord);
+          }
+
+          existingRecord.soldQty += soldQty;
+          existingRecord.netQty += netQty;
+          existingRecord.retailSalesValue = Math.round(((existingRecord.retailSalesValue || 0) + retailSalesValue) * 100) / 100;
+          existingRecord.wostAmount = Math.round(((existingRecord.wostAmount || 0) + wostAmount) * 100) / 100;
+          existingRecord.grossAmount = Math.round((existingRecord.grossAmount + grossAmt) * 100) / 100;
+          existingRecord.discountAmount = Math.round((existingRecord.discountAmount + disc) * 100) / 100;
+          existingRecord.valueExSalesTax = Math.round(((existingRecord.valueExSalesTax || 0) + valueExSalesTax) * 100) / 100;
+          existingRecord.taxAmount = Math.round((existingRecord.taxAmount + tax) * 100) / 100;
+          existingRecord.valueInclSalesTax = Math.round(((existingRecord.valueInclSalesTax || 0) + valueInclSalesTax) * 100) / 100;
+          existingRecord.netAmount = Math.round((existingRecord.netAmount + valueInclSalesTax) * 100) / 100;
+          if (existingRecord.soldQty > 0) {
+            existingRecord.unitPrice = Math.round((existingRecord.grossAmount / existingRecord.soldQty) * 100) / 100;
+          }
 
           // Add to global category map (totals only, empty items)
           let globalCat = globalCategoryNodesMap.get(catName);
@@ -1008,40 +1030,59 @@ export class NetSalesSummaryExportService {
         netAmount: valueInclSalesTax,
       };
 
-      flatItems.push({
-        locationId: entry.locationId || undefined,
-        locationName: locName,
-        cashierUserId: (voucher as any)?.cashierUserId || undefined,
-        createdAt: entry.createdAt,
-        docNo,
-        docDate,
-        salesPerson,
-        taxRatePercent: calculatedTaxPct,
-        taxRateName,
-        categoryName: catName,
-        brandName,
-        divisionName,
-        genderName,
-        silhouetteName,
-        sku: lineItemNode.sku,
-        barCode: lineItemNode.barCode,
-        description: lineItemNode.description,
-        sizeName: lineItemNode.sizeName,
-        colorName: lineItemNode.colorName,
-        unitPrice,
-        soldQty,
-        returnQty,
-        netQty,
-        retailSalesValue,
-        wostAmount,
-        grossAmount: 0,
-        returnAmount: -valueInclSalesTax,
-        discountAmount: itemDisc,
-        valueExSalesTax,
-        taxAmount: taxAmount,
-        valueInclSalesTax,
-        netAmount: valueInclSalesTax,
-      });
+      const sku = lineItemNode.sku;
+      const barCode = lineItemNode.barCode;
+      const description = lineItemNode.description;
+      const sizeName = lineItemNode.sizeName;
+      const colorName = lineItemNode.colorName;
+      const monthKey = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
+      const variantKey = `${locKey}|${monthKey}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}|${calculatedTaxPct}`;
+
+      let existingRecord = flatItemsMap.get(variantKey);
+      if (!existingRecord) {
+        existingRecord = {
+          locationId: entry.locationId || undefined,
+          locationName: locName,
+          docDate: `${monthKey}-01`,
+          taxRatePercent: calculatedTaxPct,
+          taxRateName,
+          categoryName: catName,
+          brandName,
+          divisionName,
+          genderName,
+          silhouetteName,
+          sku,
+          barCode,
+          description,
+          sizeName,
+          colorName,
+          unitPrice,
+          soldQty: 0,
+          returnQty: 0,
+          netQty: 0,
+          retailSalesValue: 0,
+          wostAmount: 0,
+          grossAmount: 0,
+          returnAmount: 0,
+          discountAmount: 0,
+          valueExSalesTax: 0,
+          taxAmount: 0,
+          valueInclSalesTax: 0,
+          netAmount: 0,
+        };
+        flatItemsMap.set(variantKey, existingRecord);
+      }
+
+      existingRecord.returnQty += returnQty;
+      existingRecord.netQty += netQty;
+      existingRecord.retailSalesValue = Math.round(((existingRecord.retailSalesValue || 0) + retailSalesValue) * 100) / 100;
+      existingRecord.wostAmount = Math.round(((existingRecord.wostAmount || 0) + wostAmount) * 100) / 100;
+      existingRecord.returnAmount = Math.round((existingRecord.returnAmount + (-valueInclSalesTax)) * 100) / 100;
+      existingRecord.discountAmount = Math.round((existingRecord.discountAmount + itemDisc) * 100) / 100;
+      existingRecord.valueExSalesTax = Math.round(((existingRecord.valueExSalesTax || 0) + valueExSalesTax) * 100) / 100;
+      existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
+      existingRecord.valueInclSalesTax = Math.round(((existingRecord.valueInclSalesTax || 0) + valueInclSalesTax) * 100) / 100;
+      existingRecord.netAmount = Math.round((existingRecord.netAmount + valueInclSalesTax) * 100) / 100;
 
       let globalCat = globalCategoryNodesMap.get(catName);
       if (!globalCat) {
@@ -1071,6 +1112,7 @@ export class NetSalesSummaryExportService {
       }
     }
 
+    const flatItems = Array.from(flatItemsMap.values());
     await onProgress?.(100, 'Net Sales Summary computation complete!');
 
     return {
