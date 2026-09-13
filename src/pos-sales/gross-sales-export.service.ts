@@ -1236,7 +1236,7 @@ export class GrossSalesExportService {
     };
 
     const grandTotals = createEmptyTotals();
-    const flatItems: GrossSalesSummaryFlatRecord[] = [];
+    const flatItemsMap = new Map<string, GrossSalesSummaryFlatRecord>();
 
     // Grouping structure: Category -> CategoryNode
     const globalCategoryNodesMap = new Map<string, GrossSalesSummaryCategoryNode>();
@@ -1329,46 +1329,47 @@ export class GrossSalesExportService {
 
         addTotals(grandTotals, lineTotals);
 
-        const lineItemNode: GrossSalesSummaryLineItem = {
-          id: item.id,
-          sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
-          barCode: item.item?.barCode || item.item?.sku || '-',
-          description: item.item?.description || item.item?.sku || 'Article',
-          categoryName: catName,
-          brandName,
-          divisionName,
-          genderName,
-          silhouetteName,
-          sizeName: item.item?.size?.name || 'Default',
-          colorName: item.item?.color?.name || 'Default',
-          quantity: qty,
-          unitPrice,
-          wostAmount,
-          discountAmount: disc,
-          taxAmount: tax,
-          subTotal,
-        };
+        const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
+        const barCode = item.item?.barCode || item.item?.sku || '-';
+        const description = item.item?.description || item.item?.sku || 'Article';
+        const sizeName = item.item?.size?.name || 'Default';
+        const colorName = item.item?.color?.name || 'Default';
 
-        flatItems.push({
-          locationId: order.locationId || undefined,
-          locationName: locName,
-          categoryName: catName,
-          brandName,
-          divisionName,
-          genderName,
-          silhouetteName,
-          sku: lineItemNode.sku,
-          barCode: lineItemNode.barCode,
-          description: lineItemNode.description,
-          sizeName: lineItemNode.sizeName,
-          colorName: lineItemNode.colorName,
-          quantity: qty,
-          unitPrice,
-          wostAmount,
-          discountAmount: disc,
-          taxAmount: tax,
-          subTotal,
-        });
+        // Aggregate by location and product variant dimensions
+        const variantKey = `${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
+        let existingRecord = flatItemsMap.get(variantKey);
+        if (!existingRecord) {
+          existingRecord = {
+            locationId: order.locationId || undefined,
+            locationName: locName,
+            categoryName: catName,
+            brandName,
+            divisionName,
+            genderName,
+            silhouetteName,
+            sku,
+            barCode,
+            description,
+            sizeName,
+            colorName,
+            quantity: 0,
+            unitPrice,
+            wostAmount: 0,
+            discountAmount: 0,
+            taxAmount: 0,
+            subTotal: 0,
+          };
+          flatItemsMap.set(variantKey, existingRecord);
+        }
+
+        existingRecord.quantity += qty;
+        existingRecord.wostAmount = Math.round((existingRecord.wostAmount + wostAmount) * 100) / 100;
+        existingRecord.discountAmount = Math.round((existingRecord.discountAmount + disc) * 100) / 100;
+        existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
+        existingRecord.subTotal = Math.round((existingRecord.subTotal + subTotal) * 100) / 100;
+        if (existingRecord.quantity > 0) {
+          existingRecord.unitPrice = Math.round(((existingRecord.subTotal + existingRecord.discountAmount) / existingRecord.quantity) * 100) / 100;
+        }
 
         // Add to global merged map (accumulate category totals only; line items live exclusively in flatItems)
         let globalCat = globalCategoryNodesMap.get(catName);
@@ -1406,7 +1407,7 @@ export class GrossSalesExportService {
       await onProgress?.(percent, `Processing sales items (${processedCount.toLocaleString()} of ${totalOrdersCount.toLocaleString()} orders)...`);
     }
 
-
+    const flatItems = Array.from(flatItemsMap.values());
     await onProgress?.(100, 'Gross Sales Summary computation complete!');
 
     return {
