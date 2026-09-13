@@ -6,6 +6,8 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
+import { pipeline, PassThrough } from 'stream';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { UploadService } from '../upload/upload.service';
@@ -84,6 +86,7 @@ export interface NetSalesSummaryLocationNode {
 }
 
 export interface NetSalesSummaryFlatRecord {
+  locationId?: string;
   locationName: string;
   docNo?: string;
   docDate?: string;
@@ -437,35 +440,46 @@ export class NetSalesSummaryExportService {
       ];
     }
 
-    const rawOrders = await prisma.salesOrder.findMany({
-      where,
-      include: {
-        items: {
-          include: {
-            item: {
-              select: {
-                description: true,
-                sku: true,
-                barCode: true,
-                category: { select: { name: true } },
-                brand: { select: { name: true } },
-                division: { select: { name: true } },
-                gender: { select: { name: true } },
-                silhouette: { select: { name: true } },
-                size: { select: { name: true } },
-                color: { select: { name: true } },
+    const totalOrderCount = await prisma.salesOrder.count({ where });
+    const CHUNK = 1000;
+    const rawOrders: any[] = [];
+    for (let processed = 0; processed < totalOrderCount; processed += CHUNK) {
+      const chunk = await prisma.salesOrder.findMany({
+        where,
+        include: {
+          items: {
+            include: {
+              item: {
+                select: {
+                  description: true,
+                  sku: true,
+                  barCode: true,
+                  category: { select: { name: true } },
+                  brand: { select: { name: true } },
+                  division: { select: { name: true } },
+                  gender: { select: { name: true } },
+                  silhouette: { select: { name: true } },
+                  size: { select: { name: true } },
+                  color: { select: { name: true } },
+                },
               },
             },
           },
         },
-      },
-    });
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: processed,
+        take: CHUNK,
+      });
+      rawOrders.push(...chunk);
+      const percent = Math.min(65, 35 + Math.round((rawOrders.length / (totalOrderCount || 1)) * 30));
+      await onProgress?.(percent, `Loaded ${rawOrders.length.toLocaleString()} of ${totalOrderCount.toLocaleString()} sales orders...`);
+    }
 
     const returnLedgerEntries = await prisma.stockLedger.findMany({
       where: {
         referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'POS_VOID'] },
         createdAt: { gte: startDate, lte: endDate },
-        ...(locationId ? { locationId } : {}),
+        ...(locationWhere ? { locationId: locationWhere } : {}),
       },
       include: {
         item: {
@@ -686,7 +700,10 @@ export class NetSalesSummaryExportService {
         };
 
         flatItems.push({
+          locationId: order.locationId || undefined,
           locationName: locName,
+          cashierUserId: order.cashierUserId || undefined,
+          createdAt: order.createdAt,
           docNo,
           docDate,
           salesPerson,
@@ -872,7 +889,10 @@ export class NetSalesSummaryExportService {
       };
 
       flatItems.push({
+        locationId: entry.locationId || undefined,
         locationName: locName,
+        cashierUserId: (voucher as any)?.cashierUserId || undefined,
+        createdAt: entry.createdAt,
         docNo,
         docDate,
         salesPerson,
@@ -985,5 +1005,327 @@ export class NetSalesSummaryExportService {
       historyId: jobId,
       downloadUrl: fileUrl || `/api/warehouse/export-history/download/${jobId}`,
     };
+  }
+
+  async getJobStatus(jobId: string): Promise<{ state: string; progress: number; message?: string }> {
+    const job = (await this.exportQueue.getJob(jobId)) || (await this.exportQueue.getJob(`preview-${jobId}`));
+    if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
+    const state = await job.getState();
+    const rawProg: any = job.progress();
+    const progress = typeof rawProg === 'number' ? rawProg : typeof rawProg === 'object' && rawProg?.percent !== undefined ? Number(rawProg.percent) : 0;
+    const message = typeof rawProg === 'object' && rawProg?.message ? String(rawProg.message) : undefined;
+    return { state, progress, message };
+  }
+
+  async streamExportFile(jobId: string, res: any): Promise<void> {
+    const record = await this.prisma.exportHistory.findUnique({
+      where: { id: jobId },
+      select: { fileName: true, filePath: true },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Export record ${jobId} not found in database`);
+    }
+
+    try {
+      await this.prisma.exportHistory.update({
+        where: { id: jobId },
+        data: { downloadCount: { increment: 1 } },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+    }
+
+    if (record.filePath.startsWith('s3://')) {
+      const s3Key = record.filePath.replace('s3://', '');
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
+      return res.redirect(signedUrl, 302);
+    }
+
+    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+      return res.redirect(record.filePath, 302);
+    }
+
+    const filePath = path.join(process.cwd(), record.filePath);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+    }
+
+    const stat = fs.statSync(filePath);
+    const stream = fs.createReadStream(filePath);
+    const isPdf = record.fileName.endsWith('.pdf');
+
+    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header('Content-Length', stat.size);
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(stream);
+  }
+
+  async streamFilteredSummaryPreviewExcel(
+    jobId: string,
+    options: {
+      exportType?: 'flat' | 'hierarchical';
+      search?: string;
+      locationId?: string;
+    },
+    res: any,
+  ): Promise<void> {
+    const result = await this.getReportPreviewResult(jobId);
+    if (!result) {
+      throw new NotFoundException('Net sales summary preview result not found or expired');
+    }
+
+    const exportType = options.exportType || 'flat';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = `net-sales-summary-${exportType}-${dateStr}.xlsx`;
+
+    const passThrough = new PassThrough();
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    if (typeof res.send === 'function') {
+      res.send(passThrough);
+    } else if (typeof res.pipe === 'function') {
+      passThrough.pipe(res);
+    }
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: passThrough,
+      useStyles: true,
+      useSharedStrings: false,
+    });
+
+    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Net Sales Flat' : 'Net Sales Summary');
+
+    if (exportType === 'flat') {
+      sheet.columns = [
+        { header: 'Outlet / Location', key: 'locationName', width: 22 },
+        { header: 'Month / Year', key: 'monthYear', width: 16 },
+        { header: 'Doc Date', key: 'docDate', width: 16 },
+        { header: 'Doc Number', key: 'docNo', width: 16 },
+        { header: 'Salesperson / Cashier', key: 'salesPerson', width: 20 },
+        { header: 'Tax Group Rate', key: 'taxRate', width: 14 },
+        { header: 'Brand', key: 'brandName', width: 16 },
+        { header: 'Division', key: 'divisionName', width: 16 },
+        { header: 'Category', key: 'categoryName', width: 18 },
+        { header: 'Gender', key: 'genderName', width: 14 },
+        { header: 'Silhouette', key: 'silhouetteName', width: 16 },
+        { header: 'SKU', key: 'sku', width: 16 },
+        { header: 'Barcode', key: 'barCode', width: 16 },
+        { header: 'Description', key: 'description', width: 28 },
+        { header: 'Size', key: 'sizeName', width: 10 },
+        { header: 'Color', key: 'colorName', width: 12 },
+        { header: 'Unit Price', key: 'unitPrice', width: 12 },
+        { header: 'Sold Qty', key: 'soldQty', width: 10 },
+        { header: 'Return Qty', key: 'returnQty', width: 10 },
+        { header: 'Net Qty', key: 'netQty', width: 10 },
+        { header: 'Retail Sales Value', key: 'retailSalesValue', width: 16 },
+        { header: 'WOST Amount', key: 'wostAmount', width: 14 },
+        { header: 'Discount Amount', key: 'discountAmount', width: 14 },
+        { header: 'Value Excl. Sales Tax', key: 'valueExSalesTax', width: 16 },
+        { header: 'Sales Tax Amount', key: 'taxAmount', width: 14 },
+        { header: 'Value Incl. Sales Tax / Net Revenue', key: 'valueInclSalesTax', width: 18 },
+      ];
+
+      const q = (options.search || '').trim().toLowerCase();
+      const locSet = options.locationId && options.locationId !== 'all'
+        ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
+        : null;
+
+      let totalSold = 0;
+      let totalReturn = 0;
+      let totalNetQty = 0;
+      let totalRetail = 0;
+      let totalWost = 0;
+      let totalDiscount = 0;
+      let totalExTax = 0;
+      let totalTax = 0;
+      let totalInclTax = 0;
+
+      for (const item of result.flatItems || []) {
+        if (locSet) {
+          const loc = (item.locationName || '').toLowerCase();
+          const locId = (item.locationId || '').toLowerCase();
+          if (!locSet.has(loc) && !locSet.has(locId)) continue;
+        }
+
+        if (q) {
+          const matches =
+            (item.sku || '').toLowerCase().includes(q) ||
+            (item.barCode || '').toLowerCase().includes(q) ||
+            (item.description || '').toLowerCase().includes(q) ||
+            (item.categoryName || '').toLowerCase().includes(q) ||
+            (item.brandName || '').toLowerCase().includes(q) ||
+            (item.docNo || '').toLowerCase().includes(q) ||
+            (item.locationName || '').toLowerCase().includes(q);
+          if (!matches) continue;
+        }
+
+        const sold = Number(item.soldQty || 0);
+        const ret = Number(item.returnQty || 0);
+        const netQty = Number(item.netQty !== undefined ? item.netQty : (sold - ret));
+        const retail = Number(item.retailSalesValue || 0);
+        const wost = Number(item.wostAmount || 0);
+        const disc = Number(item.discountAmount || 0);
+        const exTax = Number(item.valueExSalesTax || 0);
+        const tax = Number(item.taxAmount || 0);
+        const inclTax = Number(item.valueInclSalesTax || 0);
+
+        totalSold += sold;
+        totalReturn += ret;
+        totalNetQty += netQty;
+        totalRetail += retail;
+        totalWost += wost;
+        totalDiscount += disc;
+        totalExTax += exTax;
+        totalTax += tax;
+        totalInclTax += inclTax;
+
+        const row = sheet.addRow({
+          locationName: item.locationName || '-',
+          monthYear: item.docDate ? item.docDate.slice(0, 7) : '-',
+          docDate: item.docDate ? item.docDate.slice(0, 10) : '-',
+          docNo: item.docNo || '-',
+          salesPerson: item.salesPerson || '-',
+          taxRate: item.taxRateName || (item.taxRatePercent ? `${item.taxRatePercent}%` : '-'),
+          brandName: item.brandName || '-',
+          divisionName: item.divisionName || '-',
+          categoryName: item.categoryName || '-',
+          genderName: item.genderName || '-',
+          silhouetteName: item.silhouetteName || '-',
+          sku: item.sku || '-',
+          barCode: item.barCode || '-',
+          description: item.description || '-',
+          sizeName: item.sizeName || '-',
+          colorName: item.colorName || '-',
+          unitPrice: Number(item.unitPrice || 0),
+          soldQty: sold,
+          returnQty: ret,
+          netQty,
+          retailSalesValue: retail,
+          wostAmount: wost,
+          discountAmount: disc,
+          valueExSalesTax: exTax,
+          taxAmount: tax,
+          valueInclSalesTax: inclTax,
+        });
+        row.commit();
+      }
+
+      const summaryRow = sheet.addRow({
+        locationName: 'FILTERED TOTALS',
+        soldQty: totalSold,
+        returnQty: totalReturn,
+        netQty: totalNetQty,
+        retailSalesValue: totalRetail,
+        wostAmount: totalWost,
+        discountAmount: totalDiscount,
+        valueExSalesTax: totalExTax,
+        taxAmount: totalTax,
+        valueInclSalesTax: totalInclTax,
+      });
+      summaryRow.font = { bold: true };
+      summaryRow.commit();
+    } else {
+      // Hierarchy / Category summary
+      const hasLocNodes = result.locations && result.locations.length > 0;
+      sheet.columns = [
+        ...(hasLocNodes ? [{ header: 'Outlet / Location', key: 'locationName', width: 22 }] : []),
+        { header: 'Category', key: 'categoryName', width: 22 },
+        { header: 'Brand', key: 'brandName', width: 18 },
+        { header: 'Division', key: 'divisionName', width: 16 },
+        { header: 'Gender', key: 'genderName', width: 14 },
+        { header: 'Silhouette', key: 'silhouetteName', width: 16 },
+        { header: 'Sold Qty', key: 'soldQty', width: 10 },
+        { header: 'Return Qty', key: 'returnQty', width: 10 },
+        { header: 'Net Qty', key: 'netQty', width: 10 },
+        { header: 'Retail Sales Value', key: 'retailSalesValue', width: 16 },
+        { header: 'WOST Amount', key: 'wostAmount', width: 14 },
+        { header: 'Discount Amount', key: 'discountAmount', width: 14 },
+        { header: 'Value Excl. Sales Tax', key: 'valueExSalesTax', width: 16 },
+        { header: 'Sales Tax Amount', key: 'taxAmount', width: 14 },
+        { header: 'Value Incl. Sales Tax / Net Revenue', key: 'valueInclSalesTax', width: 18 },
+      ];
+
+      if (hasLocNodes) {
+        for (const loc of result.locations || []) {
+          if (locSet) {
+            const lName = (loc.locationName || '').toLowerCase();
+            const lId = (loc.locationId || '').toLowerCase();
+            if (!locSet.has(lName) && !locSet.has(lId)) continue;
+          }
+          for (const cat of loc.categories || []) {
+            const totals = cat.totals;
+            const row = sheet.addRow({
+              locationName: loc.locationName,
+              categoryName: cat.categoryName || '-',
+              brandName: cat.brandName || '-',
+              divisionName: cat.divisionName || '-',
+              genderName: cat.genderName || '-',
+              silhouetteName: cat.silhouetteName || '-',
+              soldQty: totals.totalItemsSold,
+              returnQty: totals.totalItemsReturned,
+              netQty: totals.netItems,
+              retailSalesValue: totals.retailSalesValue,
+              wostAmount: totals.wostAmount,
+              discountAmount: totals.discountAmount,
+              valueExSalesTax: totals.valueExSalesTax,
+              taxAmount: totals.taxAmount,
+              valueInclSalesTax: totals.valueInclSalesTax,
+            });
+            row.commit();
+          }
+        }
+      } else {
+        for (const cat of result.categories || []) {
+          const totals = cat.totals;
+          const row = sheet.addRow({
+            categoryName: cat.categoryName || '-',
+            brandName: cat.brandName || '-',
+            divisionName: cat.divisionName || '-',
+            genderName: cat.genderName || '-',
+            silhouetteName: cat.silhouetteName || '-',
+            soldQty: totals.totalItemsSold,
+            returnQty: totals.totalItemsReturned,
+            netQty: totals.netItems,
+            retailSalesValue: totals.retailSalesValue,
+            wostAmount: totals.wostAmount,
+            discountAmount: totals.discountAmount,
+            valueExSalesTax: totals.valueExSalesTax,
+            taxAmount: totals.taxAmount,
+            valueInclSalesTax: totals.valueInclSalesTax,
+          });
+          row.commit();
+        }
+      }
+
+      const gt = result.grandTotals;
+      const summaryRow = sheet.addRow({
+        ...(hasLocNodes ? { locationName: 'GRAND TOTALS' } : {}),
+        categoryName: hasLocNodes ? '-' : 'GRAND TOTALS',
+        soldQty: gt.totalItemsSold,
+        returnQty: gt.totalItemsReturned,
+        netQty: gt.netItems,
+        retailSalesValue: gt.retailSalesValue,
+        wostAmount: gt.wostAmount,
+        discountAmount: gt.discountAmount,
+        valueExSalesTax: gt.valueExSalesTax,
+        taxAmount: gt.taxAmount,
+        valueInclSalesTax: gt.valueInclSalesTax,
+      });
+      summaryRow.font = { bold: true };
+      summaryRow.commit();
+    }
+
+    sheet.commit();
+    await workbook.commit();
   }
 }

@@ -643,6 +643,7 @@ export class PosSalesController {
   @Get('reports/net-sales-summary')
   @ApiOperation({ summary: 'Get Net Sales Summary Report' })
   async getNetSalesSummary(
+    @Req() req: any,
     @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -662,8 +663,14 @@ export class PosSalesController {
     @Query('showArticle') showArticle?: string,
     @Query('showVariant') showVariant?: string,
   ) {
+    let effectiveLocationId = locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+    if (req.user?.isTerminal && userLocationId) {
+      effectiveLocationId = userLocationId;
+    }
+
     return this.posSalesService.getNetSalesSummaryReport({
-      locationId,
+      locationId: effectiveLocationId,
       startDate,
       endDate,
       cashierUserId,
@@ -717,9 +724,15 @@ export class PosSalesController {
     },
   ) {
     const userId = req.user?.userId || req.user?.id;
+    let effectiveLocationId = body.locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+    if (req.user?.isTerminal && userLocationId) {
+      effectiveLocationId = userLocationId;
+    }
+
     const result = await this.netSalesSummaryExportService.queueExport({
       userId,
-      locationId: body.locationId,
+      locationId: effectiveLocationId,
       startDate: body.startDate,
       endDate: body.endDate,
       cashierUserId: body.cashierUserId,
@@ -749,7 +762,7 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get('reports/net-sales-summary/export/:jobId/download')
+  @Get(['reports/net-sales-summary/export/:jobId/download', 'reports/net-sales-summary/export/:jobId/download/:fileName'])
   @ApiOperation({ summary: 'Download Net Sales Summary Export' })
   async downloadNetSalesSummaryExport(
     @Param('jobId') jobId: string,
@@ -2056,10 +2069,17 @@ export class PosSalesController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
+    let effectiveLocationId = body.locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+    if (req.user?.isTerminal && userLocationId) {
+      effectiveLocationId = userLocationId;
+    }
+
     const result = await this.grossSalesExportService.queueSummaryReportPreview(
       {
         userId,
         ...body,
+        locationId: effectiveLocationId,
       },
     );
     return { status: true, data: result };
@@ -2114,6 +2134,7 @@ export class PosSalesController {
   @UseGuards(JwtAuthGuard)
   async getGrossSalesSummaryResult(
     @Param('jobId') jobId: string,
+    @Query('format') formatQuery: string,
     @Req() req: any,
     @Res() res: any,
   ) {
@@ -2129,9 +2150,15 @@ export class PosSalesController {
       throw new NotFoundException('Gross sales summary preview result not found or expired');
     }
 
+    const acceptsNdjson = formatQuery === 'ndjson' || (req.headers?.['accept'] || '').includes('application/x-ndjson');
+    if (!acceptsNdjson) {
+      const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+      const payload = { status: true, data };
+      return typeof res.send === 'function' ? res.send(payload) : res.json(payload);
+    }
+
     const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
-    const isNdjson = filePath.endsWith('.ndjson.gz') || (req.headers?.['accept'] || '').includes('application/x-ndjson');
-    const contentType = isNdjson ? 'application/x-ndjson' : 'application/json';
+    const contentType = 'application/x-ndjson';
 
     if (typeof res.header === 'function') {
       res.header('Content-Type', contentType);
@@ -2232,9 +2259,16 @@ export class PosSalesController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
+    let effectiveLocationId = body.locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+    if (req.user?.isTerminal && userLocationId) {
+      effectiveLocationId = userLocationId;
+    }
+
     const result = await this.netSalesSummaryExportService.queueReportPreview({
       userId,
       ...body,
+      locationId: effectiveLocationId,
     });
     return { status: true, data: result };
   }
@@ -2312,5 +2346,40 @@ export class PosSalesController {
         body,
       );
     return { status: true, data: result };
+  }
+
+  @Get(['reports/net-sales-summary/stream-preview-excel/:jobId', 'reports/net-sales-summary/stream-preview-excel/:jobId/:fileName'])
+  @ApiOperation({ summary: 'Stream filtered preview Excel for Net Sales Summary' })
+  async streamNetSalesSummaryPreviewExcel(
+    @Req() req: any,
+    @Param('jobId') jobId: string,
+    @Query('exportType') exportType: 'flat' | 'hierarchical',
+    @Query('search') search: string,
+    @Query('locationId') locationId: string,
+    @Res() res: any,
+  ) {
+    try {
+      let effectiveLocationId = locationId;
+      const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+      if (req.user?.isTerminal && userLocationId) {
+        effectiveLocationId = userLocationId;
+      }
+
+      await this.netSalesSummaryExportService.streamFilteredSummaryPreviewExcel(
+        jobId,
+        {
+          exportType,
+          search,
+          locationId: effectiveLocationId,
+        },
+        res,
+      );
+    } catch (err: any) {
+      const status = err?.status ?? 404;
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Preview export failed or expired',
+      });
+    }
   }
 }

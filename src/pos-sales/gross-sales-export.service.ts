@@ -172,6 +172,7 @@ export interface GrossSalesSummaryLocationNode {
 }
 
 export interface GrossSalesSummaryFlatRecord {
+  locationId?: string;
   locationName: string;
   categoryName: string;
   brandName: string;
@@ -1216,31 +1217,10 @@ export class GrossSalesExportService {
       ];
     }
 
-    const rawOrders = await prisma.salesOrder.findMany({
-      where,
-      include: {
-        items: {
-          include: {
-            item: {
-              select: {
-                description: true,
-                sku: true,
-                barCode: true,
-                category: { select: { name: true } },
-                brand: { select: { name: true } },
-                division: { select: { name: true } },
-                gender: { select: { name: true } },
-                silhouette: { select: { name: true } },
-                size: { select: { name: true } },
-                color: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-    });
+    await onProgress?.(25, 'Counting matching POS sales orders...');
+    const totalOrdersCount = await prisma.salesOrder.count({ where });
 
-    await onProgress?.(70, 'Building Gross Sales Category & Outlet hierarchy matrix...');
+    await onProgress?.(30, `Found ${totalOrdersCount.toLocaleString()} orders. Building Gross Sales Category matrix...`);
 
     const createEmptyTotals = (): GrossSalesSummaryTotals => ({
       orderCount: 0,
@@ -1269,7 +1249,36 @@ export class GrossSalesExportService {
     const globalCategoryNodesMap = new Map<string, GrossSalesSummaryCategoryNode>();
     const locationNodesMap = new Map<string, GrossSalesSummaryLocationNode>();
 
-    for (const order of rawOrders) {
+    const CHUNK = 1000;
+    for (let skip = 0; skip < totalOrdersCount; skip += CHUNK) {
+      const chunkOrders = await prisma.salesOrder.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take: CHUNK,
+        include: {
+          items: {
+            include: {
+              item: {
+                select: {
+                  description: true,
+                  sku: true,
+                  barCode: true,
+                  category: { select: { name: true } },
+                  brand: { select: { name: true } },
+                  division: { select: { name: true } },
+                  gender: { select: { name: true } },
+                  silhouette: { select: { name: true } },
+                  size: { select: { name: true } },
+                  color: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const order of chunkOrders) {
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
       const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
 
@@ -1348,6 +1357,7 @@ export class GrossSalesExportService {
         };
 
         flatItems.push({
+          locationId: order.locationId || undefined,
           locationName: locName,
           categoryName: catName,
           brandName,
@@ -1397,8 +1407,14 @@ export class GrossSalesExportService {
           addTotals(locCat.totals, lineTotals);
           addTotals(locNode.totals, lineTotals);
         }
+        }
       }
+
+      const processedCount = skip + chunkOrders.length;
+      const percent = Math.min(95, Math.round(30 + (processedCount / (totalOrdersCount || 1)) * 65));
+      await onProgress?.(percent, `Processing sales items (${processedCount.toLocaleString()} of ${totalOrdersCount.toLocaleString()} orders)...`);
     }
+
 
     await onProgress?.(100, 'Gross Sales Summary computation complete!');
 
