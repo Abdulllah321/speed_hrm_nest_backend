@@ -604,9 +604,12 @@ export class SalesListExportService {
 
     await onProgress?.(15, 'Loading outlet metadata & cashier user profiles...');
 
-    const [allLocations, cashiersList] = await Promise.all([
+    const [allLocations, cashiersList, allSizes, allColors, allMerchants] = await Promise.all([
       prisma.location.findMany({ select: { id: true, name: true } }),
       this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
+      prisma.size.findMany({ select: { id: true, name: true } }),
+      prisma.color.findMany({ select: { id: true, name: true } }),
+      prisma.merchantConfig.findMany({ select: { id: true, bankName: true, description: true } }),
     ]);
 
     const locationMap = new Map<string, string>();
@@ -614,6 +617,18 @@ export class SalesListExportService {
 
     const cashierMap = new Map<string, string>();
     for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+
+    const sizeMap = new Map<string, string>();
+    for (const s of allSizes) sizeMap.set(s.id, s.name);
+
+    const colorMap = new Map<string, string>();
+    for (const c of allColors) colorMap.set(c.id, c.name);
+
+    const merchantMap = new Map<string, string>();
+    for (const m of allMerchants) {
+      const label = m.bankName || (m.description ? m.description.split('|')[1]?.trim() || m.description : '');
+      merchantMap.set(m.id, label);
+    }
 
     let locationNames = '';
     if (locIds.length > 0) {
@@ -727,33 +742,11 @@ export class SalesListExportService {
 
       const notesStr = order.notes || '';
 
-      // Balance / OnCredit
+      // Fast-path tender extraction (only evaluate regex if notes exist)
       let balance = 0;
-      const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
-      if (balanceMatch) {
-        balance = Number(balanceMatch[1]);
-      } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
-        balance = Number(order.grandTotal);
-      }
-
       let cashSale = Number(order.cashAmount || 0);
       let cardSale = Number(order.cardAmount || 0);
-      let onCreditAmount = balance;
-      let creditSale = balance > 0 ? balance : ((order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0);
       let cashReturn = 0;
-
-      const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
-      if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
-
-      if (cashSale === 0) {
-        const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
-        if (cashMatch) cashSale = Number(cashMatch[1]);
-      }
-      if (cardSale === 0) {
-        const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
-        if (cardMatch) cardSale = Number(cardMatch[1]);
-      }
-
       let giftVoucherAmount = 0;
       let creditVoucherAmount = 0;
       let exchangeVoucherAmount = 0;
@@ -761,27 +754,75 @@ export class SalesListExportService {
       let giftVoucherCorporate = 0;
       let rewardVoucherAmount = 0;
 
-      const exMatch = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
-      if (exMatch) exchangeVoucherAmount = Number(exMatch[1]);
+      let giftMatch = false;
+      let credVouchMatch = false;
+      let exMatch = false;
+      let clmMatch = false;
+      let corpMatch = false;
+      let rewMatch = false;
 
-      const clmMatch = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
-      if (clmMatch) claimVoucherAmount = Number(clmMatch[1]);
+      if (notesStr) {
+        const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+        if (balanceMatch) balance = Number(balanceMatch[1]);
 
-      const corpMatch = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
-      if (corpMatch) giftVoucherCorporate = Number(corpMatch[1]);
+        const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+        if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
 
-      const giftMatch = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
-      if (giftMatch) giftVoucherAmount = Number(giftMatch[1]);
+        if (cashSale === 0) {
+          const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+          if (cashMatch) cashSale = Number(cashMatch[1]);
+        }
+        if (cardSale === 0) {
+          const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+          if (cardMatch) cardSale = Number(cardMatch[1]);
+        }
 
-      const rewMatch = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
-      if (rewMatch) {
-        rewardVoucherAmount = Number(rewMatch[1]);
-      } else if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+        const ex = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
+        if (ex) {
+          exchangeVoucherAmount = Number(ex[1]);
+          exMatch = true;
+        }
+
+        const clm = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
+        if (clm) {
+          claimVoucherAmount = Number(clm[1]);
+          clmMatch = true;
+        }
+
+        const corp = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+        if (corp) {
+          giftVoucherCorporate = Number(corp[1]);
+          corpMatch = true;
+        }
+
+        const gift = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
+        if (gift) {
+          giftVoucherAmount = Number(gift[1]);
+          giftMatch = true;
+        }
+
+        const rew = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        if (rew) {
+          rewardVoucherAmount = Number(rew[1]);
+          rewMatch = true;
+        }
+
+        const credV = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
+        if (credV) {
+          creditVoucherAmount = Number(credV[1]);
+          credVouchMatch = true;
+        }
+      }
+
+      if (balance === 0 && (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account')) {
+        balance = Number(order.grandTotal);
+      }
+      if (rewardVoucherAmount === 0 && (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher')) {
         rewardVoucherAmount = Number(order.grandTotal);
       }
 
-      const credVouchMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
-      if (credVouchMatch) creditVoucherAmount = Number(credVouchMatch[1]);
+      let onCreditAmount = balance;
+      let creditSale = balance > 0 ? balance : ((order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0);
 
       for (const red of (order.voucherRedemptions || [])) {
         const type = red.voucher?.voucherType;
@@ -804,7 +845,7 @@ export class SalesListExportService {
 
       const totalRedeemedVoucher = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
       const orderVoucherAmt = Number(order.voucherAmount || 0);
-      if (orderVoucherAmt > totalRedeemedVoucher) {
+      if (orderVoucherAmt > totalRedeemedVoucher && notesStr) {
         const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
         if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
           exchangeVoucherAmount += remVoucher;
@@ -822,16 +863,18 @@ export class SalesListExportService {
       }
 
       let creditVoucherIssuedAmount = 0;
-      const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
-      if (issuedMatch) {
-        creditVoucherIssuedAmount = Number(issuedMatch[1]);
+      if (notesStr) {
+        const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+        if (issuedMatch) {
+          creditVoucherIssuedAmount = Number(issuedMatch[1]);
+        }
       }
       for (const iv of orderIssued) {
         const type = iv.voucherType;
         const faceVal = Number(iv.faceValue || 0);
 
         if (type === 'CREDIT' || type === 'REFUND') {
-          if (!issuedMatch) creditVoucherIssuedAmount += faceVal;
+          creditVoucherIssuedAmount += faceVal;
         }
       }
 
@@ -860,8 +903,8 @@ export class SalesListExportService {
         sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
         barCode: item.item?.barCode || item.item?.sku || '-',
         description: item.item?.description || item.item?.sku || 'Article',
-        sizeName: item.item?.size?.name || 'Default',
-        colorName: item.item?.color?.name || 'Default',
+        sizeName: (item.item?.sizeId && sizeMap.get(item.item.sizeId)) || 'Default',
+        colorName: (item.item?.colorId && colorMap.get(item.item.colorId)) || 'Default',
         quantity: Number(item.quantity || 0),
         unitPrice: Number(item.unitPrice || 0),
         discountAmount: Number(item.discountAmount || 0),
@@ -870,13 +913,10 @@ export class SalesListExportService {
 
       const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
 
-      let merchantName = (order as any).merchant?.bankName || ((order as any).merchant?.description ? (order as any).merchant.description.split('|')[1]?.trim() || (order as any).merchant.description : '');
-      if (!merchantName && notesStr) {
+      let merchantName = (order.merchantId && merchantMap.get(order.merchantId)) || '-';
+      if ((merchantName === '-' || !merchantName) && notesStr) {
         const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i);
         if (merchMatch) merchantName = merchMatch[1].trim();
-      }
-      if (!merchantName && order.alliance?.partnerName) {
-        merchantName = order.alliance.partnerName;
       }
       merchantName = merchantName || '-';
 
@@ -1149,8 +1189,10 @@ export class SalesListExportService {
     }
 
     let processedOrders = 0;
+    let lastReportedPct = 0;
+
     if (totalOrdersCount > 0) {
-      const CHUNK = 1000;
+      const CHUNK = 2500;
       let lastId: string | undefined;
 
       while (true) {
@@ -1183,10 +1225,10 @@ export class SalesListExportService {
             cardAmount: true,
             voucherAmount: true,
             notes: true,
+            merchantId: true,
             fbrInvoiceNumber: true,
             fbrStatus: true,
             customer: { select: { name: true, contactNo: true } },
-            merchant: { select: { bankName: true, description: true } },
             voucherRedemptions: {
               select: {
                 amountUsed: true,
@@ -1207,8 +1249,8 @@ export class SalesListExportService {
                     description: true,
                     sku: true,
                     barCode: true,
-                    size: { select: { name: true } },
-                    color: { select: { name: true } },
+                    sizeId: true,
+                    colorId: true,
                   },
                 },
               },
@@ -1247,7 +1289,7 @@ export class SalesListExportService {
 
         // If direct disk streaming, write chunked invoice batches to gzip and free memory immediately
         if (isDirectDiskStream && chunkInvoiceNodes.length > 0) {
-          const SUB_CHUNK = 100;
+          const SUB_CHUNK = 250;
           for (let sub = 0; sub < chunkInvoiceNodes.length; sub += SUB_CHUNK) {
             const batch = chunkInvoiceNodes.slice(sub, sub + SUB_CHUNK);
             const chunkLine = JSON.stringify({
@@ -1263,7 +1305,10 @@ export class SalesListExportService {
 
         processedOrders += chunkOrders.length;
         const pct = Math.min(95, Math.round(25 + (processedOrders / totalOrdersCount) * 70));
-        await onProgress?.(pct, `Processed ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} invoices (${pct}%)...`);
+        if (pct - lastReportedPct >= 2 || processedOrders === totalOrdersCount) {
+          lastReportedPct = pct;
+          await onProgress?.(pct, `Processed ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} invoices (${pct}%)...`);
+        }
         await new Promise((res) => setImmediate(res));
 
         if (chunkOrders.length < CHUNK) break;
