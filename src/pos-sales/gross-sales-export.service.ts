@@ -476,10 +476,10 @@ export class GrossSalesExportService {
             }
           }
 
-          // Flat items chunked into batches
+          // Flat items chunked into batches (1,500 records per line for high throughput without memory spikes)
           const flatItems = result.flatItems || [];
-          for (let i = 0; i < flatItems.length; i += 250) {
-            const slice = flatItems.slice(i, i + 250);
+          for (let i = 0; i < flatItems.length; i += 1500) {
+            const slice = flatItems.slice(i, i + 1500);
             const chunkLine = JSON.stringify({
               type: 'flatItems',
               startIndex: i,
@@ -507,16 +507,6 @@ export class GrossSalesExportService {
 
       writeData();
     });
-
-    // Also write monolithic json.gz for backward compatibility
-    try {
-      const jsonStr = JSON.stringify(result);
-      const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
-      const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
-      await fs.promises.writeFile(jsonPath, compressed);
-    } catch (err: any) {
-      this.logger.warn(`Could not write fallback json.gz preview: ${err.message}`);
-    }
   }
 
   async getReportPreviewResult(jobId: string): Promise<any | null> {
@@ -524,46 +514,49 @@ export class GrossSalesExportService {
     if (!fs.existsSync(filePath)) {
       return null;
     }
-    const compressed = await fs.promises.readFile(filePath);
-    const decompressed = await gunzipAsync(compressed);
-    const rawText = decompressed.toString('utf8');
 
-    if (filePath.endsWith('.ndjson.gz') || rawText.startsWith('{"type":')) {
-      const lines = rawText.split('\n');
-      let meta: any = {};
-      let categories: any[] = [];
-      let returns: any[] = [];
-      let flatItems: any[] = [];
-      let grandTotals: any = {};
+    // Stream line-by-line to prevent V8 out-of-memory errors on large annual datasets
+    const fileStream = fs.createReadStream(filePath);
+    const gunzip = zlib.createGunzip();
+    const lineReader = readline.createInterface({
+      input: fileStream.pipe(gunzip),
+      crlfDelay: Infinity,
+    });
 
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const obj = JSON.parse(line);
-          if (obj.type === 'meta') {
-            meta = obj;
-          } else if (obj.type === 'categories' && Array.isArray(obj.categories)) {
-            categories.push(...obj.categories);
-          } else if (obj.type === 'returns' && Array.isArray(obj.returns)) {
-            returns.push(...obj.returns);
-          } else if (obj.type === 'flatItems' && Array.isArray(obj.flatItems)) {
-            flatItems.push(...obj.flatItems);
-          } else if (obj.type === 'totals') {
-            grandTotals = obj.grandTotals;
-          }
-        } catch (_) {}
-      }
+    let meta: any = {};
+    const categories: any[] = [];
+    const returns: any[] = [];
+    const flatItems: any[] = [];
+    let grandTotals: any = {};
 
-      return {
-        ...meta,
-        categories: categories.length > 0 ? categories : undefined,
-        returns: returns.length > 0 ? returns : undefined,
-        flatItems,
-        grandTotals,
-      };
+    for await (const line of lineReader) {
+      if (!line || !line.trim()) continue;
+      try {
+        const obj = JSON.parse(line);
+        if (obj.type === 'meta') {
+          meta = obj;
+        } else if (obj.type === 'categories' && Array.isArray(obj.categories)) {
+          categories.push(...obj.categories);
+        } else if (obj.type === 'returns' && Array.isArray(obj.returns)) {
+          returns.push(...obj.returns);
+        } else if (obj.type === 'flatItems' && Array.isArray(obj.flatItems)) {
+          flatItems.push(...obj.flatItems);
+        } else if (obj.type === 'totals') {
+          grandTotals = obj.grandTotals || grandTotals;
+        }
+      } catch (_) {}
     }
 
-    return JSON.parse(rawText);
+    return {
+      reportType: meta.reportType || 'merged',
+      dateRange: meta.dateRange || {},
+      locationNames: meta.locationNames || '',
+      locations: meta.locations,
+      categories: categories.length > 0 ? categories : undefined,
+      returns: returns.length > 0 ? returns : undefined,
+      flatItems,
+      grandTotals,
+    };
   }
 
   async generateGrossSalesReturnReportDataInternal(
@@ -1377,7 +1370,7 @@ export class GrossSalesExportService {
           subTotal,
         });
 
-        // Add to global merged map
+        // Add to global merged map (accumulate category totals only; line items live exclusively in flatItems)
         let globalCat = globalCategoryNodesMap.get(catName);
         if (!globalCat) {
           globalCat = {
@@ -1388,7 +1381,6 @@ export class GrossSalesExportService {
           };
           globalCategoryNodesMap.set(catName, globalCat);
         }
-        globalCat.items.push(lineItemNode);
         addTotals(globalCat.totals, lineTotals);
 
         // Add to location map if separate
@@ -1403,7 +1395,6 @@ export class GrossSalesExportService {
             };
             locNode.categories.push(locCat);
           }
-          locCat.items.push(lineItemNode);
           addTotals(locCat.totals, lineTotals);
           addTotals(locNode.totals, lineTotals);
         }

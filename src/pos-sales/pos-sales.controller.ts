@@ -2320,16 +2320,65 @@ export class PosSalesController {
 
   @Get('reports/net-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getNetSalesSummaryResult(@Param('jobId') jobId: string) {
-    const data =
-      await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
-    if (!data) {
-      return {
-        status: false,
-        message: 'Net sales summary preview result not found or expired',
-      };
+  async getNetSalesSummaryResult(
+    @Param('jobId') jobId: string,
+    @Query('format') formatQuery: string,
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const filePath = this.netSalesSummaryExportService.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      if (typeof res.status === 'function') {
+        const errPayload = {
+          status: false,
+          message: 'Net sales summary preview result not found or expired',
+        };
+        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
+      }
+      throw new NotFoundException('Net sales summary preview result not found or expired');
     }
-    return { status: true, data };
+
+    const acceptsNdjson = formatQuery === 'ndjson' || (req.headers?.['accept'] || '').includes('application/x-ndjson');
+    if (!acceptsNdjson) {
+      const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
+      const payload = { status: true, data };
+      return typeof res.send === 'function' ? res.send(payload) : res.json(payload);
+    }
+
+    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
+    const contentType = 'application/x-ndjson';
+
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', contentType);
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', contentType);
+    } else if (res.raw?.setHeader) {
+      res.raw.setHeader('Content-Type', contentType);
+    }
+
+    const stream = fs.createReadStream(filePath);
+
+    if (acceptsGzip) {
+      if (typeof res.header === 'function') {
+        res.header('Content-Encoding', 'gzip');
+      } else if (typeof res.setHeader === 'function') {
+        res.setHeader('Content-Encoding', 'gzip');
+      } else if (res.raw?.setHeader) {
+        res.raw.setHeader('Content-Encoding', 'gzip');
+      }
+
+      if (typeof res.send === 'function') {
+        return res.send(stream);
+      }
+      return stream.pipe(res);
+    } else {
+      const gunzip = zlib.createGunzip();
+      const unzipped = stream.pipe(gunzip);
+      if (typeof res.send === 'function') {
+        return res.send(unzipped);
+      }
+      return unzipped.pipe(res);
+    }
   }
 
   @Post('reports/net-sales-summary/export/register-client-export')
