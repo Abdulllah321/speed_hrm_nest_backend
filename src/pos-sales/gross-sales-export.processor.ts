@@ -19,11 +19,13 @@ interface GrossSalesExportJobData {
   tenantId: string;
   companyId?: string;
   tenantDbUrl: string;
-  locationId: string;
+  locationId?: string;
+  locationIds?: string[];
   startDate?: string;
   endDate?: string;
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
+  exportType?: 'flat' | 'hierarchical';
   search?: string;
   paymentModeGroup?: string;
   minAmount?: number;
@@ -254,19 +256,27 @@ export class GrossSalesExportProcessor {
         const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
         try {
-          await job.progress(15);
+          await job.progress({ percent: 15, message: 'Loading outlet details & parameters...' });
 
-          const location = await prisma.location.findUnique({
-            where: { id: locationId },
-            select: { name: true },
-          });
-          const locationName = location?.name || 'Store';
+          const allLocations = await prisma.location.findMany({ select: { id: true, name: true } });
+          const locationMap = new Map<string, string>();
+          for (const l of allLocations) locationMap.set(l.id, l.name);
+
+          const locIds = (job.data.locationIds && job.data.locationIds.length > 0)
+            ? job.data.locationIds
+            : (locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : []);
+
+          const locationName = locIds.length > 0
+            ? locIds.map((id) => locationMap.get(id) || id).join(', ')
+            : 'All Outlets (Stores)';
+
+          const effectiveLocationParam = locIds.length > 0 ? locIds.join(',') : undefined;
 
           // Fetch flat rows from Service
           let result;
           if (reportType === 'return') {
             result = await this.posSalesService.getGrossSalesReturnReport({
-              locationId,
+              locationId: effectiveLocationParam as any,
               startDate,
               endDate,
               cashierUserId,
@@ -287,7 +297,7 @@ export class GrossSalesExportProcessor {
             });
           } else {
             result = await this.posSalesService.getGrossSalesSummaryReport({
-              locationId,
+              locationId: effectiveLocationParam as any,
               startDate,
               endDate,
               cashierUserId,
@@ -309,7 +319,7 @@ export class GrossSalesExportProcessor {
           }
 
       const rows = result.data || [];
-      await job.progress(50);
+      await job.progress({ percent: 50, message: `Loaded ${rows.length.toLocaleString()} rows. Aggregating totals...` });
 
       // Compute Grand Totals
       const grandTotals = {
@@ -409,7 +419,18 @@ export class GrossSalesExportProcessor {
           right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
         };
 
+        let processedRows = 0;
+        const totalRowsCount = rows.length;
+
         for (const r of rows) {
+          processedRows++;
+          if (processedRows % 250 === 0 || processedRows === totalRowsCount) {
+            const pct = 70 + Math.floor((processedRows / Math.max(1, totalRowsCount)) * 25);
+            await job.progress({
+              percent: Math.min(95, pct),
+              message: `Streaming row ${processedRows.toLocaleString()} of ${totalRowsCount.toLocaleString()}...`,
+            });
+          }
           const labelPadding = '  '.repeat(r.depth || 0) + r.label;
           const rowData = {
             label: labelPadding,

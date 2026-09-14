@@ -8,6 +8,7 @@
   "scripts": {
     "postinstall": "prisma generate --schema prisma/schema",
     "build": "nest build",
+    "redis:start": "\"C:\\Program Files\\Memurai\\memurai.exe\" --port 6379 --dir \"%TEMP%\"",
     "start": "nest start",
     "start:dev": "nest start -b swc --watch",
     "start:debug": "nest start -b swc --debug --watch",
