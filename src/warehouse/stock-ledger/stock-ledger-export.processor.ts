@@ -19,6 +19,8 @@ export interface StockLedgerExportJobData {
   itemId?: string;
   referenceType?: string;
   search?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
@@ -59,9 +61,9 @@ const COLUMNS: {
   { header: 'Unit Price',      key: 'unitPrice',       width: 14, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
   { header: 'Total Price',     key: 'totalPrice',      width: 16, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
   // Reference
-  { header: 'Source',          key: 'referenceType',   width: 18, group: 'Reference', align: 'center' },
-  { header: 'Reference ID',    key: 'referenceId',     width: 36, group: 'Reference', align: 'center' },
-  { header: 'Date',            key: 'createdAt',       width: 20, group: 'Reference', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
+  { header: 'Reference Type',  key: 'referenceType',   width: 18, group: 'Reference' },
+  { header: 'Reference',       key: 'referenceId',     width: 28, group: 'Reference' },
+  { header: 'Date & Time',     key: 'createdAt',       width: 20, group: 'Reference', numFmt: 'yyyy-mm-dd hh:mm', align: 'center' },
 ];
 
 @Processor('stock-ledger-export')
@@ -74,7 +76,7 @@ export class StockLedgerExportProcessor {
 
   @Process()
   async handleExport(job: Job<StockLedgerExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, warehouseId, locationId, movementType, itemId, referenceType, search } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, warehouseId, locationId, movementType, itemId, referenceType, search, startDate, endDate } = job.data;
 
     this.logger.log(`[StockLedgerExport ${jobId}] Starting for user ${userId}`);
 
@@ -95,6 +97,20 @@ export class StockLedgerExportProcessor {
         ...(itemId && { itemId }),
         ...(referenceType && { referenceType }),
       };
+
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          where.createdAt.gte = start;
+        }
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          where.createdAt.lte = end;
+        }
+      }
 
       if (search) {
         const searchLower = search.toLowerCase().trim();
@@ -253,7 +269,7 @@ export class StockLedgerExportProcessor {
 
         if (!chunk.length) break;
 
-        // Enrich locations in the chunk
+        // Enrich locations and reference numbers in the chunk
         const locationIds = [...new Set(chunk.map((d) => d.locationId).filter(Boolean))] as string[];
         const locationMap = new Map<string, { name: string; code: string }>();
         if (locationIds.length > 0) {
@@ -265,6 +281,79 @@ export class StockLedgerExportProcessor {
             locationMap.set(loc.id, { name: loc.name, code: loc.code });
           }
         }
+
+        const transferIds: string[] = [];
+        const lcIds: string[] = [];
+        const saleIds: string[] = [];
+        const grnIds: string[] = [];
+        const adjIds: string[] = [];
+
+        for (const entry of chunk) {
+          const refId = entry.referenceId;
+          if (!refId) continue;
+          if (['TRANSFER_REQUEST', 'TRANSFER_IN', 'TRANSFER_OUT', 'RETURN_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT'].includes(entry.referenceType)) {
+            transferIds.push(refId);
+          } else if (entry.referenceType === 'LANDED_COST') {
+            lcIds.push(refId);
+          } else if (['POS_SALE', 'POS_VOID'].includes(entry.referenceType)) {
+            saleIds.push(refId);
+          } else if (entry.referenceType === 'GRN') {
+            grnIds.push(refId);
+          } else if (['ADJUSTMENT', 'STOCK_ADJUSTMENT'].includes(entry.referenceType)) {
+            adjIds.push(refId);
+          }
+        }
+
+        const [transfers, lcs, sales, grns, adjs] = await Promise.all([
+          transferIds.length > 0
+            ? prisma.transferRequest.findMany({
+                where: { id: { in: [...new Set(transferIds)] } },
+                select: { id: true, requestNo: true, notes: true },
+              })
+            : [],
+          lcIds.length > 0
+            ? prisma.landedCost.findMany({
+                where: { id: { in: [...new Set(lcIds)] } },
+                select: { id: true, landedCostNumber: true, lcNo: true },
+              })
+            : [],
+          saleIds.length > 0
+            ? prisma.salesOrder.findMany({
+                where: { id: { in: [...new Set(saleIds)] } },
+                select: { id: true, orderNumber: true },
+              })
+            : [],
+          grnIds.length > 0
+            ? prisma.goodsReceiptNote.findMany({
+                where: { id: { in: [...new Set(grnIds)] } },
+                select: { id: true, grnNumber: true },
+              })
+            : [],
+          adjIds.length > 0
+            ? prisma.stockAdjustment.findMany({
+                where: { id: { in: [...new Set(adjIds)] } },
+                select: { id: true, adjustmentNo: true },
+              })
+            : [],
+        ]);
+
+        const refMap = new Map<string, string>();
+        for (const t of transfers) {
+          let extra = '';
+          if (t.notes) {
+            const outMatch = t.notes.match(/TR\s*OUT\s*No:\s*([^|\n]+)/i);
+            const inMatch = t.notes.match(/TR\s*IN\s*No:\s*([^|\n]+)/i);
+            if (outMatch) extra = ` (${outMatch[1].trim()})`;
+            else if (inMatch) extra = ` (${inMatch[1].trim()})`;
+          }
+          refMap.set(t.id, `${t.requestNo}${extra}`);
+        }
+        for (const lc of lcs) {
+          refMap.set(lc.id, lc.lcNo ? `${lc.landedCostNumber} (${lc.lcNo})` : lc.landedCostNumber);
+        }
+        for (const s of sales) refMap.set(s.id, s.orderNumber);
+        for (const g of grns) refMap.set(g.id, g.grnNumber);
+        for (const a of adjs) refMap.set(a.id, a.adjustmentNo);
 
         for (const entry of chunk) {
           const isAlt = rowIdx % 2 === 1;
@@ -284,7 +373,7 @@ export class StockLedgerExportProcessor {
             unitPrice: unitPriceNum || null,
             totalPrice: entry.item?.unitPrice && entry.qty ? Math.abs(totalPriceNum) : null,
             referenceType: entry.referenceType,
-            referenceId: entry.referenceId,
+            referenceId: refMap.get(entry.referenceId) || entry.referenceId,
             createdAt: new Date(entry.createdAt),
           };
 

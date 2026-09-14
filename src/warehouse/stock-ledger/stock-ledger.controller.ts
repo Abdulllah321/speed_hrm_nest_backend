@@ -55,9 +55,12 @@ export class StockLedgerController {
     @Query('movementType') movementType?: MovementType,
     @Query('itemId') itemId?: string,
     @Query('referenceType') referenceType?: string,
+    @Query('page') page?: string,
     @Query('cursor') cursor?: string,   // BigInt id of last seen record
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     return this.stockLedgerService.findAll({
       warehouseId,
@@ -65,9 +68,12 @@ export class StockLedgerController {
       movementType,
       itemId,
       referenceType,
+      page: page ? parseInt(page, 10) : undefined,
       cursor: cursor ? BigInt(cursor) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       search,
+      startDate,
+      endDate,
     });
   }
 
@@ -81,6 +87,8 @@ export class StockLedgerController {
     @Query('itemId') itemId?: string,
     @Query('referenceType') referenceType?: string,
     @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     const result = await this.stockLedgerService.queueExport({
       userId: req.user?.userId || req.user?.id,
@@ -90,6 +98,8 @@ export class StockLedgerController {
       itemId,
       referenceType,
       search,
+      startDate,
+      endDate,
     });
 
     return {
