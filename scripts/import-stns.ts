@@ -64,7 +64,7 @@ const KNOWN_WAREHOUSE_CODES = new Set(['C40001', 'C-TSDMC', 'C30001', 'C20001', 
 const isWarehouseCode = (code: string) => {
   const c = code.trim().toUpperCase();
   if (KNOWN_WAREHOUSE_CODES.has(c)) return true;
-  return c.startsWith('C') || c.startsWith('WH') || c.includes('WAREHOUSE') || c.includes('LOGISTIC');
+  return c.startsWith('WH') || c.includes('WAREHOUSE') || c.includes('LOGISTIC');
 };
 
 /**
@@ -94,22 +94,26 @@ export function parseCustomDate(dateStr: string): Date | null {
   const timePart = spaceParts[1] || '0:0';
 
   const dParts = datePart.split('/');
-  if (dParts.length !== 3) return null;
+  if (dParts.length === 3) {
+    const month = parseInt(dParts[0], 10);
+    const day = parseInt(dParts[1], 10);
+    let year = parseInt(dParts[2], 10);
 
-  const month = parseInt(dParts[0], 10);
-  const day = parseInt(dParts[1], 10);
-  let year = parseInt(dParts[2], 10);
+    if (year < 100) {
+      year += 2000;
+    }
 
-  if (year < 100) {
-    year += 2000;
+    const tParts = timePart.split(':');
+    const hours = parseInt(tParts[0] || '0', 10);
+    const minutes = parseInt(tParts[1] || '0', 10);
+    const seconds = parseInt(tParts[2] || '0', 10);
+
+    const d = new Date(year, month - 1, day, hours, minutes, seconds);
+    return isNaN(d.getTime()) ? null : d;
   }
 
-  const tParts = timePart.split(':');
-  const hours = parseInt(tParts[0] || '0', 10);
-  const minutes = parseInt(tParts[1] || '0', 10);
-  const seconds = parseInt(tParts[2] || '0', 10);
-
-  return new Date(year, month - 1, day, hours, minutes, seconds);
+  const fallback = new Date(dateStr);
+  return isNaN(fallback.getTime()) ? null : fallback;
 }
 
 export function readAndParseGeneralizedStns(filePath: string, maxRows?: number): ParsedStnRow[] {
@@ -117,99 +121,166 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
     throw new Error(`File not found at path: ${filePath}`);
   }
 
-  const content = fs.readFileSync(filePath, 'utf-8');
-  const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '' && !l.trim().startsWith('---'));
-
-  if (lines.length < 2) {
-    console.warn(`⚠️ File ${filePath} contains no data rows.`);
-    return [];
-  }
-
-  const headerLine = lines[0];
-  const isTabSep = headerLine.includes('\t');
-  const isPipeSep = headerLine.includes('|');
-
-  const headers = isTabSep
-    ? headerLine.split('\t').map((h) => h.trim().toLowerCase())
-    : isPipeSep
-    ? headerLine.split('|').map((h) => h.trim().toLowerCase()).filter(Boolean)
-    : headerLine.split(',').map((h) => h.trim().toLowerCase());
-
-  const findColIndex = (keywords: string[], defaultIdx: number): number => {
-    const idx = headers.findIndex((h) => keywords.some((k) => h.includes(k)));
-    return idx !== -1 ? idx : defaultIdx;
-  };
-
-  const colOutName = findColIndex(['stock tr out location', 'out location', 'from location'], 0);
-  const colOutCode = findColIndex(['stock tr out location code', 'code tr out', 'from code'], 1);
-  const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 2);
-  const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 3);
-  const colDocType = findColIndex(['documenttype', 'type'], 4);
-  const colInName = findColIndex(['stock deliver to location', 'in location', 'to location'], 5);
-  const colInCode = findColIndex(['stock deliver to location code', 'code tr in', 'to code'], 6);
-  const colBarcode = findColIndex(['barcode', 'sku', 'item'], 7);
-  const colQty = findColIndex(['quantity', 'qty'], 8);
-  const colRecNo = findColIndex(['receivingdocumentno', 'receiving doc no', 'recdocno'], 9);
-  const colRecDate = findColIndex(['receivingdocumentdate', 'receiving date', 'recdate'], 10);
-  const colRemarks = findColIndex(['remarks', 'notes'], 11);
-  const colStatus = findColIndex(['documentstatus', 'status'], 12);
-
   const rawParsed: ParsedStnRow[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const rawLine = lines[i].trim();
-    if (!rawLine || rawLine.startsWith('---')) continue;
+  if (filePath.toLowerCase().endsWith('.json')) {
+    console.log(`📑 Reading JSON format STN data from ${filePath}...`);
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const parsedJson = JSON.parse(fileContent);
 
-    let parts = isTabSep
-      ? rawLine.split('\t').map((p) => p.trim())
+    let rows: any[] = [];
+    if (Array.isArray(parsedJson)) {
+      rows = parsedJson;
+    } else if (typeof parsedJson === 'object' && parsedJson !== null) {
+      for (const key of Object.keys(parsedJson)) {
+        if (key !== 'Sheet1' && Array.isArray(parsedJson[key])) {
+          rows = parsedJson[key];
+          break;
+        }
+      }
+    }
+
+    console.log(`  Found ${rows.length} records in JSON dataset.`);
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const stockOutLocationName = r['From'] || r['Stock TR Out Location'] || r['Stock Out Location'] || '';
+      const codeTrOut = String(r['From Location Code'] || r['Stock TR Out Location Code'] || r['Code TR Out'] || '').trim();
+      const documentNumber = String(r['DocumentNumber'] !== undefined && r['DocumentNumber'] !== null ? r['DocumentNumber'] : r['DocNo'] || '').trim();
+      const documentDateStr = String(r['DocumentDate'] || r['DocDate'] || '').trim();
+      const documentType = r['TextLine'] || r['DocumentType'] || 'Transfer Out';
+      const stockInLocationName = r['To'] || r['Stock Deliver To Location'] || r['Stock In Location'] || '';
+      const codeTrIn = String(r['To Location Code'] || r['Stock Deliver to Location Code'] || r['Code TR In'] || '').trim();
+      const barCode = String(r['BarCode'] || r['Barcode'] || '').replace(/"/g, '').trim();
+      const rawQty = r['Quantity'] !== undefined ? r['Quantity'] : r['Qty'] !== undefined ? r['Qty'] : 1;
+      const quantity = parseFloat(rawQty) || 1;
+      const receivingDocNo = r['ReceivingDocumentNo'] !== undefined && r['ReceivingDocumentNo'] !== null ? String(r['ReceivingDocumentNo']).trim() : '';
+      const receivingDocDateStr = String(r['ReceivingDocumentDate'] || '').trim();
+      const remarks = String(r['Remarks'] || '').trim();
+      const documentStatus = String(r['DocumentStatus'] || 'Approved / Closed').trim();
+
+      if (!codeTrOut || !codeTrIn || !barCode) continue;
+
+      const documentDate = parseCustomDate(documentDateStr);
+      if (!documentDate || isNaN(documentDate.getTime())) continue;
+
+      const receivingDocDate = parseCustomDate(receivingDocDateStr);
+      const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
+
+      rawParsed.push({
+        rowNum: 0,
+        stockOutLocationName,
+        codeTrOut,
+        documentNumber,
+        documentDateStr,
+        documentDate,
+        documentType,
+        stockInLocationName,
+        codeTrIn,
+        barCode,
+        quantity,
+        receivingDocNo,
+        receivingDocDateStr,
+        receivingDocDate: isReceived ? receivingDocDate : null,
+        remarks,
+        documentStatus,
+        isReceived,
+      });
+    }
+  } else {
+    // Delimited text/csv/markdown parsing
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '' && !l.trim().startsWith('---'));
+
+    if (lines.length < 2) {
+      console.warn(`⚠️ File ${filePath} contains no data rows.`);
+      return [];
+    }
+
+    const headerLine = lines[0];
+    const isTabSep = headerLine.includes('\t');
+    const isPipeSep = headerLine.includes('|');
+
+    const headers = isTabSep
+      ? headerLine.split('\t').map((h) => h.trim().toLowerCase())
       : isPipeSep
-      ? rawLine.split('|').map((p) => p.trim()).filter(Boolean)
-      : rawLine.split(',').map((p) => p.trim());
+      ? headerLine.split('|').map((h) => h.trim().toLowerCase()).filter(Boolean)
+      : headerLine.split(',').map((h) => h.trim().toLowerCase());
 
-    if (parts.length < 5) continue;
+    const findColIndex = (keywords: string[], defaultIdx: number): number => {
+      const idx = headers.findIndex((h) => keywords.some((k) => h.includes(k)));
+      return idx !== -1 ? idx : defaultIdx;
+    };
 
-    const stockOutLocationName = parts[colOutName] || '';
-    const codeTrOut = parts[colOutCode] || '';
-    const documentNumber = parts[colDocNo] || '';
-    const documentDateStr = parts[colDocDate] || '';
-    const documentType = parts[colDocType] || 'Transfer Out';
-    const stockInLocationName = parts[colInName] || '';
-    const codeTrIn = parts[colInCode] || '';
-    const barCode = (parts[colBarcode] || '').replace(/"/g, '').trim();
-    const rawQty = parts[colQty] || '1';
-    const quantity = parseFloat(rawQty) || 1;
-    const receivingDocNo = parts[colRecNo] || '';
-    const receivingDocDateStr = parts[colRecDate] || '';
-    const remarks = parts[colRemarks] || '';
-    const documentStatus = parts[colStatus] || 'Approved / Closed';
+    const colOutName = findColIndex(['stock tr out location', 'out location', 'from location'], 0);
+    const colOutCode = findColIndex(['stock tr out location code', 'code tr out', 'from code'], 1);
+    const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 2);
+    const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 3);
+    const colDocType = findColIndex(['documenttype', 'type'], 4);
+    const colInName = findColIndex(['stock deliver to location', 'in location', 'to location'], 5);
+    const colInCode = findColIndex(['stock deliver to location code', 'code tr in', 'to code'], 6);
+    const colBarcode = findColIndex(['barcode', 'sku', 'item'], 7);
+    const colQty = findColIndex(['quantity', 'qty'], 8);
+    const colRecNo = findColIndex(['receivingdocumentno', 'receiving doc no', 'recdocno'], 9);
+    const colRecDate = findColIndex(['receivingdocumentdate', 'receiving date', 'recdate'], 10);
+    const colRemarks = findColIndex(['remarks', 'notes'], 11);
+    const colStatus = findColIndex(['documentstatus', 'status'], 12);
 
-    if (!codeTrOut || !codeTrIn || !barCode) continue;
+    for (let i = 1; i < lines.length; i++) {
+      const rawLine = lines[i].trim();
+      if (!rawLine || rawLine.startsWith('---')) continue;
 
-    const documentDate = parseCustomDate(documentDateStr);
-    if (!documentDate || isNaN(documentDate.getTime())) continue;
+      let parts = isTabSep
+        ? rawLine.split('\t').map((p) => p.trim())
+        : isPipeSep
+        ? rawLine.split('|').map((p) => p.trim()).filter(Boolean)
+        : rawLine.split(',').map((p) => p.trim());
 
-    const receivingDocDate = parseCustomDate(receivingDocDateStr);
-    const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
+      if (parts.length < 5) continue;
 
-    rawParsed.push({
-      rowNum: 0,
-      stockOutLocationName,
-      codeTrOut,
-      documentNumber,
-      documentDateStr,
-      documentDate,
-      documentType,
-      stockInLocationName,
-      codeTrIn,
-      barCode,
-      quantity,
-      receivingDocNo,
-      receivingDocDateStr,
-      receivingDocDate: isReceived ? receivingDocDate : null,
-      remarks,
-      documentStatus,
-      isReceived,
-    });
+      const stockOutLocationName = parts[colOutName] || '';
+      const codeTrOut = parts[colOutCode] || '';
+      const documentNumber = parts[colDocNo] || '';
+      const documentDateStr = parts[colDocDate] || '';
+      const documentType = parts[colDocType] || 'Transfer Out';
+      const stockInLocationName = parts[colInName] || '';
+      const codeTrIn = parts[colInCode] || '';
+      const barCode = (parts[colBarcode] || '').replace(/"/g, '').trim();
+      const rawQty = parts[colQty] || '1';
+      const quantity = parseFloat(rawQty) || 1;
+      const receivingDocNo = parts[colRecNo] || '';
+      const receivingDocDateStr = parts[colRecDate] || '';
+      const remarks = parts[colRemarks] || '';
+      const documentStatus = parts[colStatus] || 'Approved / Closed';
+
+      if (!codeTrOut || !codeTrIn || !barCode) continue;
+
+      const documentDate = parseCustomDate(documentDateStr);
+      if (!documentDate || isNaN(documentDate.getTime())) continue;
+
+      const receivingDocDate = parseCustomDate(receivingDocDateStr);
+      const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
+
+      rawParsed.push({
+        rowNum: 0,
+        stockOutLocationName,
+        codeTrOut,
+        documentNumber,
+        documentDateStr,
+        documentDate,
+        documentType,
+        stockInLocationName,
+        codeTrIn,
+        barCode,
+        quantity,
+        receivingDocNo,
+        receivingDocDateStr,
+        receivingDocDate: isReceived ? receivingDocDate : null,
+        remarks,
+        documentStatus,
+        isReceived,
+      });
+    }
   }
 
   // Sort ALL parsed rows chronologically by documentDate ascending (oldest first)
@@ -222,57 +293,273 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
   return maxRows ? rawParsed.slice(0, maxRows) : rawParsed;
 }
 
+async function bulkInsertTransferRequests(pool: Pool, records: any[]) {
+  const CHUNK = 1000;
+  for (let i = 0; i < records.length; i += CHUNK) {
+    const chunk = records.slice(i, i + CHUNK);
+    const valueStrings: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+    for (const r of chunk) {
+      valueStrings.push(
+        `($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8}, $${idx + 9}, $${idx + 10}, $${idx + 11}, $${idx + 12}, $${idx + 13})`
+      );
+      params.push(
+        r.id,
+        r.requestNo,
+        r.fromLocationId,
+        r.toLocationId,
+        r.fromWarehouseId,
+        r.toWarehouseId,
+        r.transferType,
+        r.requestDate,
+        r.createdAt,
+        r.updatedAt,
+        r.sourceApprovedAt,
+        r.dispatchDate,
+        r.status,
+        r.notes
+      );
+      idx += 14;
+    }
+    await pool.query(
+      `INSERT INTO "TransferRequest" (
+        id, "requestNo", "fromLocationId", "toLocationId", "fromWarehouseId", "toWarehouseId",
+        transfer_type, "requestDate", "createdAt", "updatedAt", source_approved_at,
+        dispatch_date, status, notes
+      ) VALUES ${valueStrings.join(', ')}`,
+      params
+    );
+  }
+}
+
+async function bulkInsertTransferRequestItems(pool: Pool, records: any[]) {
+  const CHUNK = 1000;
+  for (let i = 0; i < records.length; i += CHUNK) {
+    const chunk = records.slice(i, i + CHUNK);
+    const valueStrings: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+    for (const r of chunk) {
+      valueStrings.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4})`);
+      params.push(r.id, r.transferRequestId, r.itemId, r.quantity, r.fulfilledQty);
+      idx += 5;
+    }
+    await pool.query(
+      `INSERT INTO "TransferRequestItem" (
+        id, "transferRequestId", "itemId", quantity, "fulfilledQty"
+      ) VALUES ${valueStrings.join(', ')}`,
+      params
+    );
+  }
+}
+
+async function bulkInsertStockMovements(pool: Pool, records: any[]) {
+  const CHUNK = 1000;
+  for (let i = 0; i < records.length; i += CHUNK) {
+    const chunk = records.slice(i, i + CHUNK);
+    const valueStrings: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+    for (const r of chunk) {
+      valueStrings.push(
+        `($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8}, $${idx + 9}, $${idx + 10}, $${idx + 11}, $${idx + 12})`
+      );
+      params.push(
+        r.id,
+        r.movementNo,
+        r.itemId,
+        r.fromLocationId,
+        r.toLocationId,
+        r.quantity,
+        r.type,
+        r.referenceType,
+        r.referenceId,
+        r.movementDate,
+        r.createdAt,
+        r.updatedAt,
+        r.notes
+      );
+      idx += 13;
+    }
+    await pool.query(
+      `INSERT INTO "StockMovement" (
+        id, "movementNo", "itemId", "fromLocationId", "toLocationId",
+        quantity, type, "referenceType", "referenceId", "movementDate",
+        "createdAt", "updatedAt", notes
+      ) VALUES ${valueStrings.join(', ')}`,
+      params
+    );
+  }
+}
+
+async function bulkInsertStockLedgers(pool: Pool, records: any[]) {
+  const CHUNK = 1000;
+  for (let i = 0; i < records.length; i += CHUNK) {
+    const chunk = records.slice(i, i + CHUNK);
+    const valueStrings: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+    for (const r of chunk) {
+      valueStrings.push(
+        `($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7})`
+      );
+      params.push(
+        r.itemId,
+        r.warehouseId,
+        r.locationId,
+        r.qty,
+        r.movementType,
+        r.referenceType,
+        r.referenceId,
+        r.createdAt
+      );
+      idx += 8;
+    }
+    await pool.query(
+      `INSERT INTO stock_ledgers (
+        item_id, warehouse_id, location_id, qty, movement_type,
+        reference_type, reference_id, created_at
+      ) VALUES ${valueStrings.join(', ')}`,
+      params
+    );
+  }
+}
+
+async function bulkUpdateInventoryItems(
+  pool: Pool,
+  deltas: { warehouseId: string; locationId: string | null; itemId: string; delta: number }[]
+) {
+  const CHUNK = 1000;
+  for (let i = 0; i < deltas.length; i += CHUNK) {
+    const chunk = deltas.slice(i, i + CHUNK);
+    const valueStrings: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+    for (const d of chunk) {
+      valueStrings.push(`($${idx}::text, $${idx + 1}::text, $${idx + 2}::text, $${idx + 3}::numeric)`);
+      params.push(d.warehouseId, d.locationId, d.itemId, d.delta);
+      idx += 4;
+    }
+
+    // 1. Update existing records
+    await pool.query(
+      `UPDATE "InventoryItem" inv
+       SET quantity = inv.quantity + d.delta, "updatedAt" = NOW()
+       FROM (VALUES ${valueStrings.join(', ')}) AS d(warehouse_id, location_id, item_id, delta)
+       WHERE inv."warehouseId" = d.warehouse_id
+         AND inv."locationId" IS NOT DISTINCT FROM d.location_id
+         AND inv."itemId" = d.item_id
+         AND inv.status = 'AVAILABLE'`,
+      params
+    );
+
+    // 2. Insert newly encountered records
+    await pool.query(
+      `INSERT INTO "InventoryItem" (id, "warehouseId", "locationId", "itemId", quantity, status, "createdAt", "updatedAt")
+       SELECT gen_random_uuid(), d.warehouse_id, d.location_id, d.item_id, d.delta, 'AVAILABLE', NOW(), NOW()
+       FROM (VALUES ${valueStrings.join(', ')}) AS d(warehouse_id, location_id, item_id, delta)
+       WHERE NOT EXISTS (
+         SELECT 1 FROM "InventoryItem" inv
+         WHERE inv."warehouseId" = d.warehouse_id
+           AND inv."locationId" IS NOT DISTINCT FROM d.location_id
+           AND inv."itemId" = d.item_id
+           AND inv.status = 'AVAILABLE'
+       )`,
+      params
+    );
+  }
+}
+
 async function processTransfersForTenant(
   prisma: PrismaClient,
   rows: ParsedStnRow[],
-  isDryRun: boolean = false
+  isDryRun: boolean = false,
+  pool?: Pool
 ) {
   console.log(`\n==================================================`);
   console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} STN transfer rows...`);
   console.log(`==================================================\n`);
 
+  const deltaMap = new Map<string, { warehouseId: string; locationId: string | null; itemId: string; delta: number }>();
+  function recordDelta(warehouseId: string, locationId: string | null, itemId: string, delta: number) {
+    const key = `${warehouseId}::${locationId || ''}::${itemId}`;
+    const existing = deltaMap.get(key);
+    if (existing) {
+      existing.delta += delta;
+    } else {
+      deltaMap.set(key, { warehouseId, locationId, itemId, delta });
+    }
+  }
+
   // Step 1: Cleanup previous imported STNs in live mode
-  if (!isDryRun) {
-    console.log(`🧹 Cleaning up previously imported STN records...`);
-    const existingStns = await prisma.transferRequest.findMany({
-      where: {
-        OR: [
-          { requestNo: { startsWith: 'STN-' } },
-          { notes: { contains: 'TR-OUT-' } },
-          { notes: { contains: 'TR-IN-' } },
-          { notes: { contains: 'DocNo:' } },
-        ],
-      },
-      select: { id: true },
+  if (!isDryRun && pool) {
+    console.log(`🧹 Step 1: Cleaning up previously imported STN records...`);
+    const existingStnsRes = await pool.query(`
+      SELECT id, "requestNo", "fromLocationId", "toLocationId", "fromWarehouseId", "toWarehouseId", status
+      FROM "TransferRequest"
+      WHERE "requestNo" LIKE 'STN-%'
+         OR notes LIKE '%TR-OUT-%'
+         OR notes LIKE '%TR-IN-%'
+         OR notes LIKE '%OrigDocNo:%'
+         OR notes LIKE '%DocNo:%'
+    `);
+    const existingStns = existingStnsRes.rows;
+
+    let defaultWh = await prisma.warehouse.findFirst({
+      where: { isDeleted: false },
     });
 
     if (existingStns.length > 0) {
-      const stnIds = existingStns.map((s) => s.id);
+      const stnIds = existingStns.map((s: any) => s.id);
       console.log(`  Found ${stnIds.length} existing STN headers to clean up.`);
 
-      await prisma.transferRequestItem.deleteMany({
-        where: { transferRequestId: { in: stnIds } },
-      });
+      // Fetch items to reverse their inventory impacts
+      const itemsRes = await pool.query(
+        `SELECT "transferRequestId", "itemId", quantity, "fulfilledQty"
+         FROM "TransferRequestItem"
+         WHERE "transferRequestId" = ANY($1)`,
+        [stnIds]
+      );
 
-      await prisma.stockMovement.deleteMany({
-        where: {
-          OR: [
-            { referenceId: { in: stnIds } },
-            { notes: { contains: 'STN Transfer' } },
-          ],
-        },
-      });
+      const stnMap = new Map(existingStns.map((s: any) => [s.id, s]));
+      for (const item of itemsRes.rows) {
+        const stn = stnMap.get(item.transferRequestId);
+        if (!stn) continue;
+        const qty = parseFloat(item.quantity) || 0;
+        const fulfilledQty = parseFloat(item.fulfilledQty) || 0;
 
-      await prisma.stockLedger.deleteMany({
-        where: { referenceId: { in: stnIds } },
-      });
+        // Reversal of source outbound (-qty becomes +qty)
+        const srcWhId = stn.fromWarehouseId || defaultWh?.id || 'default-wh';
+        const srcLocId = stn.fromLocationId || null;
+        recordDelta(srcWhId, srcLocId, item.itemId, qty);
 
-      await prisma.transferRequest.deleteMany({
-        where: { id: { in: stnIds } },
-      });
+        // Reversal of destination inbound (+qty becomes -qty if completed)
+        if (stn.status === 'COMPLETED' || fulfilledQty > 0) {
+          const destWhId = stn.toWarehouseId || defaultWh?.id || 'default-wh';
+          const destLocId = stn.toLocationId || null;
+          recordDelta(destWhId, destLocId, item.itemId, -(fulfilledQty || qty));
+        }
+      }
 
-      console.log(`  ✅ Successfully wiped ${stnIds.length} old STN records.`);
+      await pool.query(`DELETE FROM "TransferRequestItem" WHERE "transferRequestId" = ANY($1)`, [stnIds]);
+      await pool.query(
+        `DELETE FROM "StockMovement" WHERE "referenceType" = 'TRANSFER_REQUEST' OR "referenceId" = ANY($1)`,
+        [stnIds]
+      );
+      await pool.query(
+        `DELETE FROM stock_ledgers WHERE reference_type IN ('TRANSFER_IN', 'TRANSFER_OUT') OR reference_id = ANY($1)`,
+        [stnIds]
+      );
+      await pool.query(`DELETE FROM "TransferRequest" WHERE id = ANY($1)`, [stnIds]);
+      console.log(`  ✅ Successfully wiped ${stnIds.length} old STN records and queued inventory balance reversals.`);
     }
+
+    // Also purge any orphaned STN movements/ledgers
+    await pool.query(
+      `DELETE FROM "StockMovement" WHERE notes LIKE 'STN Transfer%' OR "movementNo" LIKE 'MV-OUT-TR-%' OR "movementNo" LIKE 'MV-IN-TR-%'`
+    );
+    await pool.query(`DELETE FROM stock_ledgers WHERE reference_type IN ('TRANSFER_IN', 'TRANSFER_OUT')`);
   }
 
   let defaultWarehouse: any = null;
@@ -296,24 +583,41 @@ async function processTransfersForTenant(
     defaultWarehouse = { id: 'dry-run-wh-id', code: 'C40001', name: 'LOGISTIC AREA CENTRAL WAREHOUSE' };
   }
 
-  const entityCache = new Map<string, EntityRef>();
-  const itemCache = new Map<string, any>();
+  // Pre-load warehouses and locations into entity cache
+  const warehouseMap = new Map<string, EntityRef>();
+  const locationMap = new Map<string, EntityRef>();
 
-  async function resolveEntity(code: string, name: string): Promise<EntityRef> {
-    if (entityCache.has(code)) {
-      return entityCache.get(code)!;
+  if (!isDryRun && pool) {
+    const whRows = await pool.query(`SELECT id, code, name FROM "Warehouse" WHERE "isDeleted" = false`);
+    for (const r of whRows.rows) {
+      warehouseMap.set(r.code.trim().toUpperCase(), { type: 'WAREHOUSE', id: r.id, code: r.code, name: r.name });
     }
 
-    if (isWarehouseCode(code)) {
+    const locRows = await pool.query(`SELECT id, code, name FROM "Location" WHERE "isDeleted" = false`);
+    for (const r of locRows.rows) {
+      locationMap.set(r.code.trim().toUpperCase(), { type: 'LOCATION', id: r.id, code: r.code, name: r.name });
+    }
+  }
+
+  async function resolveEntity(code: string, name: string): Promise<EntityRef> {
+    const upperCode = code.trim().toUpperCase();
+    if (warehouseMap.has(upperCode)) {
+      return warehouseMap.get(upperCode)!;
+    }
+    if (locationMap.has(upperCode)) {
+      return locationMap.get(upperCode)!;
+    }
+
+    if (isWarehouseCode(upperCode)) {
       if (!isDryRun) {
         let wh = await prisma.warehouse.findFirst({
-          where: { code, isDeleted: false },
+          where: { code: upperCode, isDeleted: false },
         });
         if (!wh) {
-          console.log(`🏭 Creating Warehouse [${code}]: ${name}`);
+          console.log(`🏭 Creating Warehouse [${upperCode}]: ${name}`);
           wh = await prisma.warehouse.create({
             data: {
-              code,
+              code: upperCode,
               name: name || 'LOGISTIC AREA WAREHOUSE',
               type: 'GENERAL',
               isActive: true,
@@ -321,23 +625,23 @@ async function processTransfersForTenant(
           });
         }
         const ref: EntityRef = { type: 'WAREHOUSE', id: wh.id, code: wh.code, name: wh.name };
-        entityCache.set(code, ref);
+        warehouseMap.set(upperCode, ref);
         return ref;
       } else {
-        const ref: EntityRef = { type: 'WAREHOUSE', id: `wh-${code}`, code, name: name || 'Warehouse' };
-        entityCache.set(code, ref);
+        const ref: EntityRef = { type: 'WAREHOUSE', id: `wh-${upperCode}`, code: upperCode, name: name || 'Warehouse' };
+        warehouseMap.set(upperCode, ref);
         return ref;
       }
     } else {
       if (!isDryRun) {
         let loc = await prisma.location.findFirst({
-          where: { code, isDeleted: false },
+          where: { code: upperCode, isDeleted: false },
         });
         if (!loc) {
-          console.log(`📍 Creating Location [${code}]: ${name}`);
+          console.log(`📍 Creating Location [${upperCode}]: ${name}`);
           loc = await prisma.location.create({
             data: {
-              code,
+              code: upperCode,
               name,
               warehouseId: defaultWarehouse.id,
               status: 'active',
@@ -345,45 +649,61 @@ async function processTransfersForTenant(
           });
         }
         const ref: EntityRef = { type: 'LOCATION', id: loc.id, code: loc.code, name: loc.name };
-        entityCache.set(code, ref);
+        locationMap.set(upperCode, ref);
         return ref;
       } else {
-        const ref: EntityRef = { type: 'LOCATION', id: `loc-${code}`, code, name };
-        entityCache.set(code, ref);
+        const ref: EntityRef = { type: 'LOCATION', id: `loc-${upperCode}`, code: upperCode, name };
+        locationMap.set(upperCode, ref);
         return ref;
       }
     }
   }
 
+  // Pre-load items into cache and batch create any missing items
   console.log(`⚙️ Pre-caching Warehouses, Locations, and Item Barcodes...`);
+  const allBarcodes = Array.from(new Set(rows.map((r) => r.barCode)));
+  const itemMap = new Map<string, string>(); // barcode -> itemId
 
-  for (const row of rows) {
-    await resolveEntity(row.codeTrOut, row.stockOutLocationName);
-    await resolveEntity(row.codeTrIn, row.stockInLocationName);
-
-    if (!itemCache.has(row.barCode)) {
-      if (!isDryRun) {
-        let item = await prisma.item.findFirst({
-          where: { barCode: row.barCode },
-        });
-        if (!item) {
-          item = await prisma.item.create({
-            data: {
-              itemId: `ITEM-${row.barCode}`,
-              sku: row.barCode,
-              barCode: row.barCode,
-              description: `STN Item (${row.barCode})`,
-              unitPrice: 0,
-              unitCost: 0,
-              status: 'active',
-              isActive: true,
-            },
-          });
-        }
-        itemCache.set(row.barCode, item);
-      } else {
-        itemCache.set(row.barCode, { id: `item-${row.barCode}`, barCode: row.barCode });
+  if (!isDryRun && pool) {
+    const BATCH_BARCODES = 5000;
+    for (let i = 0; i < allBarcodes.length; i += BATCH_BARCODES) {
+      const chunk = allBarcodes.slice(i, i + BATCH_BARCODES);
+      const existing = await pool.query(
+        `SELECT id, "barCode" FROM "Item" WHERE "barCode" = ANY($1)`,
+        [chunk]
+      );
+      for (const r of existing.rows) {
+        if (r.barCode) itemMap.set(r.barCode, r.id);
       }
+    }
+
+    const missingBarcodes = allBarcodes.filter((b) => !itemMap.has(b));
+    if (missingBarcodes.length > 0) {
+      console.log(`⚠️ Found ${missingBarcodes.length} missing items in database. Creating them now...`);
+      for (let i = 0; i < missingBarcodes.length; i += 1000) {
+        const chunk = missingBarcodes.slice(i, i + 1000);
+        const values: string[] = [];
+        const params: any[] = [];
+        let idx = 1;
+        for (const bc of chunk) {
+          const id = crypto.randomUUID();
+          values.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, 'active', true, 0, 0, NOW(), NOW())`);
+          params.push(id, `ITEM-${bc}`, bc, bc, `STN Item (${bc})`);
+          idx += 5;
+          itemMap.set(bc, id);
+        }
+        await pool.query(
+          `INSERT INTO "Item" (id, "itemId", sku, "barCode", description, status, "isActive", "unitPrice", unit_cost, "createdAt", "updatedAt")
+           VALUES ${values.join(', ')}
+           ON CONFLICT ("itemId") DO NOTHING`,
+          params
+        );
+      }
+      console.log(`  ✅ Created ${missingBarcodes.length} missing items.`);
+    }
+  } else {
+    for (const bc of allBarcodes) {
+      itemMap.set(bc, `mock-item-${bc}`);
     }
   }
 
@@ -406,14 +726,19 @@ async function processTransfersForTenant(
   const trOutCounters = new Map<string, number>();
   const trInCounters = new Map<string, number>();
 
+  const transferRequestsToInsert: any[] = [];
+  const transferItemsToInsert: any[] = [];
+  const movementsToInsert: any[] = [];
+  const ledgersToInsert: any[] = [];
+
   let processedLines = 0;
   let completedCount = 0;
   let inTransitCount = 0;
 
   for (const [groupKey, groupRows] of transferGroups.entries()) {
     const sample = groupRows[0];
-    const fromEntity = entityCache.get(sample.codeTrOut)!;
-    const toEntity = entityCache.get(sample.codeTrIn)!;
+    const fromEntity = await resolveEntity(sample.codeTrOut, sample.stockOutLocationName);
+    const toEntity = await resolveEntity(sample.codeTrIn, sample.stockInLocationName);
 
     // 1. Global STN Request Number per Fiscal Year (e.g. STN-26-27-00001)
     const fy = getFiscalYear(sample.documentDate);
@@ -438,9 +763,6 @@ async function processTransfersForTenant(
     if (isReceived) completedCount++;
     else inTransitCount++;
 
-    // Strict location / warehouse foreign key assignment:
-    // If entity is WAREHOUSE, store in fromWarehouseId / toWarehouseId (locationId = null)
-    // If entity is LOCATION (Outlet), store in fromLocationId / toLocationId (warehouseId = null)
     const fromWarehouseId = fromEntity.type === 'WAREHOUSE' ? fromEntity.id : null;
     const fromLocationId = fromEntity.type === 'LOCATION' ? fromEntity.id : null;
 
@@ -456,180 +778,139 @@ async function processTransfersForTenant(
       transferType = 'WAREHOUSE_TO_WAREHOUSE';
     }
 
-    if (isDryRun) {
-      if (fySeq <= 12 || fySeq % 20 === 0 || !isReceived) {
-        console.log(`🔍 [DRY-RUN #${requestNo}] FY:${fy} | Date:${sample.documentDateStr} | ${fromEntity.name} [${outNo}] -> ${toEntity.name} [${inNo}] | Status: ${isReceived ? 'COMPLETED' : 'SOURCE_APPROVED'} | Items: ${groupRows.length}`);
-      }
-      processedLines += groupRows.length;
-      continue;
-    }
-
-    // Live execution
+    const transferRequestId = crypto.randomUUID();
     const transferNotes = `TR OUT No: ${outNo} | TR IN No: ${inNo} | OrigDocNo: ${sample.documentNumber} | RecDocNo: ${sample.receivingDocNo || 'N/A'} | RecDate: ${sample.receivingDocDateStr || 'N/A'} | Remarks: ${sample.remarks}`;
 
-    const transferRequest = await prisma.transferRequest.create({
-      data: {
-        requestNo,
-        fromLocationId,
-        toLocationId,
-        fromWarehouseId,
-        toWarehouseId,
-        transferType,
-        requestDate: sample.documentDate,
-        createdAt: sample.documentDate,
-        sourceApprovedAt: sample.documentDate,
-        dispatchDate: sample.documentDate,
-        status: isReceived ? 'COMPLETED' : 'SOURCE_APPROVED',
-        notes: transferNotes,
-      },
+    transferRequestsToInsert.push({
+      id: transferRequestId,
+      requestNo,
+      fromLocationId,
+      toLocationId,
+      fromWarehouseId,
+      toWarehouseId,
+      transferType,
+      requestDate: sample.documentDate,
+      createdAt: sample.documentDate,
+      updatedAt: sample.documentDate,
+      sourceApprovedAt: sample.documentDate,
+      dispatchDate: sample.documentDate,
+      status: isReceived ? 'COMPLETED' : 'SOURCE_APPROVED',
+      notes: transferNotes,
     });
 
     for (const row of groupRows) {
-      const item = itemCache.get(row.barCode);
+      const itemId = itemMap.get(row.barCode)!;
       const qty = row.quantity;
+      const transferItemId = crypto.randomUUID();
 
-      // 1. Create TransferRequestItem
-      await prisma.transferRequestItem.create({
-        data: {
-          transferRequestId: transferRequest.id,
-          itemId: item.id,
-          quantity: qty,
-          fulfilledQty: isReceived ? qty : 0,
-        },
+      // 1. TransferRequestItem
+      transferItemsToInsert.push({
+        id: transferItemId,
+        transferRequestId,
+        itemId,
+        quantity: qty,
+        fulfilledQty: isReceived ? qty : 0,
       });
 
-      // 2. OUTBOUND Stock Movement & Ledger at Source
-      if (fromEntity.type === 'WAREHOUSE') {
-        const sourceInv = await prisma.inventoryItem.findFirst({
-          where: { warehouseId: fromEntity.id, locationId: null, itemId: item.id },
-        });
-
-        if (sourceInv) {
-          await prisma.inventoryItem.update({
-            where: { id: sourceInv.id },
-            data: { quantity: { decrement: qty } },
-          });
-        } else {
-          await prisma.inventoryItem.create({
-            data: { warehouseId: fromEntity.id, locationId: null, itemId: item.id, quantity: -qty, status: 'AVAILABLE' },
-          });
-        }
-      } else {
-        const sourceInv = await prisma.inventoryItem.findFirst({
-          where: { locationId: fromLocationId, itemId: item.id },
-        });
-
-        if (sourceInv) {
-          await prisma.inventoryItem.update({
-            where: { id: sourceInv.id },
-            data: { quantity: { decrement: qty } },
-          });
-        } else {
-          await prisma.inventoryItem.create({
-            data: { warehouseId: defaultWarehouse.id, locationId: fromLocationId, itemId: item.id, quantity: -qty, status: 'AVAILABLE' },
-          });
-        }
-      }
-
-      // Guarantee unique movementNo using row.rowNum
+      // 2. Outbound Movement & Ledger
+      const outMovId = crypto.randomUUID();
       const outMovNo = `MV-OUT-${outNo}-${row.barCode}-${row.rowNum}`;
-      await prisma.stockMovement.create({
-        data: {
-          movementNo: outMovNo,
-          itemId: item.id,
-          fromLocationId,
-          toLocationId: null,
+      movementsToInsert.push({
+        id: outMovId,
+        movementNo: outMovNo,
+        itemId,
+        fromLocationId,
+        toLocationId: null,
+        quantity: qty,
+        type: 'TRANSFER',
+        referenceType: 'TRANSFER_REQUEST',
+        referenceId: transferRequestId,
+        movementDate: sample.documentDate,
+        createdAt: sample.documentDate,
+        updatedAt: sample.documentDate,
+        notes: `STN Transfer Out: ${requestNo} (${outNo})`,
+      });
+
+      ledgersToInsert.push({
+        itemId,
+        warehouseId: fromWarehouseId || defaultWarehouse.id,
+        locationId: fromLocationId,
+        qty: -qty,
+        movementType: 'TRANSFER',
+        referenceType: 'TRANSFER_OUT',
+        referenceId: transferRequestId,
+        createdAt: sample.documentDate,
+      });
+
+      // Source Inventory Delta (-qty)
+      const srcWhId = fromWarehouseId || defaultWarehouse.id;
+      const srcLocId = fromLocationId || null;
+      recordDelta(srcWhId, srcLocId, itemId, -qty);
+
+      // 3. Inbound Movement & Ledger (if received)
+      if (isReceived && sample.receivingDocDate) {
+        const inMovId = crypto.randomUUID();
+        const inMovNo = `MV-IN-${inNo}-${row.barCode}-${row.rowNum}`;
+        movementsToInsert.push({
+          id: inMovId,
+          movementNo: inMovNo,
+          itemId,
+          fromLocationId: null,
+          toLocationId,
           quantity: qty,
           type: 'TRANSFER',
           referenceType: 'TRANSFER_REQUEST',
-          referenceId: transferRequest.id,
-          movementDate: sample.documentDate,
-          createdAt: sample.documentDate,
-          notes: `STN Transfer Out: ${requestNo} (${outNo})`,
-        },
-      });
+          referenceId: transferRequestId,
+          movementDate: sample.receivingDocDate,
+          createdAt: sample.receivingDocDate,
+          updatedAt: sample.receivingDocDate,
+          notes: `STN Transfer In: ${requestNo} (${inNo})`,
+        });
 
-      await prisma.stockLedger.create({
-        data: {
-          itemId: item.id,
-          warehouseId: fromWarehouseId || defaultWarehouse.id,
-          locationId: fromLocationId,
-          qty: -qty,
-          referenceType: 'TRANSFER_OUT',
-          referenceId: transferRequest.id,
+        ledgersToInsert.push({
+          itemId,
+          warehouseId: toWarehouseId || defaultWarehouse.id,
+          locationId: toLocationId,
+          qty: qty,
           movementType: 'TRANSFER',
-          createdAt: sample.documentDate,
-        },
-      });
-
-      // 3. INBOUND Stock Movement & Ledger at Destination (ONLY IF RECEIVED/APPROVED)
-      if (isReceived && sample.receivingDocDate) {
-        if (toEntity.type === 'WAREHOUSE') {
-          const destInv = await prisma.inventoryItem.findFirst({
-            where: { warehouseId: toEntity.id, locationId: null, itemId: item.id },
-          });
-
-          if (destInv) {
-            await prisma.inventoryItem.update({
-              where: { id: destInv.id },
-              data: { quantity: { increment: qty } },
-            });
-          } else {
-            await prisma.inventoryItem.create({
-              data: { warehouseId: toEntity.id, locationId: null, itemId: item.id, quantity: qty, status: 'AVAILABLE' },
-            });
-          }
-        } else {
-          const destInv = await prisma.inventoryItem.findFirst({
-            where: { locationId: toLocationId, itemId: item.id },
-          });
-
-          if (destInv) {
-            await prisma.inventoryItem.update({
-              where: { id: destInv.id },
-              data: { quantity: { increment: qty } },
-            });
-          } else {
-            await prisma.inventoryItem.create({
-              data: { warehouseId: defaultWarehouse.id, locationId: toLocationId, itemId: item.id, quantity: qty, status: 'AVAILABLE' },
-            });
-          }
-        }
-
-        // Guarantee unique movementNo using row.rowNum
-        const inMovNo = `MV-IN-${inNo}-${row.barCode}-${row.rowNum}`;
-        await prisma.stockMovement.create({
-          data: {
-            movementNo: inMovNo,
-            itemId: item.id,
-            fromLocationId: null,
-            toLocationId,
-            quantity: qty,
-            type: 'TRANSFER',
-            referenceType: 'TRANSFER_REQUEST',
-            referenceId: transferRequest.id,
-            movementDate: sample.receivingDocDate,
-            createdAt: sample.receivingDocDate,
-            notes: `STN Transfer In: ${requestNo} (${inNo})`,
-          },
+          referenceType: 'TRANSFER_IN',
+          referenceId: transferRequestId,
+          createdAt: sample.receivingDocDate,
         });
 
-        await prisma.stockLedger.create({
-          data: {
-            itemId: item.id,
-            warehouseId: toWarehouseId || defaultWarehouse.id,
-            locationId: toLocationId,
-            qty: qty,
-            referenceType: 'TRANSFER_IN',
-            referenceId: transferRequest.id,
-            movementType: 'TRANSFER',
-            createdAt: sample.receivingDocDate,
-          },
-        });
+        // Destination Inventory Delta (+qty)
+        const destWhId = toWarehouseId || defaultWarehouse.id;
+        const destLocId = toLocationId || null;
+        recordDelta(destWhId, destLocId, itemId, qty);
       }
 
       processedLines++;
     }
+  }
+
+  // Live execution via high-speed chunked SQL batching
+  if (!isDryRun && pool) {
+    console.log(`\n💾 Executing high-speed batch inserts to database...`);
+    const startTime = Date.now();
+
+    console.log(`  - Inserting ${transferRequestsToInsert.length} TransferRequests...`);
+    await bulkInsertTransferRequests(pool, transferRequestsToInsert);
+
+    console.log(`  - Inserting ${transferItemsToInsert.length} TransferRequestItems...`);
+    await bulkInsertTransferRequestItems(pool, transferItemsToInsert);
+
+    console.log(`  - Inserting ${movementsToInsert.length} StockMovements...`);
+    await bulkInsertStockMovements(pool, movementsToInsert);
+
+    console.log(`  - Inserting ${ledgersToInsert.length} StockLedgers...`);
+    await bulkInsertStockLedgers(pool, ledgersToInsert);
+
+    const nonZeroDeltas = Array.from(deltaMap.values()).filter((d) => Math.abs(d.delta) > 0.00001);
+    console.log(`  - Updating ${nonZeroDeltas.length} InventoryItem stock balances...`);
+    await bulkUpdateInventoryItems(pool, nonZeroDeltas);
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`  ⚡ All database inserts committed successfully in ${elapsed}s!`);
   }
 
   console.log(`\n==================================================`);
@@ -653,7 +934,7 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'A-madison-STN.md');
+  let filePath = path.join(__dirname, '..', 'data', 'Stock Transfer IN Register_Format II_20260901_121104.json');
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
@@ -721,7 +1002,7 @@ async function main() {
 
         try {
           await tenantPrisma.$connect();
-          await processTransfersForTenant(tenantPrisma, rows, isDryRun);
+          await processTransfersForTenant(tenantPrisma, rows, isDryRun, tenantPool);
         } finally {
           await tenantPrisma.$disconnect();
           await tenantPool.end();
@@ -742,7 +1023,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter: adapter as any });
   try {
     await prisma.$connect();
-    await processTransfersForTenant(prisma, rows, isDryRun);
+    await processTransfersForTenant(prisma, rows, isDryRun, pool);
   } finally {
     await prisma.$disconnect();
     await pool.end();
