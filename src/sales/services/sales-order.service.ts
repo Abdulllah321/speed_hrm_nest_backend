@@ -149,70 +149,27 @@ export class SalesOrderService {
         throw new BadRequestException('Customer not found');
       }
 
-      // Determine margins
-      const baseMargin = createSalesOrderDto.baseMargin !== undefined ? Number(createSalesOrderDto.baseMargin) : Number((customer as any).baseMargin || 0);
-      const cashMargin = createSalesOrderDto.cashMargin !== undefined ? Number(createSalesOrderDto.cashMargin) : Number((customer as any).cashMargin || 0);
-      const marginPct = baseMargin + cashMargin;
-
-      // 1. First pass to fetch item data and calculate grossTotal & subtotal
+      // Item records: Simple retail price and quantity
       const itemRecords = await Promise.all(createSalesOrderDto.items.map(async (item) => {
         const itemRecord = await this.prisma.item.findUnique({
           where: { id: item.itemId },
-          select: { unitCost: true, taxRate1: true }
+          select: { unitCost: true }
         });
         const retailPrice = Number(item.salePrice || 0);
-        const itemTaxRate = Number(itemRecord?.taxRate1 || 18);
         const quantity = Number(item.quantity || 0);
-        const manualDiscount = Number(item.discount || 0);
-
-        const wostUnit = retailPrice / (1 + itemTaxRate / 100);
-        const wostTotal = wostUnit * quantity;
+        const total = retailPrice * quantity;
 
         return {
           itemId: item.itemId,
           quantity,
           costPrice: itemRecord?.unitCost || 0,
           salePrice: retailPrice,
-          taxRate: itemTaxRate,
-          wostTotal,
-          manualDiscount
+          discount: 0,
+          total,
         };
       }));
 
-      const grossTotal = itemRecords.reduce((sum, it) => sum + it.wostTotal, 0);
-      const baseMarginAmount = (grossTotal * baseMargin) / 100;
-      const cashMarginAmount = (grossTotal * cashMargin) / 100;
-      const totalMarginDeduction = baseMarginAmount + cashMarginAmount;
-      const subtotal = grossTotal - totalMarginDeduction;
-
-      // 2. Determine manual discount pct
-      const orderDiscountAmount = Number(createSalesOrderDto.discount || 0);
-      const orderDiscountPct = subtotal > 0 ? (orderDiscountAmount / subtotal) * 100 : 0;
-
-      // 3. Second pass to calculate FBR tax on discounted base and final item totals
-      let taxAmount = 0;
-      const processedItems = itemRecords.map((item) => {
-        const marginDiscount = item.wostTotal * (marginPct / 100);
-        const afterDiscount = item.wostTotal - marginDiscount;
-
-        // Apply additional order discount percentage to the afterDiscount base
-        const discountedBase = afterDiscount * (1 - orderDiscountPct / 100);
-        const itemTaxAmount = discountedBase * (item.taxRate / 100);
-        const itemTotal = (discountedBase + itemTaxAmount) - item.manualDiscount;
-
-        taxAmount += itemTaxAmount;
-
-        return {
-          itemId: item.itemId,
-          quantity: item.quantity,
-          costPrice: item.costPrice,
-          salePrice: item.salePrice,
-          discount: marginDiscount + item.manualDiscount,
-          total: itemTotal,
-        };
-      });
-
-      const grandTotal = (subtotal - orderDiscountAmount) + taxAmount;
+      const grandTotal = itemRecords.reduce((sum, it) => sum + it.total, 0);
 
       // Validate warehouse if provided
       if (createSalesOrderDto.warehouseId) {
@@ -224,28 +181,28 @@ export class SalesOrderService {
         }
       }
 
-      // Create sales order with items
+      // Create sales order with items (pure retail prices and quantities, no taxes/margins)
       const created = await this.prisma.eRPSalesOrder.create({
         data: {
           orderNo,
           customerId: createSalesOrderDto.customerId,
           warehouseId: createSalesOrderDto.warehouseId,
-          baseMargin,
-          cashMargin,
-          baseMarginAmount,
-          cashMarginAmount,
-          subtotal,
-          taxRate: createSalesOrderDto.taxRate || 0,
-          taxAmount,
-          discount: createSalesOrderDto.discount || 0,
+          baseMargin: 0,
+          cashMargin: 0,
+          baseMarginAmount: 0,
+          cashMarginAmount: 0,
+          subtotal: grandTotal,
+          taxRate: 0,
+          taxAmount: 0,
+          discount: 0,
           grandTotal,
           items: {
-            create: processedItems.map((item) => ({
+            create: itemRecords.map((item) => ({
               itemId: item.itemId,
               quantity: item.quantity,
               costPrice: item.costPrice,
               salePrice: item.salePrice,
-              discount: item.discount,
+              discount: 0,
               total: item.total,
             })),
           },
@@ -311,78 +268,38 @@ export class SalesOrderService {
       let updateData: any = { ...updateSalesOrderDto };
       let itemsToCreate: any[] | undefined = undefined;
 
-      const baseMargin = updateSalesOrderDto.baseMargin !== undefined ? Number(updateSalesOrderDto.baseMargin) : Number((salesOrder as any).baseMargin || 0);
-      const cashMargin = updateSalesOrderDto.cashMargin !== undefined ? Number(updateSalesOrderDto.cashMargin) : Number((salesOrder as any).cashMargin || 0);
-
       if (updateSalesOrderDto.items) {
-        const marginPct = baseMargin + cashMargin;
-
         const itemRecords = await Promise.all(updateSalesOrderDto.items.map(async (item) => {
           const itemRecord = await this.prisma.item.findUnique({
             where: { id: item.itemId },
-            select: { unitCost: true, taxRate1: true }
+            select: { unitCost: true }
           });
-          
           const retailPrice = Number(item.salePrice || 0);
-          const itemTaxRate = Number(itemRecord?.taxRate1 || 18);
           const quantity = Number(item.quantity || 0);
-          const manualDiscount = Number(item.discount || 0);
-
-          const wostUnit = retailPrice / (1 + itemTaxRate / 100);
-          const wostTotal = wostUnit * quantity;
+          const total = retailPrice * quantity;
 
           return {
             itemId: item.itemId,
             quantity,
             costPrice: itemRecord?.unitCost || 0,
             salePrice: retailPrice,
-            taxRate: itemTaxRate,
-            wostTotal,
-            manualDiscount
+            discount: 0,
+            total,
           };
         }));
 
-        const grossTotal = itemRecords.reduce((sum, it) => sum + it.wostTotal, 0);
-        const baseMarginAmount = (grossTotal * baseMargin) / 100;
-        const cashMarginAmount = (grossTotal * cashMargin) / 100;
-        const totalMarginDeduction = baseMarginAmount + cashMarginAmount;
-        const subtotal = grossTotal - totalMarginDeduction;
-
-        const discountVal = Number(updateSalesOrderDto.discount !== undefined ? updateSalesOrderDto.discount : salesOrder.discount) || 0;
-        const orderDiscountPct = subtotal > 0 ? (discountVal / subtotal) * 100 : 0;
-
-        let taxAmount = 0;
-        const processedItems = itemRecords.map((item) => {
-          const marginDiscount = item.wostTotal * (marginPct / 100);
-          const afterDiscount = item.wostTotal - marginDiscount;
-
-          // Apply additional order discount percentage to the afterDiscount base
-          const discountedBase = afterDiscount * (1 - orderDiscountPct / 100);
-          const itemTaxAmount = discountedBase * (item.taxRate / 100);
-          const itemTotal = (discountedBase + itemTaxAmount) - item.manualDiscount;
-
-          taxAmount += itemTaxAmount;
-
-          return {
-            itemId: item.itemId,
-            quantity: item.quantity,
-            costPrice: item.costPrice,
-            salePrice: item.salePrice,
-            discount: marginDiscount + item.manualDiscount,
-            total: itemTotal,
-          };
-        });
-
-        const grandTotal = (subtotal - discountVal) + taxAmount;
+        const grandTotal = itemRecords.reduce((sum, it) => sum + it.total, 0);
 
         updateData = {
           ...updateData,
-          baseMargin,
-          cashMargin,
-          baseMarginAmount,
-          cashMarginAmount,
-          subtotal,
-          taxAmount,
+          baseMargin: 0,
+          cashMargin: 0,
+          baseMarginAmount: 0,
+          cashMarginAmount: 0,
+          subtotal: grandTotal,
+          taxRate: 0,
+          taxAmount: 0,
+          discount: 0,
           grandTotal,
         };
 
@@ -391,12 +308,12 @@ export class SalesOrderService {
           where: { salesOrderId: id },
         });
 
-        itemsToCreate = processedItems.map((item) => ({
+        itemsToCreate = itemRecords.map((item) => ({
           itemId: item.itemId,
           quantity: item.quantity,
           costPrice: item.costPrice,
           salePrice: item.salePrice,
-          discount: item.discount,
+          discount: 0,
           total: item.total,
         }));
       }
@@ -404,18 +321,18 @@ export class SalesOrderService {
       const updated = await this.prisma.eRPSalesOrder.update({
         where: { id },
         data: {
-          customerId: updateData.customerId,
-          warehouseId: updateData.warehouseId,
-          status: updateData.status,
-          baseMargin: updateData.baseMargin,
-          cashMargin: updateData.cashMargin,
-          baseMarginAmount: updateData.baseMarginAmount,
-          cashMarginAmount: updateData.cashMarginAmount,
-          subtotal: updateData.subtotal,
-          taxRate: updateData.taxRate,
-          taxAmount: updateData.taxAmount,
-          discount: updateData.discount,
-          grandTotal: updateData.grandTotal,
+          customerId: updateData.customerId || salesOrder.customerId,
+          warehouseId: updateData.warehouseId !== undefined ? updateData.warehouseId : salesOrder.warehouseId,
+          status: updateData.status || salesOrder.status,
+          baseMargin: 0,
+          cashMargin: 0,
+          baseMarginAmount: 0,
+          cashMarginAmount: 0,
+          subtotal: updateData.subtotal !== undefined ? updateData.subtotal : salesOrder.subtotal,
+          taxRate: 0,
+          taxAmount: 0,
+          discount: 0,
+          grandTotal: updateData.grandTotal !== undefined ? updateData.grandTotal : salesOrder.grandTotal,
           items: itemsToCreate ? {
             create: itemsToCreate,
           } : undefined,
