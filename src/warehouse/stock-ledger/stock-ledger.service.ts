@@ -103,6 +103,7 @@ export class StockLedgerService {
 
       where.OR = [
         { item: { sku: { contains: search, mode: 'insensitive' } } },
+        { item: { barCode: { contains: search, mode: 'insensitive' } } },
         { item: { description: { contains: search, mode: 'insensitive' } } },
         { warehouse: { name: { contains: search, mode: 'insensitive' } } },
         { referenceId: { contains: cleanSearch, mode: 'insensitive' } },
@@ -131,7 +132,7 @@ export class StockLedgerService {
           referenceId: true,
           locationId: true,
           createdAt: true,
-          item: { select: { itemId: true, sku: true, description: true } },
+          item: { select: { itemId: true, sku: true, barCode: true, description: true } },
           warehouse: { select: { name: true } },
         },
       });
