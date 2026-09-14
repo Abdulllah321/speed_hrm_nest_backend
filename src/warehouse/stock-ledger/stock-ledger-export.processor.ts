@@ -307,31 +307,31 @@ export class StockLedgerExportProcessor {
         const [transfers, lcs, sales, grns, adjs] = await Promise.all([
           transferIds.length > 0
             ? prisma.transferRequest.findMany({
-                where: { id: { in: [...new Set(transferIds)] } },
+                where: { id: { in: Array.from(new Set(transferIds)) } },
                 select: { id: true, requestNo: true, notes: true },
               })
             : [],
           lcIds.length > 0
             ? prisma.landedCost.findMany({
-                where: { id: { in: [...new Set(lcIds)] } },
+                where: { id: { in: Array.from(new Set(lcIds)) } },
                 select: { id: true, landedCostNumber: true, lcNo: true },
               })
             : [],
           saleIds.length > 0
             ? prisma.salesOrder.findMany({
-                where: { id: { in: [...new Set(saleIds)] } },
+                where: { id: { in: Array.from(new Set(saleIds)) } },
                 select: { id: true, orderNumber: true },
               })
             : [],
           grnIds.length > 0
             ? prisma.goodsReceiptNote.findMany({
-                where: { id: { in: [...new Set(grnIds)] } },
+                where: { id: { in: Array.from(new Set(grnIds)) } },
                 select: { id: true, grnNumber: true },
               })
             : [],
           adjIds.length > 0
             ? prisma.stockAdjustment.findMany({
-                where: { id: { in: [...new Set(adjIds)] } },
+                where: { id: { in: Array.from(new Set(adjIds)) } },
                 select: { id: true, adjustmentNo: true },
               })
             : [],
