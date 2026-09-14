@@ -13,6 +13,7 @@ import {
   Patch,
   Sse,
   MessageEvent,
+  Logger,
 } from '@nestjs/common';
 import { Observable, interval, map, switchMap, takeWhile } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,6 +38,9 @@ import {
   CreateCustomerDto,
   UpdateCustomerDto,
 } from '../sales/customer/dto/customer-dto';
+import * as fs from 'fs';
+import * as zlib from 'zlib';
+import type { Response } from 'express';
 import * as jwt from 'jsonwebtoken';
 
 @ApiTags('POS Sales')
@@ -44,6 +48,8 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PosSalesController {
+  private readonly logger = new Logger(PosSalesController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly posSalesService: PosSalesService,
@@ -640,6 +646,7 @@ export class PosSalesController {
   @Get('reports/net-sales-summary')
   @ApiOperation({ summary: 'Get Net Sales Summary Report' })
   async getNetSalesSummary(
+    @Req() req: any,
     @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -659,8 +666,14 @@ export class PosSalesController {
     @Query('showArticle') showArticle?: string,
     @Query('showVariant') showVariant?: string,
   ) {
+    let effectiveLocationId = locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+    if (req.user?.isTerminal && userLocationId) {
+      effectiveLocationId = userLocationId;
+    }
+
     return this.posSalesService.getNetSalesSummaryReport({
-      locationId,
+      locationId: effectiveLocationId,
       startDate,
       endDate,
       cashierUserId,
@@ -714,9 +727,15 @@ export class PosSalesController {
     },
   ) {
     const userId = req.user?.userId || req.user?.id;
+    let effectiveLocationId = body.locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+    if (req.user?.isTerminal && userLocationId) {
+      effectiveLocationId = userLocationId;
+    }
+
     const result = await this.netSalesSummaryExportService.queueExport({
       userId,
-      locationId: body.locationId,
+      locationId: effectiveLocationId,
       startDate: body.startDate,
       endDate: body.endDate,
       cashierUserId: body.cashierUserId,
@@ -746,7 +765,7 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get('reports/net-sales-summary/export/:jobId/download')
+  @Get(['reports/net-sales-summary/export/:jobId/download', 'reports/net-sales-summary/export/:jobId/download/:fileName'])
   @ApiOperation({ summary: 'Download Net Sales Summary Export' })
   async downloadNetSalesSummaryExport(
     @Param('jobId') jobId: string,
@@ -941,7 +960,8 @@ export class PosSalesController {
     @Req() req: any,
     @Body()
     body: {
-      locationId: string;
+      locationId?: string;
+      locationIds?: string[];
       startDate?: string;
       endDate?: string;
       cashierUserId?: string;
@@ -951,12 +971,14 @@ export class PosSalesController {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      exportType?: 'flat' | 'hierarchical';
     },
   ) {
     const userId = req.user?.userId || req.user?.id;
     const result = await this.salesListExportService.queueExport({
       userId,
       locationId: body.locationId,
+      locationIds: body.locationIds,
       startDate: body.startDate,
       endDate: body.endDate,
       cashierUserId: body.cashierUserId,
@@ -966,6 +988,7 @@ export class PosSalesController {
       minAmount: body.minAmount,
       maxAmount: body.maxAmount,
       fbrOnly: body.fbrOnly,
+      exportType: body.exportType,
     });
     return { status: true, data: result };
   }
@@ -977,7 +1000,7 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get('reports/sales-list/export/:jobId/download')
+  @Get(['reports/sales-list/export/:jobId/download', 'reports/sales-list/export/:jobId/download/:fileName'])
   @ApiOperation({ summary: 'Download Sales List Export' })
   async downloadSalesListExport(
     @Param('jobId') jobId: string,
@@ -1049,11 +1072,13 @@ export class PosSalesController {
     @Req() req: any,
     @Body()
     body: {
-      locationId: string;
+      locationId?: string;
+      locationIds?: string[];
       startDate?: string;
       endDate?: string;
       cashierUserId?: string;
       format: 'xlsx' | 'pdf';
+      exportType?: 'flat' | 'hierarchical';
       search?: string;
       paymentModeGroup?: string;
       minAmount?: number;
@@ -1073,10 +1098,12 @@ export class PosSalesController {
     const result = await this.grossSalesExportService.queueExport({
       userId,
       locationId: body.locationId,
+      locationIds: body.locationIds,
       startDate: body.startDate,
       endDate: body.endDate,
       cashierUserId: body.cashierUserId,
       format: body.format,
+      exportType: body.exportType,
       search: body.search,
       paymentModeGroup: body.paymentModeGroup,
       minAmount: body.minAmount,
@@ -1098,7 +1125,7 @@ export class PosSalesController {
   @Get('reports/gross-sales-return')
   @ApiOperation({ summary: 'Get Gross Sales Return Report' })
   async getGrossSalesReturn(
-    @Query('locationId') locationId: string,
+    @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('cashierUserId') cashierUserId?: string,
@@ -1117,7 +1144,7 @@ export class PosSalesController {
     @Query('showInvoices') showInvoices?: string,
   ) {
     return this.posSalesService.getGrossSalesReturnReport({
-      locationId,
+      locationId: locationId || '',
       startDate,
       endDate,
       cashierUserId,
@@ -1149,11 +1176,13 @@ export class PosSalesController {
     @Req() req: any,
     @Body()
     body: {
-      locationId: string;
+      locationId?: string;
+      locationIds?: string[];
       startDate?: string;
       endDate?: string;
       cashierUserId?: string;
       format: 'xlsx' | 'pdf';
+      exportType?: 'flat' | 'hierarchical';
       search?: string;
       paymentModeGroup?: string;
       minAmount?: number;
@@ -1173,10 +1202,12 @@ export class PosSalesController {
     const result = await this.grossSalesExportService.queueExport({
       userId,
       locationId: body.locationId,
+      locationIds: body.locationIds,
       startDate: body.startDate,
       endDate: body.endDate,
       cashierUserId: body.cashierUserId,
       format: body.format,
+      exportType: body.exportType,
       search: body.search,
       paymentModeGroup: body.paymentModeGroup,
       minAmount: body.minAmount,
@@ -1202,7 +1233,7 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get('reports/gross-sales-export/:jobId/download')
+  @Get(['reports/gross-sales-export/:jobId/download', 'reports/gross-sales-export/:jobId/download/:fileName'])
   @ApiOperation({ summary: 'Download Gross Sales Export' })
   async downloadGrossSalesExport(
     @Param('jobId') jobId: string,
@@ -1580,6 +1611,8 @@ export class PosSalesController {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: number | string;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
@@ -1637,16 +1670,92 @@ export class PosSalesController {
 
   @Get('reports/sales-list/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getSalesListResult(@Param('jobId') jobId: string) {
-    const data =
-      await this.salesListExportService.getReportPreviewResult(jobId);
-    if (!data) {
-      return {
-        status: false,
-        message: 'Sales list preview result not found or expired',
-      };
+  async getSalesListResult(
+    @Param('jobId') jobId: string,
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const filePath = this.salesListExportService.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      if (typeof res.status === 'function') {
+        const errPayload = {
+          status: false,
+          message: 'Sales list preview result not found or expired',
+        };
+        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
+      }
+      throw new NotFoundException('Sales list preview result not found or expired');
     }
-    return { status: true, data };
+
+    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
+    const isNdjson = filePath.endsWith('.ndjson.gz') || (req.headers?.['accept'] || '').includes('application/x-ndjson');
+    const contentType = isNdjson ? 'application/x-ndjson' : 'application/json';
+
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', contentType);
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', contentType);
+    } else if (res.raw?.setHeader) {
+      res.raw.setHeader('Content-Type', contentType);
+    }
+
+    const stream = fs.createReadStream(filePath);
+
+    if (acceptsGzip) {
+      if (typeof res.header === 'function') {
+        res.header('Content-Encoding', 'gzip');
+      } else if (typeof res.setHeader === 'function') {
+        res.setHeader('Content-Encoding', 'gzip');
+      } else if (res.raw?.setHeader) {
+        res.raw.setHeader('Content-Encoding', 'gzip');
+      }
+
+      if (typeof res.send === 'function') {
+        return res.send(stream);
+      }
+      return stream.pipe(res);
+    } else {
+      const gunzip = zlib.createGunzip();
+      const unzipped = stream.pipe(gunzip);
+      if (typeof res.send === 'function') {
+        return res.send(unzipped);
+      }
+      return unzipped.pipe(res);
+    }
+  }
+
+  @Get(['reports/sales-list/stream-preview-excel/:jobId', 'reports/sales-list/stream-preview-excel/:jobId/:fileName'])
+  @ApiOperation({ summary: 'Stream filtered preview Excel for Sales List' })
+  async streamSalesListPreviewExcel(
+    @Param('jobId') jobId: string,
+    @Query('exportType') exportType: 'flat' | 'hierarchical',
+    @Query('search') search: string,
+    @Query('paymentMode') paymentMode: string,
+    @Query('fbrOnly') fbrOnly: string,
+    @Query('locationId') locationId: string,
+    @Query('cashierId') cashierId: string,
+    @Res() res: any,
+  ) {
+    try {
+      await this.salesListExportService.streamFilteredPreviewExcel(
+        jobId,
+        {
+          exportType,
+          search,
+          paymentMode,
+          fbrOnly: fbrOnly === 'true',
+          locationId,
+          cashierId,
+        },
+        res,
+      );
+    } catch (err: any) {
+      const status = err?.status ?? 404;
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Preview export failed or expired',
+      });
+    }
   }
 
   @Post('reports/sales-list/export/register-client-export')
@@ -1841,16 +1950,90 @@ export class PosSalesController {
 
   @Get('reports/gross-sales-return/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getGrossSalesReturnResult(@Param('jobId') jobId: string) {
-    const data =
-      await this.grossSalesExportService.getReportPreviewResult(jobId);
-    if (!data) {
-      return {
-        status: false,
-        message: 'Sales return preview result not found or expired',
-      };
+  async getGrossSalesReturnResult(
+    @Param('jobId') jobId: string,
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const filePath = this.grossSalesExportService.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      if (typeof res.status === 'function') {
+        const errPayload = {
+          status: false,
+          message: 'Sales return preview result not found or expired',
+        };
+        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
+      }
+      throw new NotFoundException('Sales return preview result not found or expired');
     }
-    return { status: true, data };
+
+    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
+    const isNdjson = filePath.endsWith('.ndjson.gz') || (req.headers?.['accept'] || '').includes('application/x-ndjson');
+    const contentType = isNdjson ? 'application/x-ndjson' : 'application/json';
+
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', contentType);
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', contentType);
+    } else if (res.raw?.setHeader) {
+      res.raw.setHeader('Content-Type', contentType);
+    }
+
+    const stream = fs.createReadStream(filePath);
+
+    if (acceptsGzip) {
+      if (typeof res.header === 'function') {
+        res.header('Content-Encoding', 'gzip');
+      } else if (typeof res.setHeader === 'function') {
+        res.setHeader('Content-Encoding', 'gzip');
+      } else if (res.raw?.setHeader) {
+        res.raw.setHeader('Content-Encoding', 'gzip');
+      }
+
+      if (typeof res.send === 'function') {
+        return res.send(stream);
+      }
+      return stream.pipe(res);
+    } else {
+      const gunzip = zlib.createGunzip();
+      const unzipped = stream.pipe(gunzip);
+      if (typeof res.send === 'function') {
+        return res.send(unzipped);
+      }
+      return unzipped.pipe(res);
+    }
+  }
+
+  @Get(['reports/gross-sales-return/stream-preview-excel/:jobId', 'reports/gross-sales-return/stream-preview-excel/:jobId/:fileName'])
+  @ApiOperation({ summary: 'Stream filtered preview Excel for Gross Sales Return' })
+  async streamGrossSalesReturnPreviewExcel(
+    @Param('jobId') jobId: string,
+    @Query('exportType') exportType: 'flat' | 'hierarchical',
+    @Query('search') search: string,
+    @Query('paymentMode') paymentMode: string,
+    @Query('fbrOnly') fbrOnly: string,
+    @Query('locationId') locationId: string,
+    @Res() res: any,
+  ) {
+    try {
+      await this.grossSalesExportService.streamFilteredReturnPreviewExcel(
+        jobId,
+        {
+          exportType,
+          search,
+          paymentMode,
+          fbrOnly: fbrOnly === 'true',
+          locationId,
+        },
+        res,
+      );
+    } catch (err: any) {
+      const status = err?.status ?? 404;
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Preview export failed or expired',
+      });
+    }
   }
 
   @Post('reports/gross-sales-return/export/register-client-export')
@@ -1889,10 +2072,17 @@ export class PosSalesController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
+    let effectiveLocationId = body.locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+    if (req.user?.isTerminal && userLocationId) {
+      effectiveLocationId = userLocationId;
+    }
+
     const result = await this.grossSalesExportService.queueSummaryReportPreview(
       {
         userId,
         ...body,
+        locationId: effectiveLocationId,
       },
     );
     return { status: true, data: result };
@@ -1945,16 +2135,101 @@ export class PosSalesController {
 
   @Get('reports/gross-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getGrossSalesSummaryResult(@Param('jobId') jobId: string) {
-    const data =
-      await this.grossSalesExportService.getReportPreviewResult(jobId);
-    if (!data) {
-      return {
-        status: false,
-        message: 'Gross sales summary preview result not found or expired',
-      };
+  async getGrossSalesSummaryResult(
+    @Param('jobId') jobId: string,
+    @Query('format') formatQuery: string,
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const filePath = this.grossSalesExportService.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      if (typeof res.status === 'function') {
+        const errPayload = {
+          status: false,
+          message: 'Gross sales summary preview result not found or expired',
+        };
+        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
+      }
+      throw new NotFoundException('Gross sales summary preview result not found or expired');
     }
-    return { status: true, data };
+
+    const acceptsNdjson = formatQuery === 'ndjson' || (req.headers?.['accept'] || '').includes('application/x-ndjson');
+    if (!acceptsNdjson) {
+      const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+      const payload = { status: true, data };
+      return typeof res.send === 'function' ? res.send(payload) : res.json(payload);
+    }
+
+    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
+    const contentType = 'application/x-ndjson';
+
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', contentType);
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', contentType);
+    } else if (res.raw?.setHeader) {
+      res.raw.setHeader('Content-Type', contentType);
+    }
+
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      this.logger.error(`GrossSalesSummary stream error ${jobId}: ${err.message}`);
+    });
+
+    if (acceptsGzip) {
+      if (typeof res.header === 'function') {
+        res.header('Content-Encoding', 'gzip');
+      } else if (typeof res.setHeader === 'function') {
+        res.setHeader('Content-Encoding', 'gzip');
+      } else if (res.raw?.setHeader) {
+        res.raw.setHeader('Content-Encoding', 'gzip');
+      }
+
+      if (typeof res.send === 'function') {
+        return res.send(stream);
+      }
+      return stream.pipe(res);
+    } else {
+      const gunzip = zlib.createGunzip();
+      gunzip.on('error', (err) => {
+        this.logger.error(`GrossSalesSummary gunzip error ${jobId}: ${err.message}`);
+      });
+      const unzipped = stream.pipe(gunzip);
+      if (typeof res.send === 'function') {
+        return res.send(unzipped);
+      }
+      return unzipped.pipe(res);
+    }
+  }
+
+  @Get(['reports/gross-sales-summary/stream-preview-excel/:jobId', 'reports/gross-sales-summary/stream-preview-excel/:jobId/:fileName'])
+  @ApiOperation({ summary: 'Stream filtered preview Excel for Gross Sales Summary' })
+  async streamGrossSalesSummaryPreviewExcel(
+    @Param('jobId') jobId: string,
+    @Query('exportType') exportType: 'flat' | 'hierarchical',
+    @Query('search') search: string,
+    @Query('locationId') locationId: string,
+    @Query('levels') levels: string,
+    @Res() res: any,
+  ) {
+    try {
+      await this.grossSalesExportService.streamFilteredSummaryPreviewExcel(
+        jobId,
+        {
+          exportType,
+          search,
+          locationId,
+          levels,
+        },
+        res,
+      );
+    } catch (err: any) {
+      const status = err?.status ?? 404;
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Preview export failed or expired',
+      });
+    }
   }
 
   @Post('reports/gross-sales-summary/export/register-client-export')
@@ -1993,9 +2268,16 @@ export class PosSalesController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
+    let effectiveLocationId = body.locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+    if (req.user?.isTerminal && userLocationId) {
+      effectiveLocationId = userLocationId;
+    }
+
     const result = await this.netSalesSummaryExportService.queueReportPreview({
       userId,
       ...body,
+      locationId: effectiveLocationId,
     });
     return { status: true, data: result };
   }
@@ -2047,16 +2329,71 @@ export class PosSalesController {
 
   @Get('reports/net-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getNetSalesSummaryResult(@Param('jobId') jobId: string) {
-    const data =
-      await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
-    if (!data) {
-      return {
-        status: false,
-        message: 'Net sales summary preview result not found or expired',
-      };
+  async getNetSalesSummaryResult(
+    @Param('jobId') jobId: string,
+    @Query('format') formatQuery: string,
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    const filePath = this.netSalesSummaryExportService.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      if (typeof res.status === 'function') {
+        const errPayload = {
+          status: false,
+          message: 'Net sales summary preview result not found or expired',
+        };
+        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
+      }
+      throw new NotFoundException('Net sales summary preview result not found or expired');
     }
-    return { status: true, data };
+
+    const acceptsNdjson = formatQuery === 'ndjson' || (req.headers?.['accept'] || '').includes('application/x-ndjson');
+    if (!acceptsNdjson) {
+      const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
+      const payload = { status: true, data };
+      return typeof res.send === 'function' ? res.send(payload) : res.json(payload);
+    }
+
+    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
+    const contentType = 'application/x-ndjson';
+
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', contentType);
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', contentType);
+    } else if (res.raw?.setHeader) {
+      res.raw.setHeader('Content-Type', contentType);
+    }
+
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      this.logger.error(`NetSalesSummary stream error ${jobId}: ${err.message}`);
+    });
+
+    if (acceptsGzip) {
+      if (typeof res.header === 'function') {
+        res.header('Content-Encoding', 'gzip');
+      } else if (typeof res.setHeader === 'function') {
+        res.setHeader('Content-Encoding', 'gzip');
+      } else if (res.raw?.setHeader) {
+        res.raw.setHeader('Content-Encoding', 'gzip');
+      }
+
+      if (typeof res.send === 'function') {
+        return res.send(stream);
+      }
+      return stream.pipe(res);
+    } else {
+      const gunzip = zlib.createGunzip();
+      gunzip.on('error', (err) => {
+        this.logger.error(`NetSalesSummary gunzip error ${jobId}: ${err.message}`);
+      });
+      const unzipped = stream.pipe(gunzip);
+      if (typeof res.send === 'function') {
+        return res.send(unzipped);
+      }
+      return unzipped.pipe(res);
+    }
   }
 
   @Post('reports/net-sales-summary/export/register-client-export')
@@ -2073,5 +2410,40 @@ export class PosSalesController {
         body,
       );
     return { status: true, data: result };
+  }
+
+  @Get(['reports/net-sales-summary/stream-preview-excel/:jobId', 'reports/net-sales-summary/stream-preview-excel/:jobId/:fileName'])
+  @ApiOperation({ summary: 'Stream filtered preview Excel for Net Sales Summary' })
+  async streamNetSalesSummaryPreviewExcel(
+    @Req() req: any,
+    @Param('jobId') jobId: string,
+    @Query('exportType') exportType: 'flat' | 'hierarchical',
+    @Query('search') search: string,
+    @Query('locationId') locationId: string,
+    @Res() res: any,
+  ) {
+    try {
+      let effectiveLocationId = locationId;
+      const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+      if (req.user?.isTerminal && userLocationId) {
+        effectiveLocationId = userLocationId;
+      }
+
+      await this.netSalesSummaryExportService.streamFilteredSummaryPreviewExcel(
+        jobId,
+        {
+          exportType,
+          search,
+          locationId: effectiveLocationId,
+        },
+        res,
+      );
+    } catch (err: any) {
+      const status = err?.status ?? 404;
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Preview export failed or expired',
+      });
+    }
   }
 }

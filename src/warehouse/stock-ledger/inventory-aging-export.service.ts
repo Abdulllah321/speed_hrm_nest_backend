@@ -17,6 +17,8 @@ export interface QueueInventoryAgingExportOptions {
   warehouseId?: string;
   startDate?: string;
   endDate?: string;
+  asOfDate?: string;
+  fiscalYear?: string;
   format: 'xlsx' | 'pdf';
   exportType?: 'hierarchical' | 'flat';
   reportType?: 'merged' | 'separate';
@@ -160,6 +162,8 @@ export class InventoryAgingExportService {
     warehouseId?: string;
     startDate?: string;
     endDate?: string;
+    asOfDate?: string;
+    fiscalYear?: string;
     reportType?: 'merged' | 'separate';
   }): Promise<{ jobId: string; queuePosition: number; waitingCount: number }> {
     const jobId = uuidv4();
@@ -210,6 +214,8 @@ export class InventoryAgingExportService {
         warehouseId: opts.warehouseId,
         startDate: opts.startDate,
         endDate: opts.endDate,
+        asOfDate: opts.asOfDate,
+        fiscalYear: opts.fiscalYear,
         reportType: opts.reportType || 'merged',
       },
       {
@@ -275,18 +281,23 @@ export class InventoryAgingExportService {
     };
   }
 
+  getPreviewFilePath(jobId: string): string {
+    return path.join(process.cwd(), 'uploads', 'previews', `preview-${jobId}.json.gz`);
+  }
+
   async getPreviewResult(jobId: string): Promise<{
     status: boolean;
     data?: any;
     message?: string;
   }> {
-    const filePath = path.join(process.cwd(), 'uploads', 'previews', `preview-${jobId}.json.gz`);
+    const filePath = this.getPreviewFilePath(jobId);
     if (!fs.existsSync(filePath)) {
       return { status: false, message: 'Preview result file not found or expired.' };
     }
     const gzipped = fs.readFileSync(filePath);
     const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
-    return JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
+    return parsed.data ? parsed : { status: true, data: parsed };
   }
 
   async getInventoryAgingReportData(opts: {
@@ -294,6 +305,8 @@ export class InventoryAgingExportService {
     warehouseId?: string;
     startDate?: string;
     endDate?: string;
+    asOfDate?: string;
+    fiscalYear?: string;
     reportType?: 'merged' | 'separate';
     previewJobId?: string;
     isAborted?: () => boolean;
@@ -312,6 +325,8 @@ export class InventoryAgingExportService {
       warehouseId?: string;
       startDate?: string;
       endDate?: string;
+      asOfDate?: string;
+      fiscalYear?: string;
       reportType?: 'merged' | 'separate';
       previewJobId?: string;
       isAborted?: () => boolean;
@@ -324,7 +339,20 @@ export class InventoryAgingExportService {
     const locationIdFilter = opts.locationId ? opts.locationId.split(',').filter(Boolean) : [];
     const warehouseIdFilter = opts.warehouseId ? opts.warehouseId.split(',').filter(Boolean) : [];
 
-    const asOfDate = opts.endDate ? new Date(opts.endDate) : new Date();
+    let asOfDate: Date;
+    if (opts.fiscalYear) {
+      const match = opts.fiscalYear.match(/(\d{4})/);
+      const startYear = match ? parseInt(match[1], 10) : (new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1);
+      asOfDate = new Date(Date.UTC(startYear + 1, 5, 30, 23, 59, 59, 999));
+    } else if (opts.asOfDate) {
+      asOfDate = new Date(opts.asOfDate);
+      if (opts.asOfDate.length === 10) asOfDate.setHours(23, 59, 59, 999);
+    } else if (opts.endDate) {
+      asOfDate = new Date(opts.endDate);
+      if (opts.endDate.length === 10) asOfDate.setHours(23, 59, 59, 999);
+    } else {
+      asOfDate = new Date();
+    }
 
     // Resolve nearest Fiscal Opening Snapshot date to prune historical closed fiscal years
     const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, asOfDate);

@@ -17,7 +17,8 @@ interface SalesListExportJobData {
   userId: string;
   tenantId: string;
   tenantDbUrl: string;
-  locationId: string;
+  locationId?: string;
+  locationIds?: string[];
   startDate?: string;
   endDate?: string;
   cashierUserId?: string;
@@ -27,6 +28,7 @@ interface SalesListExportJobData {
   minAmount?: number;
   maxAmount?: number;
   fbrOnly?: boolean;
+  exportType?: 'flat' | 'hierarchical';
 }
 
 export interface SalesListPreviewJobData {
@@ -44,11 +46,52 @@ export interface SalesListPreviewJobData {
   minAmount?: number;
   maxAmount?: number;
   fbrOnly?: boolean;
+  fiscalYear?: string;
+  year?: number | string;
 }
+
+const FLAT_COLUMNS = [
+  { header: 'Outlet / Location', key: 'locationName', width: 22, align: 'left' },
+  { header: 'Invoice #', key: 'orderNumber', width: 16, align: 'left' },
+  { header: 'Order Date', key: 'orderDate', width: 18, align: 'center' },
+  { header: 'Cashier', key: 'cashierName', width: 16, align: 'left' },
+  { header: 'Customer', key: 'customerName', width: 18, align: 'left' },
+  { header: 'Phone', key: 'customerPhone', width: 14, align: 'left' },
+  { header: 'Payment Mode', key: 'paymentMethod', width: 14, align: 'center' },
+  { header: 'Merchant', key: 'merchant', width: 16, align: 'left' },
+  { header: 'FBR Inv #', key: 'fbrInvoiceNumber', width: 16, align: 'left' },
+  { header: 'FBR Status', key: 'fbrStatus', width: 12, align: 'center' },
+  { header: 'SKU', key: 'sku', width: 16, align: 'left' },
+  { header: 'Barcode', key: 'barCode', width: 16, align: 'left' },
+  { header: 'Description', key: 'description', width: 26, align: 'left' },
+  { header: 'Size', key: 'sizeName', width: 10, align: 'center' },
+  { header: 'Color', key: 'colorName', width: 12, align: 'center' },
+  { header: 'Quantity', key: 'quantity', width: 10, align: 'right', numFmt: '#,##0' },
+  { header: 'Unit Price', key: 'unitPrice', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Discount', key: 'discountAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'SubTotal', key: 'subTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Order Gross', key: 'orderGrossAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Order Net', key: 'orderNetAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Cash Sale', key: 'cashSale', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Cash Return', key: 'cashReturn', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Card Sale', key: 'cardSale', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Sale', key: 'creditSale', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Gift Voucher', key: 'giftVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Voucher', key: 'creditVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Exchange Voucher', key: 'exchangeVoucherAmount', width: 16, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Claim Voucher', key: 'claimVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Corporate Voucher', key: 'giftVoucherCorporate', width: 16, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Issued', key: 'creditVoucherIssuedAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Reward Voucher', key: 'rewardVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'On Credit', key: 'onCreditAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+];
 
 const COLUMNS = [
   { header: 'Date & Time', key: 'date', width: 22, align: 'center' },
   { header: 'Invoice #', key: 'invoiceNo', width: 14, align: 'left' },
+  { header: 'Location', key: 'location', width: 18, align: 'left' },
+  { header: 'Cashier', key: 'cashier', width: 14, align: 'left' },
+  { header: 'Customer', key: 'customer', width: 16, align: 'left' },
   { header: 'Merchant', key: 'merchant', width: 16, align: 'left' },
   { header: 'NetTotal', key: 'netTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Balance', key: 'balance', width: 14, align: 'right', numFmt: '#,##0.00' },
@@ -107,6 +150,8 @@ export class SalesListExportProcessor {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
     } = job.data;
 
     const prisma = (tenantId && tenantDbUrl)
@@ -116,6 +161,13 @@ export class SalesListExportProcessor {
     try {
       this.logger.log(`[SalesListPreview ${jobId}] Starting background sales-list preview computation`);
       await job.progress({ percent: 10, message: 'Queueing sales list preview computation task...' });
+
+      const onProgress = async (percent: number, message: string) => {
+        if (this.salesListExportService.isJobCancelled(jobId)) {
+          throw new Error('JOB_CANCELLED');
+        }
+        await job.progress({ percent: Math.min(95, Math.max(10, percent)), message });
+      };
 
       const result = await this.salesListExportService.generateSalesListReportDataInternal(
         prisma as any,
@@ -130,16 +182,22 @@ export class SalesListExportProcessor {
           minAmount,
           maxAmount,
           fbrOnly,
-          onProgress: async (p, msg) => {
-            await job.progress(Math.min(95, Math.max(10, p)));
-          },
+          fiscalYear,
+          year,
+          previewJobId: jobId,
+          isAborted: () => this.salesListExportService.isJobCancelled(jobId),
+          onProgress,
         },
       );
 
       await this.salesListExportService.saveReportPreviewResult(jobId, result);
-      await job.progress(100);
+      await job.progress({ percent: 100, message: 'Sales list preview calculation completed.' });
       this.logger.log(`[SalesListPreview] Successfully completed and stored preview job ${jobId}`);
     } catch (err: any) {
+      if (err.message === 'JOB_CANCELLED') {
+        this.logger.log(`[SalesListPreview ${jobId}] Job was superseded or cancelled.`);
+        return;
+      }
       this.logger.error(`[SalesListPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
       throw err;
     }
@@ -162,11 +220,12 @@ export class SalesListExportProcessor {
       minAmount,
       maxAmount,
       fbrOnly,
+      exportType = 'hierarchical',
     } = job.data;
 
-    const prisma = new PrismaService();
-    (prisma as any).tenantDbUrl = tenantDbUrl;
-    (prisma as any).tenantId = tenantId;
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
     const prismaMaster = new PrismaMasterService();
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
@@ -174,125 +233,69 @@ export class SalesListExportProcessor {
     const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
     try {
-      await job.progress(10);
+      await job.progress({ percent: 5, message: 'Initializing export worker & loading metadata...' });
 
-      const location = await prisma.location.findUnique({
-        where: { id: locationId },
-        select: { name: true },
-      });
-      const locationName = location?.name || 'Store';
+      const [allLocations, cashiersList] = await Promise.all([
+        prisma.location.findMany({ select: { id: true, name: true } }),
+        prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
+      ]);
+
+      const locationMap = new Map<string, string>();
+      for (const l of allLocations) locationMap.set(l.id, l.name);
+
+      const cashierMap = new Map<string, string>();
+      for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+
+      const locationName = (job.data.locationIds && job.data.locationIds.length > 0)
+        ? job.data.locationIds.map((id) => locationMap.get(id) || id).join(', ')
+        : locationId
+        ? locationMap.get(locationId) || 'Store'
+        : 'All Outlets (Stores)';
 
       const now = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
       const endDate = endStr ? new Date(endStr) : new Date(now);
       endDate.setHours(23, 59, 59, 999);
 
-      // ── Step 1: Fetch and page through orders using offset pagination ──
-      const orders: any[] = [];
-      let skip = 0;
-      const CHUNK = 500;
-      let hasMore = true;
+      const where: any = {
+        status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
+        createdAt: { gte: startDate, lte: endDate },
+      };
 
-      while (hasMore) {
-        const chunk = await prisma.salesOrder.findMany({
-          where: {
-            locationId,
-            status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged'] },
-            createdAt: { gte: startDate, lte: endDate },
-            ...(cashierUserId ? { cashierUserId } : {}),
-            ...(search ? { orderNumber: { contains: search, mode: 'insensitive' } } : {}),
-          },
-          include: {
-            alliance: true,
-            merchant: true,
-            voucherRedemptions: {
-              include: {
-                voucher: true,
-              },
-            },
-          },
-          orderBy: { createdAt: 'asc' },
-          skip,
-          take: CHUNK,
-        });
-
-        orders.push(...chunk);
-        skip += CHUNK;
-        hasMore = chunk.length === CHUNK;
+      if (job.data.locationIds && job.data.locationIds.length > 0) {
+        where.locationId = { in: job.data.locationIds };
+      } else if (locationId) {
+        where.locationId = locationId;
+      }
+      if (cashierUserId) where.cashierUserId = cashierUserId;
+      if (fbrOnly) where.fbrInvoiceNumber = { not: null };
+      if (paymentModeGroup) where.paymentMethod = { equals: paymentModeGroup, mode: 'insensitive' };
+      if (minAmount !== undefined || maxAmount !== undefined) {
+        where.grandTotal = {};
+        if (minAmount !== undefined) where.grandTotal.gte = Number(minAmount);
+        if (maxAmount !== undefined) where.grandTotal.lte = Number(maxAmount);
+      }
+      if (search && search.trim()) {
+        const s = search.trim();
+        where.OR = [
+          { orderNumber: { contains: s, mode: 'insensitive' } },
+          { fbrInvoiceNumber: { contains: s, mode: 'insensitive' } },
+          { customer: { name: { contains: s, mode: 'insensitive' } } },
+          { customer: { contactNo: { contains: s, mode: 'insensitive' } } },
+        ];
       }
 
-      await job.progress(40);
+      await job.progress({ percent: 10, message: 'Counting matching records in database...' });
+      const totalOrdersCount = await prisma.salesOrder.count({ where });
 
-      // ── Step 2: Fetch return stock ledger entries ──
-      const returnLedgerEntries = await prisma.stockLedger.findMany({
-        where: {
-          referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
-          createdAt: { gte: startDate, lte: endDate },
-          locationId,
-        },
-        include: {
-          item: true,
-        },
-      });
+      const isFlat = exportType === 'flat';
 
-      const referenceOrderIds = [
-        ...new Set(returnLedgerEntries.map((e) => e.referenceId).filter(Boolean)),
-      ];
-
-      const referenceOrders = referenceOrderIds.length
-        ? await prisma.salesOrder.findMany({
-          where: {
-            id: { in: referenceOrderIds },
-            ...(cashierUserId ? { cashierUserId } : {}),
-          },
-          include: {
-            items: { include: { item: true } },
-            alliance: true,
-            merchant: true,
-            voucherRedemptions: { include: { voucher: true } },
-          },
-        })
-        : [];
-
-      const referenceOrderMap = new Map<string, any>();
-      for (const o of referenceOrders) {
-        referenceOrderMap.set(o.id, o);
-      }
-
-      // Fetch all issued vouchers
-      const allOrderIds = [
-        ...orders.map((o) => o.id),
-        ...referenceOrderIds,
-      ];
-      const issuedVouchers = allOrderIds.length
-        ? await prisma.voucher.findMany({
-          where: {
-            sourceOrderId: { in: allOrderIds },
-            isDeleted: false,
-          },
-        })
-        : [];
-
-      const issuedVoucherMap = new Map<string, any[]>();
-      for (const v of issuedVouchers) {
-        if (!v.sourceOrderId) continue;
-        const list = issuedVoucherMap.get(v.sourceOrderId) || [];
-        list.push(v);
-        issuedVoucherMap.set(v.sourceOrderId, list);
-      }
-
-      const rows: any[] = [];
-
-      // Helper to parse tender documents (Auth, Bin, last 4 digits)
       const parseTenderDocs = (notes: string | null, alliance: any): string => {
         if (!notes) return '';
-
         const cardMatch = notes.match(/Card:\s*\*\*\*\*(\d{4})/i);
         const cardLast4 = cardMatch ? cardMatch[1] : '';
-
         const slipMatch = notes.match(/Slip:\s*(\w+)/i);
         const authId = slipMatch ? slipMatch[1] : '';
-
         const binMatch = notes.match(/BIN:\s*(\d+)/i);
         const binNumber = binMatch ? binMatch[1] : '';
 
@@ -308,299 +311,12 @@ export class SalesListExportProcessor {
         return cardLast4 || authId || '';
       };
 
-      // ── Process Orders ──
-      for (const order of orders) {
-        const notesStr = order.notes || '';
-        const fbr = order.fbrInvoiceNumber ? 1 : 0;
-        const netSale = Number(order.grandTotal) - fbr;
-
-        let balance = 0;
-        const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
-        if (balanceMatch) {
-          balance = Number(balanceMatch[1]);
-        } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
-          balance = Number(order.grandTotal);
-        }
-
-        let cash = Number(order.cashAmount || 0);
-        let card = Number(order.cardAmount || 0);
-        let onCredit = balance;
-        let cashReturn = 0;
-
-        const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
-        if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
-
-        if (cash === 0) {
-          const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
-          if (cashMatch) cash = Number(cashMatch[1]);
-        }
-        if (card === 0) {
-          const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
-          if (cardMatch) card = Number(cardMatch[1]);
-        }
-
-        let giftVoucher = 0;
-        let creditVoucher = 0;
-        let exchangeVoucher = 0;
-        let claimVoucher = 0;
-        let corporateVoucher = 0;
-        let rewardVoucher = 0;
-
-        const exMatch = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
-        if (exMatch) exchangeVoucher = Number(exMatch[1]);
-
-        const clmMatch = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
-        if (clmMatch) claimVoucher = Number(clmMatch[1]);
-
-        const corpMatch = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
-        if (corpMatch) corporateVoucher = Number(corpMatch[1]);
-
-        const giftMatch = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
-        if (giftMatch) giftVoucher = Number(giftMatch[1]);
-
-        const rewMatch = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
-        if (rewMatch) {
-          rewardVoucher = Number(rewMatch[1]);
-        } else if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
-          rewardVoucher = Number(order.grandTotal);
-        }
-
-        const credVouchMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
-        if (credVouchMatch) creditVoucher = Number(credVouchMatch[1]);
-
-        for (const red of (order.voucherRedemptions || [])) {
-          const type = red.voucher?.voucherType;
-          const amt = Number(red.amountUsed);
-
-          if (type === 'GIFT' || type === 'OUTLET_GIFT') {
-            if (!giftMatch) giftVoucher += amt;
-          } else if (type === 'CREDIT' || type === 'REFUND') {
-            if (!credVouchMatch) creditVoucher += amt;
-          } else if (type === 'CLAIM') {
-            if (!clmMatch) claimVoucher += amt;
-          } else if (type === 'CORPORATE') {
-            if (!corpMatch) corporateVoucher += amt;
-          } else if (type === 'EXCHANGE') {
-            if (!exMatch) exchangeVoucher += amt;
-          } else if (type === 'REWARD') {
-            if (!rewMatch) rewardVoucher += amt;
-          }
-        }
-
-        const totalRedeemedVoucher = giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher;
-        const orderVoucherAmt = Number(order.voucherAmount || 0);
-        if (orderVoucherAmt > totalRedeemedVoucher) {
-          const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
-          if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
-            exchangeVoucher += remVoucher;
-          } else if (notesStr.match(/Claim|CLM-/i)) {
-            claimVoucher += remVoucher;
-          } else if (notesStr.match(/Corporate/i)) {
-            corporateVoucher += remVoucher;
-          } else if (notesStr.match(/Gift/i)) {
-            giftVoucher += remVoucher;
-          } else if (notesStr.match(/Reward/i)) {
-            rewardVoucher += remVoucher;
-          } else {
-            creditVoucher += remVoucher;
-          }
-        }
-
-        const totalTenders = cash + card + giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher + onCredit;
-        if (totalTenders === 0) {
-          const payMethod = (order.paymentMethod || 'cash').toLowerCase();
-          if (payMethod.includes('cash')) cash = Number(order.grandTotal);
-          else if (payMethod.includes('card') || payMethod.includes('bank')) card = Number(order.grandTotal);
-          else if (payMethod.includes('credit')) {
-            onCredit = Number(order.grandTotal);
-          } else if (payMethod.includes('voucher')) {
-            creditVoucher = Number(order.grandTotal);
-          } else {
-            cash = Number(order.grandTotal);
-          }
-        }
-
-        let issuedGift = 0;
-        let issuedCredit = 0;
-
-        const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
-        if (issuedMatch) {
-          issuedCredit = Number(issuedMatch[1]);
-        }
-
-        const orderIssued = issuedVoucherMap.get(order.id) || [];
-        for (const iv of orderIssued) {
-          const type = iv.voucherType;
-          const faceVal = Number(iv.faceValue || 0);
-
-          if (type === 'GIFT' || type === 'CORPORATE' || type === 'OUTLET_GIFT') {
-            issuedGift += faceVal;
-          } else if (type === 'CREDIT' || type === 'REFUND') {
-            if (!issuedMatch) issuedCredit += faceVal;
-          }
-        }
-
-        const tenderDocs = parseTenderDocs(notesStr, order.alliance);
-
-        let merchantName = (order as any).merchant?.bankName || ((order as any).merchant?.description ? (order as any).merchant.description.split('|')[1]?.trim() || (order as any).merchant.description : '');
-        if (!merchantName && notesStr) {
-          const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i);
-          if (merchMatch) merchantName = merchMatch[1].trim();
-        }
-        if (!merchantName && order.alliance?.partnerName) {
-          merchantName = order.alliance.partnerName;
-        }
-        merchantName = merchantName || '-';
-
-        rows.push({
-          id: order.id,
-          invoiceNo: order.orderNumber,
-          date: order.createdAt,
-          merchant: merchantName,
-          netTotal: Number(order.grandTotal),
-          balance,
-          tenderCash: cash,
-          tenderCard: card,
-          tenderRewardVoucher: rewardVoucher,
-          tenderOnCredit: onCredit,
-          tenderGiftVoucher: giftVoucher,
-          tenderCreditVoucher: creditVoucher,
-          tenderExchangeVoucher: exchangeVoucher,
-          tenderClaimVoucher: claimVoucher,
-          tenderCorporateVoucher: corporateVoucher,
-          issuedGiftVoucher: issuedGift,
-          issuedCreditVoucher: issuedCredit,
-          returnAmount: 0,
-          fbr,
-          netSale,
-          tenderDocuments: tenderDocs,
-        });
-      }
-
-      // ── Process Returns ──
-      const groupedReturns = new Map<string, any[]>();
-      for (const entry of returnLedgerEntries) {
-        if (!entry.referenceId) continue;
-        const list = groupedReturns.get(entry.referenceId) || [];
-        list.push(entry);
-        groupedReturns.set(entry.referenceId, list);
-      }
-
-      for (const [refId, entries] of groupedReturns.entries()) {
-        const order = referenceOrderMap.get(refId);
-        if (!order) continue;
-
-        let grossSale = 0;
-        let grossSaleWost = 0;
-        let disc = 0;
-        let sTax = 0;
-
-        for (const entry of entries) {
-          const qty = Math.abs(Number(entry.qty));
-          const orderItem = order.items.find((oi: any) => oi.itemId === entry.itemId);
-          if (!orderItem) continue;
-
-          const price = Number(orderItem.unitPrice || 0);
-          const taxRate = Number(orderItem.taxPercent || 0);
-          const itemQty = Number(orderItem.quantity || 1);
-
-          grossSale += qty * price;
-          grossSaleWost += qty * (price / (1 + taxRate / 100));
-          disc += (qty / itemQty) * Number(orderItem.discountAmount || 0);
-          sTax += (qty / itemQty) * Number(orderItem.taxAmount || 0);
-        }
-
-        const netSale = grossSaleWost - disc + sTax;
-
-        let cash = 0;
-        let exchangeVoucher = 0;
-
-        const isRefund = entries[0].referenceType === 'POS_REFUND';
-        if (isRefund) {
-          cash = -netSale;
-        } else {
-          exchangeVoucher = -netSale;
-        }
-
-        const docNum = isRefund
-          ? (order.refundNumber || `Refund for ${order.orderNumber}`)
-          : (order.returnNumber || `Return for ${order.orderNumber}`);
-
-        let issuedGift = 0;
-        let issuedCredit = 0;
-
-        const returnIssued = issuedVoucherMap.get(refId) || [];
-        for (const iv of returnIssued) {
-          const type = iv.voucherType;
-          const faceVal = Number(iv.faceValue || 0);
-
-          if (type === 'GIFT' || type === 'CORPORATE' || type === 'OUTLET_GIFT') {
-            issuedGift += faceVal;
-          } else if (type === 'CREDIT' || type === 'EXCHANGE' || type === 'REFUND') {
-            issuedCredit += faceVal;
-          }
-        }
-
-        rows.push({
-          id: `${refId}-return`,
-          invoiceNo: docNum,
-          date: entries[0].createdAt,
-          netTotal: -netSale,
-          balance: 0,
-          tenderCash: cash,
-          tenderCard: 0,
-          tenderRewardVoucher: 0,
-          tenderOnCredit: 0,
-          tenderGiftVoucher: 0,
-          tenderCreditVoucher: 0,
-          tenderExchangeVoucher: exchangeVoucher,
-          tenderClaimVoucher: 0,
-          tenderCorporateVoucher: 0,
-          issuedGiftVoucher: issuedGift,
-          issuedCreditVoucher: issuedCredit,
-          returnAmount: -netSale,
-          fbr: 0,
-          netSale: -netSale,
-          tenderDocuments: '',
-        });
-      }
-
-      let filteredRows = rows;
-
-      if (paymentModeGroup) {
-        filteredRows = filteredRows.filter((r) => {
-          if (paymentModeGroup === 'cash') return r.tenderCash !== 0;
-          if (paymentModeGroup === 'card') return r.tenderCard !== 0;
-          if (paymentModeGroup === 'credit') return r.tenderOnCredit !== 0 || r.balance !== 0;
-          if (paymentModeGroup === 'voucher') {
-            return (
-              r.tenderGiftVoucher !== 0 ||
-              r.tenderCreditVoucher !== 0 ||
-              r.tenderExchangeVoucher !== 0 ||
-              r.tenderClaimVoucher !== 0 ||
-              r.tenderCorporateVoucher !== 0
-            );
-          }
-          if (paymentModeGroup === 'return') return r.returnAmount !== 0;
-          return true;
-        });
-      }
-
-      if (minAmount !== undefined && minAmount !== null) {
-        filteredRows = filteredRows.filter((r) => Math.abs(r.netTotal) >= Number(minAmount));
-      }
-      if (maxAmount !== undefined && maxAmount !== null) {
-        filteredRows = filteredRows.filter((r) => Math.abs(r.netTotal) <= Number(maxAmount));
-      }
-      if (fbrOnly) {
-        filteredRows = filteredRows.filter((r) => r.fbr === 1);
-      }
-
-      filteredRows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-      // ── Compute Grand Totals ──
       const grandTotals = {
-        netTotal: 0,
+        orderCount: 0,
+        totalItems: 0,
+        grossAmount: 0,
+        discountAmount: 0,
+        netAmount: 0,
         balance: 0,
         tenderCash: 0,
         tenderCard: 0,
@@ -618,31 +334,402 @@ export class SalesListExportProcessor {
         netSale: 0,
       };
 
-      for (const r of filteredRows) {
-        grandTotals.netTotal += r.netTotal;
-        grandTotals.balance += r.balance;
-        grandTotals.tenderCash += r.tenderCash;
-        grandTotals.tenderCard += r.tenderCard;
-        grandTotals.tenderRewardVoucher += r.tenderRewardVoucher;
-        grandTotals.tenderOnCredit += r.tenderOnCredit;
-        grandTotals.tenderGiftVoucher += r.tenderGiftVoucher;
-        grandTotals.tenderCreditVoucher += r.tenderCreditVoucher;
-        grandTotals.tenderExchangeVoucher += r.tenderExchangeVoucher;
-        grandTotals.tenderClaimVoucher += r.tenderClaimVoucher;
-        grandTotals.tenderCorporateVoucher += r.tenderCorporateVoucher;
-        grandTotals.issuedGiftVoucher += r.issuedGiftVoucher;
-        grandTotals.issuedCreditVoucher += r.issuedCreditVoucher;
-        grandTotals.returnAmount += r.returnAmount;
-        grandTotals.fbr += r.fbr;
-        grandTotals.netSale += r.netSale;
-      }
+      if (format === 'xlsx') {
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+          filename: filePath,
+          useStyles: true,
+          useSharedStrings: false,
+        });
 
-      await job.progress(80);
+        const activeCols = isFlat ? FLAT_COLUMNS : COLUMNS;
+        const ws = workbook.addWorksheet(isFlat ? 'Sales Line Items' : 'Sales Invoices', {
+          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        });
 
-      if (format === 'pdf') {
+        ws.columns = activeCols.map((c) => ({ key: c.key, width: c.width }));
+
+        // Header Row
+        const headerRow = ws.getRow(1);
+        activeCols.forEach((col, idx) => {
+          const cell = headerRow.getCell(idx + 1);
+          cell.value = col.header;
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+          cell.alignment = {
+            horizontal: col.align === 'right' ? 'right' : col.align === 'center' ? 'center' : 'left',
+            vertical: 'middle',
+          };
+        });
+        headerRow.height = 24;
+        headerRow.commit();
+
+        const borderThin = {
+          top: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+          left: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+        };
+
+        const CHUNK = 1000;
+        let processedOrders = 0;
+
+        for (let skip = 0; skip < totalOrdersCount; skip += CHUNK) {
+          const chunkOrders = await prisma.salesOrder.findMany({
+            where,
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            skip,
+            take: CHUNK,
+            include: {
+              customer: { select: { name: true, contactNo: true } },
+              alliance: true,
+              merchant: true,
+              voucherRedemptions: {
+                include: {
+                  voucher: true,
+                },
+              },
+              items: {
+                include: {
+                  item: {
+                    select: {
+                      sku: true,
+                      barCode: true,
+                      description: true,
+                      size: { select: { name: true } },
+                      color: { select: { name: true } },
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          if (chunkOrders.length === 0) break;
+
+          for (const order of chunkOrders) {
+            const notesStr = order.notes || '';
+            const fbr = order.fbrInvoiceNumber ? 1 : 0;
+            const netSale = Number(order.grandTotal) - fbr;
+
+            let balance = 0;
+            const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+            if (balanceMatch) {
+              balance = Number(balanceMatch[1]);
+            } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
+              balance = Number(order.grandTotal);
+            }
+
+            let cash = Number(order.cashAmount || 0);
+            let card = Number(order.cardAmount || 0);
+            let onCredit = balance;
+            let cashReturn = 0;
+
+            const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+            if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
+
+            if (cash === 0) {
+              const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+              if (cashMatch) cash = Number(cashMatch[1]);
+            }
+            if (card === 0) {
+              const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+              if (cardMatch) card = Number(cardMatch[1]);
+            }
+
+            let giftVoucher = 0;
+            let creditVoucher = 0;
+            let exchangeVoucher = 0;
+            let claimVoucher = 0;
+            let corporateVoucher = 0;
+            let rewardVoucher = 0;
+
+            const exMatch = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
+            if (exMatch) exchangeVoucher = Number(exMatch[1]);
+
+            const clmMatch = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
+            if (clmMatch) claimVoucher = Number(clmMatch[1]);
+
+            const corpMatch = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+            if (corpMatch) corporateVoucher = Number(corpMatch[1]);
+
+            const giftMatch = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
+            if (giftMatch) giftVoucher = Number(giftMatch[1]);
+
+            const rewMatch = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+            if (rewMatch) {
+              rewardVoucher = Number(rewMatch[1]);
+            } else if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+              rewardVoucher = Number(order.grandTotal);
+            }
+
+            const credVouchMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
+            if (credVouchMatch) creditVoucher = Number(credVouchMatch[1]);
+
+            for (const red of (order.voucherRedemptions || [])) {
+              const type = red.voucher?.voucherType;
+              const amt = Number(red.amountUsed);
+
+              if (type === 'GIFT' || type === 'OUTLET_GIFT') {
+                if (!giftMatch) giftVoucher += amt;
+              } else if (type === 'CREDIT' || type === 'REFUND') {
+                if (!credVouchMatch) creditVoucher += amt;
+              } else if (type === 'CLAIM') {
+                if (!clmMatch) claimVoucher += amt;
+              } else if (type === 'CORPORATE') {
+                if (!corpMatch) corporateVoucher += amt;
+              } else if (type === 'EXCHANGE') {
+                if (!exMatch) exchangeVoucher += amt;
+              } else if (type === 'REWARD') {
+                if (!rewMatch) rewardVoucher += amt;
+              }
+            }
+
+            const totalRedeemedVoucher = giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher;
+            const orderVoucherAmt = Number(order.voucherAmount || 0);
+            if (orderVoucherAmt > totalRedeemedVoucher) {
+              const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
+              if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
+                exchangeVoucher += remVoucher;
+              } else if (notesStr.match(/Claim|CLM-/i)) {
+                claimVoucher += remVoucher;
+              } else if (notesStr.match(/Corporate/i)) {
+                corporateVoucher += remVoucher;
+              } else if (notesStr.match(/Gift/i)) {
+                giftVoucher += remVoucher;
+              } else if (notesStr.match(/Reward/i)) {
+                rewardVoucher += remVoucher;
+              } else {
+                creditVoucher += remVoucher;
+              }
+            }
+
+            const totalTenders = cash + card + giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher + onCredit;
+            if (totalTenders === 0) {
+              const payMethod = (order.paymentMethod || 'cash').toLowerCase();
+              if (payMethod.includes('cash')) cash = Number(order.grandTotal);
+              else if (payMethod.includes('card') || payMethod.includes('bank')) card = Number(order.grandTotal);
+              else if (payMethod.includes('credit')) {
+                onCredit = Number(order.grandTotal);
+              } else if (payMethod.includes('voucher')) {
+                creditVoucher = Number(order.grandTotal);
+              } else {
+                cash = Number(order.grandTotal);
+              }
+            }
+
+            let issuedGift = 0;
+            let issuedCredit = 0;
+
+            const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+            if (issuedMatch) {
+              issuedCredit = Number(issuedMatch[1]);
+            }
+
+
+            const tenderDocs = parseTenderDocs(notesStr, order.alliance);
+
+            let merchantName = (order as any).merchant?.bankName || ((order as any).merchant?.description ? (order as any).merchant.description.split('|')[1]?.trim() || (order as any).merchant.description : '');
+            if (!merchantName && notesStr) {
+              const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i);
+              if (merchMatch) merchantName = merchMatch[1].trim();
+            }
+            if (!merchantName && order.alliance?.partnerName) {
+              merchantName = order.alliance.partnerName;
+            }
+            merchantName = merchantName || '-';
+
+            const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
+            const cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
+            const customerName = order.customer?.name || 'Walk-in Customer';
+            const customerPhone = order.customer?.contactNo || '-';
+            const orderGrandTotal = Number(order.grandTotal || 0);
+            const orderSubtotal = Number(order.subtotal || 0);
+            const orderDisc = Number(order.discountAmount || 0);
+
+            grandTotals.orderCount += 1;
+            grandTotals.grossAmount += orderSubtotal;
+            grandTotals.discountAmount += orderDisc;
+            grandTotals.netAmount += orderGrandTotal;
+            grandTotals.balance += balance;
+            grandTotals.tenderCash += cash;
+            grandTotals.tenderCard += card;
+            grandTotals.tenderRewardVoucher += rewardVoucher;
+            grandTotals.tenderOnCredit += onCredit;
+            grandTotals.tenderGiftVoucher += giftVoucher;
+            grandTotals.tenderCreditVoucher += creditVoucher;
+            grandTotals.tenderExchangeVoucher += exchangeVoucher;
+            grandTotals.tenderClaimVoucher += claimVoucher;
+            grandTotals.tenderCorporateVoucher += corporateVoucher;
+            grandTotals.issuedGiftVoucher += issuedGift;
+            grandTotals.issuedCreditVoucher += issuedCredit;
+            grandTotals.fbr += fbr;
+            grandTotals.netSale += netSale;
+
+            if (isFlat) {
+              for (const item of (order.items || [])) {
+                const itemQty = Number(item.quantity || 0);
+                const itemPrice = Number(item.unitPrice || 0);
+                const itemDisc = Number(item.discountAmount || 0);
+                const itemSub = Number(item.lineTotal || 0);
+                const ratio = orderGrandTotal > 0 ? (itemSub / orderGrandTotal) : 0;
+
+                grandTotals.totalItems += itemQty;
+
+                const flatRowData: any = {
+                  locationName: locName,
+                  orderNumber: order.orderNumber,
+                  orderDate: new Date(order.createdAt).toLocaleString(),
+                  cashierName,
+                  customerName,
+                  customerPhone,
+                  paymentMethod: (order.paymentMethod || 'CASH').toUpperCase(),
+                  merchant: merchantName,
+                  fbrInvoiceNumber: order.fbrInvoiceNumber || '-',
+                  fbrStatus: order.fbrStatus || 'NONE',
+                  sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
+                  barCode: item.item?.barCode || item.item?.sku || '-',
+                  description: item.item?.description || item.item?.sku || 'Article',
+                  sizeName: item.item?.size?.name || 'Default',
+                  colorName: item.item?.color?.name || 'Default',
+                  quantity: itemQty,
+                  unitPrice: itemPrice,
+                  discountAmount: itemDisc,
+                  subTotal: itemSub,
+                  orderGrossAmount: orderSubtotal,
+                  orderNetAmount: orderGrandTotal,
+                  cashSale: cash * ratio,
+                  cashReturn: cashReturn * ratio,
+                  cardSale: card * ratio,
+                  creditSale: (balance > 0 ? balance : onCredit) * ratio,
+                  giftVoucherAmount: giftVoucher * ratio,
+                  creditVoucherAmount: creditVoucher * ratio,
+                  exchangeVoucherAmount: exchangeVoucher * ratio,
+                  claimVoucherAmount: claimVoucher * ratio,
+                  giftVoucherCorporate: corporateVoucher * ratio,
+                  creditVoucherIssuedAmount: issuedCredit * ratio,
+                  rewardVoucherAmount: rewardVoucher * ratio,
+                  onCreditAmount: onCredit * ratio,
+                };
+
+                const row = ws.addRow(flatRowData);
+                row.height = 18;
+                row.commit();
+              }
+            } else {
+              const orderItemsCount = (order.items || []).reduce((acc: number, i: any) => acc + Number(i.quantity || 0), 0);
+              grandTotals.totalItems += orderItemsCount;
+
+              const matrixRowData: any = {
+                date: new Date(order.createdAt).toLocaleString(),
+                invoiceNo: order.orderNumber,
+                location: locName,
+                cashier: cashierName,
+                customer: customerName,
+                merchant: merchantName,
+                netTotal: orderGrandTotal,
+                balance,
+                tenderCash: cash,
+                tenderCard: card,
+                tenderRewardVoucher: rewardVoucher,
+                tenderOnCredit: onCredit,
+                tenderGiftVoucher: giftVoucher,
+                tenderCreditVoucher: creditVoucher,
+                tenderExchangeVoucher: exchangeVoucher,
+                tenderClaimVoucher: claimVoucher,
+                tenderCorporateVoucher: corporateVoucher,
+                issuedGiftVoucher: issuedGift,
+                issuedCreditVoucher: issuedCredit,
+                returnAmount: cashReturn,
+                fbr,
+                netSale,
+                tenderDocuments: tenderDocs,
+              };
+
+              const row = ws.addRow(matrixRowData);
+              row.height = 18;
+              row.commit();
+            }
+          }
+
+          processedOrders += chunkOrders.length;
+          const pct = Math.min(92, Math.round(15 + (processedOrders / Math.max(1, totalOrdersCount)) * 75));
+          await job.progress({
+            percent: pct,
+            message: `Exported ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} orders (${pct}%)...`,
+          });
+        }
+
+        // Add Grand Totals Footer Row
+        const totalRowData = isFlat
+          ? {
+              locationName: 'GRAND TOTAL',
+              quantity: grandTotals.totalItems,
+              discountAmount: grandTotals.discountAmount,
+              subTotal: grandTotals.netAmount,
+              orderGrossAmount: grandTotals.grossAmount,
+              orderNetAmount: grandTotals.netAmount,
+              cashSale: grandTotals.tenderCash,
+              cashReturn: grandTotals.returnAmount,
+              cardSale: grandTotals.tenderCard,
+              creditSale: grandTotals.balance,
+              giftVoucherAmount: grandTotals.tenderGiftVoucher,
+              creditVoucherAmount: grandTotals.tenderCreditVoucher,
+              exchangeVoucherAmount: grandTotals.tenderExchangeVoucher,
+              claimVoucherAmount: grandTotals.tenderClaimVoucher,
+              giftVoucherCorporate: grandTotals.tenderCorporateVoucher,
+              creditVoucherIssuedAmount: grandTotals.issuedCreditVoucher,
+              rewardVoucherAmount: grandTotals.tenderRewardVoucher,
+              onCreditAmount: grandTotals.tenderOnCredit,
+            }
+          : {
+              date: 'GRAND TOTAL',
+              invoiceNo: `${grandTotals.orderCount.toLocaleString()} Orders`,
+              location: '',
+              cashier: '',
+              customer: `${grandTotals.totalItems.toLocaleString()} Items`,
+              merchant: '',
+              netTotal: grandTotals.netAmount,
+              balance: grandTotals.balance,
+              tenderCash: grandTotals.tenderCash,
+              tenderCard: grandTotals.tenderCard,
+              tenderRewardVoucher: grandTotals.tenderRewardVoucher,
+              tenderOnCredit: grandTotals.tenderOnCredit,
+              tenderGiftVoucher: grandTotals.tenderGiftVoucher,
+              tenderCreditVoucher: grandTotals.tenderCreditVoucher,
+              exchangeVoucher: grandTotals.tenderExchangeVoucher,
+              claimVoucher: grandTotals.tenderClaimVoucher,
+              tenderCorporateVoucher: grandTotals.tenderCorporateVoucher,
+              issuedGiftVoucher: grandTotals.issuedGiftVoucher,
+              issuedCreditVoucher: grandTotals.issuedCreditVoucher,
+              returnAmount: grandTotals.returnAmount,
+              fbr: grandTotals.fbr,
+              netSale: grandTotals.netSale,
+              tenderDocuments: '',
+            };
+
+        const totalRow = ws.addRow(totalRowData);
+        totalRow.height = 24;
+        totalRow.commit();
+
+        await workbook.commit();
+      } else {
+        // PDF format capped at 2,000 for DOM safety
+        const pdfLimit = 2000;
+        const pdfOrders = await prisma.salesOrder.findMany({
+          where,
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: pdfLimit,
+          include: {
+            customer: { select: { name: true, contactNo: true } },
+            alliance: true,
+            merchant: true,
+            items: true,
+          },
+        });
+
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(filteredRows, locationName, fromDateStr, toDateStr, grandTotals);
+        const html = this.buildPdfHtml(pdfOrders, locationName, fromDateStr, toDateStr, grandTotals);
 
         const launchArgs = [
           '--no-sandbox',
@@ -677,144 +764,6 @@ export class SalesListExportProcessor {
         } finally {
           await browser.close();
         }
-      } else {
-        // XLSX format
-        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-          filename: filePath,
-          useStyles: true,
-          useSharedStrings: false,
-        });
-
-        const ws = workbook.addWorksheet('Sales List', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
-        });
-
-        ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
-
-        // Row 1: Merged Group Headers
-        const groupRow = ws.getRow(1);
-        ws.mergeCells('A1:D1');
-        groupRow.getCell(1).value = 'Sale';
-
-        ws.mergeCells('E1:M1');
-        groupRow.getCell(5).value = 'Tender';
-
-        ws.mergeCells('N1:O1');
-        groupRow.getCell(14).value = 'Issued';
-
-        ['A1', 'E1', 'N1'].forEach(cellRef => {
-          const cell = ws.getCell(cellRef);
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
-          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-          cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        });
-        groupRow.height = 24;
-        groupRow.commit();
-
-        // Row 2: Detailed Column Headers
-        const headerRow = ws.getRow(2);
-        COLUMNS.forEach((col, idx) => {
-          const cell = headerRow.getCell(idx + 1);
-          cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
-          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-          cell.alignment = { horizontal: col.align === 'right' ? 'right' : (col.align === 'center' ? 'center' : 'left'), vertical: 'middle' };
-        });
-        headerRow.height = 24;
-        headerRow.commit();
-
-        const borderThin = {
-          top: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          bottom: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-        };
-
-        for (const r of filteredRows) {
-          const rowData = {
-            date: new Date(r.date).toLocaleString(),
-            invoiceNo: r.invoiceNo,
-            netTotal: r.netTotal,
-            balance: r.balance,
-            tenderCash: r.tenderCash,
-            tenderCard: r.tenderCard,
-            tenderRewardVoucher: r.tenderRewardVoucher,
-            tenderOnCredit: r.tenderOnCredit,
-            tenderGiftVoucher: r.tenderGiftVoucher,
-            tenderCreditVoucher: r.tenderCreditVoucher,
-            tenderExchangeVoucher: r.tenderExchangeVoucher,
-            tenderClaimVoucher: r.tenderClaimVoucher,
-            tenderCorporateVoucher: r.tenderCorporateVoucher,
-            issuedGiftVoucher: r.issuedGiftVoucher,
-            issuedCreditVoucher: r.issuedCreditVoucher,
-            returnAmount: r.returnAmount,
-            fbr: r.fbr,
-            netSale: r.netSale,
-            tenderDocuments: r.tenderDocuments,
-          };
-
-          const row = ws.addRow(rowData);
-          for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
-            const cell = row.getCell(colNum);
-            cell.border = borderThin;
-            cell.font = { size: 9 };
-            const c = COLUMNS[colNum - 1];
-            cell.alignment = {
-              horizontal: c.align === 'right' ? 'right' : (c.align === 'center' ? 'center' : 'left'),
-              vertical: 'middle',
-            };
-            if (c.numFmt) {
-              cell.numFmt = c.numFmt;
-            }
-          }
-          row.height = 20;
-          row.commit();
-        }
-
-        // Add Grand Totals
-        const totalRow = ws.addRow({
-          date: 'GRAND TOTAL',
-          invoiceNo: '',
-          netTotal: grandTotals.netTotal,
-          balance: grandTotals.balance,
-          tenderCash: grandTotals.tenderCash,
-          tenderCard: grandTotals.tenderCard,
-          tenderRewardVoucher: grandTotals.tenderRewardVoucher,
-          tenderOnCredit: grandTotals.tenderOnCredit,
-          tenderGiftVoucher: grandTotals.tenderGiftVoucher,
-          tenderCreditVoucher: grandTotals.tenderCreditVoucher,
-          tenderExchangeVoucher: grandTotals.tenderExchangeVoucher,
-          tenderClaimVoucher: grandTotals.tenderClaimVoucher,
-          tenderCorporateVoucher: grandTotals.tenderCorporateVoucher,
-          issuedGiftVoucher: grandTotals.issuedGiftVoucher,
-          issuedCreditVoucher: grandTotals.issuedCreditVoucher,
-          returnAmount: grandTotals.returnAmount,
-          fbr: grandTotals.fbr,
-          netSale: grandTotals.netSale,
-          tenderDocuments: '',
-        });
-
-        totalRow.eachCell((cell, colNum) => {
-          cell.font = { bold: true, size: 9.5 };
-          cell.border = {
-            top: { style: 'medium', color: { argb: 'FF1E293B' } },
-            bottom: { style: 'double', color: { argb: 'FF1E293B' } },
-            left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-            right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-          };
-          const c = COLUMNS[colNum - 1];
-          cell.alignment = {
-            horizontal: c.align === 'right' ? 'right' : (c.align === 'center' ? 'center' : 'left'),
-            vertical: 'middle',
-          };
-          if (c.numFmt) {
-            cell.numFmt = c.numFmt;
-          }
-        });
-        totalRow.height = 24;
-        totalRow.commit();
-
-        await workbook.commit();
       }
 
       await job.progress(95);

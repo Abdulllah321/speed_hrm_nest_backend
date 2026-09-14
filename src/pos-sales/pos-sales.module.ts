@@ -40,6 +40,7 @@ import { CreditVoucherExportProcessor } from './credit-voucher-export.processor'
 import { VoucherRegisterExportService } from './voucher-register-export.service';
 import { VoucherRegisterExportProcessor } from './voucher-register-export.processor';
 import { WarehouseModule } from '../warehouse/warehouse.module';
+import { ReportPreviewCleanupService } from '../common/services/report-preview-cleanup.service';
 
 @Module({
     imports: [
@@ -56,7 +57,14 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
             { name: 'net-sales-summary-export' },
             { name: 'pos-sales-activity-export' },
             { name: 'sales-register-export' },
-            { name: 'sales-list-export' },
+            { 
+              name: 'sales-list-export',
+              settings: {
+                lockDuration: 300000,
+                stalledInterval: 120000,
+                maxStalledCount: 1,
+              },
+            },
             { name: 'gross-sales-export' },
             { name: 'alliance-register-export' },
             { name: 'cost-of-sales-export' },
@@ -101,6 +109,7 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         CreditVoucherExportProcessor,
         VoucherRegisterExportService,
         VoucherRegisterExportProcessor,
+        ReportPreviewCleanupService,
     ],
     exports: [
         PosSalesService, 
@@ -115,6 +124,7 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
         CorporateVoucherExportService,
         CreditVoucherExportService,
         VoucherRegisterExportService,
+        ReportPreviewCleanupService,
     ],
 })
 export class PosSalesModule { }

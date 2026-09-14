@@ -4,12 +4,16 @@ import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
+import * as readline from 'readline';
+import * as ExcelJS from 'exceljs';
 import { promisify } from 'util';
+import { pipeline, PassThrough } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { UploadService } from '../upload/upload.service';
 import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
+import { ReportPreviewCleanupService } from '../common/services/report-preview-cleanup.service';
 
 const gzipAsync = promisify(zlib.gzip);
 const gunzipAsync = promisify(zlib.gunzip);
@@ -99,6 +103,9 @@ export interface SalesListInvoiceNode {
   customerName: string;
   customerPhone: string;
   cashierName: string;
+  cashierUserId?: string;
+  locationId?: string;
+  locationName?: string;
   paymentMethod: string;
   merchant?: string;
   fbrInvoiceNumber: string;
@@ -158,7 +165,7 @@ export interface SalesListReportResult {
   reportType: 'merged' | 'separate';
   locations?: SalesListLocationNode[];
   invoices: SalesListInvoiceNode[];
-  flatItems: SalesListFlatRecord[];
+  flatItems?: SalesListFlatRecord[];
   grandTotals: SalesListTotals;
   dateRange: { startDate?: string; endDate?: string };
   locationNames: string;
@@ -167,6 +174,7 @@ export interface SalesListReportResult {
 export interface QueueSalesListExportOptions {
   userId: string;
   locationId?: string;
+  locationIds?: string[];
   startDate?: string;
   endDate?: string;
   cashierUserId?: string;
@@ -176,6 +184,7 @@ export interface QueueSalesListExportOptions {
   minAmount?: number;
   maxAmount?: number;
   fbrOnly?: boolean;
+  exportType?: 'flat' | 'hierarchical';
 }
 
 @Injectable()
@@ -189,10 +198,18 @@ export class SalesListExportService {
     private readonly prismaMaster: PrismaMasterService,
     private readonly uploadService: UploadService,
     private readonly exportHistoryService: ExportHistoryService,
+    private readonly previewCleanupService: ReportPreviewCleanupService,
   ) {
     if (!fs.existsSync(this.previewStorageDir)) {
       fs.mkdirSync(this.previewStorageDir, { recursive: true });
     }
+  }
+
+  private readonly cancelledPreviewJobIds = new Set<string>();
+
+  isJobCancelled(jobId?: string): boolean {
+    if (!jobId) return false;
+    return this.cancelledPreviewJobIds.has(jobId);
   }
 
   async queueReportPreview(opts: {
@@ -207,10 +224,41 @@ export class SalesListExportService {
     minAmount?: number;
     maxAmount?: number;
     fbrOnly?: boolean;
+    fiscalYear?: string;
+    year?: number | string;
   }): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+
+    // Clean up previous obsolete preview jobs of the same user so the queue is never flooded
+    if (opts.userId) {
+      try {
+        const [waitingJobs, activeJobs] = await Promise.all([
+          this.exportQueue.getWaiting(),
+          this.exportQueue.getActive(),
+        ]);
+
+        for (const wJob of waitingJobs) {
+          if (wJob.data?.userId === opts.userId && wJob.name === 'generate-sales-list-preview') {
+            if (wJob.data?.jobId) {
+              await this.previewCleanupService.deletePreviewByJobId(wJob.data.jobId);
+            }
+            await wJob.remove();
+          }
+        }
+        for (const aJob of activeJobs) {
+          if (aJob.data?.userId === opts.userId && aJob.name === 'generate-sales-list-preview') {
+            this.cancelledPreviewJobIds.add(aJob.data?.jobId);
+            if (aJob.data?.jobId) {
+              await this.previewCleanupService.deletePreviewByJobId(aJob.data.jobId);
+            }
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Failed cleaning up obsolete preview jobs: ${err.message}`);
+      }
+    }
 
     await this.exportQueue.add(
       'generate-sales-list-preview',
@@ -229,6 +277,8 @@ export class SalesListExportService {
         minAmount: opts.minAmount,
         maxAmount: opts.maxAmount,
         fbrOnly: opts.fbrOnly,
+        fiscalYear: opts.fiscalYear,
+        year: opts.year,
       },
       {
         jobId: `preview-${jobId}`,
@@ -294,11 +344,84 @@ export class SalesListExportService {
     };
   }
 
+  getPreviewFilePath(jobId: string): string {
+    const ndjsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
+    if (fs.existsSync(ndjsonPath)) return ndjsonPath;
+    return path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+  }
+
+  getPreviewNdjsonFilePath(jobId: string): string {
+    return path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
+  }
+
   async saveReportPreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
-    const jsonStr = JSON.stringify(result);
-    const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
-    const filePath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
-    await fs.promises.writeFile(filePath, compressed);
+    const filePath = this.getPreviewNdjsonFilePath(jobId);
+    if ((!result.invoices || result.invoices.length === 0) && fs.existsSync(filePath)) {
+      // Preview was already streamed directly to disk in chunks during computation
+      return;
+    }
+    const gzip = zlib.createGzip({ level: 6 });
+    const writeStream = fs.createWriteStream(filePath);
+
+    await new Promise<void>((resolve, reject) => {
+      pipeline(gzip, writeStream, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+
+      const writeData = async () => {
+        try {
+          const safeWrite = async (chunk: string): Promise<void> => {
+            if (!gzip.write(chunk)) {
+              await new Promise((r) => gzip.once('drain', r));
+            }
+          };
+
+          const invoices = result.invoices || [];
+
+          // Line 1: Meta header with total invoice count
+          const metaLine = JSON.stringify({
+            type: 'meta',
+            reportType: result.reportType,
+            dateRange: result.dateRange,
+            locationNames: result.locationNames,
+            locations: result.locations,
+            totalInvoices: invoices.length,
+          }) + '\n';
+          await safeWrite(metaLine);
+
+          // Lines 2..N: Invoices chunked into batches of 100
+          const CHUNK = 100;
+          for (let i = 0; i < invoices.length; i += CHUNK) {
+            const slice = invoices.slice(i, i + CHUNK);
+            const chunkLine = JSON.stringify({
+              type: 'invoices',
+              startIndex: i,
+              count: slice.length,
+              invoices: slice,
+            }) + '\n';
+            await safeWrite(chunkLine);
+            // Yield to event loop
+            await new Promise((res) => setImmediate(res));
+          }
+
+          // Final Line: Verified Grand Totals
+          const totalsLine = JSON.stringify({
+            type: 'totals',
+            grandTotals: result.grandTotals,
+            totalInvoices: invoices.length,
+            done: true,
+          }) + '\n';
+          await safeWrite(totalsLine);
+
+          gzip.end();
+        } catch (e) {
+          gzip.destroy(e as any);
+        }
+      };
+
+      writeData();
+    });
   }
 
   async savePreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
@@ -306,13 +429,50 @@ export class SalesListExportService {
   }
 
   async getReportPreviewResult(jobId: string): Promise<SalesListReportResult | null> {
-    const filePath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+    const filePath = this.getPreviewFilePath(jobId);
     if (!fs.existsSync(filePath)) {
       return null;
     }
     const compressed = await fs.promises.readFile(filePath);
     const decompressed = await gunzipAsync(compressed);
-    return JSON.parse(decompressed.toString('utf8'));
+    const rawText = decompressed.toString('utf8');
+
+    // Check if NDJSON
+    if (filePath.endsWith('.ndjson.gz') || rawText.startsWith('{"type":')) {
+      const lines = rawText.split('\n');
+      let meta: any = {};
+      let allInvoices: any[] = [];
+      let grandTotals: any = {};
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const obj = JSON.parse(line);
+          if (obj.type === 'meta') {
+            meta = obj;
+          } else if (obj.type === 'invoices' && Array.isArray(obj.invoices)) {
+            allInvoices.push(...obj.invoices);
+          } else if (obj.type === 'totals') {
+            grandTotals = obj.grandTotals || {};
+          }
+        } catch {
+          // ignore malformed line
+        }
+      }
+
+      return {
+        reportType: meta.reportType || 'merged',
+        dateRange: meta.dateRange || {},
+        locationNames: meta.locationNames || '',
+        locations: meta.locations || [],
+        grandTotals,
+        invoices: allInvoices,
+        flatItems: [],
+      };
+    }
+
+    const parsed = JSON.parse(rawText);
+    return parsed.data || parsed;
   }
 
   async computeReportData(
@@ -327,6 +487,8 @@ export class SalesListExportService {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: number | string;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
     prismaClient?: PrismaService,
@@ -348,6 +510,10 @@ export class SalesListExportService {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: number | string;
+      previewJobId?: string;
+      isAborted?: () => boolean;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
   ): Promise<SalesListReportResult> {
@@ -362,6 +528,8 @@ export class SalesListExportService {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
       onProgress,
     } = opts;
 
@@ -389,17 +557,59 @@ export class SalesListExportService {
       return new Date(`${dateStr}${timePart}`);
     };
 
-    const startDate = parseLocalDate(startStr, false);
-    const endDate = parseLocalDate(endStr, true);
+    // Determine Pakistan Fiscal Year bounds: July 1 to June 30
+    const getFiscalYearBounds = (fyStr?: string): { start: Date; end: Date } => {
+      let startYear: number;
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth(); // 0 = Jan, 6 = July
+      const defaultStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+
+      if (!fyStr || fyStr === 'current' || fyStr === 'current_fiscal') {
+        startYear = defaultStartYear;
+      } else if (fyStr === 'previous' || fyStr === 'previous_fiscal') {
+        startYear = defaultStartYear - 1;
+      } else {
+        const match = fyStr.match(/(\d{4})/);
+        startYear = match ? parseInt(match[1], 10) : defaultStartYear;
+      }
+
+      const start = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(startYear + 1, 5, 30, 23, 59, 59, 999));
+      return { start, end };
+    };
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (fiscalYear) {
+      const bounds = getFiscalYearBounds(fiscalYear);
+      startDate = bounds.start;
+      endDate = bounds.end;
+    } else if (year) {
+      const yr = typeof year === 'string' ? parseInt(year, 10) : year;
+      const targetYear = !isNaN(yr) && yr > 2000 ? yr : now.getFullYear();
+      startDate = new Date(Date.UTC(targetYear, 0, 1, 0, 0, 0, 0));
+      endDate = new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999));
+    } else if (startStr || endStr) {
+      startDate = parseLocalDate(startStr, false);
+      endDate = parseLocalDate(endStr, true);
+    } else {
+      const bounds = getFiscalYearBounds('current');
+      startDate = bounds.start;
+      endDate = bounds.end;
+    }
 
     const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
 
     await onProgress?.(15, 'Loading outlet metadata & cashier user profiles...');
 
-    const [allLocations, cashiersList] = await Promise.all([
+    const [allLocations, cashiersList, allSizes, allColors, allMerchants] = await Promise.all([
       prisma.location.findMany({ select: { id: true, name: true } }),
       this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
+      prisma.size.findMany({ select: { id: true, name: true } }),
+      prisma.color.findMany({ select: { id: true, name: true } }),
+      prisma.merchantConfig.findMany({ select: { id: true, bankName: true, description: true } }),
     ]);
 
     const locationMap = new Map<string, string>();
@@ -408,6 +618,18 @@ export class SalesListExportService {
     const cashierMap = new Map<string, string>();
     for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
 
+    const sizeMap = new Map<string, string>();
+    for (const s of allSizes) sizeMap.set(s.id, s.name);
+
+    const colorMap = new Map<string, string>();
+    for (const c of allColors) colorMap.set(c.id, c.name);
+
+    const merchantMap = new Map<string, string>();
+    for (const m of allMerchants) {
+      const label = m.bankName || (m.description ? m.description.split('|')[1]?.trim() || m.description : '');
+      merchantMap.set(m.id, label);
+    }
+
     let locationNames = '';
     if (locIds.length > 0) {
       const locs = allLocations.filter((l) => locIds.includes(l.id));
@@ -415,10 +637,8 @@ export class SalesListExportService {
     }
     if (!locationNames) locationNames = 'All Outlets (Stores)';
 
-    await onProgress?.(30, 'Querying POS sales invoices from database...');
-
     const where: any = {
-      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled'] },
+      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -446,54 +666,9 @@ export class SalesListExportService {
       ];
     }
 
-    const rawOrders = await prisma.salesOrder.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        customer: { select: { name: true, contactNo: true } },
-        alliance: true,
-        merchant: true,
-        voucherRedemptions: {
-          include: {
-            voucher: true,
-          },
-        },
-        items: {
-          include: {
-            item: {
-              select: {
-                description: true,
-                sku: true,
-                barCode: true,
-                size: { select: { name: true } },
-                color: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-    });
 
-    // Query issued vouchers for these orders
-    const orderIds = rawOrders.map((o) => o.id);
-    const issuedVouchers = orderIds.length
-      ? await prisma.voucher.findMany({
-          where: {
-            sourceOrderId: { in: orderIds },
-            isDeleted: false,
-          },
-        })
-      : [];
-
-    const issuedVoucherMap = new Map<string, any[]>();
-    for (const v of issuedVouchers) {
-      if (!v.sourceOrderId) continue;
-      const list = issuedVoucherMap.get(v.sourceOrderId) || [];
-      list.push(v);
-      issuedVoucherMap.set(v.sourceOrderId, list);
-    }
-
-    await onProgress?.(70, 'Building sales invoice hierarchy matrix...');
+    await onProgress?.(25, 'Counting matching sales orders...');
+    const totalOrdersCount = await prisma.salesOrder.count({ where });
 
     const createEmptyTotals = (): SalesListTotals => ({
       orderCount: 0,
@@ -547,12 +722,10 @@ export class SalesListExportService {
       target.onCreditAmount += source.onCreditAmount;
     };
 
-    const grandTotals = createEmptyTotals();
-    const flatItems: SalesListFlatRecord[] = [];
-    const invoiceNodes: SalesListInvoiceNode[] = [];
-    const locationNodesMap = new Map<string, SalesListLocationNode>();
-
-    for (const order of rawOrders) {
+    const transformSingleOrder = (
+      order: any,
+      orderIssued: any[],
+    ): { invNode: SalesListInvoiceNode; orderTotals: SalesListTotals } => {
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
       const cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
       const custName = order.customer?.name || 'Walk-in Customer';
@@ -569,35 +742,11 @@ export class SalesListExportService {
 
       const notesStr = order.notes || '';
 
-      // Balance / OnCredit
+      // Fast-path tender extraction (only evaluate regex if notes exist)
       let balance = 0;
-      const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
-      if (balanceMatch) {
-        balance = Number(balanceMatch[1]);
-      } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
-        balance = Number(order.grandTotal);
-      }
-
       let cashSale = Number(order.cashAmount || 0);
       let cardSale = Number(order.cardAmount || 0);
-      let onCreditAmount = balance;
-      let creditSale = balance > 0 ? balance : ((order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0);
       let cashReturn = 0;
-
-      const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
-      if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
-
-      // Extract tender amounts from notes if not present in separate columns
-      if (cashSale === 0) {
-        const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
-        if (cashMatch) cashSale = Number(cashMatch[1]);
-      }
-      if (cardSale === 0) {
-        const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
-        if (cardMatch) cardSale = Number(cardMatch[1]);
-      }
-
-      // Check structured voucher tags from notes
       let giftVoucherAmount = 0;
       let creditVoucherAmount = 0;
       let exchangeVoucherAmount = 0;
@@ -605,29 +754,76 @@ export class SalesListExportService {
       let giftVoucherCorporate = 0;
       let rewardVoucherAmount = 0;
 
-      const exMatch = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
-      if (exMatch) exchangeVoucherAmount = Number(exMatch[1]);
+      let giftMatch = false;
+      let credVouchMatch = false;
+      let exMatch = false;
+      let clmMatch = false;
+      let corpMatch = false;
+      let rewMatch = false;
 
-      const clmMatch = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
-      if (clmMatch) claimVoucherAmount = Number(clmMatch[1]);
+      if (notesStr) {
+        const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+        if (balanceMatch) balance = Number(balanceMatch[1]);
 
-      const corpMatch = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
-      if (corpMatch) giftVoucherCorporate = Number(corpMatch[1]);
+        const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+        if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
 
-      const giftMatch = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
-      if (giftMatch) giftVoucherAmount = Number(giftMatch[1]);
+        if (cashSale === 0) {
+          const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+          if (cashMatch) cashSale = Number(cashMatch[1]);
+        }
+        if (cardSale === 0) {
+          const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+          if (cardMatch) cardSale = Number(cardMatch[1]);
+        }
 
-      const rewMatch = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
-      if (rewMatch) {
-        rewardVoucherAmount = Number(rewMatch[1]);
-      } else if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+        const ex = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
+        if (ex) {
+          exchangeVoucherAmount = Number(ex[1]);
+          exMatch = true;
+        }
+
+        const clm = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
+        if (clm) {
+          claimVoucherAmount = Number(clm[1]);
+          clmMatch = true;
+        }
+
+        const corp = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+        if (corp) {
+          giftVoucherCorporate = Number(corp[1]);
+          corpMatch = true;
+        }
+
+        const gift = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
+        if (gift) {
+          giftVoucherAmount = Number(gift[1]);
+          giftMatch = true;
+        }
+
+        const rew = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        if (rew) {
+          rewardVoucherAmount = Number(rew[1]);
+          rewMatch = true;
+        }
+
+        const credV = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
+        if (credV) {
+          creditVoucherAmount = Number(credV[1]);
+          credVouchMatch = true;
+        }
+      }
+
+      if (balance === 0 && (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account')) {
+        balance = Number(order.grandTotal);
+      }
+      if (rewardVoucherAmount === 0 && (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher')) {
         rewardVoucherAmount = Number(order.grandTotal);
       }
 
-      const credVouchMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
-      if (credVouchMatch) creditVoucherAmount = Number(credVouchMatch[1]);
+      let onCreditAmount = balance;
+      let creditSale = balance > 0 ? balance : ((order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0);
 
-      // If not parsed from explicit tags, check voucherRedemptions
       for (const red of (order.voucherRedemptions || [])) {
         const type = red.voucher?.voucherType;
         const amt = Number(red.amountUsed);
@@ -647,10 +843,9 @@ export class SalesListExportService {
         }
       }
 
-      // If voucherAmount was stored on order but not broken down in voucherRedemptions or notes
       const totalRedeemedVoucher = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
       const orderVoucherAmt = Number(order.voucherAmount || 0);
-      if (orderVoucherAmt > totalRedeemedVoucher) {
+      if (orderVoucherAmt > totalRedeemedVoucher && notesStr) {
         const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
         if (notesStr.match(/ExVoucher|Exchange|EXC-/i)) {
           exchangeVoucherAmount += remVoucher;
@@ -668,21 +863,21 @@ export class SalesListExportService {
       }
 
       let creditVoucherIssuedAmount = 0;
-      const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
-      if (issuedMatch) {
-        creditVoucherIssuedAmount = Number(issuedMatch[1]);
+      if (notesStr) {
+        const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+        if (issuedMatch) {
+          creditVoucherIssuedAmount = Number(issuedMatch[1]);
+        }
       }
-      const orderIssued = issuedVoucherMap.get(order.id) || [];
       for (const iv of orderIssued) {
         const type = iv.voucherType;
         const faceVal = Number(iv.faceValue || 0);
 
         if (type === 'CREDIT' || type === 'REFUND') {
-          if (!issuedMatch) creditVoucherIssuedAmount += faceVal;
+          creditVoucherIssuedAmount += faceVal;
         }
       }
 
-      // Fallback if amounts were completely 0 and no split amounts were provided
       const totalTenders = cashSale + cardSale + giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount + onCreditAmount;
       if (totalTenders === 0) {
         if (payMethod.includes('CASH')) cashSale = paid;
@@ -702,14 +897,14 @@ export class SalesListExportService {
       let walletAmt = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
       let creditAmt = onCreditAmount;
 
-      const lineItems: SalesListLineItem[] = (order.items || []).map((item) => ({
+      const lineItems: SalesListLineItem[] = (order.items || []).map((item: any) => ({
         id: item.id,
         orderNumber: order.orderNumber,
         sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
         barCode: item.item?.barCode || item.item?.sku || '-',
         description: item.item?.description || item.item?.sku || 'Article',
-        sizeName: item.item?.size?.name || 'Default',
-        colorName: item.item?.color?.name || 'Default',
+        sizeName: (item.item?.sizeId && sizeMap.get(item.item.sizeId)) || 'Default',
+        colorName: (item.item?.colorId && colorMap.get(item.item.colorId)) || 'Default',
         quantity: Number(item.quantity || 0),
         unitPrice: Number(item.unitPrice || 0),
         discountAmount: Number(item.discountAmount || 0),
@@ -718,13 +913,10 @@ export class SalesListExportService {
 
       const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
 
-      let merchantName = (order as any).merchant?.bankName || ((order as any).merchant?.description ? (order as any).merchant.description.split('|')[1]?.trim() || (order as any).merchant.description : '');
-      if (!merchantName && notesStr) {
+      let merchantName = (order.merchantId && merchantMap.get(order.merchantId)) || '-';
+      if ((merchantName === '-' || !merchantName) && notesStr) {
         const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i);
         if (merchMatch) merchantName = merchMatch[1].trim();
-      }
-      if (!merchantName && order.alliance?.partnerName) {
-        merchantName = order.alliance.partnerName;
       }
       merchantName = merchantName || '-';
 
@@ -754,9 +946,6 @@ export class SalesListExportService {
         onCreditAmount,
       };
 
-      addTotals(grandTotals, orderTotals);
-
-      // Build structured tender details for interactive hover inspect
       let cardInfo: CardTenderInfo | undefined;
       if (cardSale > 0) {
         let cardholderName: string | undefined;
@@ -944,6 +1133,9 @@ export class SalesListExportService {
         customerName: custName,
         customerPhone: custPhone,
         cashierName,
+        cashierUserId: order.cashierUserId || undefined,
+        locationId: order.locationId || undefined,
+        locationName: locName,
         paymentMethod: payMethod,
         merchant: merchantName,
         fbrInvoiceNumber: fbrInv,
@@ -953,73 +1145,197 @@ export class SalesListExportService {
         tenderDetails,
       };
 
-      invoiceNodes.push(invNode);
+      return { invNode, orderTotals };
+    };
 
-      for (const line of lineItems) {
-        flatItems.push({
-          locationName: locName,
-          orderNumber: order.orderNumber,
-          orderDate: order.createdAt.toISOString(),
-          cashierName,
-          customerName: custName,
-          customerPhone: custPhone,
-          paymentMethod: payMethod,
-          merchant: merchantName,
-          fbrInvoiceNumber: fbrInv,
-          fbrStatus,
-          sku: line.sku,
-          barCode: line.barCode,
-          description: line.description,
-          sizeName: line.sizeName,
-          colorName: line.colorName,
-          quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          discountAmount: line.discountAmount,
-          subTotal: line.subTotal,
-          orderGrossAmount: gross,
-          orderDiscountAmount: disc,
-          orderNetAmount: net,
-          orderTaxAmount: tax,
-          cashSale,
-          cashReturn,
-          cardSale,
-          creditSale,
-          giftVoucherAmount,
-          creditVoucherAmount,
-          exchangeVoucherAmount,
-          claimVoucherAmount,
-          giftVoucherCorporate,
-          creditVoucherIssuedAmount,
-          rewardVoucherAmount,
-          onCreditAmount,
+    const grandTotals = createEmptyTotals();
+    const locationNodesMap = new Map<string, SalesListLocationNode>();
+    const inMemoryInvoices: SalesListInvoiceNode[] = [];
+
+    const isDirectDiskStream = Boolean(opts.previewJobId);
+    let gzipStream: zlib.Gzip | null = null;
+    let writeStream: fs.WriteStream | null = null;
+    let streamPromise: Promise<void> | null = null;
+
+    const safeWrite = async (chunk: string): Promise<void> => {
+      if (!gzipStream) return;
+      if (!gzipStream.write(chunk)) {
+        await new Promise((r) => gzipStream!.once('drain', r));
+      }
+    };
+
+    if (isDirectDiskStream) {
+      const filePath = this.getPreviewNdjsonFilePath(opts.previewJobId!);
+      gzipStream = zlib.createGzip({ level: 6 });
+      writeStream = fs.createWriteStream(filePath);
+
+      streamPromise = new Promise<void>((resolve, reject) => {
+        pipeline(gzipStream!, writeStream!, (err) => {
+          if (err) reject(err);
+          else resolve();
         });
-      }
+      });
 
-      if (isSeparate) {
-        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
-        let locNode = locationNodesMap.get(locKey);
-        if (!locNode) {
-          locNode = {
-            locationKey: locKey,
-            locationId: order.locationId || undefined,
-            locationName: locName,
-            invoices: [],
-            totals: createEmptyTotals(),
-          };
-          locationNodesMap.set(locKey, locNode);
+      // Line 1: Meta header written immediately
+      const metaLine = JSON.stringify({
+        type: 'meta',
+        reportType,
+        dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+        locationNames,
+        locations: allLocations,
+        totalInvoices: totalOrdersCount,
+      }) + '\n';
+      await safeWrite(metaLine);
+    }
+
+    let processedOrders = 0;
+    let lastReportedPct = 0;
+
+    if (totalOrdersCount > 0) {
+      const CHUNK = 2500;
+      let lastId: string | undefined;
+
+      while (true) {
+        if (opts.isAborted?.() || (opts.previewJobId && this.isJobCancelled(opts.previewJobId))) {
+          if (gzipStream) {
+            gzipStream.destroy();
+          }
+          throw new Error('JOB_CANCELLED');
         }
-        locNode.invoices.push(invNode);
-        addTotals(locNode.totals, orderTotals);
+
+        const chunkOrders: any[] = await prisma.salesOrder.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          cursor: lastId ? { id: lastId } : undefined,
+          skip: lastId ? 1 : 0,
+          take: CHUNK,
+          select: {
+            id: true,
+            orderNumber: true,
+            createdAt: true,
+            locationId: true,
+            cashierUserId: true,
+            paymentMethod: true,
+            tenderType: true,
+            subtotal: true,
+            discountAmount: true,
+            taxAmount: true,
+            grandTotal: true,
+            cashAmount: true,
+            cardAmount: true,
+            voucherAmount: true,
+            notes: true,
+            merchantId: true,
+            fbrInvoiceNumber: true,
+            fbrStatus: true,
+            customer: { select: { name: true, contactNo: true } },
+            voucherRedemptions: {
+              select: {
+                amountUsed: true,
+                voucher: {
+                  select: { code: true, voucherType: true, description: true, companyName: true },
+                },
+              },
+            },
+            items: {
+              select: {
+                id: true,
+                quantity: true,
+                unitPrice: true,
+                discountAmount: true,
+                lineTotal: true,
+                item: {
+                  select: {
+                    description: true,
+                    sku: true,
+                    barCode: true,
+                    sizeId: true,
+                    colorId: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!chunkOrders.length) break;
+        lastId = chunkOrders[chunkOrders.length - 1].id;
+
+        const chunkInvoiceNodes: SalesListInvoiceNode[] = [];
+        for (const order of chunkOrders) {
+          const { invNode, orderTotals } = transformSingleOrder(order, []);
+          addTotals(grandTotals, orderTotals);
+
+          const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+          let locNode = locationNodesMap.get(locKey);
+          if (!locNode) {
+            locNode = {
+              locationKey: locKey,
+              locationId: order.locationId || undefined,
+              locationName: invNode.locationName || (order.locationId ? locationMap.get(order.locationId) : undefined) || 'Main Outlet',
+              invoices: [],
+              totals: createEmptyTotals(),
+            };
+            locationNodesMap.set(locKey, locNode);
+          }
+          addTotals(locNode.totals, orderTotals);
+
+          if (isDirectDiskStream) {
+            chunkInvoiceNodes.push(invNode);
+          } else {
+            inMemoryInvoices.push(invNode);
+          }
+        }
+
+        // If direct disk streaming, write chunked invoice batches to gzip and free memory immediately
+        if (isDirectDiskStream && chunkInvoiceNodes.length > 0) {
+          const SUB_CHUNK = 250;
+          for (let sub = 0; sub < chunkInvoiceNodes.length; sub += SUB_CHUNK) {
+            const batch = chunkInvoiceNodes.slice(sub, sub + SUB_CHUNK);
+            const chunkLine = JSON.stringify({
+              type: 'invoices',
+              startIndex: processedOrders + sub,
+              count: batch.length,
+              invoices: batch,
+            }) + '\n';
+            await safeWrite(chunkLine);
+          }
+          chunkInvoiceNodes.length = 0; // Discard immediately from memory
+        }
+
+        processedOrders += chunkOrders.length;
+        const pct = Math.min(95, Math.round(25 + (processedOrders / totalOrdersCount) * 70));
+        if (pct - lastReportedPct >= 2 || processedOrders === totalOrdersCount) {
+          lastReportedPct = pct;
+          await onProgress?.(pct, `Processed ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} invoices (${pct}%)...`);
+        }
+        await new Promise((res) => setImmediate(res));
+
+        if (chunkOrders.length < CHUNK) break;
       }
+    }
+
+    if (isDirectDiskStream && gzipStream) {
+      // Final Line: Verified Grand Totals
+      const totalsLine = JSON.stringify({
+        type: 'totals',
+        grandTotals,
+        totalInvoices: totalOrdersCount,
+        done: true,
+      }) + '\n';
+      await safeWrite(totalsLine);
+
+      gzipStream.end();
+      await streamPromise;
     }
 
     await onProgress?.(100, 'Sales List report computation complete!');
 
     return {
       reportType,
-      locations: isSeparate ? Array.from(locationNodesMap.values()) : undefined,
-      invoices: invoiceNodes,
-      flatItems,
+      locations: Array.from(locationNodesMap.values()),
+      invoices: inMemoryInvoices,
+      flatItems: [],
       grandTotals,
       dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
       locationNames,
@@ -1088,6 +1404,7 @@ export class SalesListExportService {
         tenantId,
         tenantDbUrl,
         locationId: opts.locationId,
+        locationIds: opts.locationIds,
         startDate: opts.startDate,
         endDate: opts.endDate,
         cashierUserId: opts.cashierUserId,
@@ -1097,6 +1414,7 @@ export class SalesListExportService {
         minAmount: opts.minAmount,
         maxAmount: opts.maxAmount,
         fbrOnly: opts.fbrOnly,
+        exportType: opts.exportType || 'hierarchical',
       },
       {
         jobId,
@@ -1111,12 +1429,14 @@ export class SalesListExportService {
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(jobId: string): Promise<{ state: string; progress: number; message?: string }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
-    return { state, progress };
+    const rawProg: any = job.progress();
+    const progress = typeof rawProg === 'number' ? rawProg : typeof rawProg === 'object' && rawProg?.percent !== undefined ? Number(rawProg.percent) : 0;
+    const message = typeof rawProg === 'object' && rawProg?.message ? String(rawProg.message) : undefined;
+    return { state, progress, message };
   }
 
   async streamExportFile(jobId: string, res: any): Promise<void> {
@@ -1142,7 +1462,7 @@ export class SalesListExportService {
 
     if (record.filePath.startsWith('s3://')) {
       const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
       return res.redirect(signedUrl, 302);
     }
 
@@ -1169,5 +1489,282 @@ export class SalesListExportService {
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
+  }
+
+  async streamFilteredPreviewExcel(
+    jobId: string,
+    options: {
+      exportType?: 'flat' | 'hierarchical';
+      search?: string;
+      paymentMode?: string;
+      fbrOnly?: boolean;
+      locationId?: string;
+      cashierId?: string;
+    },
+    res: any,
+  ): Promise<void> {
+    const filePath = this.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Sales list preview result not found or expired');
+    }
+
+    const exportType = options.exportType || 'flat';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = `sales-list-${exportType}-${dateStr}.xlsx`;
+
+    const passThrough = new PassThrough();
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    if (typeof res.send === 'function') {
+      res.send(passThrough);
+    } else if (typeof res.pipe === 'function') {
+      passThrough.pipe(res);
+    }
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: passThrough,
+      useStyles: true,
+      useSharedStrings: false,
+    });
+
+    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Flat Items' : 'Invoices');
+
+    if (exportType === 'flat') {
+      sheet.columns = [
+        { header: 'Outlet / Location', key: 'locationName', width: 22 },
+        { header: 'Invoice #', key: 'orderNumber', width: 16 },
+        { header: 'Order Date', key: 'orderDate', width: 20 },
+        { header: 'Cashier', key: 'cashierName', width: 16 },
+        { header: 'Customer', key: 'customerName', width: 18 },
+        { header: 'Phone', key: 'customerPhone', width: 14 },
+        { header: 'Payment Mode', key: 'paymentMethod', width: 14 },
+        { header: 'Merchant', key: 'merchant', width: 16 },
+        { header: 'FBR Inv #', key: 'fbrInvoiceNumber', width: 16 },
+        { header: 'FBR Status', key: 'fbrStatus', width: 12 },
+        { header: 'SKU', key: 'sku', width: 16 },
+        { header: 'Barcode', key: 'barCode', width: 16 },
+        { header: 'Description', key: 'description', width: 26 },
+        { header: 'Size', key: 'sizeName', width: 10 },
+        { header: 'Color', key: 'colorName', width: 12 },
+        { header: 'Quantity', key: 'quantity', width: 10 },
+        { header: 'Unit Price', key: 'unitPrice', width: 12 },
+        { header: 'Discount', key: 'discountAmount', width: 12 },
+        { header: 'SubTotal', key: 'subTotal', width: 14 },
+        { header: 'Order Gross', key: 'orderGrossAmount', width: 14 },
+        { header: 'Order Net', key: 'orderNetAmount', width: 14 },
+        { header: 'Cash Sale', key: 'cashSale', width: 14 },
+        { header: 'Cash Return', key: 'cashReturn', width: 14 },
+        { header: 'Card Sale', key: 'cardSale', width: 14 },
+        { header: 'Credit Sale', key: 'creditSale', width: 14 },
+        { header: 'Gift Voucher', key: 'giftVoucherAmount', width: 14 },
+        { header: 'Credit Voucher', key: 'creditVoucherAmount', width: 14 },
+        { header: 'Exchange Voucher', key: 'exchangeVoucherAmount', width: 16 },
+        { header: 'Claim Voucher', key: 'claimVoucherAmount', width: 14 },
+        { header: 'Corporate Voucher', key: 'giftVoucherCorporate', width: 16 },
+        { header: 'Credit Issued', key: 'creditVoucherIssuedAmount', width: 14 },
+        { header: 'Reward Voucher', key: 'rewardVoucherAmount', width: 14 },
+        { header: 'On Credit', key: 'onCreditAmount', width: 14 },
+      ];
+    } else {
+      sheet.columns = [
+        { header: 'Date & Time', key: 'date', width: 22 },
+        { header: 'Invoice #', key: 'invoiceNo', width: 16 },
+        { header: 'Location', key: 'location', width: 18 },
+        { header: 'Cashier', key: 'cashier', width: 16 },
+        { header: 'Customer', key: 'customer', width: 18 },
+        { header: 'Merchant', key: 'merchant', width: 16 },
+        { header: 'Net Total', key: 'netTotal', width: 14 },
+        { header: 'Balance', key: 'balance', width: 14 },
+        { header: 'Cash', key: 'tenderCash', width: 12 },
+        { header: 'Card', key: 'tenderCard', width: 12 },
+        { header: 'Reward Voucher', key: 'tenderRewardVoucher', width: 15 },
+        { header: 'On Credit', key: 'tenderOnCredit', width: 12 },
+        { header: 'Gift Voucher', key: 'tenderGiftVoucher', width: 14 },
+        { header: 'Credit Voucher', key: 'tenderCreditVoucher', width: 14 },
+        { header: 'Exchange Voucher', key: 'tenderExchangeVoucher', width: 16 },
+        { header: 'Claim Voucher', key: 'tenderClaimVoucher', width: 14 },
+        { header: 'Corporate Voucher', key: 'tenderCorporateVoucher', width: 18 },
+        { header: 'Return', key: 'returnAmount', width: 12 },
+        { header: 'FBR', key: 'fbr', width: 14 },
+        { header: 'Net Sale', key: 'netSale', width: 14 },
+      ];
+    }
+
+    // Filter Predicates
+    const q = (options.search || '').trim().toLowerCase();
+    const pMode = options.paymentMode && options.paymentMode !== 'all' ? options.paymentMode.toUpperCase() : null;
+    const isFbrOnly = options.fbrOnly === true;
+    const locSet = options.locationId && options.locationId !== 'all'
+      ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
+      : null;
+    const cashierFilter = options.cashierId && options.cashierId !== 'all'
+      ? options.cashierId.trim().toLowerCase()
+      : null;
+
+    let totalQty = 0;
+    let totalGross = 0;
+    let totalDiscount = 0;
+    let totalNet = 0;
+
+    const fileStream = fs.createReadStream(filePath);
+    const gunzip = zlib.createGunzip();
+    const lineReader = readline.createInterface({
+      input: fileStream.pipe(gunzip),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of lineReader) {
+      if (!line || !line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.type === 'invoices' && Array.isArray(parsed.invoices)) {
+          for (const inv of parsed.invoices) {
+            // Location filter
+            if (locSet) {
+              const locId = (inv.locationId || '').toLowerCase();
+              const locName = (inv.locationName || '').toLowerCase();
+              if (!locSet.has(locId) && !locSet.has(locName)) continue;
+            }
+            // Cashier filter
+            if (cashierFilter) {
+              const cId = (inv.cashierUserId || '').toLowerCase();
+              const cName = (inv.cashierName || '').toLowerCase();
+              if (cId !== cashierFilter && cName !== cashierFilter) continue;
+            }
+            // Payment mode filter
+            if (pMode && (inv.paymentMethod || '').toUpperCase() !== pMode) continue;
+            // FBR Only
+            if (isFbrOnly && (!inv.fbrInvoiceNumber || inv.fbrInvoiceNumber === '-' || inv.fbrInvoiceNumber.trim() === '')) continue;
+            // Search query
+            if (q) {
+              const matchesHeader =
+                (inv.orderNumber || '').toLowerCase().includes(q) ||
+                (inv.customerName || '').toLowerCase().includes(q) ||
+                (inv.customerPhone || '').toLowerCase().includes(q) ||
+                (inv.cashierName || '').toLowerCase().includes(q) ||
+                (inv.fbrInvoiceNumber || '').toLowerCase().includes(q);
+
+              const matchesItems = (inv.items || []).some((it: any) =>
+                (it.sku || '').toLowerCase().includes(q) ||
+                (it.barCode || '').toLowerCase().includes(q) ||
+                (it.description || '').toLowerCase().includes(q)
+              );
+
+              if (!matchesHeader && !matchesItems) continue;
+            }
+
+            if (exportType === 'flat') {
+              const items = inv.items && inv.items.length > 0 ? inv.items : [{}];
+              for (const item of items) {
+                const qty = Number(item.quantity || 0);
+                const subTotal = Number(item.subTotal || 0);
+                const disc = Number(item.discountAmount || 0);
+                const unitPrice = Number(item.unitPrice || 0);
+                totalQty += qty;
+                totalGross += unitPrice ? unitPrice * qty : subTotal;
+                totalDiscount += disc;
+                totalNet += subTotal;
+
+                const row = sheet.addRow({
+                  locationName: inv.locationName || '-',
+                  orderNumber: inv.orderNumber,
+                  orderDate: inv.createdAt ? new Date(inv.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                  cashierName: inv.cashierName || '-',
+                  customerName: inv.customerName || 'Walk-in',
+                  customerPhone: inv.customerPhone || '-',
+                  paymentMethod: inv.paymentMethod || '-',
+                  merchant: inv.merchant || '-',
+                  fbrInvoiceNumber: inv.fbrInvoiceNumber || '-',
+                  fbrStatus: inv.fbrStatus || '-',
+                  sku: item.sku || '-',
+                  barCode: item.barCode || '-',
+                  description: item.description || '-',
+                  sizeName: item.sizeName || '-',
+                  colorName: item.colorName || '-',
+                  quantity: qty,
+                  unitPrice: unitPrice,
+                  discountAmount: disc,
+                  subTotal: subTotal,
+                  orderGrossAmount: Number(inv.totals?.grossAmount || 0),
+                  orderNetAmount: Number(inv.totals?.netAmount || 0),
+                  cashSale: Number(inv.totals?.cashSale || 0),
+                  cashReturn: Number(inv.totals?.cashReturn || 0),
+                  cardSale: Number(inv.totals?.cardSale || 0),
+                  creditSale: Number(inv.totals?.creditSale || 0),
+                  giftVoucherAmount: Number(inv.totals?.giftVoucherAmount || 0),
+                  creditVoucherAmount: Number(inv.totals?.creditVoucherAmount || 0),
+                  exchangeVoucherAmount: Number(inv.totals?.exchangeVoucherAmount || 0),
+                  claimVoucherAmount: Number(inv.totals?.claimVoucherAmount || 0),
+                  giftVoucherCorporate: Number(inv.totals?.giftVoucherCorporate || 0),
+                  creditVoucherIssuedAmount: Number(inv.totals?.creditVoucherIssuedAmount || 0),
+                  rewardVoucherAmount: Number(inv.totals?.rewardVoucherAmount || 0),
+                  onCreditAmount: Number(inv.totals?.onCreditAmount || 0),
+                });
+                row.commit();
+              }
+            } else {
+              const net = Number(inv.totals?.netAmount || 0);
+              totalNet += net;
+              const row = sheet.addRow({
+                date: inv.createdAt ? new Date(inv.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                invoiceNo: inv.orderNumber,
+                location: inv.locationName || '-',
+                cashier: inv.cashierName || '-',
+                customer: inv.customerName || 'Walk-in',
+                merchant: inv.merchant || '-',
+                netTotal: net,
+                balance: Number(inv.totals?.balance || 0),
+                tenderCash: Number(inv.totals?.cashSale || 0),
+                tenderCard: Number(inv.totals?.cardSale || 0),
+                tenderRewardVoucher: Number(inv.totals?.rewardVoucherAmount || 0),
+                tenderOnCredit: Number(inv.totals?.onCreditAmount || 0),
+                tenderGiftVoucher: Number(inv.totals?.giftVoucherAmount || 0),
+                tenderCreditVoucher: Number(inv.totals?.creditVoucherAmount || 0),
+                tenderExchangeVoucher: Number(inv.totals?.exchangeVoucherAmount || 0),
+                tenderClaimVoucher: Number(inv.totals?.claimVoucherAmount || 0),
+                tenderCorporateVoucher: Number(inv.totals?.giftVoucherCorporate || 0),
+                returnAmount: Number(inv.totals?.cashReturn || 0),
+                fbr: inv.fbrInvoiceNumber || '-',
+                netSale: net,
+              });
+              row.commit();
+            }
+          }
+        }
+      } catch (e) {
+        // Skip unparseable lines
+      }
+    }
+
+    // Totals Summary Row
+    if (exportType === 'flat') {
+      const summaryRow = sheet.addRow({
+        locationName: 'FILTERED TOTALS',
+        quantity: totalQty,
+        discountAmount: totalDiscount,
+        subTotal: totalNet,
+      });
+      summaryRow.font = { bold: true };
+      summaryRow.commit();
+    } else {
+      const summaryRow = sheet.addRow({
+        date: 'FILTERED TOTALS',
+        netTotal: totalNet,
+        netSale: totalNet,
+      });
+      summaryRow.font = { bold: true };
+      summaryRow.commit();
+    }
+
+    sheet.commit();
+    await workbook.commit();
   }
 }

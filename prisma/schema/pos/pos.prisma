@@ -114,6 +114,8 @@ model SalesOrder {
   @@index([merchantId])
   @@index([status])
   @@index([orderNumber])
+  @@index([createdAt])
+  @@index([locationId, createdAt])
   @@map("sales_orders")
 }
 

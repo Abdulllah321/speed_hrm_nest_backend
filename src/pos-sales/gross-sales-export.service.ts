@@ -4,10 +4,13 @@ import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
+import * as readline from 'readline';
+import * as ExcelJS from 'exceljs';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
+import { pipeline, PassThrough } from 'stream';
 import { UploadService } from '../upload/upload.service';
 import { ExportHistoryService } from '../warehouse/export-history/export-history.service';
 
@@ -169,6 +172,7 @@ export interface GrossSalesSummaryLocationNode {
 }
 
 export interface GrossSalesSummaryFlatRecord {
+  locationId?: string;
   locationName: string;
   categoryName: string;
   brandName: string;
@@ -200,11 +204,13 @@ export interface GrossSalesSummaryReportResult {
 
 export interface QueueGrossSalesExportOptions {
   userId: string;
-  locationId: string;
+  locationId?: string;
+  locationIds?: string[];
   startDate?: string;
   endDate?: string;
   cashierUserId?: string;
   format: 'xlsx' | 'pdf';
+  exportType?: 'flat' | 'hierarchical';
   search?: string;
   paymentModeGroup?: string;
   minAmount?: number;
@@ -391,26 +397,166 @@ export class GrossSalesExportService {
     };
   }
 
+  getPreviewFilePath(jobId: string): string {
+    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+    if (fs.existsSync(ndjsonPath)) return ndjsonPath;
+    const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+    if (fs.existsSync(jsonPath)) return jsonPath;
+    const oldReturnPath = path.join(this.previewStorageDir, `gross-sales-return-preview-${jobId}.json.gz`);
+    if (fs.existsSync(oldReturnPath)) return oldReturnPath;
+    return ndjsonPath;
+  }
+
+  getPreviewNdjsonFilePath(jobId: string): string {
+    return path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+  }
+
   async saveReportPreviewResult(jobId: string, result: any): Promise<void> {
-    const jsonStr = JSON.stringify(result);
-    const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
-    const filePath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
-    await fs.promises.writeFile(filePath, compressed);
+    const filePath = this.getPreviewNdjsonFilePath(jobId);
+    const gzip = zlib.createGzip({ level: 6 });
+    const writeStream = fs.createWriteStream(filePath);
+
+    await new Promise<void>((resolve, reject) => {
+      pipeline(gzip, writeStream, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+
+      const writeData = async () => {
+        try {
+          const safeWrite = async (chunk: string): Promise<void> => {
+            if (!gzip.write(chunk)) {
+              await new Promise((r) => gzip.once('drain', r));
+            }
+          };
+
+          const isSummary = Array.isArray(result.categories);
+          const isReturn = Array.isArray(result.returns);
+
+          // Line 1: Meta header
+          const metaLine = JSON.stringify({
+            type: 'meta',
+            reportType: result.reportType,
+            dateRange: result.dateRange,
+            locationNames: result.locationNames,
+            locations: result.locations,
+            totalCategories: isSummary ? result.categories.length : undefined,
+            totalReturns: isReturn ? result.returns.length : undefined,
+            totalRecords: (result.flatItems || []).length,
+          }) + '\n';
+          await safeWrite(metaLine);
+
+          // Line 2..N: Records chunked into batches
+          const CHUNK = 100;
+          if (isSummary) {
+            const categories = result.categories || [];
+            for (let i = 0; i < categories.length; i += CHUNK) {
+              const slice = categories.slice(i, i + CHUNK);
+              const chunkLine = JSON.stringify({
+                type: 'categories',
+                startIndex: i,
+                count: slice.length,
+                categories: slice,
+              }) + '\n';
+              await safeWrite(chunkLine);
+              await new Promise((res) => setImmediate(res));
+            }
+          } else if (isReturn) {
+            const returns = result.returns || [];
+            for (let i = 0; i < returns.length; i += CHUNK) {
+              const slice = returns.slice(i, i + CHUNK);
+              const chunkLine = JSON.stringify({
+                type: 'returns',
+                startIndex: i,
+                count: slice.length,
+                returns: slice,
+              }) + '\n';
+              await safeWrite(chunkLine);
+              await new Promise((res) => setImmediate(res));
+            }
+          }
+
+          // Flat items chunked into batches (1,500 records per line for high throughput without memory spikes)
+          const flatItems = result.flatItems || [];
+          for (let i = 0; i < flatItems.length; i += 1500) {
+            const slice = flatItems.slice(i, i + 1500);
+            const chunkLine = JSON.stringify({
+              type: 'flatItems',
+              startIndex: i,
+              count: slice.length,
+              flatItems: slice,
+            }) + '\n';
+            await safeWrite(chunkLine);
+            await new Promise((res) => setImmediate(res));
+          }
+
+          // Final Line: Verified Grand Totals
+          const totalsLine = JSON.stringify({
+            type: 'totals',
+            grandTotals: result.grandTotals,
+            totalRecords: flatItems.length,
+            done: true,
+          }) + '\n';
+          await safeWrite(totalsLine);
+
+          gzip.end();
+        } catch (e) {
+          gzip.destroy(e as any);
+        }
+      };
+
+      writeData();
+    });
   }
 
   async getReportPreviewResult(jobId: string): Promise<any | null> {
-    const filePath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+    const filePath = this.getPreviewFilePath(jobId);
     if (!fs.existsSync(filePath)) {
-      // Fallback check for old name pattern
-      const oldPath = path.join(this.previewStorageDir, `gross-sales-return-preview-${jobId}.json.gz`);
-      if (!fs.existsSync(oldPath)) return null;
-      const comp = await fs.promises.readFile(oldPath);
-      const decomp = await gunzipAsync(comp);
-      return JSON.parse(decomp.toString('utf8'));
+      return null;
     }
-    const compressed = await fs.promises.readFile(filePath);
-    const decompressed = await gunzipAsync(compressed);
-    return JSON.parse(decompressed.toString('utf8'));
+
+    // Stream line-by-line to prevent V8 out-of-memory errors on large annual datasets
+    const fileStream = fs.createReadStream(filePath);
+    const gunzip = zlib.createGunzip();
+    const lineReader = readline.createInterface({
+      input: fileStream.pipe(gunzip),
+      crlfDelay: Infinity,
+    });
+
+    let meta: any = {};
+    const categories: any[] = [];
+    const returns: any[] = [];
+    const flatItems: any[] = [];
+    let grandTotals: any = {};
+
+    for await (const line of lineReader) {
+      if (!line || !line.trim()) continue;
+      try {
+        const obj = JSON.parse(line);
+        if (obj.type === 'meta') {
+          meta = obj;
+        } else if (obj.type === 'categories' && Array.isArray(obj.categories)) {
+          categories.push(...obj.categories);
+        } else if (obj.type === 'returns' && Array.isArray(obj.returns)) {
+          returns.push(...obj.returns);
+        } else if (obj.type === 'flatItems' && Array.isArray(obj.flatItems)) {
+          flatItems.push(...obj.flatItems);
+        } else if (obj.type === 'totals') {
+          grandTotals = obj.grandTotals || grandTotals;
+        }
+      } catch (_) {}
+    }
+
+    return {
+      reportType: meta.reportType || 'merged',
+      dateRange: meta.dateRange || {},
+      locationNames: meta.locationNames || '',
+      locations: meta.locations,
+      categories: categories.length > 0 ? categories : undefined,
+      returns: returns.length > 0 ? returns : undefined,
+      flatItems,
+      grandTotals,
+    };
   }
 
   async generateGrossSalesReturnReportDataInternal(
@@ -1064,31 +1210,15 @@ export class GrossSalesExportService {
       ];
     }
 
-    const rawOrders = await prisma.salesOrder.findMany({
-      where,
-      include: {
-        items: {
-          include: {
-            item: {
-              select: {
-                description: true,
-                sku: true,
-                barCode: true,
-                category: { select: { name: true } },
-                brand: { select: { name: true } },
-                division: { select: { name: true } },
-                gender: { select: { name: true } },
-                silhouette: { select: { name: true } },
-                size: { select: { name: true } },
-                color: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-    });
+    await (prisma as any).$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS idx_sales_orders_created_at ON sales_orders(created_at);
+      CREATE INDEX IF NOT EXISTS idx_sales_orders_loc_created ON sales_orders(location_id, created_at);
+    `).catch(() => {});
 
-    await onProgress?.(70, 'Building Gross Sales Category & Outlet hierarchy matrix...');
+    await onProgress?.(25, 'Counting matching POS sales orders...');
+    const totalOrdersCount = await prisma.salesOrder.count({ where });
+
+    await onProgress?.(30, `Found ${totalOrdersCount.toLocaleString()} orders. Building Gross Sales Category matrix...`);
 
     const createEmptyTotals = (): GrossSalesSummaryTotals => ({
       orderCount: 0,
@@ -1111,13 +1241,49 @@ export class GrossSalesExportService {
     };
 
     const grandTotals = createEmptyTotals();
-    const flatItems: GrossSalesSummaryFlatRecord[] = [];
+    const flatItemsMap = new Map<string, GrossSalesSummaryFlatRecord>();
 
     // Grouping structure: Category -> CategoryNode
     const globalCategoryNodesMap = new Map<string, GrossSalesSummaryCategoryNode>();
     const locationNodesMap = new Map<string, GrossSalesSummaryLocationNode>();
 
-    for (const order of rawOrders) {
+    const CHUNK = 3000;
+    let lastId: string | undefined;
+    let processedCount = 0;
+
+    while (true) {
+      const chunkOrders: any[] = await prisma.salesOrder.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        cursor: lastId ? { id: lastId } : undefined,
+        skip: lastId ? 1 : 0,
+        take: CHUNK,
+        include: {
+          items: {
+            include: {
+              item: {
+                select: {
+                  description: true,
+                  sku: true,
+                  barCode: true,
+                  category: { select: { name: true } },
+                  brand: { select: { name: true } },
+                  division: { select: { name: true } },
+                  gender: { select: { name: true } },
+                  silhouette: { select: { name: true } },
+                  size: { select: { name: true } },
+                  color: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!chunkOrders.length) break;
+      lastId = chunkOrders[chunkOrders.length - 1].id;
+
+      for (const order of chunkOrders) {
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
       const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
 
@@ -1175,47 +1341,49 @@ export class GrossSalesExportService {
 
         addTotals(grandTotals, lineTotals);
 
-        const lineItemNode: GrossSalesSummaryLineItem = {
-          id: item.id,
-          sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
-          barCode: item.item?.barCode || item.item?.sku || '-',
-          description: item.item?.description || item.item?.sku || 'Article',
-          categoryName: catName,
-          brandName,
-          divisionName,
-          genderName,
-          silhouetteName,
-          sizeName: item.item?.size?.name || 'Default',
-          colorName: item.item?.color?.name || 'Default',
-          quantity: qty,
-          unitPrice,
-          wostAmount,
-          discountAmount: disc,
-          taxAmount: tax,
-          subTotal,
-        };
+        const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
+        const barCode = item.item?.barCode || item.item?.sku || '-';
+        const description = item.item?.description || item.item?.sku || 'Article';
+        const sizeName = item.item?.size?.name || 'Default';
+        const colorName = item.item?.color?.name || 'Default';
 
-        flatItems.push({
-          locationName: locName,
-          categoryName: catName,
-          brandName,
-          divisionName,
-          genderName,
-          silhouetteName,
-          sku: lineItemNode.sku,
-          barCode: lineItemNode.barCode,
-          description: lineItemNode.description,
-          sizeName: lineItemNode.sizeName,
-          colorName: lineItemNode.colorName,
-          quantity: qty,
-          unitPrice,
-          wostAmount,
-          discountAmount: disc,
-          taxAmount: tax,
-          subTotal,
-        });
+        // Aggregate by location and product variant dimensions
+        const variantKey = `${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
+        let existingRecord = flatItemsMap.get(variantKey);
+        if (!existingRecord) {
+          existingRecord = {
+            locationId: order.locationId || undefined,
+            locationName: locName,
+            categoryName: catName,
+            brandName,
+            divisionName,
+            genderName,
+            silhouetteName,
+            sku,
+            barCode,
+            description,
+            sizeName,
+            colorName,
+            quantity: 0,
+            unitPrice,
+            wostAmount: 0,
+            discountAmount: 0,
+            taxAmount: 0,
+            subTotal: 0,
+          };
+          flatItemsMap.set(variantKey, existingRecord);
+        }
 
-        // Add to global merged map
+        existingRecord.quantity += qty;
+        existingRecord.wostAmount = Math.round((existingRecord.wostAmount + wostAmount) * 100) / 100;
+        existingRecord.discountAmount = Math.round((existingRecord.discountAmount + disc) * 100) / 100;
+        existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
+        existingRecord.subTotal = Math.round((existingRecord.subTotal + subTotal) * 100) / 100;
+        if (existingRecord.quantity > 0) {
+          existingRecord.unitPrice = Math.round(((existingRecord.subTotal + existingRecord.discountAmount) / existingRecord.quantity) * 100) / 100;
+        }
+
+        // Add to global merged map (accumulate category totals only; line items live exclusively in flatItems)
         let globalCat = globalCategoryNodesMap.get(catName);
         if (!globalCat) {
           globalCat = {
@@ -1226,7 +1394,6 @@ export class GrossSalesExportService {
           };
           globalCategoryNodesMap.set(catName, globalCat);
         }
-        globalCat.items.push(lineItemNode);
         addTotals(globalCat.totals, lineTotals);
 
         // Add to location map if separate
@@ -1241,13 +1408,18 @@ export class GrossSalesExportService {
             };
             locNode.categories.push(locCat);
           }
-          locCat.items.push(lineItemNode);
           addTotals(locCat.totals, lineTotals);
           addTotals(locNode.totals, lineTotals);
         }
+        }
       }
+
+      processedCount += chunkOrders.length;
+      const percent = Math.min(95, Math.round(30 + (processedCount / (totalOrdersCount || 1)) * 65));
+      await onProgress?.(percent, `Processing sales items (${processedCount.toLocaleString()} of ${totalOrdersCount.toLocaleString()} orders)...`);
     }
 
+    const flatItems = Array.from(flatItemsMap.values());
     await onProgress?.(100, 'Gross Sales Summary computation complete!');
 
     return {
@@ -1327,10 +1499,12 @@ export class GrossSalesExportService {
         companyId,
         tenantDbUrl,
         locationId: opts.locationId,
+        locationIds: opts.locationIds,
         startDate: opts.startDate,
         endDate: opts.endDate,
         cashierUserId: opts.cashierUserId,
         format: opts.format,
+        exportType: opts.exportType || 'hierarchical',
         search: opts.search,
         paymentModeGroup: opts.paymentModeGroup,
         minAmount: opts.minAmount,
@@ -1359,12 +1533,14 @@ export class GrossSalesExportService {
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(jobId: string): Promise<{ state: string; progress: number; message?: string }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
-    return { state, progress };
+    const rawProg: any = job.progress();
+    const progress = typeof rawProg === 'number' ? rawProg : typeof rawProg === 'object' && rawProg?.percent !== undefined ? Number(rawProg.percent) : 0;
+    const message = typeof rawProg === 'object' && rawProg?.message ? String(rawProg.message) : undefined;
+    return { state, progress, message };
   }
 
   async streamExportFile(jobId: string, res: any): Promise<void> {
@@ -1388,7 +1564,7 @@ export class GrossSalesExportService {
 
     if (record.filePath.startsWith('s3://')) {
       const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key);
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
       return res.redirect(signedUrl, 302);
     }
 
@@ -1410,5 +1586,415 @@ export class GrossSalesExportService {
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
+  }
+
+  async streamFilteredSummaryPreviewExcel(
+    jobId: string,
+    options: {
+      exportType?: 'flat' | 'hierarchical';
+      search?: string;
+      locationId?: string;
+      levels?: string;
+    },
+    res: any,
+  ): Promise<void> {
+    const filePath = this.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Gross sales summary preview result not found or expired');
+    }
+
+    const exportType = options.exportType || 'flat';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = `gross-sales-summary-${exportType}-${dateStr}.xlsx`;
+
+    const passThrough = new PassThrough();
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    if (typeof res.send === 'function') {
+      res.send(passThrough);
+    } else if (typeof res.pipe === 'function') {
+      passThrough.pipe(res);
+    }
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: passThrough,
+      useStyles: true,
+      useSharedStrings: false,
+    });
+
+    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Summary Flat' : 'Summary Hierarchy');
+
+    sheet.columns = [
+      { header: 'Outlet / Location', key: 'locationName', width: 22 },
+      { header: 'Category', key: 'categoryName', width: 18 },
+      { header: 'Brand', key: 'brandName', width: 16 },
+      { header: 'Division', key: 'divisionName', width: 16 },
+      { header: 'Gender', key: 'genderName', width: 14 },
+      { header: 'Silhouette', key: 'silhouetteName', width: 16 },
+      { header: 'SKU', key: 'sku', width: 16 },
+      { header: 'Barcode', key: 'barCode', width: 16 },
+      { header: 'Description', key: 'description', width: 28 },
+      { header: 'Size', key: 'sizeName', width: 10 },
+      { header: 'Color', key: 'colorName', width: 12 },
+      { header: 'Quantity', key: 'quantity', width: 10 },
+      { header: 'Unit Price', key: 'unitPrice', width: 12 },
+      { header: 'WOST', key: 'wostAmount', width: 14 },
+      { header: 'Discount', key: 'discountAmount', width: 12 },
+      { header: 'Tax', key: 'taxAmount', width: 12 },
+      { header: 'SubTotal', key: 'subTotal', width: 14 },
+    ];
+
+    const q = (options.search || '').trim().toLowerCase();
+    const locSet = options.locationId && options.locationId !== 'all'
+      ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
+      : null;
+
+    let totalQty = 0;
+    let totalWost = 0;
+    let totalDiscount = 0;
+    let totalTax = 0;
+    let totalSubTotal = 0;
+
+    const fileStream = fs.createReadStream(filePath);
+    const gunzip = zlib.createGunzip();
+    const lineReader = readline.createInterface({
+      input: fileStream.pipe(gunzip),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of lineReader) {
+      if (!line || !line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.type === 'flatItems' && Array.isArray(parsed.flatItems)) {
+          for (const item of parsed.flatItems) {
+            if (locSet) {
+              const loc = (item.locationName || '').toLowerCase();
+              if (!locSet.has(loc)) continue;
+            }
+
+            if (q) {
+              const matches =
+                (item.sku || '').toLowerCase().includes(q) ||
+                (item.barCode || '').toLowerCase().includes(q) ||
+                (item.description || '').toLowerCase().includes(q) ||
+                (item.categoryName || '').toLowerCase().includes(q) ||
+                (item.brandName || '').toLowerCase().includes(q) ||
+                (item.locationName || '').toLowerCase().includes(q);
+              if (!matches) continue;
+            }
+
+            const qty = Number(item.quantity || 0);
+            const wost = Number(item.wostAmount || 0);
+            const disc = Number(item.discountAmount || 0);
+            const tax = Number(item.taxAmount || 0);
+            const sub = Number(item.subTotal || 0);
+
+            totalQty += qty;
+            totalWost += wost;
+            totalDiscount += disc;
+            totalTax += tax;
+            totalSubTotal += sub;
+
+            const row = sheet.addRow({
+              locationName: item.locationName || '-',
+              categoryName: item.categoryName || '-',
+              brandName: item.brandName || '-',
+              divisionName: item.divisionName || '-',
+              genderName: item.genderName || '-',
+              silhouetteName: item.silhouetteName || '-',
+              sku: item.sku || '-',
+              barCode: item.barCode || '-',
+              description: item.description || '-',
+              sizeName: item.sizeName || '-',
+              colorName: item.colorName || '-',
+              quantity: qty,
+              unitPrice: Number(item.unitPrice || 0),
+              wostAmount: wost,
+              discountAmount: disc,
+              taxAmount: tax,
+              subTotal: sub,
+            });
+            row.commit();
+          }
+        }
+      } catch (e) {
+        // Skip unparseable
+      }
+    }
+
+    const summaryRow = sheet.addRow({
+      locationName: 'FILTERED TOTALS',
+      quantity: totalQty,
+      wostAmount: totalWost,
+      discountAmount: totalDiscount,
+      taxAmount: totalTax,
+      subTotal: totalSubTotal,
+    });
+    summaryRow.font = { bold: true };
+    summaryRow.commit();
+
+    sheet.commit();
+    await workbook.commit();
+  }
+
+  async streamFilteredReturnPreviewExcel(
+    jobId: string,
+    options: {
+      exportType?: 'flat' | 'hierarchical';
+      search?: string;
+      paymentMode?: string;
+      fbrOnly?: boolean;
+      locationId?: string;
+    },
+    res: any,
+  ): Promise<void> {
+    const filePath = this.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException('Sales return preview result not found or expired');
+    }
+
+    const exportType = options.exportType || 'flat';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = `gross-sales-return-${exportType}-${dateStr}.xlsx`;
+
+    const passThrough = new PassThrough();
+    if (typeof res.header === 'function') {
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    if (typeof res.send === 'function') {
+      res.send(passThrough);
+    } else if (typeof res.pipe === 'function') {
+      passThrough.pipe(res);
+    }
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: passThrough,
+      useStyles: true,
+      useSharedStrings: false,
+    });
+
+    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Return Flat Items' : 'Return Summary');
+
+    if (exportType === 'flat') {
+      sheet.columns = [
+        { header: 'Outlet / Location', key: 'locationName', width: 22 },
+        { header: 'Return #', key: 'returnNumber', width: 16 },
+        { header: 'Order #', key: 'orderNumber', width: 16 },
+        { header: 'Return Date', key: 'returnDate', width: 20 },
+        { header: 'Cashier', key: 'cashierName', width: 16 },
+        { header: 'Customer', key: 'customerName', width: 18 },
+        { header: 'Phone', key: 'customerPhone', width: 14 },
+        { header: 'Refund Mode', key: 'paymentMethod', width: 14 },
+        { header: 'FBR Inv #', key: 'fbrInvoiceNumber', width: 16 },
+        { header: 'FBR Status', key: 'fbrStatus', width: 12 },
+        { header: 'Category', key: 'categoryName', width: 18 },
+        { header: 'Brand', key: 'brandName', width: 16 },
+        { header: 'SKU', key: 'sku', width: 16 },
+        { header: 'Barcode', key: 'barCode', width: 16 },
+        { header: 'Description', key: 'description', width: 28 },
+        { header: 'Size', key: 'sizeName', width: 10 },
+        { header: 'Color', key: 'colorName', width: 12 },
+        { header: 'Quantity', key: 'quantity', width: 10 },
+        { header: 'Unit Price', key: 'unitPrice', width: 12 },
+        { header: 'WOST Return', key: 'wostAmount', width: 14 },
+        { header: 'Discount Reversal', key: 'discountAmount', width: 14 },
+        { header: 'Tax', key: 'taxAmount', width: 12 },
+        { header: 'SubTotal', key: 'subTotal', width: 14 },
+        { header: 'Gross Return', key: 'returnGrossAmount', width: 14 },
+        { header: 'Net Refund', key: 'returnNetAmount', width: 14 },
+      ];
+    } else {
+      sheet.columns = [
+        { header: 'Return #', key: 'returnNumber', width: 16 },
+        { header: 'Orig Order #', key: 'orderNumber', width: 16 },
+        { header: 'Return Date', key: 'createdAt', width: 20 },
+        { header: 'Customer', key: 'customerName', width: 18 },
+        { header: 'Cashier', key: 'cashierName', width: 16 },
+        { header: 'Refund Mode', key: 'paymentMethod', width: 14 },
+        { header: 'FBR Inv #', key: 'fbrInvoiceNumber', width: 16 },
+        { header: 'Items Returned', key: 'totalItems', width: 14 },
+        { header: 'Gross Return', key: 'grossAmount', width: 14 },
+        { header: 'Discount Reversal', key: 'discountAmount', width: 14 },
+        { header: 'Tax', key: 'taxAmount', width: 12 },
+        { header: 'Net Refund', key: 'netAmount', width: 14 },
+      ];
+    }
+
+    const q = (options.search || '').trim().toLowerCase();
+    const pMode = options.paymentMode && options.paymentMode !== 'all' ? options.paymentMode.toUpperCase() : null;
+    const isFbrOnly = options.fbrOnly === true;
+    const locSet = options.locationId && options.locationId !== 'all'
+      ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
+      : null;
+
+    let totalQty = 0;
+    let totalGross = 0;
+    let totalDiscount = 0;
+    let totalNet = 0;
+
+    const fileStream = fs.createReadStream(filePath);
+    const gunzip = zlib.createGunzip();
+    const lineReader = readline.createInterface({
+      input: fileStream.pipe(gunzip),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of lineReader) {
+      if (!line || !line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+
+        if (exportType === 'flat' && parsed.type === 'flatItems' && Array.isArray(parsed.flatItems)) {
+          for (const item of parsed.flatItems) {
+            if (locSet) {
+              const loc = (item.locationName || '').toLowerCase();
+              if (!locSet.has(loc)) continue;
+            }
+
+            if (pMode && (item.paymentMethod || '').toUpperCase() !== pMode) continue;
+            if (isFbrOnly && (!item.fbrInvoiceNumber || item.fbrInvoiceNumber === '-' || item.fbrInvoiceNumber.trim() === '')) continue;
+
+            if (q) {
+              const matches =
+                (item.returnNumber || '').toLowerCase().includes(q) ||
+                (item.orderNumber || '').toLowerCase().includes(q) ||
+                (item.customerName || '').toLowerCase().includes(q) ||
+                (item.customerPhone || '').toLowerCase().includes(q) ||
+                (item.cashierName || '').toLowerCase().includes(q) ||
+                (item.sku || '').toLowerCase().includes(q) ||
+                (item.barCode || '').toLowerCase().includes(q) ||
+                (item.description || '').toLowerCase().includes(q);
+              if (!matches) continue;
+            }
+
+            const qty = Number(item.quantity || 0);
+            const gross = Number(item.returnGrossAmount || (item.unitPrice * qty));
+            const disc = Number(item.discountAmount || 0);
+            const net = Number(item.returnNetAmount || item.subTotal || 0);
+
+            totalQty += qty;
+            totalGross += gross;
+            totalDiscount += disc;
+            totalNet += net;
+
+            const row = sheet.addRow({
+              locationName: item.locationName || '-',
+              returnNumber: item.returnNumber,
+              orderNumber: item.orderNumber,
+              returnDate: item.returnDate || '-',
+              cashierName: item.cashierName || '-',
+              customerName: item.customerName || 'Walk-in',
+              customerPhone: item.customerPhone || '-',
+              paymentMethod: item.paymentMethod || '-',
+              fbrInvoiceNumber: item.fbrInvoiceNumber || '-',
+              fbrStatus: item.fbrStatus || '-',
+              categoryName: item.categoryName || '-',
+              brandName: item.brandName || '-',
+              sku: item.sku || '-',
+              barCode: item.barCode || '-',
+              description: item.description || '-',
+              sizeName: item.sizeName || '-',
+              colorName: item.colorName || '-',
+              quantity: qty,
+              unitPrice: Number(item.unitPrice || 0),
+              wostAmount: Number(item.wostAmount || 0),
+              discountAmount: disc,
+              taxAmount: Number(item.taxAmount || 0),
+              subTotal: Number(item.subTotal || 0),
+              returnGrossAmount: gross,
+              returnNetAmount: net,
+            });
+            row.commit();
+          }
+        } else if (exportType === 'hierarchical' && parsed.type === 'returns' && Array.isArray(parsed.returns)) {
+          for (const ret of parsed.returns) {
+            if (pMode && (ret.paymentMethod || '').toUpperCase() !== pMode) continue;
+            if (isFbrOnly && (!ret.fbrInvoiceNumber || ret.fbrInvoiceNumber === '-' || ret.fbrInvoiceNumber.trim() === '')) continue;
+
+            if (q) {
+              const matches =
+                (ret.returnNumber || '').toLowerCase().includes(q) ||
+                (ret.orderNumber || '').toLowerCase().includes(q) ||
+                (ret.customerName || '').toLowerCase().includes(q) ||
+                (ret.customerPhone || '').toLowerCase().includes(q) ||
+                (ret.cashierName || '').toLowerCase().includes(q) ||
+                (ret.items || []).some((it: any) =>
+                  (it.sku || '').toLowerCase().includes(q) ||
+                  (it.barCode || '').toLowerCase().includes(q) ||
+                  (it.description || '').toLowerCase().includes(q)
+                );
+              if (!matches) continue;
+            }
+
+            const itemsCount = Number(ret.totals?.totalItems || 0);
+            const gross = Number(ret.totals?.grossAmount || 0);
+            const disc = Number(ret.totals?.discountAmount || 0);
+            const net = Number(ret.totals?.netAmount || 0);
+
+            totalQty += itemsCount;
+            totalGross += gross;
+            totalDiscount += disc;
+            totalNet += net;
+
+            const row = sheet.addRow({
+              returnNumber: ret.returnNumber,
+              orderNumber: ret.orderNumber,
+              createdAt: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+              customerName: ret.customerName || 'Walk-in',
+              cashierName: ret.cashierName || '-',
+              paymentMethod: ret.paymentMethod || '-',
+              fbrInvoiceNumber: ret.fbrInvoiceNumber || '-',
+              totalItems: itemsCount,
+              grossAmount: gross,
+              discountAmount: disc,
+              taxAmount: Number(ret.totals?.taxAmount || 0),
+              netAmount: net,
+            });
+            row.commit();
+          }
+        }
+      } catch (e) {
+        // Skip unparseable
+      }
+    }
+
+    const summaryRow = sheet.addRow(
+      exportType === 'flat'
+        ? {
+            locationName: 'FILTERED TOTALS',
+            quantity: totalQty,
+            discountAmount: totalDiscount,
+            returnGrossAmount: totalGross,
+            returnNetAmount: totalNet,
+          }
+        : {
+            returnNumber: 'FILTERED TOTALS',
+            totalItems: totalQty,
+            grossAmount: totalGross,
+            discountAmount: totalDiscount,
+            netAmount: totalNet,
+          }
+    );
+    summaryRow.font = { bold: true };
+    summaryRow.commit();
+
+    sheet.commit();
+    await workbook.commit();
   }
 }
