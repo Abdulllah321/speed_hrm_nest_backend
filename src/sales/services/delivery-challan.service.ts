@@ -60,27 +60,17 @@ export class DeliveryChallanService {
         }
         const challanNo = `${prefix}-${currentYear}-${String(nextChallanSeq).padStart(4, '0')}`;
 
-        // Calculate totals using FBR WOST logic like sales order
-        const baseMargin = Number((salesOrder as any).baseMargin || 0);
-        const cashMargin = Number((salesOrder as any).cashMargin || 0);
-        const marginPct = baseMargin + cashMargin;
-        const orderDiscount = Number(salesOrder.discount || 0);
-
-        // Fetch all item taxRates first
+        // Simple retail totals for delivery challan
         const itemRecords = await Promise.all(items.map(async (item: any) => {
           const salesOrderItem = salesOrder.items.find((soItem: any) => soItem.itemId === item.itemId);
           const itemRecord = salesOrderItem?.item || await tx.item.findUnique({
             where: { id: item.itemId },
-            select: { unitCost: true, taxRate1: true }
+            select: { unitCost: true }
           });
           
           const retailPrice = Number(item.salePrice || 0);
-          const itemTaxRate = Number((itemRecord as any)?.taxRate1 || 18);
           const deliveredQty = Number(item.deliveredQty || 0);
-
-          // WOST: Retail / (1 + TaxRate/100)
-          const wostUnit = retailPrice / (1 + itemTaxRate / 100);
-          const wostTotal = wostUnit * deliveredQty;
+          const total = deliveredQty * retailPrice;
 
           return {
             itemId: item.itemId,
@@ -88,41 +78,11 @@ export class DeliveryChallanService {
             deliveredQty,
             costPrice: salesOrderItem?.costPrice || (itemRecord as any)?.unitCost || 0,
             salePrice: retailPrice,
-            taxRate: itemTaxRate,
-            wostTotal
+            total,
           };
         }));
 
-        const grossTotal = itemRecords.reduce((sum, it) => sum + it.wostTotal, 0);
-        const baseMarginAmount = (grossTotal * baseMargin) / 100;
-        const cashMarginAmount = (grossTotal * cashMargin) / 100;
-        const subtotal = grossTotal - baseMarginAmount - cashMarginAmount;
-
-        const orderDiscountPct = subtotal > 0 ? (orderDiscount / subtotal) * 100 : 0;
-
-        let taxAmount = 0;
-        const processedItems = itemRecords.map((item) => {
-          const marginDiscount = item.wostTotal * (marginPct / 100);
-          const afterDiscount = item.wostTotal - marginDiscount;
-
-          // Apply additional order discount percentage to the afterDiscount base
-          const discountedBase = afterDiscount * (1 - orderDiscountPct / 100);
-          const itemTaxAmount = discountedBase * (item.taxRate / 100);
-          const itemTotal = (discountedBase + itemTaxAmount);
-
-          taxAmount += itemTaxAmount;
-
-          return {
-            itemId: item.itemId,
-            orderedQty: item.orderedQty,
-            deliveredQty: item.deliveredQty,
-            salePrice: item.salePrice,
-            discount: marginDiscount,
-            total: itemTotal,
-          };
-        });
-
-        const totalAmount = (subtotal - orderDiscount) + taxAmount;
+        const totalAmount = itemRecords.reduce((sum: number, it: any) => sum + it.total, 0);
         const totalQty = items.reduce((sum: number, item: any) => sum + item.deliveredQty, 0);
 
         const challan = await tx.deliveryChallan.create({
@@ -139,7 +99,7 @@ export class DeliveryChallanService {
             totalQty,
             totalAmount,
             items: {
-              create: processedItems.map((item: any) => ({
+              create: itemRecords.map((item: any) => ({
                 itemId: item.itemId,
                 orderedQty: item.orderedQty,
                 deliveredQty: item.deliveredQty,
@@ -515,11 +475,17 @@ export class DeliveryChallanService {
         }
         const invoiceNo = `${prefix}-${currentYear}-${String(nextInvSeq).padStart(4, '0')}`;
 
-        // Calculate correct invoice totals using FBR WOST logic
-        const baseMargin = Number(deliveryChallan.salesOrder?.baseMargin ?? 0);
-        const cashMargin = Number(deliveryChallan.salesOrder?.cashMargin ?? 0);
+        // Calculate correct invoice totals using FBR WOST logic (customer margin & discount at invoice time)
+        const baseMargin = data?.baseMargin !== undefined 
+          ? Number(data.baseMargin) 
+          : Number((deliveryChallan.customer as any)?.baseMargin ?? (deliveryChallan.salesOrder as any)?.baseMargin ?? 0);
+        const cashMargin = data?.cashMargin !== undefined 
+          ? Number(data.cashMargin) 
+          : Number((deliveryChallan.customer as any)?.cashMargin ?? (deliveryChallan.salesOrder as any)?.cashMargin ?? 0);
         const marginPct = baseMargin + cashMargin;
-        const orderDiscount = Number(deliveryChallan.salesOrder?.discount ?? 0);
+        const orderDiscount = data?.discount !== undefined 
+          ? Number(data.discount) 
+          : Number((deliveryChallan.salesOrder as any)?.discount ?? 0);
 
         const itemRecords = await Promise.all(deliveryChallan.items.map(async (item: any) => {
           const itemRecord = await tx.item.findUnique({
@@ -587,7 +553,7 @@ export class DeliveryChallanService {
             cashMargin,
             baseMarginAmount,
             cashMarginAmount,
-            taxRate: Number(deliveryChallan.salesOrder?.taxRate || 0),
+            taxRate: Number(data?.taxRate !== undefined ? data.taxRate : deliveryChallan.salesOrder?.taxRate || 0),
             taxAmount,
             discount: orderDiscount,
             grandTotal,
