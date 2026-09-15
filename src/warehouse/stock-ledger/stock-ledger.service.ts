@@ -29,17 +29,203 @@ export class StockLedgerService {
     return this.prisma;
   }
 
+  async enrichReferenceDetails(data: any[]) {
+    if (!data || data.length === 0) return [];
+
+    const transferIds: string[] = [];
+    const lcIds: string[] = [];
+    const saleIds: string[] = [];
+    const posReturnIds: string[] = [];
+    const purchaseReturnIds: string[] = [];
+    const grnIds: string[] = [];
+    const adjIds: string[] = [];
+
+    for (const entry of data) {
+      const refId = entry.referenceId;
+      if (!refId) continue;
+      const refType = entry.referenceType;
+
+      if (['TRANSFER_REQUEST', 'TRANSFER_IN', 'TRANSFER_OUT', 'RETURN_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'CLAIM_RETURN_REQUEST', 'POS_CLAIM_APPROVED', 'CLAIM_ACKNOWLEDGED'].includes(refType)) {
+        transferIds.push(refId);
+      } else if (refType === 'LANDED_COST') {
+        lcIds.push(refId);
+      } else if (['POS_SALE', 'POS_VOID'].includes(refType)) {
+        saleIds.push(refId);
+      } else if (refType === 'POS_RETURN') {
+        posReturnIds.push(refId);
+      } else if (['PURCHASE_RETURN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_GRN'].includes(refType)) {
+        purchaseReturnIds.push(refId);
+      } else if (refType === 'GRN') {
+        grnIds.push(refId);
+      } else if (['ADJUSTMENT', 'STOCK_ADJUSTMENT'].includes(refType)) {
+        adjIds.push(refId);
+      }
+    }
+
+    const [transfers, lcs, sales, posReturns, purchaseReturns, grns, adjs] = await Promise.all([
+      transferIds.length > 0
+        ? this.prisma.transferRequest.findMany({
+            where: { id: { in: Array.from(new Set(transferIds)) } },
+            select: { id: true, requestNo: true, notes: true },
+          })
+        : [],
+      lcIds.length > 0
+        ? this.prisma.landedCost.findMany({
+            where: { id: { in: Array.from(new Set(lcIds)) } },
+            select: { id: true, landedCostNumber: true, lcNo: true },
+          })
+        : [],
+      saleIds.length > 0
+        ? this.prisma.salesOrder.findMany({
+            where: { id: { in: Array.from(new Set(saleIds)) } },
+            select: { id: true, orderNumber: true },
+          })
+        : [],
+      posReturnIds.length > 0
+        ? this.prisma.posReturn.findMany({
+            where: { id: { in: Array.from(new Set(posReturnIds)) } },
+            select: { id: true, returnNumber: true },
+          })
+        : [],
+      purchaseReturnIds.length > 0
+        ? this.prisma.purchaseReturn.findMany({
+            where: { id: { in: Array.from(new Set(purchaseReturnIds)) } },
+            select: { id: true, returnNumber: true },
+          })
+        : [],
+      grnIds.length > 0
+        ? this.prisma.goodsReceiptNote.findMany({
+            where: { id: { in: Array.from(new Set(grnIds)) } },
+            select: { id: true, grnNumber: true },
+          })
+        : [],
+      adjIds.length > 0
+        ? this.prisma.stockAdjustment.findMany({
+            where: { id: { in: Array.from(new Set(adjIds)) } },
+            select: { id: true, adjustmentNo: true },
+          })
+        : [],
+    ]);
+
+    const transferMap = new Map<string, { requestNo: string; trOutNo?: string; trInNo?: string; origDocNo?: string }>();
+    for (const t of transfers) {
+      let trOutNo: string | undefined;
+      let trInNo: string | undefined;
+      let origDocNo: string | undefined;
+      if (t.notes) {
+        const outMatch = t.notes.match(/TR\s*OUT\s*No:\s*([^|\n]+)/i);
+        if (outMatch) trOutNo = outMatch[1].trim();
+        const inMatch = t.notes.match(/TR\s*IN\s*No:\s*([^|\n]+)/i);
+        if (inMatch) trInNo = inMatch[1].trim();
+        const origMatch = t.notes.match(/OrigDocNo:\s*([^|\n]+)/i);
+        if (origMatch && origMatch[1].trim() !== 'N/A') origDocNo = origMatch[1].trim();
+      }
+      transferMap.set(t.id, { requestNo: t.requestNo, trOutNo, trInNo, origDocNo });
+    }
+
+    const lcMap = new Map<string, { lcNumber: string; lcNo?: string }>();
+    for (const lc of lcs) {
+      lcMap.set(lc.id, { lcNumber: lc.landedCostNumber, lcNo: lc.lcNo || undefined });
+    }
+
+    const saleMap = new Map<string, string>();
+    for (const s of sales) saleMap.set(s.id, s.orderNumber);
+
+    const posReturnMap = new Map<string, string>();
+    for (const r of posReturns) posReturnMap.set(r.id, r.returnNumber);
+
+    const purchaseReturnMap = new Map<string, string>();
+    for (const pr of purchaseReturns) purchaseReturnMap.set(pr.id, pr.returnNumber);
+
+    const grnMap = new Map<string, string>();
+    for (const g of grns) grnMap.set(g.id, g.grnNumber);
+
+    const adjMap = new Map<string, string>();
+    for (const a of adjs) adjMap.set(a.id, a.adjustmentNo);
+
+    return data.map((entry) => {
+      let referenceNumber = entry.referenceId;
+      let referenceSecondaryNumber: string | undefined;
+      let referenceDocNumber: string | undefined;
+
+      const refId = entry.referenceId;
+      const refType = entry.referenceType;
+
+      if (transferMap.has(refId)) {
+        const t = transferMap.get(refId)!;
+        referenceNumber = t.requestNo;
+        referenceDocNumber = t.origDocNo;
+
+        if (refType === 'TRANSFER_OUT' || refType === 'OUTLET_TRANSFER_OUT') {
+          if (t.trOutNo) referenceSecondaryNumber = `TR OUT: ${t.trOutNo}`;
+        } else if (refType === 'TRANSFER_IN' || refType === 'OUTLET_TRANSFER_IN') {
+          if (t.trInNo) referenceSecondaryNumber = `TR IN: ${t.trInNo}`;
+        } else {
+          if (t.trOutNo && t.trInNo) {
+            referenceSecondaryNumber = `TR OUT: ${t.trOutNo} | TR IN: ${t.trInNo}`;
+          } else if (t.trOutNo) {
+            referenceSecondaryNumber = `TR OUT: ${t.trOutNo}`;
+          } else if (t.trInNo) {
+            referenceSecondaryNumber = `TR IN: ${t.trInNo}`;
+          }
+        }
+      } else if (lcMap.has(refId)) {
+        const lc = lcMap.get(refId)!;
+        referenceNumber = lc.lcNumber;
+        if (lc.lcNo) referenceSecondaryNumber = `LC No: ${lc.lcNo}`;
+      } else if (saleMap.has(refId)) {
+        referenceNumber = saleMap.get(refId)!;
+      } else if (posReturnMap.has(refId)) {
+        referenceNumber = posReturnMap.get(refId)!;
+      } else if (purchaseReturnMap.has(refId)) {
+        referenceNumber = purchaseReturnMap.get(refId)!;
+      } else if (grnMap.has(refId)) {
+        referenceNumber = grnMap.get(refId)!;
+      } else if (adjMap.has(refId)) {
+        referenceNumber = adjMap.get(refId)!;
+      } else if (refId && refId.length === 36 && refId.includes('-')) {
+        // Fallback for UUIDs without record match
+        referenceNumber = `#${refId.slice(0, 8)}`;
+      }
+
+      return {
+        ...entry,
+        referenceNumber,
+        referenceSecondaryNumber,
+        referenceDocNumber,
+      };
+    });
+  }
+
   async findAll(options?: {
     locationId?: string;
     warehouseId?: string;
     movementType?: MovementType;
     itemId?: string;
     referenceType?: string;
+    page?: number;
     cursor?: bigint;    // last seen id for cursor pagination
     limit?: number;
     search?: string;
+    startDate?: string;
+    endDate?: string;
   }) {
-    const { warehouseId, locationId, movementType, itemId, referenceType, cursor, limit = 50, search } = options || {};
+    const {
+      warehouseId,
+      locationId,
+      movementType,
+      itemId,
+      referenceType,
+      cursor,
+      page,
+      limit = 25,
+      search,
+      startDate,
+      endDate,
+    } = options || {};
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSize = Math.max(1, Math.min(500, Number(limit) || 25));
 
     const where: any = {
       ...(warehouseId && { warehouseId }),
@@ -48,6 +234,20 @@ export class StockLedgerService {
       ...(itemId && { itemId }),
       ...(referenceType && { referenceType }),
     };
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        where.createdAt.gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
 
     if (search) {
       const searchLower = search.toLowerCase().trim();
@@ -66,13 +266,15 @@ export class StockLedgerService {
         "pos sale": ["POS_SALE"],
         "pos return": ["POS_RETURN"],
         "pos void": ["POS_VOID"],
-        "transfer": ["TRANSFER_REQUEST"],
+        "transfer": ["TRANSFER_REQUEST", "TRANSFER_IN", "TRANSFER_OUT"],
+        "transfer in": ["TRANSFER_IN", "OUTLET_TRANSFER_IN"],
+        "transfer out": ["TRANSFER_OUT", "OUTLET_TRANSFER_OUT"],
         "return transfer": ["RETURN_REQUEST"],
         "outlet transfer in": ["OUTLET_TRANSFER_IN"],
         "outlet transfer out": ["OUTLET_TRANSFER_OUT"],
         "stock movement": ["STOCK_MOVEMENT"],
         "return movement": ["RETURN_MOVEMENT"],
-        "adjustment": ["ADJUSTMENT"],
+        "adjustment": ["ADJUSTMENT", "STOCK_ADJUSTMENT"],
         "landed cost": ["LANDED_COST"],
         "opening bal": ["OPENING_BALANCE"],
         "delivery challan": ["DELIVERY_CHALLAN"],
@@ -101,6 +303,53 @@ export class StockLedgerService {
       const searchNum = parseFloat(searchLower);
       const isSearchNum = !isNaN(searchNum);
 
+      // 5. Resolve user-friendly document numbers to referenceIds
+      const [matchedTransfers, matchedLcs, matchedSales, matchedGrns, matchedAdj] = await Promise.all([
+        this.prisma.transferRequest.findMany({
+          where: {
+            OR: [
+              { requestNo: { contains: search, mode: 'insensitive' } },
+              { notes: { contains: search, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+          take: 200,
+        }),
+        this.prisma.landedCost.findMany({
+          where: {
+            OR: [
+              { landedCostNumber: { contains: search, mode: 'insensitive' } },
+              { lcNo: { contains: search, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+          take: 100,
+        }),
+        this.prisma.salesOrder.findMany({
+          where: { orderNumber: { contains: search, mode: 'insensitive' } },
+          select: { id: true },
+          take: 100,
+        }),
+        this.prisma.goodsReceiptNote.findMany({
+          where: { grnNumber: { contains: search, mode: 'insensitive' } },
+          select: { id: true },
+          take: 100,
+        }),
+        this.prisma.stockAdjustment.findMany({
+          where: { adjustmentNo: { contains: search, mode: 'insensitive' } },
+          select: { id: true },
+          take: 100,
+        }),
+      ]);
+
+      const matchedRefIds = [
+        ...matchedTransfers.map((t) => t.id),
+        ...matchedLcs.map((l) => l.id),
+        ...matchedSales.map((s) => s.id),
+        ...matchedGrns.map((g) => g.id),
+        ...matchedAdj.map((a) => a.id),
+      ];
+
       where.OR = [
         { item: { sku: { contains: search, mode: 'insensitive' } } },
         { item: { barCode: { contains: search, mode: 'insensitive' } } },
@@ -112,14 +361,19 @@ export class StockLedgerService {
         ...(matchedEnumValues.length > 0 ? [{ referenceType: { in: matchedEnumValues } }] : []),
         ...(matchedMovementType ? [{ movementType: matchedMovementType }] : []),
         ...(isSearchNum ? [{ qty: searchNum }] : []),
+        ...(matchedRefIds.length > 0 ? [{ referenceId: { in: matchedRefIds } }] : []),
       ];
     }
 
-    const data = await this.prisma.stockLedger.findMany({
+    const [total, data] = await Promise.all([
+      this.prisma.stockLedger.count({ where }),
+      this.prisma.stockLedger.findMany({
         where,
         orderBy: { id: 'desc' },
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        take: limit,
+        ...(cursor
+          ? { cursor: { id: cursor }, skip: 1 }
+          : { skip: (pageNum - 1) * pageSize }),
+        take: pageSize,
         select: {
           id: true,
           itemId: true,
@@ -135,7 +389,8 @@ export class StockLedgerService {
           item: { select: { itemId: true, sku: true, barCode: true, description: true } },
           warehouse: { select: { name: true } },
         },
-      });
+      }),
+    ]);
 
     // Enrich entries with location name (locationId is a plain FK with no Prisma relation)
     const locationIds = [...new Set(data.map((d) => d.locationId).filter(Boolean))] as string[];
@@ -150,18 +405,32 @@ export class StockLedgerService {
       }
     }
 
-    const enrichedData = data.map((entry) => ({
+    const mappedData = data.map((entry) => ({
       ...entry,
       id: entry.id.toString(), // serialize BigInt to string for JSON
       location: entry.locationId ? (locationMap.get(entry.locationId) ?? null) : null,
     }));
 
-    const nextCursor = data.length === limit ? data[data.length - 1].id.toString() : null;
+    const enrichedData = await this.enrichReferenceDetails(mappedData);
+
+    const totalPages = Math.ceil(total / pageSize);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
+    const nextCursor = data.length === pageSize ? data[data.length - 1].id.toString() : null;
 
     return {
       status: true,
       data: enrichedData,
-      meta: { limit, nextCursor, hasMore: nextCursor !== null },
+      meta: {
+        total,
+        page: pageNum,
+        limit: pageSize,
+        totalPages,
+        hasNextPage,
+        hasPrevPage,
+        nextCursor,
+        hasMore: hasNextPage,
+      },
     };
   }
 
@@ -431,6 +700,8 @@ export class StockLedgerService {
     itemId?: string;
     referenceType?: string;
     search?: string;
+    startDate?: string;
+    endDate?: string;
   }): Promise<{ jobId: string }> {
     const jobId = uuidv4();
 
@@ -450,6 +721,8 @@ export class StockLedgerService {
         itemId: opts.itemId,
         referenceType: opts.referenceType,
         search: opts.search,
+        startDate: opts.startDate,
+        endDate: opts.endDate,
       },
       {
         jobId,
