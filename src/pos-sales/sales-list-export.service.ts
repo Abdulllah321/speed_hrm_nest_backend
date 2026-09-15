@@ -345,9 +345,11 @@ export class SalesListExportService {
   }
 
   getPreviewFilePath(jobId: string): string {
+    const jsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+    if (fs.existsSync(jsonPath)) return jsonPath;
     const ndjsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
     if (fs.existsSync(ndjsonPath)) return ndjsonPath;
-    return path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+    return jsonPath;
   }
 
   getPreviewNdjsonFilePath(jobId: string): string {
@@ -355,73 +357,10 @@ export class SalesListExportService {
   }
 
   async saveReportPreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
-    const filePath = this.getPreviewNdjsonFilePath(jobId);
-    if ((!result.invoices || result.invoices.length === 0) && fs.existsSync(filePath)) {
-      // Preview was already streamed directly to disk in chunks during computation
-      return;
-    }
-    const gzip = zlib.createGzip({ level: 6 });
-    const writeStream = fs.createWriteStream(filePath);
-
-    await new Promise<void>((resolve, reject) => {
-      pipeline(gzip, writeStream, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-
-      const writeData = async () => {
-        try {
-          const safeWrite = async (chunk: string): Promise<void> => {
-            if (!gzip.write(chunk)) {
-              await new Promise((r) => gzip.once('drain', r));
-            }
-          };
-
-          const invoices = result.invoices || [];
-
-          // Line 1: Meta header with total invoice count
-          const metaLine = JSON.stringify({
-            type: 'meta',
-            reportType: result.reportType,
-            dateRange: result.dateRange,
-            locationNames: result.locationNames,
-            locations: result.locations,
-            totalInvoices: invoices.length,
-          }) + '\n';
-          await safeWrite(metaLine);
-
-          // Lines 2..N: Invoices chunked into batches of 100
-          const CHUNK = 100;
-          for (let i = 0; i < invoices.length; i += CHUNK) {
-            const slice = invoices.slice(i, i + CHUNK);
-            const chunkLine = JSON.stringify({
-              type: 'invoices',
-              startIndex: i,
-              count: slice.length,
-              invoices: slice,
-            }) + '\n';
-            await safeWrite(chunkLine);
-            // Yield to event loop
-            await new Promise((res) => setImmediate(res));
-          }
-
-          // Final Line: Verified Grand Totals
-          const totalsLine = JSON.stringify({
-            type: 'totals',
-            grandTotals: result.grandTotals,
-            totalInvoices: invoices.length,
-            done: true,
-          }) + '\n';
-          await safeWrite(totalsLine);
-
-          gzip.end();
-        } catch (e) {
-          gzip.destroy(e as any);
-        }
-      };
-
-      writeData();
-    });
+    const jsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+    const jsonStr = JSON.stringify(result);
+    const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
+    await fs.promises.writeFile(jsonPath, compressed);
   }
 
   async savePreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
@@ -429,50 +368,66 @@ export class SalesListExportService {
   }
 
   async getReportPreviewResult(jobId: string): Promise<SalesListReportResult | null> {
-    const filePath = this.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
+    const jsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+    if (fs.existsSync(jsonPath)) {
+      const compressed = await fs.promises.readFile(jsonPath);
+      const decompressed = await gunzipAsync(compressed);
+      const parsed = JSON.parse(decompressed.toString('utf8'));
+      return parsed.data || parsed;
+    }
+
+    const ndjsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
+    if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
-    const compressed = await fs.promises.readFile(filePath);
-    const decompressed = await gunzipAsync(compressed);
-    const rawText = decompressed.toString('utf8');
 
-    // Check if NDJSON
-    if (filePath.endsWith('.ndjson.gz') || rawText.startsWith('{"type":')) {
-      const lines = rawText.split('\n');
+    // Fast stream reader for ndjson.gz with preview sampling (up to 5,000 invoices)
+    return new Promise<SalesListReportResult | null>((resolve) => {
+      const gz = fs.createReadStream(ndjsonPath);
+      const gunzip = zlib.createGunzip();
+      const rl = readline.createInterface({ input: gz.pipe(gunzip) });
+
       let meta: any = {};
-      let allInvoices: any[] = [];
+      const allInvoices: any[] = [];
       let grandTotals: any = {};
+      const PREVIEW_LIMIT = 5000;
 
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      rl.on('line', (line) => {
+        if (!line.trim()) return;
         try {
-          const obj = JSON.parse(line);
-          if (obj.type === 'meta') {
-            meta = obj;
-          } else if (obj.type === 'invoices' && Array.isArray(obj.invoices)) {
-            allInvoices.push(...obj.invoices);
-          } else if (obj.type === 'totals') {
-            grandTotals = obj.grandTotals || {};
+          if (line.includes('"type":"meta"')) {
+            meta = JSON.parse(line);
+          } else if (line.includes('"type":"totals"')) {
+            grandTotals = JSON.parse(line).grandTotals || {};
+          } else if (line.includes('"type":"invoices"')) {
+            if (allInvoices.length < PREVIEW_LIMIT) {
+              const obj = JSON.parse(line);
+              if (Array.isArray(obj.invoices)) {
+                const remaining = PREVIEW_LIMIT - allInvoices.length;
+                allInvoices.push(...obj.invoices.slice(0, remaining));
+              }
+            }
           }
         } catch {
           // ignore malformed line
         }
-      }
+      });
 
-      return {
-        reportType: meta.reportType || 'merged',
-        dateRange: meta.dateRange || {},
-        locationNames: meta.locationNames || '',
-        locations: meta.locations || [],
-        grandTotals,
-        invoices: allInvoices,
-        flatItems: [],
-      };
-    }
+      rl.on('close', () => {
+        resolve({
+          reportType: meta.reportType || 'merged',
+          dateRange: meta.dateRange || {},
+          locationNames: meta.locationNames || '',
+          locations: meta.locations || [],
+          grandTotals,
+          invoices: allInvoices,
+          flatItems: [],
+        });
+      });
 
-    const parsed = JSON.parse(rawText);
-    return parsed.data || parsed;
+      gz.on('error', () => resolve(null));
+      gunzip.on('error', () => resolve(null));
+    });
   }
 
   async computeReportData(
@@ -1282,6 +1237,9 @@ export class SalesListExportService {
 
           if (isDirectDiskStream) {
             chunkInvoiceNodes.push(invNode);
+            if (inMemoryInvoices.length < 5000) {
+              inMemoryInvoices.push(invNode);
+            }
           } else {
             inMemoryInvoices.push(invNode);
           }

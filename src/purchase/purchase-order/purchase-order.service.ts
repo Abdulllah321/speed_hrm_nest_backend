@@ -24,7 +24,7 @@ export class PurchaseOrderService {
     private activityLogs: ActivityLogsService,
     private prismaMaster: PrismaMasterService,
     private notifications: NotificationsService,
-  ) {}
+  ) { }
 
   /**
    * Generates the next sequential PO number for the current fiscal year.

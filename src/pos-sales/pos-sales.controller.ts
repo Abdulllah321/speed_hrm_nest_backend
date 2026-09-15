@@ -64,7 +64,7 @@ export class PosSalesController {
     private readonly corporateVoucherExportService: CorporateVoucherExportService,
     private readonly creditVoucherExportService: CreditVoucherExportService,
     private readonly voucherRegisterExportService: VoucherRegisterExportService,
-  ) {}
+  ) { }
 
   // ─── POS Customer Endpoints ────────────────────────────────────────
   // These mirror /api/sales/customers but are mounted under /api/pos-sales/customers
@@ -287,7 +287,7 @@ export class PosSalesController {
         const decoded: any = jwt.decode(req.cookies.posTerminalToken);
         effectivePosId = decoded?.posId || decoded?.terminalId;
         if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 3. Fallback: any user with a locationId on their token
@@ -505,7 +505,7 @@ export class PosSalesController {
           if (!dto.posId) dto.posId = decoded.posId;
           if (!dto.locationId) dto.locationId = decoded.locationId;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     const ctx = {
       userId: req.user?.id,
@@ -624,7 +624,7 @@ export class PosSalesController {
       try {
         const decoded: any = jwt.decode(req.cookies.posTerminalToken);
         effectiveLocationId = decoded?.locationId;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return this.posSalesService.getSalesReport(req.user, {
@@ -1670,58 +1670,15 @@ export class PosSalesController {
 
   @Get('reports/sales-list/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getSalesListResult(
-    @Param('jobId') jobId: string,
-    @Req() req: any,
-    @Res() res: any,
-  ) {
-    const filePath = this.salesListExportService.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
-      if (typeof res.status === 'function') {
-        const errPayload = {
-          status: false,
-          message: 'Sales list preview result not found or expired',
-        };
-        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
-      }
-      throw new NotFoundException('Sales list preview result not found or expired');
+  async getSalesListResult(@Param('jobId') jobId: string) {
+    const data = await this.salesListExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return {
+        status: false,
+        message: 'Sales list preview result not found or expired',
+      };
     }
-
-    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
-    const isNdjson = filePath.endsWith('.ndjson.gz') || (req.headers?.['accept'] || '').includes('application/x-ndjson');
-    const contentType = isNdjson ? 'application/x-ndjson' : 'application/json';
-
-    if (typeof res.header === 'function') {
-      res.header('Content-Type', contentType);
-    } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', contentType);
-    } else if (res.raw?.setHeader) {
-      res.raw.setHeader('Content-Type', contentType);
-    }
-
-    const stream = fs.createReadStream(filePath);
-
-    if (acceptsGzip) {
-      if (typeof res.header === 'function') {
-        res.header('Content-Encoding', 'gzip');
-      } else if (typeof res.setHeader === 'function') {
-        res.setHeader('Content-Encoding', 'gzip');
-      } else if (res.raw?.setHeader) {
-        res.raw.setHeader('Content-Encoding', 'gzip');
-      }
-
-      if (typeof res.send === 'function') {
-        return res.send(stream);
-      }
-      return stream.pipe(res);
-    } else {
-      const gunzip = zlib.createGunzip();
-      const unzipped = stream.pipe(gunzip);
-      if (typeof res.send === 'function') {
-        return res.send(unzipped);
-      }
-      return unzipped.pipe(res);
-    }
+    return { status: true, data };
   }
 
   @Get(['reports/sales-list/stream-preview-excel/:jobId', 'reports/sales-list/stream-preview-excel/:jobId/:fileName'])
@@ -1950,58 +1907,15 @@ export class PosSalesController {
 
   @Get('reports/gross-sales-return/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getGrossSalesReturnResult(
-    @Param('jobId') jobId: string,
-    @Req() req: any,
-    @Res() res: any,
-  ) {
-    const filePath = this.grossSalesExportService.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
-      if (typeof res.status === 'function') {
-        const errPayload = {
-          status: false,
-          message: 'Sales return preview result not found or expired',
-        };
-        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
-      }
-      throw new NotFoundException('Sales return preview result not found or expired');
+  async getGrossSalesReturnResult(@Param('jobId') jobId: string) {
+    const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return {
+        status: false,
+        message: 'Sales return preview result not found or expired',
+      };
     }
-
-    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
-    const isNdjson = filePath.endsWith('.ndjson.gz') || (req.headers?.['accept'] || '').includes('application/x-ndjson');
-    const contentType = isNdjson ? 'application/x-ndjson' : 'application/json';
-
-    if (typeof res.header === 'function') {
-      res.header('Content-Type', contentType);
-    } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', contentType);
-    } else if (res.raw?.setHeader) {
-      res.raw.setHeader('Content-Type', contentType);
-    }
-
-    const stream = fs.createReadStream(filePath);
-
-    if (acceptsGzip) {
-      if (typeof res.header === 'function') {
-        res.header('Content-Encoding', 'gzip');
-      } else if (typeof res.setHeader === 'function') {
-        res.setHeader('Content-Encoding', 'gzip');
-      } else if (res.raw?.setHeader) {
-        res.raw.setHeader('Content-Encoding', 'gzip');
-      }
-
-      if (typeof res.send === 'function') {
-        return res.send(stream);
-      }
-      return stream.pipe(res);
-    } else {
-      const gunzip = zlib.createGunzip();
-      const unzipped = stream.pipe(gunzip);
-      if (typeof res.send === 'function') {
-        return res.send(unzipped);
-      }
-      return unzipped.pipe(res);
-    }
+    return { status: true, data };
   }
 
   @Get(['reports/gross-sales-return/stream-preview-excel/:jobId', 'reports/gross-sales-return/stream-preview-excel/:jobId/:fileName'])
@@ -2135,71 +2049,15 @@ export class PosSalesController {
 
   @Get('reports/gross-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getGrossSalesSummaryResult(
-    @Param('jobId') jobId: string,
-    @Query('format') formatQuery: string,
-    @Req() req: any,
-    @Res() res: any,
-  ) {
-    const filePath = this.grossSalesExportService.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
-      if (typeof res.status === 'function') {
-        const errPayload = {
-          status: false,
-          message: 'Gross sales summary preview result not found or expired',
-        };
-        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
-      }
-      throw new NotFoundException('Gross sales summary preview result not found or expired');
+  async getGrossSalesSummaryResult(@Param('jobId') jobId: string) {
+    const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return {
+        status: false,
+        message: 'Gross sales summary preview result not found or expired',
+      };
     }
-
-    const acceptsNdjson = formatQuery === 'ndjson' || (req.headers?.['accept'] || '').includes('application/x-ndjson');
-    if (!acceptsNdjson) {
-      const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
-      const payload = { status: true, data };
-      return typeof res.send === 'function' ? res.send(payload) : res.json(payload);
-    }
-
-    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
-    const contentType = 'application/x-ndjson';
-
-    if (typeof res.header === 'function') {
-      res.header('Content-Type', contentType);
-    } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', contentType);
-    } else if (res.raw?.setHeader) {
-      res.raw.setHeader('Content-Type', contentType);
-    }
-
-    const stream = fs.createReadStream(filePath);
-    stream.on('error', (err) => {
-      this.logger.error(`GrossSalesSummary stream error ${jobId}: ${err.message}`);
-    });
-
-    if (acceptsGzip) {
-      if (typeof res.header === 'function') {
-        res.header('Content-Encoding', 'gzip');
-      } else if (typeof res.setHeader === 'function') {
-        res.setHeader('Content-Encoding', 'gzip');
-      } else if (res.raw?.setHeader) {
-        res.raw.setHeader('Content-Encoding', 'gzip');
-      }
-
-      if (typeof res.send === 'function') {
-        return res.send(stream);
-      }
-      return stream.pipe(res);
-    } else {
-      const gunzip = zlib.createGunzip();
-      gunzip.on('error', (err) => {
-        this.logger.error(`GrossSalesSummary gunzip error ${jobId}: ${err.message}`);
-      });
-      const unzipped = stream.pipe(gunzip);
-      if (typeof res.send === 'function') {
-        return res.send(unzipped);
-      }
-      return unzipped.pipe(res);
-    }
+    return { status: true, data };
   }
 
   @Get(['reports/gross-sales-summary/stream-preview-excel/:jobId', 'reports/gross-sales-summary/stream-preview-excel/:jobId/:fileName'])

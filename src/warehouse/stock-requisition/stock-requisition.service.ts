@@ -16,7 +16,7 @@ export class StockRequisitionService {
     private transferRequestService: TransferRequestService,
     private notifications: NotificationsService,
     private stockLedgerService: StockLedgerService,
-  ) {}
+  ) { }
 
   private async getCurrentItemRate(tx: Prisma.TransactionClient, itemId: string): Promise<number> {
     const item = await tx.item.findUnique({
@@ -1032,7 +1032,7 @@ export class StockRequisitionService {
     }
 
     const now = new Date();
-    
+
     // Helper to parse dates robustly in local timezone if plain date strings are passed
     const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
       if (!dateStr) {
@@ -1044,7 +1044,7 @@ export class StockRequisitionService {
           return new Date(now.getFullYear(), now.getMonth(), 1);
         }
       }
-      
+
       // If it has a time indicator, parse it as-is (e.g. ISO string)
       if (dateStr.includes('T') || dateStr.includes('Z')) {
         const d = new Date(dateStr);
@@ -1053,7 +1053,7 @@ export class StockRequisitionService {
         }
         return d;
       }
-      
+
       // Plain date string like YYYY-MM-DD
       const timePart = isEndOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
       return new Date(`${dateStr}${timePart}`);
@@ -1178,7 +1178,7 @@ export class StockRequisitionService {
   async getNextRequisitionNumber(): Promise<{ nextRequisitionNumber: string }> {
     const currentYear = new Date().getFullYear();
     const prefix = 'SRN';
-    
+
     const lastRequisition = await this.prisma.stockRequisition.findFirst({
       where: {
         requisitionNo: {

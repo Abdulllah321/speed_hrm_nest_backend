@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { PrismaClient as ManagementClient } from '@prisma/management-client';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, MovementType } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as crypto from 'crypto';
@@ -37,7 +37,6 @@ export interface ParsedReturnRow {
   docNo: string;
   docDateStr: string;
   docDate: Date;
-  type: string;
   subType: string;
   barCode: string;
   quantity: number;
@@ -53,51 +52,110 @@ export interface ParsedReturnRow {
   locationCode: string;
   posId: string;
   fbrInvoiceNumber: string;
+  fkExchVoucher: string;
   discountRateGiven: number;
   remarks: string;
   isAllianceDiscount: boolean;
-  fkInvoiceNumberSale: string;
+  fkSaleDoc: string;
   docDateSaleStr: string;
   docDateSale: Date | null;
-  fkInvoiceNumberSettle: string;
-  docDateSettleStr: string;
-  docDateSettle: Date | null;
+  fkRedeemDoc: string;
+  docDateRedeemStr: string;
+  docDateRedeem: Date | null;
 }
 
-export function parseCustomDate(dateStr: string): Date | null {
-  if (!dateStr || !dateStr.trim()) return null;
+/**
+ * Calculates Fiscal Year 2-digit end-year suffix (e.g. July 2026 - June 2027 -> "27")
+ */
+export function getFySuffix(date: Date): string {
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed (6 = July)
+  const fyEndYear = month >= 6 ? year + 1 : year;
+  return String(fyEndYear).slice(-2);
+}
 
-  const trimmed = dateStr.trim();
-  const spaceParts = trimmed.split(/\s+/);
-  const datePart = spaceParts[0];
-  const timePart = spaceParts[1] || '0:0';
+/**
+ * Robust date parser supporting:
+ * - Excel date serial numbers (e.g. 46204 -> 2026-07-01, 46204.64965277778)
+ * - M/D/YYYY or D/M/YYYY or YYYY-MM-DD
+ * - ISO date strings
+ */
+export function parseCustomDate(dateVal: any): Date | null {
+  if (!dateVal) return null;
 
-  const dParts = datePart.split('/');
-  if (dParts.length !== 3) return null;
-
-  const month = parseInt(dParts[0], 10);
-  const day = parseInt(dParts[1], 10);
-  let year = parseInt(dParts[2], 10);
-
-  if (year < 100) {
-    year += 2000;
+  // Handle Excel date serial numbers like 46204 (7/1/2026)
+  if (typeof dateVal === 'number' || (!isNaN(Number(dateVal)) && !String(dateVal).includes('/') && !String(dateVal).includes('-'))) {
+    const num = Number(dateVal);
+    if (num > 30000 && num < 70000) {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      return new Date(excelEpoch.getTime() + num * 86400000);
+    }
   }
 
-  const tParts = timePart.split(':');
-  const hours = parseInt(tParts[0] || '0', 10);
-  const minutes = parseInt(tParts[1] || '0', 10);
-  const seconds = parseInt(tParts[2] || '0', 10);
+  const trimmed = String(dateVal).trim();
+  if (!trimmed) return null;
 
-  return new Date(year, month - 1, day, hours, minutes, seconds);
+  const spaceParts = trimmed.split(/\s+/);
+  const datePart = spaceParts[0];
+  const timePart = spaceParts[1] || '0:0:0';
+
+  const dParts = datePart.split(/[/.\-]/);
+  if (dParts.length === 3) {
+    let p1 = parseInt(dParts[0], 10);
+    let p2 = parseInt(dParts[1], 10);
+    let p3 = parseInt(dParts[2], 10);
+
+    const tParts = timePart.split(':');
+    const hours = parseInt(tParts[0] || '0', 10);
+    const minutes = parseInt(tParts[1] || '0', 10);
+    const seconds = parseInt(tParts[2] || '0', 10);
+
+    if (p3 < 100) p3 += 2000;
+
+    // YYYY-MM-DD
+    if (p1 > 1900 && p1 < 2100) {
+      return new Date(p1, p2 - 1, p3, hours, minutes, seconds);
+    }
+
+    // M/D/YYYY (standard US / Excel POS export format)
+    if (p3 > 1900 && p3 < 2100) {
+      return new Date(p3, p1 - 1, p2, hours, minutes, seconds);
+    }
+  }
+
+  const fallback = new Date(trimmed);
+  return isNaN(fallback.getTime()) ? null : fallback;
 }
 
-export function readAndParseReturnData(filePath: string, maxRows?: number): ParsedReturnRow[] {
+function parseMarkdownLine(line: string, isTabSep: boolean, isPipeSep: boolean): string[] {
+  if (isTabSep) {
+    return line.split('\t').map((p) => p.trim());
+  }
+  if (isPipeSep) {
+    // Protect escaped pipes \| (found in remarks like "1134;")
+    const sanitized = line.replace(/\\\|/g, '__ESCAPED_PIPE__').trim();
+    let stripped = sanitized;
+    if (stripped.startsWith('|')) stripped = stripped.substring(1);
+    if (stripped.endsWith('|')) stripped = stripped.substring(0, stripped.length - 1);
+    return stripped.split('|').map((p) => p.replace(/__ESCAPED_PIPE__/g, '|').trim());
+  }
+  return line.split(',').map((p) => p.trim());
+}
+
+export function readAndParseReturnData(
+  filePath: string,
+  maxRows?: number,
+  locationFilter?: string,
+): ParsedReturnRow[] {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found at path: ${filePath}`);
   }
 
   const content = fs.readFileSync(filePath, 'utf-8');
-  const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '' && !l.trim().startsWith('---'));
+  const lines = content.split(/\r?\n/).filter((l) => {
+    const trimmed = l.trim();
+    return trimmed !== '' && !trimmed.startsWith('#') && !trimmed.startsWith('|-') && !trimmed.startsWith('| ---');
+  });
 
   if (lines.length < 2) {
     console.warn(`⚠️ File ${filePath} contains no data rows.`);
@@ -108,11 +166,7 @@ export function readAndParseReturnData(filePath: string, maxRows?: number): Pars
   const isTabSep = headerLine.includes('\t');
   const isPipeSep = headerLine.includes('|');
 
-  const headers = isTabSep
-    ? headerLine.split('\t').map((h) => h.trim().toLowerCase())
-    : isPipeSep
-    ? headerLine.split('|').map((h) => h.trim().toLowerCase()).filter(Boolean)
-    : headerLine.split(',').map((h) => h.trim().toLowerCase());
+  const headers = parseMarkdownLine(headerLine, isTabSep, isPipeSep).map((h) => h.toLowerCase());
 
   const findColIndex = (keywords: string[], defaultIdx: number): number => {
     const exactIdx = headers.findIndex((h) => keywords.some((k) => h === k));
@@ -121,49 +175,51 @@ export function readAndParseReturnData(filePath: string, maxRows?: number): Pars
     return partialIdx !== -1 ? partialIdx : defaultIdx;
   };
 
-  const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 0);
-  const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 1);
-  const colType = findColIndex(['type'], 2);
-  const colSubType = findColIndex(['sub type', 'subtype'], 3);
-  const colBarcode = findColIndex(['barcode', 'sku', 'item'], 4);
-  const colQty = findColIndex(['quantity', 'qty'], 5);
-  const colUnitPrice = findColIndex(['unitprice', 'price'], 6);
-  const colPriceWOT = findColIndex(['price_w_o_t', 'pricewot'], 7);
-  const colTotalPriceWOT = findColIndex(['total_price_w_o_t', 'totalpricewot'], 8);
-  const colDiscountAmount = findColIndex(['discountamount', 'discount_amount'], 9);
-  const colValueExSalesTax = findColIndex(['value ex sales tax', 'valueexsalestax'], 10);
-  const colSalesTax = findColIndex(['sales tax', 'salestax'], 11);
-  const colTotalSalesTax = findColIndex(['total sales tax', 'totalsalestax'], 13);
-  const colValueInclSalesTax = findColIndex(['value incl sales tax', 'valueinclsalestax', 'total'], 14);
-  const colCostCentre = findColIndex(['costcentre', 'store'], 15);
-  const colLocCode = findColIndex(['location code', 'locationcode'], 16);
+  const colCostCentre = findColIndex(['costcentre', 'store'], 0);
+  const colLocCode = findColIndex(['location id', 'location code', 'locationcode', 'loc code'], 1);
+  const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 2);
+  const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 3);
+  const colSubType = findColIndex(['sub type', 'subtype', 'type'], 4);
+  const colBarcode = findColIndex(['barcode', 'sku', 'item'], 5);
+  const colQty = findColIndex(['quantity', 'qty'], 6);
+  const colUnitPrice = findColIndex(['unitprice', 'price'], 7);
+  const colPriceWOT = findColIndex(['price_w_o_t', 'pricewot'], 8);
+  const colTotalPriceWOT = findColIndex(['total_price_w_o_t', 'totalpricewot'], 9);
+  const colDiscountAmount = findColIndex(['discountamount', 'discount_amount'], 10);
+  const colValueExSalesTax = findColIndex(['value ex sales tax', 'valueexsalestax'], 11);
+  const colSalesTax = findColIndex(['sales tax', 'salestax'], 12);
+  const colTotalSalesTax = findColIndex(['total sales tax', 'totalsalestax'], 14);
+  const colValueInclSalesTax = findColIndex(['value incl sales tax', 'valueinclsalestax', 'total'], 15);
   const colPosId = findColIndex(['pos id', 'posid'], 17);
   const colFbrInvoice = findColIndex(['fbr invoice#', 'fbrinvoice'], 18);
-  const colDiscRateGiven = findColIndex(['discountrate_given'], 19);
-  const colRemarks = findColIndex(['remarks'], 20);
-  const colIsAlliance = findColIndex(['is alliance discount'], 21);
-  const colSaleDocNo = findColIndex(['fkinvoicenumber_sale', 'sale doc'], 22);
-  const colSaleDocDate = findColIndex(['documentdate_sale', 'sale date'], 23);
-  const colSettleDocNo = findColIndex(['fkinvoicenumber_settle', 'settle doc'], 24);
-  const colSettleDocDate = findColIndex(['documentdate_settle', 'settle date'], 25);
+  const colExchVoucher = findColIndex(['fkexchangevouchernumber', 'voucher'], 19);
+  const colDiscRateGiven = findColIndex(['discountrate_given'], 20);
+  const colRemarks = findColIndex(['remarks'], 21);
+  const colIsAlliance = findColIndex(['is alliance discount'], 22);
+  const colSaleDocNo = findColIndex(['fkdocumentnumber_sale', 'fkinvoicenumber_sale', 'sale doc'], 23);
+  const colSaleDocDate = findColIndex(['documentdate_sale', 'sale date'], 24);
+  const colRedeemDocNo = findColIndex(
+    ['fkdocumentnumer_sale_redeem', 'fkdocumentnumber_sale_redeem', 'fkinvoicenumber_settle', 'settle doc', 'redeem doc'],
+    25,
+  );
+  const colRedeemDocDate = findColIndex(
+    ['documentdate_sale_redeem', 'documentdate_settle', 'settle date', 'redeem date'],
+    26,
+  );
 
   const rawParsed: ParsedReturnRow[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const rawLine = lines[i].trim();
-    if (!rawLine || rawLine.startsWith('---')) continue;
+    if (!rawLine) continue;
 
-    let parts = isTabSep
-      ? rawLine.split('\t').map((p) => p.trim())
-      : isPipeSep
-      ? rawLine.split('|').map((p) => p.trim()).filter(Boolean)
-      : rawLine.split(',').map((p) => p.trim());
+    const parts = parseMarkdownLine(rawLine, isTabSep, isPipeSep);
+    if (parts.length < 15) continue;
 
-    if (parts.length < 5) continue;
-
+    const costCentre = parts[colCostCentre] || '';
+    const locationCode = parts[colLocCode] || '';
     const docNo = parts[colDocNo] || '';
     const docDateStr = parts[colDocDate] || '';
-    const type = parts[colType] || 'Return';
     const subType = parts[colSubType] || 'Exchange';
     const barCode = (parts[colBarcode] || '').replace(/['"]/g, '').trim();
     const quantity = parseFloat(parts[colQty] || '-1') || -1;
@@ -175,32 +231,37 @@ export function readAndParseReturnData(filePath: string, maxRows?: number): Pars
     const salesTax = parseFloat(parts[colSalesTax] || '0') || 0;
     const totalSalesTax = parseFloat(parts[colTotalSalesTax] || '0') || salesTax;
     const valueInclSalesTax = parseFloat(parts[colValueInclSalesTax] || '0') || 0;
-    const costCentre = parts[colCostCentre] || '';
-    const locationCode = parts[colLocCode] || '';
     const posId = parts[colPosId] || '';
     const fbrInvoiceNumber = (parts[colFbrInvoice] || '').replace(/^['"]/, '').trim();
+    const fkExchVoucher = parts[colExchVoucher] || '';
     const discountRateGiven = parseFloat(parts[colDiscRateGiven] || '0') || 0;
     const remarks = parts[colRemarks] || '';
     const isAllianceDiscount = (parts[colIsAlliance] || '').trim().toUpperCase() === 'Y';
-    const fkInvoiceNumberSale = parts[colSaleDocNo] || '';
+    const fkSaleDoc = (parts[colSaleDocNo] || '').trim();
     const docDateSaleStr = parts[colSaleDocDate] || '';
-    const fkInvoiceNumberSettle = parts[colSettleDocNo] || '';
-    const docDateSettleStr = parts[colSettleDocDate] || '';
+    const fkRedeemDoc = (parts[colRedeemDocNo] || '').trim();
+    const docDateRedeemStr = parts[colRedeemDocDate] || '';
 
-    if (!docNo || !barCode || !locationCode) continue;
+    if (!docNo || !barCode) continue;
 
     const docDate = parseCustomDate(docDateStr);
     if (!docDate || isNaN(docDate.getTime())) continue;
 
+    if (locationFilter) {
+      const locMatch =
+        locationCode.toLowerCase() === locationFilter.toLowerCase() ||
+        costCentre.toLowerCase().includes(locationFilter.toLowerCase());
+      if (!locMatch) continue;
+    }
+
     const docDateSale = parseCustomDate(docDateSaleStr);
-    const docDateSettle = parseCustomDate(docDateSettleStr);
+    const docDateRedeem = parseCustomDate(docDateRedeemStr);
 
     rawParsed.push({
       rowNum: 0,
       docNo,
       docDateStr,
       docDate,
-      type,
       subType,
       barCode,
       quantity,
@@ -216,15 +277,16 @@ export function readAndParseReturnData(filePath: string, maxRows?: number): Pars
       locationCode,
       posId,
       fbrInvoiceNumber,
+      fkExchVoucher,
       discountRateGiven,
       remarks,
       isAllianceDiscount,
-      fkInvoiceNumberSale,
+      fkSaleDoc,
       docDateSaleStr,
       docDateSale,
-      fkInvoiceNumberSettle,
-      docDateSettleStr,
-      docDateSettle,
+      fkRedeemDoc,
+      docDateRedeemStr,
+      docDateRedeem,
     });
   }
 
@@ -240,38 +302,72 @@ export function readAndParseReturnData(filePath: string, maxRows?: number): Pars
 async function processReturnsForTenant(
   prisma: PrismaClient,
   rows: ParsedReturnRow[],
-  isDryRun: boolean = false
+  isDryRun: boolean = false,
 ) {
   console.log(`\n==================================================`);
-  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} sales return rows...`);
+  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length.toLocaleString()} sales return rows...`);
   console.log(`==================================================\n`);
 
+  // FY27 starts on July 1, 2026 UTC
+  const currentFyStart = new Date(Date.UTC(2026, 6, 1, 0, 0, 0, 0));
+
   if (!isDryRun) {
-    console.log(`🧹 Cleaning up previously imported Return Vouchers & Stock Records...`);
-    
-    // Always clean up any existing return stock movements & ledger entries
+    console.log(`🧹 Cleaning up previously imported current-year (FY27) Return Records & Stock Logs...`);
+
+    // 1. Delete Return Stock Movements in FY27
     await prisma.stockMovement.deleteMany({
       where: {
         OR: [
-          { type: 'POS_RETURN' },
-          { referenceType: 'POS_RETURN' },
-          { movementNo: { startsWith: 'MV-RET-' } },
-          { notes: { contains: 'POS Return' } },
+          { type: 'POS_RETURN', movementDate: { gte: currentFyStart } },
+          { referenceType: 'POS_RETURN', movementDate: { gte: currentFyStart } },
+          { movementNo: { startsWith: 'MV-RET-' }, createdAt: { gte: currentFyStart } },
         ],
       },
     });
 
+    // 2. Delete Return Stock Ledgers in FY27
     await prisma.stockLedger.deleteMany({
       where: {
-        OR: [
-          { referenceType: 'POS_RETURN' },
-        ],
+        referenceType: 'POS_RETURN',
+        createdAt: { gte: currentFyStart },
       },
     });
 
-    const existingVouchers = await prisma.voucher.findMany({
+    // 3. Delete PosReturnItem and PosReturn in FY27
+    const existingReturns = await prisma.posReturn.findMany({
       where: {
         OR: [
+          { createdAt: { gte: currentFyStart } },
+          { returnNumber: { contains: '27-' } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (existingReturns.length > 0) {
+      const returnIds = existingReturns.map((r) => r.id);
+      await prisma.posReturnItem.deleteMany({
+        where: { posReturnId: { in: returnIds } },
+      });
+      await prisma.posReturn.deleteMany({
+        where: { id: { in: returnIds } },
+      });
+      console.log(`  ✅ Successfully wiped ${existingReturns.length} old FY27 PosReturn records.`);
+    }
+
+    // 4. Delete Voucher Redemptions in FY27
+    await prisma.voucherRedemption.deleteMany({
+      where: {
+        createdAt: { gte: currentFyStart },
+      },
+    });
+
+    // 5. Delete Return Vouchers in FY27
+    const existingVouchers = await prisma.voucher.findMany({
+      where: {
+        createdAt: { gte: currentFyStart },
+        OR: [
+          { code: { contains: '27-' } },
           { code: { startsWith: 'EXC-' } },
           { code: { startsWith: 'CLM-' } },
           { code: { startsWith: 'REF-' } },
@@ -283,56 +379,51 @@ async function processReturnsForTenant(
     if (existingVouchers.length > 0) {
       const voucherIds = existingVouchers.map((v) => v.id);
       const voucherCodes = existingVouchers.map((v) => v.code);
-      console.log(`  Found ${voucherIds.length} existing Return Vouchers to clean up.`);
 
+      // Reset returnNumber on sales orders if linked
       await prisma.salesOrder.updateMany({
         where: {
-          OR: [
-            { returnNumber: { in: voucherCodes } },
-            { returnNumber: { startsWith: 'EXC-' } },
-            { returnNumber: { startsWith: 'CLM-' } },
-            { returnNumber: { startsWith: 'REF-' } },
-          ],
+          returnNumber: { in: voucherCodes },
         },
         data: {
-          status: 'completed',
           returnNumber: null,
+          status: 'completed',
         },
       });
 
       await prisma.voucher.deleteMany({
         where: { id: { in: voucherIds } },
       });
-
-      console.log(`  ✅ Successfully wiped ${voucherIds.length} old Return Vouchers and reset linked Sales Orders.`);
+      console.log(`  ✅ Successfully wiped ${voucherIds.length} old FY27 Return Vouchers.`);
     }
 
-    const existingReturnOrders = await prisma.salesOrder.findMany({
+    // 6. Delete previous fallback RET- SalesOrders in FY27
+    const existingRetOrders = await prisma.salesOrder.findMany({
       where: {
         orderNumber: { startsWith: 'RET-' },
+        createdAt: { gte: currentFyStart },
       },
       select: { id: true },
     });
-    if (existingReturnOrders.length > 0) {
-      const returnOrderIds = existingReturnOrders.map((o) => o.id);
+    if (existingRetOrders.length > 0) {
+      const retOrderIds = existingRetOrders.map((o) => o.id);
       await prisma.salesOrderItem.deleteMany({
-        where: { salesOrderId: { in: returnOrderIds } },
+        where: { salesOrderId: { in: retOrderIds } },
       });
       await prisma.salesOrder.deleteMany({
-        where: { id: { in: returnOrderIds } },
+        where: { id: { in: retOrderIds } },
       });
-      console.log(`  ✅ Successfully wiped ${existingReturnOrders.length} previous return SalesOrders.`);
+      console.log(`  ✅ Successfully wiped ${existingRetOrders.length} previous fallback RET- SalesOrders.`);
     }
   }
 
+  // Pre-load default Warehouse
   let defaultWarehouse: any = null;
   if (!isDryRun) {
     defaultWarehouse = await prisma.warehouse.findFirst({
       where: { isDeleted: false },
     });
-
     if (!defaultWarehouse) {
-      console.log(`🏭 Creating default Warehouse (C40001)...`);
       defaultWarehouse = await prisma.warehouse.create({
         data: {
           code: 'C40001',
@@ -346,21 +437,38 @@ async function processReturnsForTenant(
     defaultWarehouse = { id: 'dry-run-wh-id', code: 'C40001', name: 'LOGISTIC AREA CENTRAL WAREHOUSE' };
   }
 
+  // Pre-cache all Locations in memory
   const locationCache = new Map<string, any>();
-  const itemCache = new Map<string, any>();
+  const dbLocations = await prisma.location.findMany({
+    where: { isDeleted: false },
+    select: { id: true, code: true, shortCode: true, name: true, warehouseId: true },
+  });
+
+  for (const loc of dbLocations) {
+    if (loc.code) locationCache.set(loc.code.toUpperCase(), loc);
+    if (loc.shortCode) locationCache.set(loc.shortCode.toUpperCase(), loc);
+    if (loc.name) locationCache.set(loc.name.toUpperCase(), loc);
+  }
 
   async function resolveLocation(code: string, name: string): Promise<any> {
-    if (locationCache.has(code)) {
-      return locationCache.get(code)!;
+    const cleanCode = (code || '').trim().toUpperCase();
+    const cleanName = (name || '').trim().toUpperCase();
+
+    if (cleanCode && locationCache.has(cleanCode)) return locationCache.get(cleanCode);
+    if (cleanName && locationCache.has(cleanName)) return locationCache.get(cleanName);
+
+    for (const [key, loc] of locationCache.entries()) {
+      if (cleanCode && key.includes(cleanCode)) return loc;
+      if (cleanName && key.includes(cleanName)) return loc;
     }
 
     if (!isDryRun) {
       let loc = await prisma.location.findFirst({
         where: {
           OR: [
-            { code: code },
-            { shortCode: code },
-            { name: name },
+            { code: { equals: code, mode: 'insensitive' } },
+            { shortCode: { equals: code, mode: 'insensitive' } },
+            { name: { equals: name, mode: 'insensitive' } },
           ],
           isDeleted: false,
         },
@@ -368,11 +476,10 @@ async function processReturnsForTenant(
       });
 
       if (!loc) {
-        console.log(`📍 Creating Location [${code}]: ${name}`);
         loc = await prisma.location.create({
           data: {
-            code: code,
-            shortCode: code,
+            code: code || `LOC-${cleanName.substring(0, 8)}`,
+            shortCode: code || cleanName.substring(0, 8),
             name: name || `Location ${code}`,
             warehouseId: defaultWarehouse.id,
             status: 'active',
@@ -380,25 +487,298 @@ async function processReturnsForTenant(
           select: { id: true, code: true, shortCode: true, name: true, warehouseId: true },
         });
       }
-      locationCache.set(code, loc);
+      if (cleanCode) locationCache.set(cleanCode, loc);
+      if (cleanName) locationCache.set(cleanName, loc);
       return loc;
     } else {
-      const loc = { id: `loc-${code}`, code, shortCode: code, name: name || 'Location' };
-      locationCache.set(code, loc);
+      const loc = { id: `loc-${cleanCode || cleanName}`, code: cleanCode, shortCode: cleanCode, name: name || 'Location', warehouseId: defaultWarehouse.id };
+      if (cleanCode) locationCache.set(cleanCode, loc);
       return loc;
     }
   }
 
-  console.log(`⚙️ Pre-caching Locations and Item Barcodes...`);
+  // Pre-cache Items in memory
+  console.log(`⚙️ Pre-caching Locations, Items, and Sales Orders in memory...`);
+  const itemCache = new Map<string, any>();
+  if (!isDryRun) {
+    const allDbItems = await prisma.item.findMany({
+      select: { id: true, barCode: true, sku: true, unitPrice: true, unitCost: true },
+    });
+    for (const it of allDbItems) {
+      if (it.barCode) itemCache.set(it.barCode.trim(), it);
+      if (it.sku) itemCache.set(it.sku.trim(), it);
+    }
+    console.log(`✔ Cached ${itemCache.size.toLocaleString()} items from database.`);
+  }
 
+  // Pre-cache all Sales Orders in memory for lightning-fast matching
+  // Key format: `${locationId}::${docNo}` and `${orderNumber}`
+  const salesOrderByLocAndDoc = new Map<string, any>();
+  const salesOrderByOrderNum = new Map<string, any>();
+
+  console.log(`📥 Loading existing Sales Orders into memory for instant original sale matching...`);
+  const dbSalesOrders = await prisma.salesOrder.findMany({
+    select: {
+      id: true,
+      orderNumber: true,
+      locationId: true,
+      notes: true,
+      status: true,
+      items: {
+        select: {
+          id: true,
+          itemId: true,
+          quantity: true,
+          unitPrice: true,
+          discountAmount: true,
+          taxAmount: true,
+          lineTotal: true,
+        },
+      },
+    },
+  });
+
+  for (const order of dbSalesOrders) {
+    salesOrderByOrderNum.set(order.orderNumber.toUpperCase(), order);
+
+    // Extract Original DocNo from notes: "Original DocNo: 523 |"
+    if (order.notes) {
+      const match = order.notes.match(/Original DocNo:\s*(\d+)/i);
+      if (match && match[1]) {
+        const docKey = `${order.locationId}::${match[1]}`;
+        salesOrderByLocAndDoc.set(docKey, order);
+      }
+    }
+  }
+  console.log(`✔ Indexed ${dbSalesOrders.length.toLocaleString()} sales orders in memory.`);
+
+  // Group return rows by Location + DocumentNumber + Date + SubType
+  const returnGroups = new Map<string, ParsedReturnRow[]>();
   for (const row of rows) {
-    await resolveLocation(row.locationCode, row.costCentre);
+    const groupKey = `${row.locationCode || row.costCentre}_${row.docNo}_${row.docDateStr}_${row.subType}`;
+    if (!returnGroups.has(groupKey)) {
+      returnGroups.set(groupKey, []);
+    }
+    returnGroups.get(groupKey)!.push(row);
+  }
 
-    if (!itemCache.has(row.barCode)) {
+  console.log(`📋 Grouped ${rows.length.toLocaleString()} total return rows into ${returnGroups.size.toLocaleString()} Return Documents.`);
+
+  // Batches for high-speed database creation
+  const voucherBatch: any[] = [];
+  const posReturnBatch: any[] = [];
+  const posReturnItemBatch: any[] = [];
+  const voucherRedemptionBatch: any[] = [];
+  const stockLedgerBatch: any[] = [];
+  const stockMovementBatch: any[] = [];
+  const inventoryRestorations = new Map<string, { warehouseId: string; locationId: string; itemId: string; qty: number }>();
+  const salesOrdersToUpdateStatus = new Map<string, { id: string; voucherCode: string }>();
+
+  // Audit Accumulators
+  let totalReturnLines = 0;
+  let totalReturnQty = 0;
+  let totalWostSum = 0;
+  let totalDiscountSum = 0;
+  let totalValueExTaxSum = 0;
+  let totalTaxSum = 0;
+  let totalValueInclTaxSum = 0;
+
+  const subTypeStats = {
+    exchange: { count: 0, amount: 0 },
+    claim: { count: 0, amount: 0 },
+    refund: { count: 0, amount: 0 },
+  };
+
+  let matchedSalesOrderCount = 0;
+  let fallbackSalesOrderCount = 0;
+  let redeemedCount = 0;
+  let redeemedAmount = 0;
+  let openCount = 0;
+  let openAmount = 0;
+
+  const usedVoucherCodes = new Set<string>();
+
+  for (const [groupKey, groupRows] of returnGroups.entries()) {
+    const sample = groupRows[0];
+    const location = await resolveLocation(sample.locationCode, sample.costCentre);
+
+    const rawCode = location.shortCode?.trim() || location.code?.trim() || sample.locationCode || 'LOC';
+    const cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const fySuffix = getFySuffix(sample.docDate);
+    const padDocNo = String(sample.docNo).padStart(5, '0');
+
+    const subTypeUpper = sample.subType.toUpperCase();
+    const subTypePrefix = subTypeUpper === 'CLAIM' ? 'CLM' : subTypeUpper === 'REFUND' ? 'REF' : 'EXC';
+
+    // Format Voucher Code: EXC-ADIJI27-00001 (FY27 scoped to prevent FY26 collision, deduplicated)
+    const baseVoucherCode = `${subTypePrefix}-${cleanCode}${fySuffix}-${padDocNo}`;
+    let voucherCode = baseVoucherCode;
+    let dupSuffix = 1;
+    while (usedVoucherCodes.has(voucherCode)) {
+      dupSuffix++;
+      voucherCode = `${baseVoucherCode}-${dupSuffix}`;
+    }
+    usedVoucherCodes.add(voucherCode);
+
+    const voucherId = isDryRun ? `dry-vouch-${voucherCode}` : crypto.randomUUID();
+    const posReturnId = isDryRun ? `dry-ret-${voucherCode}` : crypto.randomUUID();
+
+    const returnMemoQty = groupRows.reduce((acc, r) => acc + Math.abs(r.quantity), 0);
+    const returnSubtotalWost = groupRows.reduce((acc, r) => acc + Math.abs(r.totalPriceWOT || r.priceWOT), 0);
+    const returnDiscountAmount = groupRows.reduce((acc, r) => acc + Math.abs(r.discountAmount), 0);
+    const returnValueExTax = groupRows.reduce((acc, r) => acc + Math.abs(r.valueExSalesTax), 0);
+    const returnTaxAmount = groupRows.reduce((acc, r) => acc + Math.abs(r.totalSalesTax || r.salesTax), 0);
+    const returnTotalValue = groupRows.reduce((acc, r) => acc + Math.abs(r.valueInclSalesTax), 0);
+
+    totalReturnLines += groupRows.length;
+    totalReturnQty += returnMemoQty;
+    totalWostSum += returnSubtotalWost;
+    totalDiscountSum += returnDiscountAmount;
+    totalValueExTaxSum += returnValueExTax;
+    totalTaxSum += returnTaxAmount;
+    totalValueInclTaxSum += returnTotalValue;
+
+    if (subTypeUpper === 'CLAIM') {
+      subTypeStats.claim.count++;
+      subTypeStats.claim.amount += returnTotalValue;
+    } else if (subTypeUpper === 'REFUND') {
+      subTypeStats.refund.count++;
+      subTypeStats.refund.amount += returnTotalValue;
+    } else {
+      subTypeStats.exchange.count++;
+      subTypeStats.exchange.amount += returnTotalValue;
+    }
+
+    const isRedeemed = Boolean(sample.fkRedeemDoc && sample.fkRedeemDoc.trim() !== '' && sample.fkRedeemDoc !== '0');
+    if (isRedeemed) {
+      redeemedCount++;
+      redeemedAmount += returnTotalValue;
+    } else {
+      openCount++;
+      openAmount += returnTotalValue;
+    }
+
+    const voucherType = subTypeUpper === 'CLAIM' ? 'CLAIM' : subTypeUpper === 'REFUND' ? 'REFUND' : 'EXCHANGE';
+    const voucherDesc = `${voucherType} Voucher for Return Doc #${sample.docNo} (Sale #${sample.fkSaleDoc || 'N/A'}) [Ref: 26-27-${sample.docNo}]`;
+
+    // 1. Locate Original Sales Order in memory
+    let originalSalesOrder: any = null;
+    if (sample.fkSaleDoc && sample.fkSaleDoc.trim() !== '' && sample.fkSaleDoc !== '0') {
+      const saleDoc = sample.fkSaleDoc.trim();
+      const locDocKey = `${location.id}::${saleDoc}`;
+      originalSalesOrder = salesOrderByLocAndDoc.get(locDocKey);
+
+      if (!originalSalesOrder) {
+        const paddedDoc = saleDoc.padStart(5, '0');
+        const candidate1 = `SI-${cleanCode}26-${paddedDoc}`;
+        const candidate2 = `SI-${cleanCode}27-${paddedDoc}`;
+        const candidate3 = `SI-${cleanCode}-${paddedDoc}`;
+        originalSalesOrder =
+          salesOrderByOrderNum.get(candidate1) ||
+          salesOrderByOrderNum.get(candidate2) ||
+          salesOrderByOrderNum.get(candidate3);
+      }
+    }
+
+    let targetOrderId: string;
+
+    if (originalSalesOrder) {
+      targetOrderId = originalSalesOrder.id;
+      matchedSalesOrderCount++;
+      salesOrdersToUpdateStatus.set(originalSalesOrder.id, {
+        id: originalSalesOrder.id,
+        voucherCode,
+      });
+    } else {
+      // Fallback SalesOrder if original sale invoice was not in current/previous dataset
+      fallbackSalesOrderCount++;
+      const fallbackOrderNumber = `RET-${cleanCode}${fySuffix}-${padDocNo}`;
+      targetOrderId = isDryRun ? `dry-order-${fallbackOrderNumber}` : crypto.randomUUID();
+
       if (!isDryRun) {
-        let item = await prisma.item.findFirst({
-          where: { barCode: row.barCode },
+        // Fallback order will be created if needed
+        const existingRetOrder = await prisma.salesOrder.findUnique({
+          where: { orderNumber: fallbackOrderNumber },
+          select: { id: true },
         });
+        if (existingRetOrder) {
+          targetOrderId = existingRetOrder.id;
+        } else {
+          const retSalesOrder = await prisma.salesOrder.create({
+            data: {
+              id: targetOrderId,
+              orderNumber: fallbackOrderNumber,
+              returnNumber: voucherCode,
+              posId: sample.posId || null,
+              locationId: location.id,
+              subtotal: Math.round(returnSubtotalWost * 100) / 100,
+              discountAmount: Math.round(returnDiscountAmount * 100) / 100,
+              taxAmount: Math.round(returnTaxAmount * 100) / 100,
+              grandTotal: Math.round(returnTotalValue * 100) / 100,
+              paymentMethod: 'VOUCHER',
+              paymentStatus: 'paid',
+              status: 'returned',
+              notes: sample.remarks || `Imported Return Doc #${sample.docNo} (Sale #${sample.fkSaleDoc || 'N/A'})`,
+              fbrInvoiceNumber: sample.fbrInvoiceNumber || null,
+              createdAt: sample.docDate,
+            },
+          });
+          targetOrderId = retSalesOrder.id;
+        }
+      }
+    }
+
+    if (isDryRun) {
+      if (returnGroups.size <= 10 || Array.from(returnGroups.keys()).indexOf(groupKey) < 5) {
+        console.log(
+          `🔍 [DRY-RUN #${voucherCode}] Date:${sample.docDate.toISOString().slice(0, 10)} | Store:${location.name} | Type:${voucherType} | Value: PKR ${returnTotalValue.toLocaleString()} | SaleDoc:${sample.fkSaleDoc || 'N/A'} (Matched:${Boolean(originalSalesOrder)}) | Redeemed:${isRedeemed ? 'YES (Doc #' + sample.fkRedeemDoc + ')' : 'NO'}`,
+        );
+      }
+      continue;
+    }
+
+    // 2. Prepare Voucher Record
+    voucherBatch.push({
+      id: voucherId,
+      code: voucherCode,
+      voucherType,
+      faceValue: Math.round(returnTotalValue * 100) / 100,
+      description: voucherDesc,
+      issuedByLocationId: location.id,
+      sourceOrderId: targetOrderId,
+      isActive: true,
+      isRedeemed,
+      createdAt: sample.docDate,
+      updatedAt: sample.docDate,
+    });
+
+    // 3. Prepare PosReturn Record
+    posReturnBatch.push({
+      id: posReturnId,
+      returnNumber: voucherCode,
+      salesOrderId: targetOrderId,
+      voucherId: voucherId,
+      locationId: location.id,
+      posId: sample.posId || null,
+      terminalId: sample.posId || null,
+      returnType: subTypeUpper === 'REFUND' ? 'REFUND' : 'RETURN',
+      refundMode: subTypeUpper === 'REFUND' ? 'CASH' : 'VOUCHER',
+      subtotalWost: Math.round(returnSubtotalWost * 100) / 100,
+      discountWost: Math.round(returnDiscountAmount * 100) / 100,
+      taxAmount: Math.round(returnTaxAmount * 100) / 100,
+      totalRefundAmount: Math.round(returnTotalValue * 100) / 100,
+      reason: sample.remarks || `Return Doc #${sample.docNo} (Sale #${sample.fkSaleDoc || 'N/A'})`,
+      createdAt: sample.docDate,
+      updatedAt: sample.docDate,
+    });
+
+    // 4. Prepare PosReturnItems & Stock Logs
+    let itemIdx = 0;
+    for (const row of groupRows) {
+      itemIdx++;
+      let item = itemCache.get(row.barCode);
+      if (!item) {
+        item = await prisma.item.findFirst({ where: { barCode: row.barCode } });
         if (!item) {
           item = await prisma.item.create({
             data: {
@@ -407,271 +787,285 @@ async function processReturnsForTenant(
               barCode: row.barCode,
               description: `POS Return Item (${row.barCode})`,
               unitPrice: row.unitPrice,
-              unitCost: 0,
+              unitCost: Math.round(row.unitPrice * 0.7 * 100) / 100,
               status: 'active',
               isActive: true,
             },
           });
         }
         itemCache.set(row.barCode, item);
-      } else {
-        itemCache.set(row.barCode, { id: `item-${row.barCode}`, barCode: row.barCode, unitPrice: row.unitPrice });
-      }
-    }
-  }
-
-  // Group return rows by DocumentNumber + Date + Location + SubType
-  const returnGroups = new Map<string, ParsedReturnRow[]>();
-  for (const row of rows) {
-    const groupKey = `${row.docNo}_${row.docDateStr}_${row.locationCode}_${row.subType}`;
-    if (!returnGroups.has(groupKey)) {
-      returnGroups.set(groupKey, []);
-    }
-    returnGroups.get(groupKey)!.push(row);
-  }
-
-  console.log(`📋 Grouped ${rows.length} total return rows into ${returnGroups.size} Return Documents.`);
-
-  let processedLines = 0;
-  let totalVoucherValue = 0;
-  let linkedSalesOrders = 0;
-
-  for (const [groupKey, groupRows] of returnGroups.entries()) {
-    const sample = groupRows[0];
-    const location = locationCache.get(sample.locationCode)!;
-
-    const rawCode = location.shortCode?.trim() || location.code?.trim() || sample.locationCode;
-    const cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-
-    // Format Voucher Code: EXC-ADIMS-0000(docNo) e.g. EXC-ADIMS-00001
-    const subTypePrefix = sample.subType.toUpperCase() === 'CLAIM' ? 'CLM' :
-                          sample.subType.toUpperCase() === 'REFUND' ? 'REF' : 'EXC';
-
-    const padDocNo = String(sample.docNo).padStart(5, '0');
-    const voucherCode = `${subTypePrefix}-${cleanCode}-${padDocNo}`;
-
-    // Total return value (Absolute value including tax)
-    const returnTotalValue = groupRows.reduce((acc, r) => acc + Math.abs(r.valueInclSalesTax), 0);
-    totalVoucherValue += returnTotalValue;
-
-    const isRedeemed = Boolean(sample.fkInvoiceNumberSettle && sample.fkInvoiceNumberSettle.trim() !== '');
-
-    const voucherType = sample.subType.toUpperCase() === 'CLAIM' ? 'CLAIM' :
-                        sample.subType.toUpperCase() === 'REFUND' ? 'REFUND' : 'EXCHANGE';
-
-    const voucherDesc = `Exchange Voucher for Return Doc #${sample.docNo} (Sale #${sample.fkInvoiceNumberSale || 'N/A'})`;
-
-    if (isDryRun) {
-      console.log(`🔍 [DRY-RUN #${voucherCode}] Date:${sample.docDateStr} | Store:${location.name} | Type:${voucherType} | Value: PKR ${returnTotalValue.toLocaleString()} | Redeemed:${isRedeemed ? 'YES (Doc #' + sample.fkInvoiceNumberSettle + ')' : 'NO'}`);
-      processedLines += groupRows.length;
-      continue;
-    }
-
-    // 1. Locate original SalesOrder by sale doc number or order number if present
-    let originalSalesOrder: any = null;
-    if (sample.fkInvoiceNumberSale && sample.fkInvoiceNumberSale.trim() !== '') {
-      const saleDoc = sample.fkInvoiceNumberSale.trim();
-      const paddedSaleDoc = saleDoc.padStart(5, '0');
-      originalSalesOrder = await prisma.salesOrder.findFirst({
-        where: {
-          OR: [
-            { orderNumber: { endsWith: `-${paddedSaleDoc}` } },
-            { orderNumber: { endsWith: `-${saleDoc}` } },
-            { orderNumber: { contains: `-${paddedSaleDoc}` } },
-            { orderNumber: { contains: `-${saleDoc}` } },
-            { notes: { startsWith: `Original DocNo: ${saleDoc} |` } },
-            { notes: { contains: `Original DocNo: ${saleDoc} |` } },
-            { notes: { contains: `DocNo: ${saleDoc}` } },
-          ],
-        },
-        select: { id: true, orderNumber: true, status: true, notes: true, returnNumber: true },
-      });
-    }
-
-    let targetOrderId: string;
-
-    if (originalSalesOrder) {
-      // 2a. Original SalesOrder exists -> Mark as returned & set returnNumber = voucherCode
-      targetOrderId = originalSalesOrder.id;
-
-      await prisma.salesOrder.update({
-        where: { id: originalSalesOrder.id },
-        data: {
-          status: 'returned',
-          returnNumber: voucherCode,
-        },
-      });
-    } else {
-      // 2b. Fallback: Create Return SalesOrder if original sale invoice was not imported
-      const returnOrderNumber = `RET-${cleanCode}-${padDocNo}`;
-      const retSubtotal = groupRows.reduce((acc, r) => acc + Math.abs(r.totalPriceWOT || r.priceWOT), 0);
-      const retDiscountAmount = groupRows.reduce((acc, r) => acc + Math.abs(r.discountAmount), 0);
-      const retTaxAmount = groupRows.reduce((acc, r) => acc + Math.abs(r.totalSalesTax || r.salesTax), 0);
-      const retGrandTotal = groupRows.reduce((acc, r) => acc + Math.abs(r.valueInclSalesTax), 0);
-
-      const existingRetOrder = await prisma.salesOrder.findUnique({
-        where: { orderNumber: returnOrderNumber },
-        select: { id: true },
-      });
-      if (existingRetOrder) {
-        await prisma.salesOrderItem.deleteMany({ where: { salesOrderId: existingRetOrder.id } });
-        await prisma.salesOrder.delete({ where: { id: existingRetOrder.id } });
       }
 
-      const returnSalesOrder = await prisma.salesOrder.create({
-        data: {
-          orderNumber: returnOrderNumber,
-          returnNumber: voucherCode,
-          posId: sample.posId || null,
-          locationId: location.id,
-          subtotal: retSubtotal,
-          discountAmount: retDiscountAmount,
-          taxAmount: retTaxAmount,
-          grandTotal: retGrandTotal,
-          paymentMethod: 'VOUCHER',
-          paymentStatus: 'paid',
-          status: 'returned',
-          notes: sample.remarks || `Imported Return Doc #${sample.docNo}`,
-          fbrInvoiceNumber: sample.fbrInvoiceNumber || null,
-          createdAt: sample.docDate,
-        },
-      });
+      // Match SalesOrderItem if original order has it
+      let matchedOrderItemId: string | null = null;
+      if (originalSalesOrder && originalSalesOrder.items) {
+        const found = originalSalesOrder.items.find((it: any) => it.itemId === item.id);
+        if (found) {
+          matchedOrderItemId = found.id;
+        } else if (originalSalesOrder.items.length > 0) {
+          matchedOrderItemId = originalSalesOrder.items[0].id;
+        }
+      }
 
-      for (const row of groupRows) {
-        const item = itemCache.get(row.barCode);
-        const absQty = Math.abs(row.quantity);
-        const unitPrice = Math.abs(row.unitPrice);
-        const lineDiscountAmount = Math.abs(row.discountAmount);
-        const lineTaxAmount = Math.abs(row.totalSalesTax || row.salesTax);
-        const lineValueExSalesTax = Math.abs(row.valueExSalesTax);
-        const calculatedTaxPct = lineValueExSalesTax > 0
-          ? Math.round((lineTaxAmount / lineValueExSalesTax) * 100 * 100) / 100
-          : 18;
-        const lineTotal = Math.abs(row.valueInclSalesTax);
-
-        await prisma.salesOrderItem.create({
+      // If no matching sales order item found, create one on the target order
+      if (!matchedOrderItemId) {
+        const dummyItem = await prisma.salesOrderItem.create({
           data: {
-            salesOrderId: returnSalesOrder.id,
+            salesOrderId: targetOrderId,
             itemId: item.id,
-            quantity: absQty,
-            unitPrice,
-            discountAmount: lineDiscountAmount,
-            taxAmount: lineTaxAmount,
-            taxPercent: calculatedTaxPct,
-            lineTotal,
+            quantity: Math.abs(row.quantity),
+            unitPrice: Math.round(row.unitPrice * 100) / 100,
+            discountAmount: Math.round(Math.abs(row.discountAmount) * 100) / 100,
+            taxAmount: Math.round(Math.abs(row.totalSalesTax) * 100) / 100,
+            lineTotal: Math.round(Math.abs(row.valueInclSalesTax) * 100) / 100,
             createdAt: sample.docDate,
           },
+          select: { id: true },
         });
+        matchedOrderItemId = dummyItem.id;
       }
 
-      targetOrderId = returnSalesOrder.id;
-    }
-
-    // 3. Create/Update Voucher in database linked to targetOrderId
-    const voucher = await prisma.voucher.upsert({
-      where: { code: voucherCode },
-      update: {
-        voucherType,
-        faceValue: returnTotalValue,
-        description: voucherDesc,
-        issuedByLocationId: location.id,
-        sourceOrderId: targetOrderId,
-        isActive: true,
-        isRedeemed,
-        createdAt: sample.docDate,
-      },
-      create: {
-        code: voucherCode,
-        voucherType,
-        faceValue: returnTotalValue,
-        description: voucherDesc,
-        issuedByLocationId: location.id,
-        sourceOrderId: targetOrderId,
-        isActive: true,
-        isRedeemed,
-        createdAt: sample.docDate,
-      },
-    });
-
-    if (originalSalesOrder) {
-      linkedSalesOrders++;
-    }
-
-    // 4. Restore Stock (INBOUND Ledger & Movements) for returned items
-    for (const row of groupRows) {
-      const item = itemCache.get(row.barCode);
       const absQty = Math.abs(row.quantity);
+      const lineTaxAmount = Math.abs(row.totalSalesTax || row.salesTax);
+      const lineValueExTax = Math.abs(row.valueExSalesTax);
+      const taxPercent = lineValueExTax > 0 ? Math.round((lineTaxAmount / lineValueExTax) * 100 * 100) / 100 : 18;
 
-      // Restore InventoryItem stock at store location
-      const outletInv = await prisma.inventoryItem.findFirst({
-        where: { locationId: location.id, itemId: item.id },
+      posReturnItemBatch.push({
+        id: crypto.randomUUID(),
+        posReturnId: posReturnId,
+        salesOrderItemId: matchedOrderItemId,
+        itemId: item.id,
+        quantity: Math.round(absQty),
+        originalUnitPrice: Math.round(row.unitPrice * 100) / 100,
+        originalPaidPerUnit: Math.round((Math.abs(row.valueInclSalesTax) / absQty) * 100) / 100,
+        refundPerUnit: Math.round((Math.abs(row.valueInclSalesTax) / absQty) * 100) / 100,
+        priceAdjusted: false,
+        unitPriceWost: Math.round(Math.abs(row.priceWOT) * 100) / 100,
+        lineTotalWost: Math.round(Math.abs(row.totalPriceWOT) * 100) / 100,
+        discountPercent: Math.min(100, Math.max(0, Math.round(Math.abs(row.discountRateGiven) * 100) / 100)),
+        discountWost: Math.round(Math.abs(row.discountAmount) * 100) / 100,
+        taxPercent: Math.min(100, Math.max(0, taxPercent)),
+        taxAmount: Math.round(lineTaxAmount * 100) / 100,
+        couponDeduction: 0,
+        lineTotal: Math.round(Math.abs(row.valueInclSalesTax) * 100) / 100,
+        reason: sample.remarks || null,
+        createdAt: sample.docDate,
+        updatedAt: sample.docDate,
       });
 
-      if (outletInv) {
-        await prisma.inventoryItem.update({
-          where: { id: outletInv.id },
-          data: { quantity: { increment: absQty } },
-        });
+      // StockLedger Inbound entry (Returned stock increases inventory)
+      const whId = location.warehouseId || defaultWarehouse.id;
+      stockLedgerBatch.push({
+        itemId: item.id,
+        warehouseId: whId,
+        locationId: location.id,
+        qty: absQty, // Positive for INBOUND return
+        referenceType: 'POS_RETURN',
+        referenceId: posReturnId,
+        movementType: MovementType.INBOUND,
+        unitCost: Number(item.unitCost) || row.unitPrice,
+        rate: row.priceWOT || row.unitPrice,
+        createdAt: sample.docDate,
+      });
+
+      // StockMovement Inbound log
+      const movNo = `MV-RET-${voucherCode}-${row.barCode}-${itemIdx}`;
+      stockMovementBatch.push({
+        id: crypto.randomUUID(),
+        movementNo: movNo,
+        itemId: item.id,
+        fromLocationId: null,
+        toLocationId: location.id,
+        quantity: absQty,
+        type: 'POS_RETURN',
+        referenceType: 'POS_RETURN',
+        referenceId: posReturnId,
+        movementDate: sample.docDate,
+        createdAt: sample.docDate,
+        updatedAt: sample.docDate,
+        notes: `POS Return: ${voucherCode} (Doc #${row.docNo})`,
+      });
+
+      // Aggregate inventory restoration
+      const invKey = `${location.id}:${item.id}`;
+      const existingRestoration = inventoryRestorations.get(invKey);
+      if (existingRestoration) {
+        existingRestoration.qty += absQty;
       } else {
-        await prisma.inventoryItem.create({
-          data: {
-            warehouseId: defaultWarehouse.id,
-            locationId: location.id,
-            itemId: item.id,
-            quantity: absQty,
-            status: 'AVAILABLE',
-          },
+        inventoryRestorations.set(invKey, {
+          warehouseId: whId,
+          locationId: location.id,
+          itemId: item.id,
+          qty: absQty,
         });
       }
+    }
 
-      // Create StockLedger INBOUND entry for Return Stock Restoration
-      await prisma.stockLedger.create({
-        data: {
-          itemId: item.id,
-          warehouseId: location.warehouseId || defaultWarehouse.id,
-          locationId: location.id,
-          qty: absQty, // Positive for INBOUND return
-          referenceType: 'POS_RETURN',
-          referenceId: voucher.id,
-          movementType: 'INBOUND',
-          createdAt: sample.docDate,
-        },
-      });
-
-      // Create StockMovement entry for audit trail
-      const movNo = `MV-RET-${voucherCode}-${row.barCode}-${row.rowNum}`;
-      await prisma.stockMovement.deleteMany({
-        where: { movementNo: movNo },
-      });
-
-      await prisma.stockMovement.create({
-        data: {
-          movementNo: movNo,
-          itemId: item.id,
-          fromLocationId: null,
-          toLocationId: location.id,
-          quantity: absQty,
-          type: 'POS_RETURN',
-          referenceType: 'POS_RETURN',
-          referenceId: voucher.id,
-          movementDate: sample.docDate,
-          createdAt: sample.docDate,
-          notes: `POS Return: ${voucherCode} (Return Doc #${row.docNo})`,
-        },
-      });
-
-      processedLines++;
+    // 5. Check if redeemed in a sales order
+    if (isRedeemed) {
+      const redeemDoc = sample.fkRedeemDoc.trim();
+      const redeemOrder = salesOrderByLocAndDoc.get(`${location.id}::${redeemDoc}`);
+      if (redeemOrder) {
+        voucherRedemptionBatch.push({
+          id: crypto.randomUUID(),
+          voucherId: voucherId,
+          orderId: redeemOrder.id,
+          amountUsed: Math.round(returnTotalValue * 100) / 100,
+          createdAt: sample.docDateRedeem || sample.docDate,
+        });
+      }
     }
   }
 
-  console.log(`\n==================================================`);
-  console.log(`✨ ${isDryRun ? '[DRY RUN SUMMARY]' : '[IMPORT SUMMARY]'}`);
-  console.log(`   - Total Return Documents: ${returnGroups.size}`);
-  console.log(`   - Linked Sales Orders   : ${linkedSalesOrders}`);
-  console.log(`   - Total Item Lines      : ${processedLines}`);
-  console.log(`   - Total Voucher Value   : PKR ${totalVoucherValue.toLocaleString()}`);
-  console.log(`   - Voucher Code Format   : EXC-{cleanCode}-XXXXX (e.g. EXC-ADIMS-00001)`);
-  console.log(`==================================================\n`);
+  // ── High-Speed Chunked Database Ingestion (If live) ──
+  if (!isDryRun) {
+    console.log(`\n🚀 Executing High-Speed Chunked Return DB Commits...`);
+
+    // 1. Insert Vouchers (chunk size 1,000)
+    console.log(`💾 Inserting ${voucherBatch.length.toLocaleString()} Vouchers in chunks of 1,000...`);
+    const VOUCHER_CHUNK = 1000;
+    for (let i = 0; i < voucherBatch.length; i += VOUCHER_CHUNK) {
+      const chunk = voucherBatch.slice(i, i + VOUCHER_CHUNK);
+      await prisma.voucher.createMany({ data: chunk, skipDuplicates: true });
+      const pct = Math.round(((i + chunk.length) / voucherBatch.length) * 100);
+      process.stdout.write(`\r   Vouchers Progress: ${i + chunk.length}/${voucherBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Vouchers inserted successfully.`);
+
+    // 2. Insert PosReturns (chunk size 1,000)
+    console.log(`💾 Inserting ${posReturnBatch.length.toLocaleString()} PosReturn records in chunks of 1,000...`);
+    for (let i = 0; i < posReturnBatch.length; i += VOUCHER_CHUNK) {
+      const chunk = posReturnBatch.slice(i, i + VOUCHER_CHUNK);
+      await prisma.posReturn.createMany({ data: chunk, skipDuplicates: true });
+      const pct = Math.round(((i + chunk.length) / posReturnBatch.length) * 100);
+      process.stdout.write(`\r   PosReturns Progress: ${i + chunk.length}/${posReturnBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ PosReturns inserted successfully.`);
+
+    // 3. Insert PosReturnItems (chunk size 2,000)
+    console.log(`💾 Inserting ${posReturnItemBatch.length.toLocaleString()} PosReturn Items in chunks of 2,000...`);
+    const ITEM_CHUNK = 2000;
+    for (let i = 0; i < posReturnItemBatch.length; i += ITEM_CHUNK) {
+      const chunk = posReturnItemBatch.slice(i, i + ITEM_CHUNK);
+      await prisma.posReturnItem.createMany({ data: chunk, skipDuplicates: true });
+      const pct = Math.round(((i + chunk.length) / posReturnItemBatch.length) * 100);
+      process.stdout.write(`\r   Return Items Progress: ${i + chunk.length}/${posReturnItemBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ PosReturn Items inserted successfully.`);
+
+    // 4. Insert Voucher Redemptions
+    if (voucherRedemptionBatch.length > 0) {
+      console.log(`💾 Inserting ${voucherRedemptionBatch.length.toLocaleString()} Voucher Redemptions...`);
+      for (let i = 0; i < voucherRedemptionBatch.length; i += 1000) {
+        const chunk = voucherRedemptionBatch.slice(i, i + 1000);
+        await prisma.voucherRedemption.createMany({ data: chunk, skipDuplicates: true });
+      }
+      console.log(`   ✔ Voucher Redemptions inserted successfully.`);
+    }
+
+    // 5. Update linked SalesOrder status & returnNumber
+    console.log(`🔄 Updating ${salesOrdersToUpdateStatus.size.toLocaleString()} linked Sales Orders...`);
+    const updateEntries = Array.from(salesOrdersToUpdateStatus.values());
+    for (let i = 0; i < updateEntries.length; i += 200) {
+      const chunk = updateEntries.slice(i, i + 200);
+      await Promise.all(
+        chunk.map((entry) =>
+          prisma.salesOrder.update({
+            where: { id: entry.id },
+            data: { returnNumber: entry.voucherCode },
+          }),
+        ),
+      );
+    }
+    console.log(`   ✔ Linked Sales Orders updated.`);
+
+    // 6. Insert StockLedgers (chunk size 2,000)
+    console.log(`💾 Inserting ${stockLedgerBatch.length.toLocaleString()} Inbound Stock Ledgers...`);
+    for (let i = 0; i < stockLedgerBatch.length; i += ITEM_CHUNK) {
+      const chunk = stockLedgerBatch.slice(i, i + ITEM_CHUNK);
+      await prisma.stockLedger.createMany({ data: chunk });
+      const pct = Math.round(((i + chunk.length) / stockLedgerBatch.length) * 100);
+      process.stdout.write(`\r   Stock Ledgers Progress: ${i + chunk.length}/${stockLedgerBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Stock Ledgers inserted successfully.`);
+
+    // 7. Insert StockMovements (chunk size 2,000)
+    console.log(`💾 Inserting ${stockMovementBatch.length.toLocaleString()} Stock Movements...`);
+    for (let i = 0; i < stockMovementBatch.length; i += ITEM_CHUNK) {
+      const chunk = stockMovementBatch.slice(i, i + ITEM_CHUNK);
+      await prisma.stockMovement.createMany({ data: chunk });
+      const pct = Math.round(((i + chunk.length) / stockMovementBatch.length) * 100);
+      process.stdout.write(`\r   Stock Movements Progress: ${i + chunk.length}/${stockMovementBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Stock Movements inserted successfully.`);
+
+    // 8. Restore Inventory Item balances
+    console.log(`🔄 Restoring stock on ${inventoryRestorations.size.toLocaleString()} unique Inventory Items...`);
+    const invEntries = Array.from(inventoryRestorations.values());
+    const INV_CONCURRENCY = 50;
+    let updatedInv = 0;
+
+    for (let i = 0; i < invEntries.length; i += INV_CONCURRENCY) {
+      const chunk = invEntries.slice(i, i + INV_CONCURRENCY);
+      await Promise.all(
+        chunk.map(async (entry) => {
+          const existingInv = await prisma.inventoryItem.findFirst({
+            where: { locationId: entry.locationId, itemId: entry.itemId, status: 'AVAILABLE' },
+            select: { id: true },
+          });
+
+          if (existingInv) {
+            await prisma.inventoryItem.update({
+              where: { id: existingInv.id },
+              data: { quantity: { increment: entry.qty } },
+            });
+          } else {
+            await prisma.inventoryItem.create({
+              data: {
+                warehouseId: entry.warehouseId,
+                locationId: entry.locationId,
+                itemId: entry.itemId,
+                quantity: entry.qty,
+                status: 'AVAILABLE',
+              },
+            });
+          }
+        }),
+      );
+      updatedInv += chunk.length;
+      const pct = Math.round((updatedInv / invEntries.length) * 100);
+      process.stdout.write(`\r   Inventory Progress: ${updatedInv}/${invEntries.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Inventory balances restored successfully.`);
+  }
+
+  // ── FINAL GRAND SUMMARY REPORT ──
+  console.log(`\n========================================================================================`);
+  console.log(`📊 ${isDryRun ? '[DRY RUN TOTALS & AUDIT SUMMARY]' : '[FINAL POST-RETURN RECONCILIATION AUDIT]'}`);
+  console.log(`========================================================================================`);
+  console.log(`1. RETURN DOCUMENT & LINE ITEM TOTALS:`);
+  console.log(`   - Total Return Documents (Memos): ${returnGroups.size.toLocaleString()}`);
+  console.log(`   - Total Return Lines Uploaded   : ${totalReturnLines.toLocaleString()}`);
+  console.log(`   - Total Returned QTY            : ${totalReturnQty.toLocaleString()}`);
+  console.log(`   - Total WOST (Price W/O Tax)    : PKR ${totalWostSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - Total Discount                : PKR ${totalDiscountSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - Value Ex Sales Tax            : PKR ${totalValueExTaxSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - Total Sales Tax               : PKR ${totalTaxSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - Value Including Sales Tax     : PKR ${totalValueInclTaxSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`----------------------------------------------------------------------------------------`);
+  console.log(`2. SUB-TYPE BREAKDOWN:`);
+  console.log(`   - Exchange Returns              : PKR ${subTypeStats.exchange.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).padStart(16)}  (${subTypeStats.exchange.count.toLocaleString()} memos)`);
+  console.log(`   - Claim Returns                 : PKR ${subTypeStats.claim.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).padStart(16)}  (${subTypeStats.claim.count.toLocaleString()} memos)`);
+  console.log(`   - Cash/Direct Refund Returns    : PKR ${subTypeStats.refund.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).padStart(16)}  (${subTypeStats.refund.count.toLocaleString()} memos)`);
+  console.log(`----------------------------------------------------------------------------------------`);
+  console.log(`3. VOUCHER REDEMPTION STATUS:`);
+  console.log(`   - Redeemed Vouchers             : PKR ${redeemedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).padStart(16)}  (${redeemedCount.toLocaleString()} vouchers)`);
+  console.log(`   - Open / Unredeemed Vouchers    : PKR ${openAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).padStart(16)}  (${openCount.toLocaleString()} vouchers)`);
+  console.log(`----------------------------------------------------------------------------------------`);
+  console.log(`4. ORIGINAL SALES ORDER MATCHING:`);
+  console.log(`   - Directly Matched to Sale Order: ${matchedSalesOrderCount.toLocaleString()} memos (${Math.round((matchedSalesOrderCount / returnGroups.size) * 100)}%)`);
+  console.log(`   - Standalone / Fallback Memos   : ${fallbackSalesOrderCount.toLocaleString()} memos (${Math.round((fallbackSalesOrderCount / returnGroups.size) * 100)}%)`);
+  console.log(`========================================================================================\n`);
 }
 
 async function main() {
@@ -683,33 +1077,43 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'A-madison-return.md');
+  const locArg = process.argv.find((arg) => arg.startsWith('--location=') || arg.startsWith('-l='));
+  const locationFilter = locArg ? locArg.split('=')[1] : undefined;
+
+  const defaultReturnsFile = path.join(__dirname, '..', 'data', 'ST_july_aug.md');
+  const fallbackFile = path.join(__dirname, '..', 'data', 'A-madison-return.md');
+
+  let filePath = fs.existsSync(defaultReturnsFile) ? defaultReturnsFile : fallbackFile;
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
     filePath = path.isAbsolute(customPath) ? customPath : path.join(process.cwd(), customPath);
   }
 
-  console.log(`🚀 Starting POS Return Import Script...`);
+  console.log(`\n🚀 Starting POS Returns Import Pipeline...`);
   console.log(`📄 Target Data File: ${filePath}`);
+  if (locationFilter) {
+    console.log(`🏬 Filter Location: ${locationFilter}`);
+  }
   if (isDryRun) {
     console.log(`⚠️ DRY RUN ACTIVATED: No database changes will be committed.`);
   }
 
-  const rows = readAndParseReturnData(filePath, limit);
+  const rows = readAndParseReturnData(filePath, limit, locationFilter);
 
-  console.log(`📄 Successfully parsed and sorted ${rows.length} return rows chronologically.`);
+  console.log(`📄 Successfully parsed and sorted ${rows.length.toLocaleString()} return rows chronologically.`);
   if (rows.length > 0) {
     console.log('\n🔍 First Chronological Return Row (#1):');
-    console.log(`   - Return Doc# : ${rows[0].docNo}`);
-    console.log(`   - Doc Date   : ${rows[0].docDateStr}`);
-    console.log(`   - SubType    : ${rows[0].subType}`);
-    console.log(`   - Location   : ${rows[0].costCentre} (${rows[0].locationCode})`);
-    console.log(`   - Barcode    : ${rows[0].barCode}`);
-    console.log(`   - Qty        : ${rows[0].quantity}`);
-    console.log(`   - Value      : PKR ${Math.abs(rows[0].valueInclSalesTax)}`);
-    console.log(`   - Sale Doc#  : ${rows[0].fkInvoiceNumberSale || 'N/A'}`);
-    console.log(`   - Settle Doc#: ${rows[0].fkInvoiceNumberSettle || 'N/A'}`);
+    console.log(`   - Doc No    : ${rows[0].docNo}`);
+    console.log(`   - Doc Date  : ${rows[0].docDate.toISOString().slice(0, 10)}`);
+    console.log(`   - SubType   : ${rows[0].subType}`);
+    console.log(`   - Location  : ${rows[0].costCentre} (${rows[0].locationCode})`);
+    console.log(`   - Barcode   : ${rows[0].barCode}`);
+    console.log(`   - Qty       : ${rows[0].quantity}`);
+    console.log(`   - Price     : PKR ${rows[0].unitPrice}`);
+    console.log(`   - Total Incl Tax: PKR ${Math.abs(rows[0].valueInclSalesTax)}`);
+    console.log(`   - Sale Doc# : ${rows[0].fkSaleDoc || 'N/A'}`);
+    console.log(`   - Redeem Doc#: ${rows[0].fkRedeemDoc || 'N/A'}`);
   }
 
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
@@ -748,7 +1152,7 @@ async function main() {
 
         if (!connectionString) continue;
 
-        const tenantPool = new Pool({ connectionString });
+        const tenantPool = new Pool({ connectionString, max: 25, idleTimeoutMillis: 30000 });
         const tenantAdapter = new PrismaPg(tenantPool);
         const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
 
@@ -770,7 +1174,7 @@ async function main() {
     console.error('❌ DATABASE_URL environment variable is missing.');
     process.exit(1);
   }
-  const pool = new Pool({ connectionString: dbUrl });
+  const pool = new Pool({ connectionString: dbUrl, max: 25, idleTimeoutMillis: 30000 });
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter: adapter as any });
   try {
@@ -782,7 +1186,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('❌ Error executing script:', err);
-  process.exit(1);
-});
+// Only execute main when run directly from CLI
+if (require.main === module || !process.env.NODE_ENV || process.argv[1]?.includes('import-madison-returns')) {
+  main().catch((err) => {
+    console.error('❌ Error executing script:', err);
+    process.exit(1);
+  });
+}

@@ -21,7 +21,7 @@ export class GrnService {
     private stockLedgerService: StockLedgerService,
     private activityLogs: ActivityLogsService,
     private prismaMaster: PrismaMasterService,
-  ) {}
+  ) { }
 
   /**
    * Generates the next sequential GRN number for the current fiscal year.

@@ -398,13 +398,13 @@ export class GrossSalesExportService {
   }
 
   getPreviewFilePath(jobId: string): string {
-    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
-    if (fs.existsSync(ndjsonPath)) return ndjsonPath;
     const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
     if (fs.existsSync(jsonPath)) return jsonPath;
+    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+    if (fs.existsSync(ndjsonPath)) return ndjsonPath;
     const oldReturnPath = path.join(this.previewStorageDir, `gross-sales-return-preview-${jobId}.json.gz`);
     if (fs.existsSync(oldReturnPath)) return oldReturnPath;
-    return ndjsonPath;
+    return jsonPath;
   }
 
   getPreviewNdjsonFilePath(jobId: string): string {
@@ -412,6 +412,22 @@ export class GrossSalesExportService {
   }
 
   async saveReportPreviewResult(jobId: string, result: any): Promise<void> {
+    // 1. Save compressed preview JSON directly (capped to 5,000 records for instant <5ms frontend preview loading)
+    try {
+      const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+      const previewResult = {
+        ...result,
+        flatItems: (result.flatItems || []).slice(0, 5000),
+        returns: (result.returns || []).slice(0, 5000),
+      };
+      const jsonStr = JSON.stringify(previewResult);
+      const compressedJson = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
+      await fs.promises.writeFile(jsonPath, compressedJson);
+    } catch (err: any) {
+      this.logger.warn(`Failed to save compressed preview JSON for ${jobId}: ${err.message}`);
+    }
+
+    // 2. Also stream complete un-truncated NDJSON to disk for streaming Excel export (stream-preview-excel)
     const filePath = this.getPreviewNdjsonFilePath(jobId);
     const gzip = zlib.createGzip({ level: 6 });
     const writeStream = fs.createWriteStream(filePath);
@@ -510,53 +526,82 @@ export class GrossSalesExportService {
   }
 
   async getReportPreviewResult(jobId: string): Promise<any | null> {
-    const filePath = this.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
+    const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+    if (fs.existsSync(jsonPath)) {
+      const compressed = await fs.promises.readFile(jsonPath);
+      const decompressed = await gunzipAsync(compressed);
+      const parsed = JSON.parse(decompressed.toString('utf8'));
+      return parsed.data || parsed;
+    }
+
+    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+    if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
 
-    // Stream line-by-line to prevent V8 out-of-memory errors on large annual datasets
-    const fileStream = fs.createReadStream(filePath);
-    const gunzip = zlib.createGunzip();
-    const lineReader = readline.createInterface({
-      input: fileStream.pipe(gunzip),
-      crlfDelay: Infinity,
-    });
+    // Fast stream reader for ndjson.gz with preview sampling (up to 5,000 records)
+    return new Promise<any | null>((resolve) => {
+      const gz = fs.createReadStream(ndjsonPath);
+      const gunzip = zlib.createGunzip();
+      const rl = readline.createInterface({ input: gz.pipe(gunzip) });
 
-    let meta: any = {};
-    const categories: any[] = [];
-    const returns: any[] = [];
-    const flatItems: any[] = [];
-    let grandTotals: any = {};
+      let meta: any = {};
+      const categories: any[] = [];
+      const returns: any[] = [];
+      const flatItems: any[] = [];
+      let grandTotals: any = {};
+      const PREVIEW_LIMIT = 5000;
 
-    for await (const line of lineReader) {
-      if (!line || !line.trim()) continue;
-      try {
-        const obj = JSON.parse(line);
-        if (obj.type === 'meta') {
-          meta = obj;
-        } else if (obj.type === 'categories' && Array.isArray(obj.categories)) {
-          categories.push(...obj.categories);
-        } else if (obj.type === 'returns' && Array.isArray(obj.returns)) {
-          returns.push(...obj.returns);
-        } else if (obj.type === 'flatItems' && Array.isArray(obj.flatItems)) {
-          flatItems.push(...obj.flatItems);
-        } else if (obj.type === 'totals') {
-          grandTotals = obj.grandTotals || grandTotals;
+      rl.on('line', (line) => {
+        if (!line.trim()) return;
+        try {
+          if (line.includes('"type":"meta"')) {
+            meta = JSON.parse(line);
+          } else if (line.includes('"type":"totals"')) {
+            grandTotals = JSON.parse(line).grandTotals || {};
+          } else if (line.includes('"type":"categories"')) {
+            const obj = JSON.parse(line);
+            if (Array.isArray(obj.categories)) {
+              categories.push(...obj.categories);
+            }
+          } else if (line.includes('"type":"returns"')) {
+            if (returns.length < PREVIEW_LIMIT) {
+              const obj = JSON.parse(line);
+              if (Array.isArray(obj.returns)) {
+                const remaining = PREVIEW_LIMIT - returns.length;
+                returns.push(...obj.returns.slice(0, remaining));
+              }
+            }
+          } else if (line.includes('"type":"flatItems"')) {
+            if (flatItems.length < PREVIEW_LIMIT) {
+              const obj = JSON.parse(line);
+              if (Array.isArray(obj.flatItems)) {
+                const remaining = PREVIEW_LIMIT - flatItems.length;
+                flatItems.push(...obj.flatItems.slice(0, remaining));
+              }
+            }
+          }
+        } catch {
+          // ignore malformed line
         }
-      } catch (_) {}
-    }
+      });
 
-    return {
-      reportType: meta.reportType || 'merged',
-      dateRange: meta.dateRange || {},
-      locationNames: meta.locationNames || '',
-      locations: meta.locations,
-      categories: categories.length > 0 ? categories : undefined,
-      returns: returns.length > 0 ? returns : undefined,
-      flatItems,
-      grandTotals,
-    };
+      rl.on('close', () => {
+        resolve({
+          reportType: meta.reportType || 'merged',
+          dateRange: meta.dateRange || {},
+          locationNames: meta.locationNames || '',
+          locations: meta.locations,
+          categories: categories.length > 0 ? categories : undefined,
+          returns: returns.length > 0 ? returns : undefined,
+          flatItems,
+          grandTotals,
+        });
+      });
+
+      gz.on('error', () => resolve(null));
+      gunzip.on('error', () => resolve(null));
+    });
   }
 
   async generateGrossSalesReturnReportDataInternal(
@@ -724,7 +769,7 @@ export class GrossSalesExportService {
     const handledSalesOrderIds = new Set<string>(posReturns.map((r: any) => r.salesOrderId).filter(Boolean));
 
     // Find any orphan stock ledger return entries that don't belong to already loaded posReturns
-    const orphanEntries = returnLedgerEntries.filter((e: any) => 
+    const orphanEntries = returnLedgerEntries.filter((e: any) =>
       !handledPosReturnIds.has(e.referenceId) && !handledSalesOrderIds.has(e.referenceId)
     );
 
@@ -795,7 +840,7 @@ export class GrossSalesExportService {
         const matchesRet = retNo.toLowerCase().includes(q);
         const matchesOrd = orderNo.toLowerCase().includes(q);
         const matchesCust = custName.toLowerCase().includes(q) || custPhone.includes(q);
-        const matchesItems = ret.items.some((it: any) => 
+        const matchesItems = ret.items.some((it: any) =>
           (it.item?.sku && it.item.sku.toLowerCase().includes(q)) ||
           (it.item?.barCode && it.item.barCode.toLowerCase().includes(q)) ||
           (it.item?.description && it.item.description.toLowerCase().includes(q))
@@ -808,8 +853,8 @@ export class GrossSalesExportService {
       const lineItems: GrossSalesReturnLineItem[] = ret.items.map((it: any) => {
         const qty = Math.abs(Number(it.quantity || 1));
         const unitPrice = Number(it.originalUnitPrice || it.originalPaidPerUnit || 0);
-        const wostAmount = Number(it.lineTotalWost) !== 0 
-          ? Number(it.lineTotalWost) 
+        const wostAmount = Number(it.lineTotalWost) !== 0
+          ? Number(it.lineTotalWost)
           : Math.round(Number(it.unitPriceWost || 0) * qty * 100) / 100;
         const discountAmount = Number(it.discountWost || 0);
         const taxAmount = Number(it.taxAmount || 0);
@@ -1213,7 +1258,7 @@ export class GrossSalesExportService {
     await (prisma as any).$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS idx_sales_orders_created_at ON sales_orders(created_at);
       CREATE INDEX IF NOT EXISTS idx_sales_orders_loc_created ON sales_orders(location_id, created_at);
-    `).catch(() => {});
+    `).catch(() => { });
 
     await onProgress?.(25, 'Counting matching POS sales orders...');
     const totalOrdersCount = await prisma.salesOrder.count({ where });
@@ -1284,133 +1329,133 @@ export class GrossSalesExportService {
       lastId = chunkOrders[chunkOrders.length - 1].id;
 
       for (const order of chunkOrders) {
-      const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
-      const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+        const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
+        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
 
-      let locNode = locationNodesMap.get(locKey);
-      if (isSeparate && !locNode) {
-        locNode = {
-          locationKey: locKey,
-          locationId: order.locationId || undefined,
-          locationName: locName,
-          categories: [],
-          totals: createEmptyTotals(),
-        };
-        locationNodesMap.set(locKey, locNode);
-      }
-
-      for (const item of order.items) {
-        const qty = Number(item.quantity || 0);
-        if (qty <= 0) continue;
-
-        const catName = item.item?.category?.name || 'Unassigned Category';
-        const brandName = item.item?.brand?.name || 'Default Brand';
-        const divisionName = item.item?.division?.name || 'Default Division';
-        const genderName = item.item?.gender?.name || 'Default Gender';
-        const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
-        const unitPrice = Number(item.unitPrice || 0);
-        const disc = Number(item.discountAmount || 0);
-        const tax = Number(item.taxAmount || 0);
-        const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
-
-        const calculatedTaxPct = taxPercent > 0
-          ? taxPercent
-          : (tax > 0 && (Number(item.lineTotal || 0) - tax) > 0
-              ? Math.round((tax / (Number(item.lineTotal || 0) - tax)) * 100 * 100) / 100
-              : (tax > 0 ? 18 : 0));
-        const taxDivisor = 1 + calculatedTaxPct / 100;
-
-        const wostPerUnit = unitPrice / taxDivisor;
-        const wostAmount = Math.round(wostPerUnit * qty * 100) / 100;
-        const valueExSalesTax = Math.round((wostAmount - disc) * 100) / 100;
-        const taxAmount = tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
-        const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
-
-        const gross = unitPrice * qty;
-        const subTotal = valueInclSalesTax;
-
-        const lineTotals: GrossSalesSummaryTotals = {
-          orderCount: 1,
-          totalItems: qty,
-          grossAmount: gross,
-          wostAmount,
-          discountAmount: disc,
-          netAmount: subTotal,
-          taxAmount: taxAmount,
-        };
-
-        addTotals(grandTotals, lineTotals);
-
-        const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
-        const barCode = item.item?.barCode || item.item?.sku || '-';
-        const description = item.item?.description || item.item?.sku || 'Article';
-        const sizeName = item.item?.size?.name || 'Default';
-        const colorName = item.item?.color?.name || 'Default';
-
-        // Aggregate by location and product variant dimensions
-        const variantKey = `${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
-        let existingRecord = flatItemsMap.get(variantKey);
-        if (!existingRecord) {
-          existingRecord = {
+        let locNode = locationNodesMap.get(locKey);
+        if (isSeparate && !locNode) {
+          locNode = {
+            locationKey: locKey,
             locationId: order.locationId || undefined,
             locationName: locName,
-            categoryName: catName,
-            brandName,
-            divisionName,
-            genderName,
-            silhouetteName,
-            sku,
-            barCode,
-            description,
-            sizeName,
-            colorName,
-            quantity: 0,
-            unitPrice,
-            wostAmount: 0,
-            discountAmount: 0,
-            taxAmount: 0,
-            subTotal: 0,
-          };
-          flatItemsMap.set(variantKey, existingRecord);
-        }
-
-        existingRecord.quantity += qty;
-        existingRecord.wostAmount = Math.round((existingRecord.wostAmount + wostAmount) * 100) / 100;
-        existingRecord.discountAmount = Math.round((existingRecord.discountAmount + disc) * 100) / 100;
-        existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
-        existingRecord.subTotal = Math.round((existingRecord.subTotal + subTotal) * 100) / 100;
-        if (existingRecord.quantity > 0) {
-          existingRecord.unitPrice = Math.round(((existingRecord.subTotal + existingRecord.discountAmount) / existingRecord.quantity) * 100) / 100;
-        }
-
-        // Add to global merged map (accumulate category totals only; line items live exclusively in flatItems)
-        let globalCat = globalCategoryNodesMap.get(catName);
-        if (!globalCat) {
-          globalCat = {
-            categoryName: catName,
-            brandName,
+            categories: [],
             totals: createEmptyTotals(),
-            items: [],
           };
-          globalCategoryNodesMap.set(catName, globalCat);
+          locationNodesMap.set(locKey, locNode);
         }
-        addTotals(globalCat.totals, lineTotals);
 
-        // Add to location map if separate
-        if (isSeparate && locNode) {
-          let locCat = locNode.categories.find((c) => c.categoryName === catName);
-          if (!locCat) {
-            locCat = {
+        for (const item of order.items) {
+          const qty = Number(item.quantity || 0);
+          if (qty <= 0) continue;
+
+          const catName = item.item?.category?.name || 'Unassigned Category';
+          const brandName = item.item?.brand?.name || 'Default Brand';
+          const divisionName = item.item?.division?.name || 'Default Division';
+          const genderName = item.item?.gender?.name || 'Default Gender';
+          const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
+          const unitPrice = Number(item.unitPrice || 0);
+          const disc = Number(item.discountAmount || 0);
+          const tax = Number(item.taxAmount || 0);
+          const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
+
+          const calculatedTaxPct = taxPercent > 0
+            ? taxPercent
+            : (tax > 0 && (Number(item.lineTotal || 0) - tax) > 0
+              ? Math.round((tax / (Number(item.lineTotal || 0) - tax)) * 100 * 100) / 100
+              : (tax > 0 ? 18 : 0));
+          const taxDivisor = 1 + calculatedTaxPct / 100;
+
+          const wostPerUnit = unitPrice / taxDivisor;
+          const wostAmount = Math.round(wostPerUnit * qty * 100) / 100;
+          const valueExSalesTax = Math.round((wostAmount - disc) * 100) / 100;
+          const taxAmount = tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
+          const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
+
+          const gross = unitPrice * qty;
+          const subTotal = valueInclSalesTax;
+
+          const lineTotals: GrossSalesSummaryTotals = {
+            orderCount: 1,
+            totalItems: qty,
+            grossAmount: gross,
+            wostAmount,
+            discountAmount: disc,
+            netAmount: subTotal,
+            taxAmount: taxAmount,
+          };
+
+          addTotals(grandTotals, lineTotals);
+
+          const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
+          const barCode = item.item?.barCode || item.item?.sku || '-';
+          const description = item.item?.description || item.item?.sku || 'Article';
+          const sizeName = item.item?.size?.name || 'Default';
+          const colorName = item.item?.color?.name || 'Default';
+
+          // Aggregate by location and product variant dimensions
+          const variantKey = `${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
+          let existingRecord = flatItemsMap.get(variantKey);
+          if (!existingRecord) {
+            existingRecord = {
+              locationId: order.locationId || undefined,
+              locationName: locName,
+              categoryName: catName,
+              brandName,
+              divisionName,
+              genderName,
+              silhouetteName,
+              sku,
+              barCode,
+              description,
+              sizeName,
+              colorName,
+              quantity: 0,
+              unitPrice,
+              wostAmount: 0,
+              discountAmount: 0,
+              taxAmount: 0,
+              subTotal: 0,
+            };
+            flatItemsMap.set(variantKey, existingRecord);
+          }
+
+          existingRecord.quantity += qty;
+          existingRecord.wostAmount = Math.round((existingRecord.wostAmount + wostAmount) * 100) / 100;
+          existingRecord.discountAmount = Math.round((existingRecord.discountAmount + disc) * 100) / 100;
+          existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
+          existingRecord.subTotal = Math.round((existingRecord.subTotal + subTotal) * 100) / 100;
+          if (existingRecord.quantity > 0) {
+            existingRecord.unitPrice = Math.round(((existingRecord.subTotal + existingRecord.discountAmount) / existingRecord.quantity) * 100) / 100;
+          }
+
+          // Add to global merged map (accumulate category totals only; line items live exclusively in flatItems)
+          let globalCat = globalCategoryNodesMap.get(catName);
+          if (!globalCat) {
+            globalCat = {
               categoryName: catName,
               brandName,
               totals: createEmptyTotals(),
               items: [],
             };
-            locNode.categories.push(locCat);
+            globalCategoryNodesMap.set(catName, globalCat);
           }
-          addTotals(locCat.totals, lineTotals);
-          addTotals(locNode.totals, lineTotals);
-        }
+          addTotals(globalCat.totals, lineTotals);
+
+          // Add to location map if separate
+          if (isSeparate && locNode) {
+            let locCat = locNode.categories.find((c) => c.categoryName === catName);
+            if (!locCat) {
+              locCat = {
+                categoryName: catName,
+                brandName,
+                totals: createEmptyTotals(),
+                items: [],
+              };
+              locNode.categories.push(locCat);
+            }
+            addTotals(locCat.totals, lineTotals);
+            addTotals(locNode.totals, lineTotals);
+          }
         }
       }
 
@@ -1977,19 +2022,19 @@ export class GrossSalesExportService {
     const summaryRow = sheet.addRow(
       exportType === 'flat'
         ? {
-            locationName: 'FILTERED TOTALS',
-            quantity: totalQty,
-            discountAmount: totalDiscount,
-            returnGrossAmount: totalGross,
-            returnNetAmount: totalNet,
-          }
+          locationName: 'FILTERED TOTALS',
+          quantity: totalQty,
+          discountAmount: totalDiscount,
+          returnGrossAmount: totalGross,
+          returnNetAmount: totalNet,
+        }
         : {
-            returnNumber: 'FILTERED TOTALS',
-            totalItems: totalQty,
-            grossAmount: totalGross,
-            discountAmount: totalDiscount,
-            netAmount: totalNet,
-          }
+          returnNumber: 'FILTERED TOTALS',
+          totalItems: totalQty,
+          grossAmount: totalGross,
+          discountAmount: totalDiscount,
+          netAmount: totalNet,
+        }
     );
     summaryRow.font = { bold: true };
     summaryRow.commit();
