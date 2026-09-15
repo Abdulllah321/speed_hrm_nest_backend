@@ -32,6 +32,12 @@ export class WarehouseController {
     return this.warehouseService.findAllWarehouses();
   }
 
+  @Get('logistic/default')
+  @ApiOperation({ summary: 'Get default logistic area warehouse' })
+  findLogistic() {
+    return this.warehouseService.findLogisticWarehouse();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get warehouse details' })
   findOne(@Param('id') id: string) {

@@ -63,6 +63,24 @@ export class WarehouseService {
     });
   }
 
+  async findLogisticWarehouse(): Promise<Warehouse | null> {
+    return this.prisma.warehouse.findFirst({
+      where: {
+        isDeleted: false,
+        OR: [
+          { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
+          { code: 'C40001' },
+          { code: { contains: 'LOGISTIC', mode: 'insensitive' } },
+        ],
+      },
+      include: {
+        _count: {
+          select: { inventoryItems: true },
+        },
+      },
+    });
+  }
+
   async findOneWarehouse(id: string): Promise<Warehouse> {
     const warehouse = await this.prisma.warehouse.findFirst({
       where: { id, isDeleted: false },

@@ -86,6 +86,24 @@ export class StockRequisitionService {
     const status = data.status || 'PENDING';
     const isDraft = status === 'DRAFT';
 
+    // Resolve fromWarehouseId (fixed to Logistic Area if not provided)
+    let fromWarehouseId = data.fromWarehouseId;
+    if (!fromWarehouseId) {
+      const logisticWh = await this.prisma.warehouse.findFirst({
+        where: {
+          isDeleted: false,
+          OR: [
+            { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
+            { code: 'C40001' },
+            { code: { contains: 'LOGISTIC', mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (logisticWh) {
+        fromWarehouseId = logisticWh.id;
+      }
+    }
+
     // Perform check and block in a transaction to prevent race conditions
     return this.prisma.$transaction(async (tx) => {
       // 1. Verify stock and block/reserve
@@ -94,7 +112,7 @@ export class StockRequisitionService {
           throw new BadRequestException(`Quantity for item ${reqItem.itemId} must be greater than zero`);
         }
 
-        const netAvailable = await this.getNetAvailableStock(tx, reqItem.itemId, data.fromWarehouseId);
+        const netAvailable = await this.getNetAvailableStock(tx, reqItem.itemId, fromWarehouseId);
         if (netAvailable < reqItem.quantity) {
           const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { sku: true, description: true } });
           throw new BadRequestException(
@@ -108,7 +126,7 @@ export class StockRequisitionService {
       const requisition = await tx.stockRequisition.create({
         data: {
           requisitionNo,
-          fromWarehouseId: data.fromWarehouseId,
+          fromWarehouseId,
           toLocationId: data.toLocationId,
           brandId: data.brandId || null,
           documentType: data.documentType || 'New Arrival',

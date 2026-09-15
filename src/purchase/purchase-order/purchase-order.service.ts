@@ -15,12 +15,15 @@ import { Decimal } from '@prisma/client/runtime/client';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
+import { NotificationsService } from '../../notifications/notifications.service';
+
 @Injectable()
 export class PurchaseOrderService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
     private prismaMaster: PrismaMasterService,
+    private notifications: NotificationsService,
   ) {}
 
   /**
@@ -542,7 +545,28 @@ export class PurchaseOrderService {
       const updated = await this.prisma.purchaseOrder.update({
         where: { id },
         data: updateData,
+        include: {
+          vendor: true,
+        },
       });
+
+      // When PO is Authorized & Released (transitioned to OPEN), notify warehouse role users that PO is ready for GRN
+      if (status === 'OPEN' && po.status !== 'OPEN') {
+        runInBackground(
+          'Send Warehouse Notification on PO Release',
+          this.notifications.sendWarehouseRoleNotification({
+            title: `PO Ready for GRN: ${updated.poNumber}`,
+            message: `Purchase Order ${updated.poNumber}${updated.vendor?.name ? ` (${updated.vendor.name})` : ''} has been authorized & released. It is now ready for receiving GRN.`,
+            category: 'warehouse',
+            priority: 'high',
+            actionType: 'NAVIGATE',
+            actionPayload: { url: `/erp/procurement/grn/create/${updated.id}` },
+            entityType: 'PurchaseOrder',
+            entityId: updated.id,
+            warehouseRoleOnly: true,
+          }),
+        );
+      }
 
       runInBackground(
         'Update Purchase Order Status',

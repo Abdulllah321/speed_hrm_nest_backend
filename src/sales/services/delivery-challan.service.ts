@@ -85,12 +85,32 @@ export class DeliveryChallanService {
         const totalAmount = itemRecords.reduce((sum: number, it: any) => sum + it.total, 0);
         const totalQty = items.reduce((sum: number, item: any) => sum + item.deliveredQty, 0);
 
+        // Resolve warehouse (fallback to Logistic Area if not assigned on sales order)
+        let warehouseId = salesOrder.warehouseId;
+        if (!warehouseId) {
+          const logisticWh = await tx.warehouse.findFirst({
+            where: {
+              isDeleted: false,
+              OR: [
+                { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
+                { code: 'C40001' },
+                { code: { contains: 'LOGISTIC', mode: 'insensitive' } },
+              ],
+            },
+          });
+          warehouseId = logisticWh?.id || null;
+        }
+
+        if (!warehouseId) {
+          throw new BadRequestException('Warehouse not found. Please ensure a Logistic Area warehouse exists.');
+        }
+
         const challan = await tx.deliveryChallan.create({
           data: {
             challanNo,
             salesOrderId,
             customerId: salesOrder.customerId,
-            warehouseId: salesOrder.warehouseId,
+            warehouseId,
             challanDate: new Date(),
             driverName,
             vehicleNo,
@@ -122,14 +142,10 @@ export class DeliveryChallanService {
 
         // Create stock ledger entries for inventory outbound (Physical delivery)
         for (const item of items) {
-          if (!salesOrder.warehouseId) {
-            throw new BadRequestException('Sales order must have a warehouse assigned');
-          }
-
           // Create stock ledger entry
           await this.stockLedgerService.createEntry({
             itemId: item.itemId,
-            warehouseId: salesOrder.warehouseId as string,
+            warehouseId: warehouseId as string,
             qty: -Number(item.deliveredQty),
             movementType: MovementType.OUTBOUND,
             referenceType: 'DELIVERY_CHALLAN',
