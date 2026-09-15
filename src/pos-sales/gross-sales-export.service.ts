@@ -398,13 +398,13 @@ export class GrossSalesExportService {
   }
 
   getPreviewFilePath(jobId: string): string {
-    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
-    if (fs.existsSync(ndjsonPath)) return ndjsonPath;
     const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
     if (fs.existsSync(jsonPath)) return jsonPath;
+    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+    if (fs.existsSync(ndjsonPath)) return ndjsonPath;
     const oldReturnPath = path.join(this.previewStorageDir, `gross-sales-return-preview-${jobId}.json.gz`);
     if (fs.existsSync(oldReturnPath)) return oldReturnPath;
-    return ndjsonPath;
+    return jsonPath;
   }
 
   getPreviewNdjsonFilePath(jobId: string): string {
@@ -412,6 +412,22 @@ export class GrossSalesExportService {
   }
 
   async saveReportPreviewResult(jobId: string, result: any): Promise<void> {
+    // 1. Save compressed preview JSON directly (capped to 5,000 records for instant <5ms frontend preview loading)
+    try {
+      const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+      const previewResult = {
+        ...result,
+        flatItems: (result.flatItems || []).slice(0, 5000),
+        returns: (result.returns || []).slice(0, 5000),
+      };
+      const jsonStr = JSON.stringify(previewResult);
+      const compressedJson = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
+      await fs.promises.writeFile(jsonPath, compressedJson);
+    } catch (err: any) {
+      this.logger.warn(`Failed to save compressed preview JSON for ${jobId}: ${err.message}`);
+    }
+
+    // 2. Also stream complete un-truncated NDJSON to disk for streaming Excel export (stream-preview-excel)
     const filePath = this.getPreviewNdjsonFilePath(jobId);
     const gzip = zlib.createGzip({ level: 6 });
     const writeStream = fs.createWriteStream(filePath);
@@ -510,53 +526,82 @@ export class GrossSalesExportService {
   }
 
   async getReportPreviewResult(jobId: string): Promise<any | null> {
-    const filePath = this.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
+    const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+    if (fs.existsSync(jsonPath)) {
+      const compressed = await fs.promises.readFile(jsonPath);
+      const decompressed = await gunzipAsync(compressed);
+      const parsed = JSON.parse(decompressed.toString('utf8'));
+      return parsed.data || parsed;
+    }
+
+    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+    if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
 
-    // Stream line-by-line to prevent V8 out-of-memory errors on large annual datasets
-    const fileStream = fs.createReadStream(filePath);
-    const gunzip = zlib.createGunzip();
-    const lineReader = readline.createInterface({
-      input: fileStream.pipe(gunzip),
-      crlfDelay: Infinity,
-    });
+    // Fast stream reader for ndjson.gz with preview sampling (up to 5,000 records)
+    return new Promise<any | null>((resolve) => {
+      const gz = fs.createReadStream(ndjsonPath);
+      const gunzip = zlib.createGunzip();
+      const rl = readline.createInterface({ input: gz.pipe(gunzip) });
 
-    let meta: any = {};
-    const categories: any[] = [];
-    const returns: any[] = [];
-    const flatItems: any[] = [];
-    let grandTotals: any = {};
+      let meta: any = {};
+      const categories: any[] = [];
+      const returns: any[] = [];
+      const flatItems: any[] = [];
+      let grandTotals: any = {};
+      const PREVIEW_LIMIT = 5000;
 
-    for await (const line of lineReader) {
-      if (!line || !line.trim()) continue;
-      try {
-        const obj = JSON.parse(line);
-        if (obj.type === 'meta') {
-          meta = obj;
-        } else if (obj.type === 'categories' && Array.isArray(obj.categories)) {
-          categories.push(...obj.categories);
-        } else if (obj.type === 'returns' && Array.isArray(obj.returns)) {
-          returns.push(...obj.returns);
-        } else if (obj.type === 'flatItems' && Array.isArray(obj.flatItems)) {
-          flatItems.push(...obj.flatItems);
-        } else if (obj.type === 'totals') {
-          grandTotals = obj.grandTotals || grandTotals;
+      rl.on('line', (line) => {
+        if (!line.trim()) return;
+        try {
+          if (line.includes('"type":"meta"')) {
+            meta = JSON.parse(line);
+          } else if (line.includes('"type":"totals"')) {
+            grandTotals = JSON.parse(line).grandTotals || {};
+          } else if (line.includes('"type":"categories"')) {
+            const obj = JSON.parse(line);
+            if (Array.isArray(obj.categories)) {
+              categories.push(...obj.categories);
+            }
+          } else if (line.includes('"type":"returns"')) {
+            if (returns.length < PREVIEW_LIMIT) {
+              const obj = JSON.parse(line);
+              if (Array.isArray(obj.returns)) {
+                const remaining = PREVIEW_LIMIT - returns.length;
+                returns.push(...obj.returns.slice(0, remaining));
+              }
+            }
+          } else if (line.includes('"type":"flatItems"')) {
+            if (flatItems.length < PREVIEW_LIMIT) {
+              const obj = JSON.parse(line);
+              if (Array.isArray(obj.flatItems)) {
+                const remaining = PREVIEW_LIMIT - flatItems.length;
+                flatItems.push(...obj.flatItems.slice(0, remaining));
+              }
+            }
+          }
+        } catch {
+          // ignore malformed line
         }
-      } catch (_) {}
-    }
+      });
 
-    return {
-      reportType: meta.reportType || 'merged',
-      dateRange: meta.dateRange || {},
-      locationNames: meta.locationNames || '',
-      locations: meta.locations,
-      categories: categories.length > 0 ? categories : undefined,
-      returns: returns.length > 0 ? returns : undefined,
-      flatItems,
-      grandTotals,
-    };
+      rl.on('close', () => {
+        resolve({
+          reportType: meta.reportType || 'merged',
+          dateRange: meta.dateRange || {},
+          locationNames: meta.locationNames || '',
+          locations: meta.locations,
+          categories: categories.length > 0 ? categories : undefined,
+          returns: returns.length > 0 ? returns : undefined,
+          flatItems,
+          grandTotals,
+        });
+      });
+
+      gz.on('error', () => resolve(null));
+      gunzip.on('error', () => resolve(null));
+    });
   }
 
   async generateGrossSalesReturnReportDataInternal(

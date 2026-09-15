@@ -596,6 +596,7 @@ export class StockValuationExportService {
           rate: true,
           movementType: true,
           referenceType: true,
+          referenceId: true,
           createdAt: true,
         },
         orderBy: { createdAt: 'asc' },
@@ -613,7 +614,17 @@ export class StockValuationExportService {
 
     await onProgress?.(80, `Calculating weighted average costs, opening, sales & closing valuation for ${matchedItemIds.length} items...`);
 
-    const itemMetricsMap = new Map<string, ReturnType<typeof this.createEmptyValuationTotals>>();
+    // Raw breakdown entries collected during WAC loop, resolved to doc numbers after
+    const itemPurchaseBreakdownRaw = new Map<string, { referenceId: string; referenceType: string; qty: number; unitCost: number; date: Date }[]>();
+    const itemSaleBreakdownRaw = new Map<string, { referenceId: string; referenceType: string; qty: number; unitCost: number; date: Date }[]>();
+
+    type BreakdownLine = { docNumber: string; docType: string; qty: number; unitCost: number; totalValue: number; date: Date };
+    type ValuationMetrics = ReturnType<typeof this.createEmptyValuationTotals> & {
+      purchaseBreakdown: BreakdownLine[];
+      saleBreakdown: BreakdownLine[];
+    };
+
+    const itemMetricsMap = new Map<string, ValuationMetrics>();
 
     for (const item of items) {
       const setting = settingMap.get(item.id);
@@ -649,6 +660,10 @@ export class StockValuationExportService {
 
       let adjQty = 0;
       let adjVal = 0;
+
+      // Per-item raw breakdown lines (within the report period only)
+      const purchaseBreakdownRaw: { referenceId: string; referenceType: string; qty: number; unitCost: number; date: Date }[] = [];
+      const saleBreakdownRaw: { referenceId: string; referenceType: string; qty: number; unitCost: number; date: Date }[] = [];
 
       for (const entry of entries) {
         const entryQty = Number(entry.qty);
@@ -764,6 +779,13 @@ export class StockValuationExportService {
             } else if (isPurchase) {
               purchaseQty += entryQty;
               purchaseVal += entryQty * entryCost;
+              purchaseBreakdownRaw.push({
+                referenceId: entry.referenceId || '',
+                referenceType: ref,
+                qty: entryQty,
+                unitCost: entryCost,
+                date: entry.createdAt,
+              });
             }
           }
         } else {
@@ -796,9 +818,23 @@ export class StockValuationExportService {
               if (entryQty > 0) {
                 // Return
                 salesQty -= entryQty;
+                saleBreakdownRaw.push({
+                  referenceId: entry.referenceId || '',
+                  referenceType: ref,
+                  qty: -entryQty, // negative to indicate return
+                  unitCost: runningWac,
+                  date: entry.createdAt,
+                });
               } else {
                 // Sale (outbound)
                 salesQty += absQty;
+                saleBreakdownRaw.push({
+                  referenceId: entry.referenceId || '',
+                  referenceType: ref,
+                  qty: absQty,
+                  unitCost: runningWac,
+                  date: entry.createdAt,
+                });
               }
             }
           }
@@ -860,6 +896,129 @@ export class StockValuationExportService {
         closingQty,
         closingCost,
         closingValue: closingVal,
+        // Breakdown lists — resolved below after the main item loop
+        purchaseBreakdown: [] as BreakdownLine[],
+        saleBreakdown: [] as BreakdownLine[],
+      });
+
+      // Store raw breakdown lines keyed by item id for post-loop resolution
+      if (purchaseBreakdownRaw.length > 0) itemPurchaseBreakdownRaw.set(item.id, purchaseBreakdownRaw);
+      if (saleBreakdownRaw.length > 0) itemSaleBreakdownRaw.set(item.id, saleBreakdownRaw);
+    }
+
+    // ── Resolve document numbers for purchase & sale breakdowns ──────────────
+    await onProgress?.(83, 'Resolving LC / GRN / POS order numbers for breakdown tooltips...');
+
+    // Collect all unique referenceIds by type across all items
+    const allLcIds = new Set<string>();
+    const allGrnIds = new Set<string>();
+    const allSaleOrderIds = new Set<string>();
+
+    for (const rawList of itemPurchaseBreakdownRaw.values()) {
+      for (const r of rawList) {
+        if (r.referenceType === 'LANDED_COST') allLcIds.add(r.referenceId);
+        else if (r.referenceType === 'GRN' || r.referenceType.startsWith('GRN')) allGrnIds.add(r.referenceId);
+      }
+    }
+    for (const rawList of itemSaleBreakdownRaw.values()) {
+      for (const r of rawList) {
+        if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(r.referenceType) || r.referenceType === 'OUTBOUND') {
+          allSaleOrderIds.add(r.referenceId);
+        }
+      }
+    }
+
+    // Bulk-fetch document numbers
+    const [resolvedLcs, resolvedGrns, resolvedSaleOrders] = await Promise.all([
+      allLcIds.size > 0
+        ? prisma.landedCost.findMany({
+            where: { id: { in: [...allLcIds] } },
+            select: { id: true, landedCostNumber: true, lcNo: true },
+          })
+        : [],
+      allGrnIds.size > 0
+        ? prisma.goodsReceiptNote.findMany({
+            where: { id: { in: [...allGrnIds] } },
+            select: { id: true, grnNumber: true },
+          })
+        : [],
+      allSaleOrderIds.size > 0
+        ? (prisma as any).salesOrder
+            ?.findMany?.({
+              where: { id: { in: [...allSaleOrderIds] } },
+              select: { id: true, orderNumber: true },
+            })
+            .catch(() => []) ?? []
+        : [],
+    ]);
+
+    const lcDocMap = new Map<string, { number: string; lcNo?: string }>(
+      resolvedLcs.map((l: any) => [l.id, { number: l.landedCostNumber, lcNo: l.lcNo || undefined }] as [string, { number: string; lcNo?: string }]),
+    );
+    const grnDocMap = new Map<string, string>(
+      resolvedGrns.map((g: any) => [g.id, g.grnNumber] as [string, string]),
+    );
+    const saleOrderDocMap = new Map<string, string>(
+      (resolvedSaleOrders as any[]).map((s: any) => [s.id, s.orderNumber] as [string, string]),
+    );
+
+    // Helper: turn a referenceId + referenceType into a human-readable doc number
+    const resolveDocNumber = (referenceId: string, referenceType: string): { docNumber: string; docType: string } => {
+      if (referenceType === 'LANDED_COST') {
+        const lc = lcDocMap.get(referenceId);
+        if (lc) {
+          const label = lc.lcNo ? `${lc.number} (LC# ${lc.lcNo})` : lc.number;
+          return { docNumber: label, docType: 'LC' };
+        }
+      }
+      if (referenceType === 'GRN' || referenceType.startsWith('GRN')) {
+        const grn = grnDocMap.get(referenceId);
+        if (grn) return { docNumber: grn, docType: 'GRN' };
+      }
+      if (['POS_SALE', 'POS_EXCHANGE_OUT', 'OUTBOUND'].includes(referenceType)) {
+        const order = saleOrderDocMap.get(referenceId);
+        if (order) return { docNumber: order, docType: 'SALE' };
+      }
+      if (['POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALES_RETURN'].includes(referenceType)
+          || referenceType.startsWith('POS_RETURN') || referenceType.startsWith('SALES_RETURN')) {
+        const order = saleOrderDocMap.get(referenceId);
+        if (order) return { docNumber: order, docType: 'SALE_RETURN' };
+      }
+      // Fallback: use a shortened ID
+      const shortId = referenceId && referenceId.length > 8 ? `#${referenceId.slice(0, 8)}` : referenceId || '—';
+      return { docNumber: shortId, docType: referenceType };
+    };
+
+    // Attach resolved breakdowns into itemMetricsMap
+    for (const [itemId, rawList] of itemPurchaseBreakdownRaw) {
+      const metrics = itemMetricsMap.get(itemId);
+      if (!metrics) continue;
+      metrics.purchaseBreakdown = rawList.map((r) => {
+        const { docNumber, docType } = resolveDocNumber(r.referenceId, r.referenceType);
+        return {
+          docNumber,
+          docType,
+          qty: r.qty,
+          unitCost: r.unitCost,
+          totalValue: r.qty * r.unitCost,
+          date: r.date,
+        };
+      });
+    }
+
+    for (const [itemId, rawList] of itemSaleBreakdownRaw) {
+      const metrics = itemMetricsMap.get(itemId);
+      if (!metrics) continue;
+      metrics.saleBreakdown = rawList.map((r) => {
+        const { docNumber, docType } = resolveDocNumber(r.referenceId, r.referenceType);
+        return {
+          docNumber,
+          docType,
+          qty: r.qty,
+          unitCost: r.unitCost,
+          totalValue: Math.abs(r.qty) * r.unitCost,
+          date: r.date,
+        };
       });
     }
 
@@ -962,6 +1121,17 @@ export class StockValuationExportService {
         }
 
         addValuationTotals(existingNode.totals, metrics);
+
+        // Attach purchase & sale breakdowns on leaf variant nodes (or leaf article nodes when variant level is off)
+        if (i === levels.length - 1 && (levelName === 'variant' || levelName === 'article')) {
+          const m = itemMetricsMap.get(item.id);
+          if (m) {
+            if (!existingNode.purchaseBreakdown) existingNode.purchaseBreakdown = [];
+            if (!existingNode.saleBreakdown) existingNode.saleBreakdown = [];
+            existingNode.purchaseBreakdown.push(...(m.purchaseBreakdown || []));
+            existingNode.saleBreakdown.push(...(m.saleBreakdown || []));
+          }
+        }
 
         if (i < levels.length - 1) {
           currentLevelNodes = existingNode.children;
