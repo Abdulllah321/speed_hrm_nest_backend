@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { PrismaClient as ManagementClient } from '@prisma/management-client';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, MovementType } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as crypto from 'crypto';
@@ -59,6 +59,14 @@ export interface ParsedSalesRow {
   creditVoucherIssuedAmount: number;
   rewardVoucherAmount: number;
   onCreditAmount: number;
+  hblSale: number;
+  alliedBankSale: number;
+  meezanBankSale: number;
+  alfalahAmexSale: number;
+  keenuSale: number;
+  ublSale: number;
+  mcbSale: number;
+  alfalahSale: number;
   costCentre: string;
   locationCode: string;
   posId: string;
@@ -81,35 +89,79 @@ export function getFySuffix(date: Date): string {
   return String(fyEndYear).slice(-2);
 }
 
-export function parseCustomDate(dateStr: string): Date | null {
-  if (!dateStr || !dateStr.trim()) return null;
+/**
+ * Robust date parser supporting:
+ * - Excel date serial numbers (e.g. 46204 -> 2026-07-01)
+ * - M/D/YYYY or D/M/YYYY or YYYY-MM-DD
+ * - ISO date strings
+ */
+export function parseCustomDate(dateVal: any): Date | null {
+  if (!dateVal) return null;
 
-  const trimmed = dateStr.trim();
-  const spaceParts = trimmed.split(/\s+/);
-  const datePart = spaceParts[0];
-  const timePart = spaceParts[1] || '0:0';
-
-  const dParts = datePart.split('/');
-  if (dParts.length !== 3) return null;
-
-  const month = parseInt(dParts[0], 10);
-  const day = parseInt(dParts[1], 10);
-  let year = parseInt(dParts[2], 10);
-
-  if (year < 100) {
-    year += 2000;
+  // Handle Excel date serial numbers like 46204 (7/1/2026)
+  if (typeof dateVal === 'number' || (!isNaN(Number(dateVal)) && !String(dateVal).includes('/') && !String(dateVal).includes('-'))) {
+    const num = Number(dateVal);
+    if (num > 30000 && num < 70000) {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      return new Date(excelEpoch.getTime() + num * 86400000);
+    }
   }
 
-  const tParts = timePart.split(':');
-  const hours = parseInt(tParts[0] || '0', 10);
-  const minutes = parseInt(tParts[1] || '0', 10);
-  const seconds = parseInt(tParts[2] || '0', 10);
+  const trimmed = String(dateVal).trim();
+  if (!trimmed) return null;
 
-  
-  return new Date(year, month - 1, day, hours, minutes, seconds);
+  // Handle strings with spaces e.g. "7/1/2026 14:30:00"
+  const spaceParts = trimmed.split(/\s+/);
+  const datePart = spaceParts[0];
+  const timePart = spaceParts[1] || '0:0:0';
+
+  const dParts = datePart.split(/[/.\-]/);
+  if (dParts.length === 3) {
+    let p1 = parseInt(dParts[0], 10);
+    let p2 = parseInt(dParts[1], 10);
+    let p3 = parseInt(dParts[2], 10);
+
+    const tParts = timePart.split(':');
+    const hours = parseInt(tParts[0] || '0', 10);
+    const minutes = parseInt(tParts[1] || '0', 10);
+    const seconds = parseInt(tParts[2] || '0', 10);
+
+    if (p3 < 100) p3 += 2000;
+
+    // YYYY-MM-DD
+    if (p1 > 1900 && p1 < 2100) {
+      return new Date(p1, p2 - 1, p3, hours, minutes, seconds);
+    }
+
+    // M/D/YYYY (standard US / Excel POS export format)
+    if (p3 > 1900 && p3 < 2100) {
+      return new Date(p3, p1 - 1, p2, hours, minutes, seconds);
+    }
+  }
+
+  const fallback = new Date(trimmed);
+  return isNaN(fallback.getTime()) ? null : fallback;
 }
 
-export function readAndParseSalesData(filePath: string, maxRows?: number): ParsedSalesRow[] {
+function parseMarkdownLine(line: string, isTabSep: boolean, isPipeSep: boolean): string[] {
+  if (isTabSep) {
+    return line.split('\t').map((p) => p.trim());
+  }
+  if (isPipeSep) {
+    const protectedLine = line.replace(/\\\|/g, '__ESCAPED_PIPE__');
+    let parts = protectedLine.split('|').map((p) => p.replace(/__ESCAPED_PIPE__/g, '|').trim());
+    if (parts[0] === '') parts.shift();
+    if (parts[parts.length - 1] === '') parts.pop();
+    return parts;
+  }
+  return line.split(',').map((p) => p.trim());
+}
+
+export function readAndParseSalesData(
+  filePath: string,
+  maxRows?: number,
+  locationFilter?: string,
+): ParsedSalesRow[] {
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found at path: ${filePath}`);
   }
@@ -122,15 +174,15 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     return [];
   }
 
-  const headerLine = lines[0];
+  // Find the header line
+  let headerIndex = lines.findIndex((l) => l.includes('|') && (l.toLowerCase().includes('documentnumber') || l.toLowerCase().includes('costcentre') || l.toLowerCase().includes('barcode')));
+  if (headerIndex === -1) headerIndex = 0;
+
+  const headerLine = lines[headerIndex];
   const isTabSep = headerLine.includes('\t');
   const isPipeSep = headerLine.includes('|');
 
-  const headers = isTabSep
-    ? headerLine.split('\t').map((h) => h.trim().toLowerCase())
-    : isPipeSep
-    ? headerLine.split('|').map((h) => h.trim().toLowerCase()).filter(Boolean)
-    : headerLine.split(',').map((h) => h.trim().toLowerCase());
+  const headers = parseMarkdownLine(headerLine, isTabSep, isPipeSep).map((h) => h.toLowerCase());
 
   const findColIndex = (keywords: string[], defaultIdx: number): number => {
     const exactIdx = headers.findIndex((h) => keywords.some((k) => h === k));
@@ -139,53 +191,60 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     return partialIdx !== -1 ? partialIdx : defaultIdx;
   };
 
-  const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 0);
-  const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 1);
-  const colBarcode = findColIndex(['barcode', 'sku', 'item'], 2);
-  const colQty = findColIndex(['quantity', 'qty'], 3);
-  const colUnitPrice = findColIndex(['unitprice', 'price'], 4);
-  const colPriceWOT = findColIndex(['price_w_o_t', 'pricewot'], 5);
-  const colTotalPriceWOT = findColIndex(['total_price_w_o_t', 'totalpricewot'], 6);
-  const colDiscountAmount = findColIndex(['discountamount', 'discount_amount'], 7);
-  const colValueExSalesTax = findColIndex(['value ex sales tax', 'valueexsalestax'], 8);
-  const colSalesTax = findColIndex(['sales tax', 'salestax'], 9);
-  const colTotalSalesTax = findColIndex(['total sales tax', 'totalsalestax'], 11);
-  const colValueInclSalesTax = findColIndex(['value incl sales tax', 'valueinclsalestax', 'grandtotal'], 12);
-  const colCashSale = findColIndex(['cashsale', 'cash'], 13);
-  const colCashReturn = findColIndex(['cashretrun', 'cashreturn'], 14);
-  const colCardSale = findColIndex(['cardsale', 'card'], 15);
-  const colCreditSale = findColIndex(['creditsale'], 16);
-  const colGiftVoucher = findColIndex(['giftvoucheramount'], 17);
-  const colCreditVoucher = findColIndex(['creditvoucheramount'], 18);
-  const colExchangeVoucher = findColIndex(['exchangevoucheramount'], 19);
-  const colClaimVoucher = findColIndex(['claimvoucheramount'], 20);
-  const colGiftVoucherCorp = findColIndex(['giftvoucheramount_corporate'], 21);
-  const colCreditVoucherIssued = findColIndex(['creditvoucherissuedamount'], 22);
-  const colRewardVoucher = findColIndex(['rewardvoucheramount'], 23);
-  const colOnCredit = findColIndex(['oncreditamount'], 24);
-  const colCostCentre = findColIndex(['costcentre', 'store', 'location name'], 25);
-  const colLocCode = findColIndex(['location code', 'locationcode', 'loc code'], 26);
-  const colPosId = findColIndex(['pos id', 'posid'], 27);
-  const colFbrInvoice = findColIndex(['fbr invoice#', 'fbrinvoice', 'fbr'], 28);
-  const colExchangeVoucherNo = findColIndex(['fkexchangevouchernumber'], 29);
-  const colDiscRateGiven = findColIndex(['discountrate_given'], 30);
-  const colDiscRateDefault = findColIndex(['discountrate_default_current'], 31);
-  const colRemarks = findColIndex(['remarks'], 32);
-  const colIsAlliance = findColIndex(['is alliance discount'], 33);
-  const colSalesPerson = findColIndex(['salesperson', 'cashier'], 34);
+  const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no', 'document number'], 2);
+  const colDocDate = findColIndex(['documentdate', 'docdate', 'date', 'document date'], 3);
+  const colBarcode = findColIndex(['barcode', 'sku', 'item'], 4);
+  const colQty = findColIndex(['quantity', 'qty'], 5);
+  const colUnitPrice = findColIndex(['unitprice', 'price', 'unit price'], 6);
+  const colPriceWOT = findColIndex(['price_w_o_t', 'pricewot', 'price w/o tax', 'price w o t'], 7);
+  const colTotalPriceWOT = findColIndex(['total_price_w_o_t', 'totalpricewot'], 8);
+  const colDiscountAmount = findColIndex(['discountamount', 'discount_amount', 'discount amount'], 9);
+  const colValueExSalesTax = findColIndex(['value ex sales tax', 'valueexsalestax', 'value ex tax'], 10);
+  const colSalesTax = findColIndex(['sales tax', 'salestax'], 11);
+  const colTotalSalesTax = findColIndex(['total sales tax', 'totalsalestax'], 13);
+  const colValueInclSalesTax = findColIndex(['value incl sales tax', 'valueinclsalestax', 'grandtotal'], 14);
+  const colCashSale = findColIndex(['cashsale', 'cash'], 22);
+  const colCashReturn = findColIndex(['cashretrun', 'cashreturn'], 23);
+  const colCardSale = findColIndex(['cardsale', 'card'], 33);
+  const colCreditSale = findColIndex(['creditsale'], 24);
+  const colGiftVoucher = findColIndex(['giftvoucheramount'], 25);
+  const colCreditVoucher = findColIndex(['creditvoucheramount'], 26);
+  const colExchangeVoucher = findColIndex(['exchangevoucheramount'], 27);
+  const colClaimVoucher = findColIndex(['claimvoucheramount'], 28);
+  const colGiftVoucherCorp = findColIndex(['giftvoucheramount_corporate'], 29);
+  const colCreditVoucherIssued = findColIndex(['creditvoucherissuedamount'], 30);
+  const colRewardVoucher = findColIndex(['rewardvoucheramount'], 31);
+  const colOnCredit = findColIndex(['oncreditamount'], 32);
+
+  // Bank columns
+  const colHbl = findColIndex(['hbl'], 34);
+  const colAllied = findColIndex(['allied bank', 'allied'], 35);
+  const colMeezan = findColIndex(['meezan bank', 'meezan'], 36);
+  const colAmex = findColIndex(['al-falah | amex', 'amex'], 37);
+  const colKeenu = findColIndex(['keenu'], 38);
+  const colUbl = findColIndex(['ubl'], 39);
+  const colMcb = findColIndex(['mcb'], 40);
+  const colAlfalah = findColIndex(['al-falah', 'alfalah'], 41);
+
+  const colCostCentre = findColIndex(['costcentre', 'store', 'location name', 'cost centre'], 0);
+  const colLocCode = findColIndex(['location id', 'location code', 'locationcode', 'loc code', 'locationid'], 1);
+  const colPosId = findColIndex(['pos id', 'posid'], 15);
+  const colFbrInvoice = findColIndex(['fbr invoice#', 'fbrinvoice', 'fbr'], 16);
+  const colExchangeVoucherNo = findColIndex(['fkexchangevouchernumber', 'exchange voucher'], 17);
+  const colDiscRateGiven = findColIndex(['discountrate_given', 'discount rate given'], 18);
+  const colDiscRateDefault = findColIndex(['discountrate_default_current', 'discount rate default'], 19);
+  const colRemarks = findColIndex(['remarks', 'remark'], 19);
+  const colIsAlliance = findColIndex(['is alliance discount'], 20);
+  const colSalesPerson = findColIndex(['salesperson', 'cashier', 'sales person'], 21);
 
   const rawParsed: ParsedSalesRow[] = [];
+  const locFilterUpper = locationFilter ? locationFilter.trim().toUpperCase() : null;
 
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = headerIndex + 1; i < lines.length; i++) {
     const rawLine = lines[i].trim();
-    if (!rawLine || rawLine.startsWith('---')) continue;
+    if (!rawLine || rawLine.startsWith('---') || rawLine.startsWith('|-') || rawLine.startsWith('| -') || rawLine.includes('CostCentre')) continue;
 
-    let parts = isTabSep
-      ? rawLine.split('\t').map((p) => p.trim())
-      : isPipeSep
-      ? rawLine.split('|').map((p) => p.trim()).filter(Boolean)
-      : rawLine.split(',').map((p) => p.trim());
-
+    const parts = parseMarkdownLine(rawLine, isTabSep, isPipeSep);
     if (parts.length < 5) continue;
 
     const docNo = parts[colDocNo] || '';
@@ -214,9 +273,20 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     const creditVoucherIssuedAmount = parseFloat(parts[colCreditVoucherIssued] || '0') || 0;
     const rewardVoucherAmount = parseFloat(parts[colRewardVoucher] || '0') || 0;
     const onCreditAmount = parseFloat(parts[colOnCredit] || '0') || 0;
+
+    // Bank breakdowns
+    const hblSale = parseFloat(parts[colHbl] || '0') || 0;
+    const alliedBankSale = parseFloat(parts[colAllied] || '0') || 0;
+    const meezanBankSale = parseFloat(parts[colMeezan] || '0') || 0;
+    const alfalahAmexSale = parseFloat(parts[colAmex] || '0') || 0;
+    const keenuSale = parseFloat(parts[colKeenu] || '0') || 0;
+    const ublSale = parseFloat(parts[colUbl] || '0') || 0;
+    const mcbSale = parseFloat(parts[colMcb] || '0') || 0;
+    const alfalahSale = parseFloat(parts[colAlfalah] || '0') || 0;
+
     const costCentre = parts[colCostCentre] || '';
     const locationCode = parts[colLocCode] || '';
-    const posId = parts[colPosId] || '';
+    const posId = parts[colPosId] || '1';
     const fbrInvoiceNumber = (parts[colFbrInvoice] || '').replace(/^['"]/, '').trim();
     const fkExchangeVoucherNumber = (parts[colExchangeVoucherNo] || '').replace(/^['"]/, '').trim();
     const remarks = parts[colRemarks] || '';
@@ -225,11 +295,16 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
 
     if (!docNo || !barCode || !locationCode) continue;
 
+    if (locFilterUpper) {
+      if (locationCode.toUpperCase() !== locFilterUpper && !costCentre.toUpperCase().includes(locFilterUpper)) {
+        continue;
+      }
+    }
+
     const docDate = parseCustomDate(docDateStr);
     if (!docDate || isNaN(docDate.getTime())) continue;
 
     // ── Calculate WOST, Discount, Tax according to POS Sales Creation Formula ──
-    // 1. Determine tax percent
     let taxPercent = 0;
     if (rawTotalSalesTax > 0 && rawValueExSalesTax > 0) {
       taxPercent = Math.round((rawTotalSalesTax / rawValueExSalesTax) * 100 * 100) / 100;
@@ -242,37 +317,31 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
 
     const taxDivisor = 1 + taxPercent / 100;
 
-    // 2. WOST per unit (Price W/O Tax)
     let priceWOT = rawPriceWOT;
     if (priceWOT <= 0 && unitPrice > 0) {
       priceWOT = Math.round((unitPrice / taxDivisor) * 100) / 100;
     }
 
-    // 3. Total Price W/O Tax
     let totalPriceWOT = rawTotalPriceWOT;
     if (totalPriceWOT <= 0) {
       totalPriceWOT = Math.round(priceWOT * quantity * 100) / 100;
     }
 
-    // 4. Discount amount (applied on WOST)
     let discountAmount = rawDiscountAmount;
     if (discountAmount <= 0 && discountRateGiven > 0) {
       discountAmount = Math.round(totalPriceWOT * (discountRateGiven / 100) * 100) / 100;
     }
 
-    // 5. Value Excluding Sales Tax (Amount after discount)
     let valueExSalesTax = rawValueExSalesTax;
     if (valueExSalesTax <= 0) {
       valueExSalesTax = Math.round((totalPriceWOT - discountAmount) * 100) / 100;
     }
 
-    // 6. Total Sales Tax (Tax on value excluding sales tax)
     let totalSalesTax = rawTotalSalesTax;
     if (totalSalesTax <= 0 && valueExSalesTax > 0 && taxPercent > 0) {
       totalSalesTax = Math.round((valueExSalesTax * (taxPercent / 100)) * 100) / 100;
     }
 
-    // 7. Value Including Sales Tax (Line Total)
     let valueInclSalesTax = rawValueInclSalesTax;
     if (valueInclSalesTax <= 0) {
       valueInclSalesTax = Math.round((valueExSalesTax + totalSalesTax) * 100) / 100;
@@ -305,6 +374,14 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
       creditVoucherIssuedAmount,
       rewardVoucherAmount,
       onCreditAmount,
+      hblSale,
+      alliedBankSale,
+      meezanBankSale,
+      alfalahAmexSale,
+      keenuSale,
+      ublSale,
+      mcbSale,
+      alfalahSale,
       costCentre,
       locationCode,
       posId,
@@ -327,21 +404,55 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
   return maxRows ? rawParsed.slice(0, maxRows) : rawParsed;
 }
 
+function getMerchantPriorityCode(bankName: string): number {
+  switch (bankName) {
+    case 'HBL': return 1;
+    case 'AL-Falah': return 2;
+    case 'Keenu': return 3;
+    case 'AL-Falah | AMEX': return 4;
+    case 'Allied Bank': return 5;
+    case 'Meezan': return 6;
+    case 'HBL IPG': return 7;
+    case 'BAFL IPG': return 8;
+    case 'UBL': return 9;
+    case 'MCB': return 10;
+    default: return 99;
+  }
+}
+
+function getBankGlCode(bankName: string): string {
+  switch (bankName) {
+    case 'HBL': return '31100005';
+    case 'AL-Falah': return '31100002';
+    case 'Keenu': return '31100008';
+    case 'AL-Falah | AMEX': return '31100003';
+    case 'Allied Bank': return '31100001';
+    case 'Meezan': return '31100006';
+    case 'UBL': return '31100007';
+    case 'MCB': return '31100009';
+    default: return '31100010';
+  }
+}
+
 async function processSalesForTenant(
   prisma: PrismaClient,
   rows: ParsedSalesRow[],
-  isDryRun: boolean = false
+  isDryRun: boolean = false,
 ) {
   console.log(`\n==================================================`);
-  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} sales rows...`);
+  console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length.toLocaleString()} sales rows...`);
   console.log(`==================================================\n`);
 
-  if (!isDryRun) {
-    console.log(`🧹 Cleaning up previously imported Sales Order records & Return Vouchers...`);
+  // FY27 starts on July 1, 2026 UTC
+  const currentFyStart = new Date(Date.UTC(2026, 6, 1, 0, 0, 0, 0));
 
-    // Clean up return vouchers
+  if (!isDryRun) {
+    console.log(`🧹 Cleaning up previously imported current-year (FY27) Sales Orders & Return Vouchers...`);
+
+    // 1. Return vouchers created in current fiscal year
     const existingVouchers = await prisma.voucher.findMany({
       where: {
+        createdAt: { gte: currentFyStart },
         OR: [
           { code: { startsWith: 'EXC-' } },
           { code: { startsWith: 'CLM-' } },
@@ -357,30 +468,54 @@ async function processSalesForTenant(
         where: {
           OR: [
             { referenceId: { in: voucherIds } },
-            { notes: { contains: 'POS Return' } },
+            { notes: { contains: 'POS Return' }, movementDate: { gte: currentFyStart } },
           ],
         },
       });
       await prisma.stockLedger.deleteMany({
-        where: {
-          OR: [
-            { referenceId: { in: voucherIds } },
-            { referenceType: 'POS_RETURN' },
-          ],
-        },
+        where: { referenceId: { in: voucherIds } },
       });
       await prisma.voucher.deleteMany({
         where: { id: { in: voucherIds } },
       });
-      console.log(`  ✅ Successfully wiped ${existingVouchers.length} old Return Vouchers.`);
+      console.log(`  ✅ Successfully wiped ${existingVouchers.length} old FY27 Return Vouchers.`);
     }
 
-    // Clean up sales orders
+    // 2. PosReturns created in current fiscal year
+    const existingReturns = await prisma.posReturn.findMany({
+      where: {
+        OR: [
+          { createdAt: { gte: currentFyStart } },
+          { returnNumber: { contains: '27-' } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (existingReturns.length > 0) {
+      const returnIds = existingReturns.map((r) => r.id);
+      await prisma.posReturnItem.deleteMany({
+        where: { posReturnId: { in: returnIds } },
+      });
+      await prisma.stockMovement.deleteMany({
+        where: { referenceId: { in: returnIds } },
+      });
+      await prisma.stockLedger.deleteMany({
+        where: { referenceId: { in: returnIds } },
+      });
+      await prisma.posReturn.deleteMany({
+        where: { id: { in: returnIds } },
+      });
+      console.log(`  ✅ Successfully wiped ${existingReturns.length} old FY27 PosReturn records.`);
+    }
+
+    // 3. Sales orders for current fiscal year (FY27)
+    // IMPORTANT: Scoped to FY27 so all 187,000+ historical FY26 sales remain protected!
     const existingOrders = await prisma.salesOrder.findMany({
       where: {
         OR: [
-          { orderNumber: { startsWith: 'SI-' } },
-          { notes: { contains: 'Original DocNo:' } },
+          { createdAt: { gte: currentFyStart } },
+          { orderNumber: { contains: '27-' } },
         ],
       },
       select: { id: true },
@@ -388,33 +523,40 @@ async function processSalesForTenant(
 
     if (existingOrders.length > 0) {
       const orderIds = existingOrders.map((o) => o.id);
-      console.log(`  Found ${orderIds.length} existing Sales Orders to clean up.`);
+      console.log(`  Found ${orderIds.length} existing FY27 Sales Orders to clean up.`);
 
-      await prisma.salesOrderItem.deleteMany({
-        where: { salesOrderId: { in: orderIds } },
-      });
+      for (let i = 0; i < orderIds.length; i += 5000) {
+        const chunk = orderIds.slice(i, i + 5000);
+        await prisma.voucherRedemption.deleteMany({
+          where: { orderId: { in: chunk } },
+        });
+        await prisma.salesOrderItem.deleteMany({
+          where: { salesOrderId: { in: chunk } },
+        });
+        await prisma.stockMovement.deleteMany({
+          where: {
+            OR: [
+              { referenceId: { in: chunk } },
+              { notes: { contains: 'POS Sale' }, movementDate: { gte: currentFyStart } },
+            ],
+          },
+        });
+        await prisma.stockLedger.deleteMany({
+          where: {
+            referenceId: { in: chunk },
+            referenceType: 'POS_SALE',
+          },
+        });
+        await prisma.salesOrder.deleteMany({
+          where: { id: { in: chunk } },
+        });
+      }
 
-      await prisma.stockMovement.deleteMany({
-        where: {
-          OR: [
-            { referenceId: { in: orderIds } },
-            { notes: { contains: 'POS Sale' } },
-          ],
-        },
-      });
-
-      await prisma.stockLedger.deleteMany({
-        where: { referenceId: { in: orderIds } },
-      });
-
-      await prisma.salesOrder.deleteMany({
-        where: { id: { in: orderIds } },
-      });
-
-      console.log(`  ✅ Successfully wiped ${orderIds.length} old Sales Order records.`);
+      console.log(`  ✅ Successfully wiped ${orderIds.length} old FY27 Sales Order records.`);
     }
   }
 
+  // Pre-load default Warehouse
   let defaultWarehouse: any = null;
   if (!isDryRun) {
     defaultWarehouse = await prisma.warehouse.findFirst({
@@ -436,21 +578,40 @@ async function processSalesForTenant(
     defaultWarehouse = { id: 'dry-run-wh-id', code: 'C40001', name: 'LOGISTIC AREA CENTRAL WAREHOUSE' };
   }
 
+  // Pre-load all Locations into memory
   const locationCache = new Map<string, any>();
-  const itemCache = new Map<string, any>();
+  const dbLocations = isDryRun
+    ? []
+    : await prisma.location.findMany({
+        where: { isDeleted: false },
+        select: { id: true, code: true, shortCode: true, name: true, warehouseId: true },
+      });
+
+  for (const loc of dbLocations) {
+    if (loc.code) locationCache.set(loc.code.toUpperCase(), loc);
+    if (loc.shortCode) locationCache.set(loc.shortCode.toUpperCase(), loc);
+    if (loc.name) locationCache.set(loc.name.toUpperCase(), loc);
+  }
 
   async function resolveLocation(code: string, name: string): Promise<any> {
-    if (locationCache.has(code)) {
-      return locationCache.get(code)!;
+    const cleanCode = (code || '').trim().toUpperCase();
+    const cleanName = (name || '').trim().toUpperCase();
+
+    if (locationCache.has(cleanCode)) return locationCache.get(cleanCode);
+    if (locationCache.has(cleanName)) return locationCache.get(cleanName);
+
+    for (const [key, loc] of locationCache.entries()) {
+      if (cleanCode && key.includes(cleanCode)) return loc;
+      if (cleanName && key.includes(cleanName)) return loc;
     }
 
     if (!isDryRun) {
       let loc = await prisma.location.findFirst({
         where: {
           OR: [
-            { code: code },
-            { shortCode: code },
-            { name: name },
+            { code: { equals: code, mode: 'insensitive' } },
+            { shortCode: { equals: code, mode: 'insensitive' } },
+            { name: { equals: name, mode: 'insensitive' } },
           ],
           isDeleted: false,
         },
@@ -470,65 +631,154 @@ async function processSalesForTenant(
           select: { id: true, code: true, shortCode: true, name: true, warehouseId: true },
         });
       }
-      locationCache.set(code, loc);
+      locationCache.set(cleanCode, loc);
       return loc;
     } else {
-      const loc = { id: `loc-${code}`, code, shortCode: code, name: name || 'Location' };
-      locationCache.set(code, loc);
+      const loc = { id: `loc-${cleanCode}`, code: cleanCode, shortCode: cleanCode, name: name || 'Location', warehouseId: defaultWarehouse.id };
+      locationCache.set(cleanCode, loc);
       return loc;
     }
   }
 
-  console.log(`⚙️ Pre-caching Locations and Item Barcodes...`);
-
-  for (const row of rows) {
-    await resolveLocation(row.locationCode, row.costCentre);
-
-    if (!itemCache.has(row.barCode)) {
-      if (!isDryRun) {
-        let item = await prisma.item.findFirst({
-          where: { barCode: row.barCode },
-        });
-        if (!item) {
-          item = await prisma.item.create({
-            data: {
-              itemId: `ITEM-${row.barCode}`,
-              sku: row.barCode,
-              barCode: row.barCode,
-              description: `POS Item (${row.barCode})`,
-              unitPrice: row.unitPrice,
-              unitCost: 0,
-              status: 'active',
-              isActive: true,
-            },
-          });
-        }
-        itemCache.set(row.barCode, item);
-      } else {
-        itemCache.set(row.barCode, { id: `item-${row.barCode}`, barCode: row.barCode, unitPrice: row.unitPrice });
-      }
+  // Pre-load all Items into memory
+  console.log(`⚙️ Pre-caching Locations, Items, and Merchant Configs in memory...`);
+  const itemCache = new Map<string, any>();
+  if (!isDryRun) {
+    const allDbItems = await prisma.item.findMany({
+      select: { id: true, barCode: true, sku: true, unitPrice: true, unitCost: true },
+    });
+    for (const it of allDbItems) {
+      if (it.barCode) itemCache.set(it.barCode.trim(), it);
+      if (it.sku) itemCache.set(it.sku.trim(), it);
     }
+    console.log(`✔ Cached ${itemCache.size.toLocaleString()} items from database.`);
   }
 
+  // Pre-load Merchant Configs
+  const allDbMerchants: any[] = isDryRun
+    ? []
+    : await prisma.merchantConfig.findMany({
+        select: { id: true, tagId: true, bankName: true, description: true, costCentreTag: true },
+      });
+  const merchantCache = new Map<string, any>();
+
+  async function resolveMerchant(tagId: string, locationName: string, locationId: string, bankName: string): Promise<any> {
+    const normBank = bankName.trim().toLowerCase();
+    const cleanTag = tagId.trim().toUpperCase();
+    const cacheKey = `${cleanTag}::${normBank}`;
+
+    if (merchantCache.has(cacheKey)) return merchantCache.get(cacheKey);
+
+    let config = allDbMerchants.find((m) => {
+      if (m.tagId.toUpperCase() !== cleanTag) return false;
+      const b = m.bankName.trim().toLowerCase();
+      return b === normBank || b.includes(normBank) || normBank.includes(b);
+    });
+
+    if (!config && !isDryRun) {
+      try {
+        config = await prisma.merchantConfig.create({
+          data: {
+            tagId: cleanTag,
+            costCentreTag: locationName,
+            description: `${locationName} | ${bankName.toUpperCase()}`,
+            bankName: bankName,
+            merchantCode: getMerchantPriorityCode(bankName),
+            commissionRate: 0.015,
+            bankGlCode: getBankGlCode(bankName),
+            isActive: true,
+            locations: {
+              create: { locationId },
+            },
+          },
+          select: { id: true, tagId: true, bankName: true, description: true, costCentreTag: true },
+        });
+        allDbMerchants.push(config);
+      } catch (err: any) {
+        // Fallback search in case created concurrently
+        config = await prisma.merchantConfig.findFirst({
+          where: { tagId: cleanTag, bankName: { equals: bankName, mode: 'insensitive' } },
+          select: { id: true, tagId: true, bankName: true, description: true, costCentreTag: true },
+        });
+      }
+    } else if (!config && isDryRun) {
+      config = { id: `dry-merch-${cleanTag}-${bankName}`, tagId: cleanTag, bankName };
+    }
+
+    if (config) {
+      merchantCache.set(cacheKey, config);
+    }
+    return config;
+  }
+
+  // Verify and ensure all locations are resolved
+  const uniqueStores = new Set<string>();
+  for (const row of rows) {
+    uniqueStores.add(`${row.locationCode}|||${row.costCentre}`);
+  }
+  for (const storeKey of uniqueStores) {
+    const [lCode, cCentre] = storeKey.split('|||');
+    await resolveLocation(lCode, cCentre);
+  }
+  console.log(`✔ Verified ${uniqueStores.size} store locations.`);
+
+  // Group sales rows into Cash Memos (SalesOrders)
   const salesGroups = new Map<string, ParsedSalesRow[]>();
   for (const row of rows) {
-    const groupKey = `${row.docNo}_${row.docDateStr}_${row.locationCode}_${row.posId}`;
+    const groupKey = `${row.locationCode}_${row.docNo}_${row.docDateStr}_${row.posId}`;
     if (!salesGroups.has(groupKey)) {
       salesGroups.set(groupKey, []);
     }
     salesGroups.get(groupKey)!.push(row);
   }
 
-  console.log(`📋 Grouped ${rows.length} total rows into ${salesGroups.size} Cash Memo Sales Orders.`);
+  console.log(`📋 Grouped ${rows.length.toLocaleString()} total rows into ${salesGroups.size.toLocaleString()} Cash Memo Sales Orders.`);
 
   const locSeqMap = new Map<string, number>();
 
+  const salesOrderBatch: any[] = [];
+  const salesOrderItemBatch: any[] = [];
+  const stockLedgerBatch: any[] = [];
+  const stockMovementBatch: any[] = [];
+  const inventoryDeductions = new Map<string, { warehouseId: string; locationId: string; itemId: string; qty: number }>();
+
+  // Tracking Grand Totals
+  let totalQtySum = 0;
+  let totalWostSum = 0;
+  let totalDiscountSum = 0;
+  let totalValueExTaxSum = 0;
+  let totalSalesTaxSum = 0;
+  let totalValueInclTaxSum = 0;
+  let totalCashSaleSum = 0;
+  let totalCashReturnSum = 0;
+  let totalCreditSaleSum = 0;
+  let totalGiftVoucherSum = 0;
+  let totalCreditVoucherSum = 0;
+  let totalExchangeVoucherSum = 0;
+  let totalClaimVoucherSum = 0;
+  let totalGiftVoucherCorpSum = 0;
+  let totalCreditVoucherIssuedSum = 0;
+  let totalRewardVoucherSum = 0;
+  let totalOnCreditSum = 0;
+  let totalCardSaleSum = 0;
+
+  // Tracking Card Merchant Breakdown
+  const merchantTotals: Record<string, { label: string; count: number; amount: number }> = {
+    hbl: { label: 'HBL', count: 0, amount: 0 },
+    allied: { label: 'Allied Bank', count: 0, amount: 0 },
+    meezan: { label: 'Meezan Bank', count: 0, amount: 0 },
+    amex: { label: 'AL-Falah | AMEX', count: 0, amount: 0 },
+    keenu: { label: 'KEENU', count: 0, amount: 0 },
+    ubl: { label: 'UBL', count: 0, amount: 0 },
+    mcb: { label: 'MCB', count: 0, amount: 0 },
+    alfalah: { label: 'AL-Falah', count: 0, amount: 0 },
+  };
+
   let processedLines = 0;
-  let totalRevenue = 0;
 
   for (const [groupKey, groupRows] of salesGroups.entries()) {
     const sample = groupRows[0];
-    const location = locationCache.get(sample.locationCode)!;
+    const location = await resolveLocation(sample.locationCode, sample.costCentre);
 
     const rawCode = location.shortCode?.trim() || location.code?.trim() || sample.locationCode;
     const cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -539,19 +789,110 @@ async function processSalesForTenant(
     locSeqMap.set(seqKey, seq);
 
     const orderNumber = `SI-${cleanCode}${fySuffix}-${String(seq).padStart(5, '0')}`;
+    const orderId = isDryRun ? `dry-order-${orderNumber}` : crypto.randomUUID();
 
+    const orderQty = groupRows.reduce((acc, r) => acc + r.quantity, 0);
     const subtotal = groupRows.reduce((acc, r) => acc + (r.totalPriceWOT || (r.priceWOT * r.quantity)), 0);
     const discountAmount = groupRows.reduce((acc, r) => acc + r.discountAmount, 0);
+    const valueExTax = groupRows.reduce((acc, r) => acc + r.valueExSalesTax, 0);
     const taxAmount = groupRows.reduce((acc, r) => acc + r.totalSalesTax, 0);
     const grandTotal = groupRows.reduce((acc, r) => acc + r.valueInclSalesTax, 0);
 
-    totalRevenue += grandTotal;
+    totalQtySum += orderQty;
+    totalWostSum += subtotal;
+    totalDiscountSum += discountAmount;
+    totalValueExTaxSum += valueExTax;
+    totalSalesTaxSum += taxAmount;
+    totalValueInclTaxSum += grandTotal;
 
-    const cashAmount = sample.cashSale || 0;
-    const cardAmount = sample.cardSale || 0;
-    const voucherAmount = (sample.giftVoucherAmount || 0) + (sample.creditVoucherAmount || 0) +
-                          (sample.exchangeVoucherAmount || 0) + (sample.claimVoucherAmount || 0) +
-                          (sample.giftVoucherCorporate || 0) + (sample.rewardVoucherAmount || 0);
+    const cashAmount = groupRows.reduce((acc, r) => acc + (r.cashSale || 0), 0);
+    const cashReturnAmount = groupRows.reduce((acc, r) => acc + (r.cashReturn || 0), 0);
+    const cardAmount = groupRows.reduce((acc, r) => acc + (r.cardSale || 0), 0);
+    const creditAmount = groupRows.reduce((acc, r) => acc + (r.creditSale || 0), 0);
+    const giftAmount = groupRows.reduce((acc, r) => acc + (r.giftVoucherAmount || 0), 0);
+    const creditVoucherAmount = groupRows.reduce((acc, r) => acc + (r.creditVoucherAmount || 0), 0);
+    const exchangeAmount = groupRows.reduce((acc, r) => acc + (r.exchangeVoucherAmount || 0), 0);
+    const claimAmount = groupRows.reduce((acc, r) => acc + (r.claimVoucherAmount || 0), 0);
+    const giftVoucherCorp = groupRows.reduce((acc, r) => acc + (r.giftVoucherCorporate || 0), 0);
+    const creditVoucherIssued = groupRows.reduce((acc, r) => acc + (r.creditVoucherIssuedAmount || 0), 0);
+    const rewardVoucherAmount = groupRows.reduce((acc, r) => acc + (r.rewardVoucherAmount || 0), 0);
+    const onCreditAmount = groupRows.reduce((acc, r) => acc + (r.onCreditAmount || 0), 0);
+
+    totalCashSaleSum += cashAmount;
+    totalCashReturnSum += cashReturnAmount;
+    totalCardSaleSum += cardAmount;
+    totalCreditSaleSum += creditAmount;
+    totalGiftVoucherSum += giftAmount;
+    totalCreditVoucherSum += creditVoucherAmount;
+    totalExchangeVoucherSum += exchangeAmount;
+    totalClaimVoucherSum += claimAmount;
+    totalGiftVoucherCorpSum += giftVoucherCorp;
+    totalCreditVoucherIssuedSum += creditVoucherIssued;
+    totalRewardVoucherSum += rewardVoucherAmount;
+    totalOnCreditSum += onCreditAmount;
+
+    // Bank breakdown aggregated across all lines in this cash memo
+    const hblVal = groupRows.reduce((acc, r) => acc + (r.hblSale || 0), 0);
+    const alliedVal = groupRows.reduce((acc, r) => acc + (r.alliedBankSale || 0), 0);
+    const meezanVal = groupRows.reduce((acc, r) => acc + (r.meezanBankSale || 0), 0);
+    const amexVal = groupRows.reduce((acc, r) => acc + (r.alfalahAmexSale || 0), 0);
+    const keenuVal = groupRows.reduce((acc, r) => acc + (r.keenuSale || 0), 0);
+    const ublVal = groupRows.reduce((acc, r) => acc + (r.ublSale || 0), 0);
+    const mcbVal = groupRows.reduce((acc, r) => acc + (r.mcbSale || 0), 0);
+    const alfalahVal = groupRows.reduce((acc, r) => acc + (r.alfalahSale || 0), 0);
+
+    if (hblVal > 0) {
+      merchantTotals.hbl.count++;
+      merchantTotals.hbl.amount += hblVal;
+    }
+    if (alliedVal > 0) {
+      merchantTotals.allied.count++;
+      merchantTotals.allied.amount += alliedVal;
+    }
+    if (meezanVal > 0) {
+      merchantTotals.meezan.count++;
+      merchantTotals.meezan.amount += meezanVal;
+    }
+    if (amexVal > 0) {
+      merchantTotals.amex.count++;
+      merchantTotals.amex.amount += amexVal;
+    }
+    if (keenuVal > 0) {
+      merchantTotals.keenu.count++;
+      merchantTotals.keenu.amount += keenuVal;
+    }
+    if (ublVal > 0) {
+      merchantTotals.ubl.count++;
+      merchantTotals.ubl.amount += ublVal;
+    }
+    if (mcbVal > 0) {
+      merchantTotals.mcb.count++;
+      merchantTotals.mcb.amount += mcbVal;
+    }
+    if (alfalahVal > 0) {
+      merchantTotals.alfalah.count++;
+      merchantTotals.alfalah.amount += alfalahVal;
+    }
+
+    const bankCandidates = [
+      { name: 'HBL', val: hblVal },
+      { name: 'Allied Bank', val: alliedVal },
+      { name: 'Meezan', val: meezanVal },
+      { name: 'AL-Falah | AMEX', val: amexVal },
+      { name: 'Keenu', val: keenuVal },
+      { name: 'UBL', val: ublVal },
+      { name: 'MCB', val: mcbVal },
+      { name: 'AL-Falah', val: alfalahVal },
+    ];
+    const topBank = bankCandidates.reduce((max, b) => b.val > max.val ? b : max, { name: '', val: 0 });
+    const cardBankName: string | null = topBank.val > 0 ? topBank.name : null;
+
+    let merchantConfig: any = null;
+    if (cardAmount > 0 && cardBankName) {
+      merchantConfig = await resolveMerchant(cleanCode, location.name, location.id, cardBankName);
+    }
+
+    const voucherAmount = giftAmount + creditVoucherAmount + exchangeAmount + claimAmount + giftVoucherCorp + rewardVoucherAmount;
 
     let paymentMethod = 'cash';
     if ((cardAmount > 0 && cashAmount > 0) || (cardAmount > 0 && voucherAmount > 0) || (cashAmount > 0 && voucherAmount > 0)) {
@@ -560,127 +901,273 @@ async function processSalesForTenant(
       paymentMethod = 'card';
     } else if (voucherAmount > 0) {
       paymentMethod = 'voucher';
+    } else if (creditAmount > 0) {
+      paymentMethod = 'credit_account';
     }
 
-    const orderNotes = `Original DocNo: ${sample.docNo} | SalesPerson: ${sample.salesPerson || 'N/A'} | Remarks: ${sample.remarks || 'N/A'}`;
+    const fbrInvoiceNumber = groupRows.find((r) => r.fbrInvoiceNumber)?.fbrInvoiceNumber || sample.fbrInvoiceNumber || null;
+    const salesPerson = groupRows.find((r) => r.salesPerson)?.salesPerson || sample.salesPerson;
+    const remarks = groupRows.find((r) => r.remarks && r.remarks.trim() !== ';')?.remarks || sample.remarks;
+
+    const notesParts = [`Original DocNo: ${sample.docNo}`];
+    if (salesPerson) notesParts.push(`SalesPerson: ${salesPerson}`);
+    if (remarks && remarks.trim() !== ';') notesParts.push(`Remarks: ${remarks.trim()}`);
+    if (cardBankName) notesParts.push(`[Card Sale] Bank: ${cardBankName} (PKR ${cardAmount.toLocaleString()})`);
+
+    const orderNotes = notesParts.join(' | ');
 
     if (isDryRun) {
-      if (seq <= 10 || seq % 20 === 0 || seq === 100) {
-        console.log(`🔍 [DRY-RUN #${orderNumber}] Date:${sample.docDateStr} | Store:${location.name} | GrandTotal: PKR ${grandTotal.toLocaleString()} | Items:${groupRows.length} | FBR:${sample.fbrInvoiceNumber || 'N/A'}`);
+      if (seq <= 5 || seq === 50 || seq === 100) {
+        console.log(`🔍 [DRY-RUN #${orderNumber}] Date:${sample.docDate.toISOString().slice(0, 10)} | Store:${location.name} | Bank:${cardBankName || 'N/A'} | Total: PKR ${grandTotal.toLocaleString()} | Items:${groupRows.length}`);
       }
       processedLines += groupRows.length;
       continue;
     }
 
-    const salesOrder = await prisma.salesOrder.create({
-      data: {
-        orderNumber,
-        posId: sample.posId || null,
-        terminalId: sample.posId || null,
-        locationId: location.id,
-        subtotal: subtotal,
-        discountAmount: discountAmount,
-        taxAmount: taxAmount,
-        grandTotal: grandTotal,
-        paymentMethod: paymentMethod,
-        paymentStatus: 'paid',
-        status: 'completed',
-        notes: orderNotes,
-        fbrInvoiceNumber: sample.fbrInvoiceNumber || null,
-        fbrStatus: sample.fbrInvoiceNumber ? 'COMPLETED' : 'PENDING',
-        cashAmount: cashAmount || null,
-        cardAmount: cardAmount || null,
-        voucherAmount: voucherAmount || null,
-        createdAt: sample.docDate,
-        updatedAt: sample.docDate,
-      },
+    salesOrderBatch.push({
+      id: orderId,
+      orderNumber,
+      posId: sample.posId || null,
+      terminalId: sample.posId || null,
+      locationId: location.id,
+      merchantId: merchantConfig ? merchantConfig.id : null,
+      tenderType: cardBankName || (cardAmount > 0 ? 'CARD' : 'CASH'),
+      subtotal: Math.round(subtotal * 100) / 100,
+      discountAmount: Math.round(discountAmount * 100) / 100,
+      taxAmount: Math.round(taxAmount * 100) / 100,
+      grandTotal: Math.round(grandTotal * 100) / 100,
+      paymentMethod,
+      paymentStatus: 'paid',
+      status: 'completed',
+      notes: orderNotes,
+      fbrInvoiceNumber: fbrInvoiceNumber || null,
+      fbrStatus: fbrInvoiceNumber ? 'COMPLETED' : 'PENDING',
+      cashAmount: cashAmount > 0 ? Math.round(cashAmount * 100) / 100 : null,
+      cardAmount: cardAmount > 0 ? Math.round(cardAmount * 100) / 100 : null,
+      voucherAmount: voucherAmount > 0 ? Math.round(voucherAmount * 100) / 100 : null,
+      createdAt: sample.docDate,
+      updatedAt: sample.docDate,
     });
 
+    let itemIdx = 0;
     for (const row of groupRows) {
-      const item = itemCache.get(row.barCode);
-      const qty = row.quantity;
+      itemIdx++;
+      let item = itemCache.get(row.barCode);
+      if (!item) {
+        item = await prisma.item.findFirst({ where: { barCode: row.barCode } });
+        if (!item) {
+          item = await prisma.item.create({
+            data: {
+              itemId: `ITEM-${row.barCode}`,
+              sku: row.barCode,
+              barCode: row.barCode,
+              description: `POS Item (${row.barCode})`,
+              unitPrice: row.unitPrice,
+              unitCost: Math.round(row.unitPrice * 0.7 * 100) / 100,
+              status: 'active',
+              isActive: true,
+            },
+          });
+        }
+        itemCache.set(row.barCode, item);
+      }
 
-      const lineTaxPercent = row.valueExSalesTax > 0
+      const qty = row.quantity;
+      const rawLineTaxPercent = row.valueExSalesTax > 0
         ? Math.round((row.totalSalesTax / row.valueExSalesTax) * 100 * 100) / 100
         : 0;
 
-      await prisma.salesOrderItem.create({
-        data: {
-          salesOrderId: salesOrder.id,
-          itemId: item.id,
-          quantity: qty,
-          unitPrice: row.unitPrice,
-          discountPercent: row.discountRateGiven,
-          discountAmount: row.discountAmount,
-          taxPercent: lineTaxPercent,
-          taxAmount: row.totalSalesTax,
-          lineTotal: row.valueInclSalesTax,
-          createdAt: sample.docDate,
-        },
+      // Ensure Decimal(5,2) safety (0 to 999.99)
+      const safeDiscountPercent = Math.min(100, Math.max(0, Math.round(row.discountRateGiven * 100) / 100));
+      const safeTaxPercent = Math.min(100, Math.max(0, rawLineTaxPercent));
+
+      salesOrderItemBatch.push({
+        id: crypto.randomUUID(),
+        salesOrderId: orderId,
+        itemId: item.id,
+        quantity: Math.round(qty),
+        unitPrice: Math.round(row.unitPrice * 100) / 100,
+        discountPercent: safeDiscountPercent,
+        discountAmount: Math.round(row.discountAmount * 100) / 100,
+        taxPercent: safeTaxPercent,
+        taxAmount: Math.round(row.totalSalesTax * 100) / 100,
+        lineTotal: Math.round(row.valueInclSalesTax * 100) / 100,
+        createdAt: sample.docDate,
       });
 
-      const outletInv = await prisma.inventoryItem.findFirst({
-        where: { locationId: location.id, itemId: item.id },
+      const whId = location.warehouseId || defaultWarehouse.id;
+
+      stockLedgerBatch.push({
+        itemId: item.id,
+        warehouseId: whId,
+        locationId: location.id,
+        qty: -qty, // Outbound negative
+        referenceType: 'POS_SALE',
+        referenceId: orderId,
+        movementType: MovementType.OUTBOUND,
+        unitCost: Number(item.unitCost) || row.unitPrice,
+        rate: row.priceWOT || row.unitPrice,
+        createdAt: sample.docDate,
       });
 
-      if (outletInv) {
-        await prisma.inventoryItem.update({
-          where: { id: outletInv.id },
-          data: { quantity: { decrement: qty } },
-        });
+      const movNo = `MV-SALE-${orderNumber}-${row.barCode}-${itemIdx}`;
+      stockMovementBatch.push({
+        id: crypto.randomUUID(),
+        movementNo: movNo,
+        itemId: item.id,
+        fromLocationId: location.id,
+        toLocationId: null,
+        quantity: qty,
+        type: 'POS_SALE',
+        referenceType: 'POS_SALE',
+        referenceId: orderId,
+        movementDate: sample.docDate,
+        createdAt: sample.docDate,
+        updatedAt: sample.docDate,
+        notes: `POS Sale: ${orderNumber} (Doc #${row.docNo})`,
+      });
+
+      // Aggregate inventory deduction
+      const invKey = `${location.id}:${item.id}`;
+      const existingDeduction = inventoryDeductions.get(invKey);
+      if (existingDeduction) {
+        existingDeduction.qty += qty;
       } else {
-        await prisma.inventoryItem.create({
-          data: {
-            warehouseId: defaultWarehouse.id,
-            locationId: location.id,
-            itemId: item.id,
-            quantity: -qty,
-            status: 'AVAILABLE',
-          },
+        inventoryDeductions.set(invKey, {
+          warehouseId: whId,
+          locationId: location.id,
+          itemId: item.id,
+          qty,
         });
       }
-
-      await prisma.stockLedger.create({
-        data: {
-          itemId: item.id,
-          warehouseId: location.warehouseId || defaultWarehouse.id,
-          locationId: location.id,
-          qty: -qty,
-          referenceType: 'POS_SALE',
-          referenceId: salesOrder.id,
-          movementType: 'OUTBOUND',
-          createdAt: sample.docDate,
-        },
-      });
-
-      const movNo = `MV-SALE-${orderNumber}-${row.barCode}-${row.rowNum}`;
-      await prisma.stockMovement.create({
-        data: {
-          movementNo: movNo,
-          itemId: item.id,
-          fromLocationId: location.id,
-          toLocationId: null,
-          quantity: qty,
-          type: 'POS_SALE',
-          referenceType: 'POS_SALE',
-          referenceId: salesOrder.id,
-          movementDate: sample.docDate,
-          createdAt: sample.docDate,
-          notes: `POS Sale: ${orderNumber} (Doc #${row.docNo})`,
-        },
-      });
 
       processedLines++;
     }
   }
 
-  console.log(`\n==================================================`);
-  console.log(`✨ ${isDryRun ? '[DRY RUN SUMMARY]' : '[IMPORT SUMMARY]'}`);
-  console.log(`   - Total Cash Memos Processed: ${salesGroups.size}`);
-  console.log(`   - Total Item Lines           : ${processedLines}`);
-  console.log(`   - Total Revenue (PKR)        : ${totalRevenue.toLocaleString()}`);
-  console.log(`   - Order Number Format        : SI-{cleanCode}{fySuffix}-{seq}`);
-  console.log(`==================================================\n`);
+  // ── High-Speed Chunked Database Insertions (If live) ──
+  if (!isDryRun) {
+    console.log(`\n🚀 Executing High-Speed Chunked DB Commits...`);
+
+    // 1. Insert SalesOrders (chunk size 1,000)
+    console.log(`💾 Inserting ${salesOrderBatch.length.toLocaleString()} Sales Orders in chunks of 1,000...`);
+    const ORDER_CHUNK = 1000;
+    for (let i = 0; i < salesOrderBatch.length; i += ORDER_CHUNK) {
+      const chunk = salesOrderBatch.slice(i, i + ORDER_CHUNK);
+      await prisma.salesOrder.createMany({ data: chunk });
+      const pct = Math.round(((i + chunk.length) / salesOrderBatch.length) * 100);
+      process.stdout.write(`\r   Orders Progress: ${i + chunk.length}/${salesOrderBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Sales Orders inserted successfully.`);
+
+    // 2. Insert SalesOrderItems (chunk size 2,000)
+    console.log(`💾 Inserting ${salesOrderItemBatch.length.toLocaleString()} Sales Order Items in chunks of 2,000...`);
+    const ITEM_CHUNK = 2000;
+    for (let i = 0; i < salesOrderItemBatch.length; i += ITEM_CHUNK) {
+      const chunk = salesOrderItemBatch.slice(i, i + ITEM_CHUNK);
+      await prisma.salesOrderItem.createMany({ data: chunk });
+      const pct = Math.round(((i + chunk.length) / salesOrderItemBatch.length) * 100);
+      process.stdout.write(`\r   Items Progress: ${i + chunk.length}/${salesOrderItemBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Sales Order Items inserted successfully.`);
+
+    // 3. Insert StockLedgers (chunk size 2,000)
+    console.log(`💾 Inserting ${stockLedgerBatch.length.toLocaleString()} Stock Ledgers in chunks of 2,000...`);
+    for (let i = 0; i < stockLedgerBatch.length; i += ITEM_CHUNK) {
+      const chunk = stockLedgerBatch.slice(i, i + ITEM_CHUNK);
+      await prisma.stockLedger.createMany({ data: chunk });
+      const pct = Math.round(((i + chunk.length) / stockLedgerBatch.length) * 100);
+      process.stdout.write(`\r   Stock Ledgers Progress: ${i + chunk.length}/${stockLedgerBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Stock Ledgers inserted successfully.`);
+
+    // 4. Insert StockMovements (chunk size 2,000)
+    console.log(`💾 Inserting ${stockMovementBatch.length.toLocaleString()} Stock Movements in chunks of 2,000...`);
+    for (let i = 0; i < stockMovementBatch.length; i += ITEM_CHUNK) {
+      const chunk = stockMovementBatch.slice(i, i + ITEM_CHUNK);
+      await prisma.stockMovement.createMany({ data: chunk });
+      const pct = Math.round(((i + chunk.length) / stockMovementBatch.length) * 100);
+      process.stdout.write(`\r   Stock Movements Progress: ${i + chunk.length}/${stockMovementBatch.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Stock Movements inserted successfully.`);
+
+    // 5. Apply Inventory Item Deductions
+    console.log(`🔄 Applying ${inventoryDeductions.size.toLocaleString()} unique Inventory Item balance updates...`);
+    const invEntries = Array.from(inventoryDeductions.values());
+    const INV_CONCURRENCY = 50;
+    let updatedInv = 0;
+
+    for (let i = 0; i < invEntries.length; i += INV_CONCURRENCY) {
+      const chunk = invEntries.slice(i, i + INV_CONCURRENCY);
+      await Promise.all(
+        chunk.map(async (entry) => {
+          const existingInv = await prisma.inventoryItem.findFirst({
+            where: { locationId: entry.locationId, itemId: entry.itemId, status: 'AVAILABLE' },
+            select: { id: true },
+          });
+
+          if (existingInv) {
+            await prisma.inventoryItem.update({
+              where: { id: existingInv.id },
+              data: { quantity: { decrement: entry.qty } },
+            });
+          } else {
+            await prisma.inventoryItem.create({
+              data: {
+                warehouseId: entry.warehouseId,
+                locationId: entry.locationId,
+                itemId: entry.itemId,
+                quantity: -entry.qty,
+                status: 'AVAILABLE',
+              },
+            });
+          }
+        })
+      );
+      updatedInv += chunk.length;
+      const pct = Math.round((updatedInv / invEntries.length) * 100);
+      process.stdout.write(`\r   Inventory Progress: ${updatedInv}/${invEntries.length} (${pct}%)`);
+    }
+    console.log(`\n   ✔ Inventory balances updated successfully.`);
+  }
+
+  // ── FINAL GRAND SUMMARY REPORT ──
+  console.log(`\n========================================================================================`);
+  console.log(`📊 ${isDryRun ? '[DRY RUN TOTALS & AUDIT SUMMARY]' : '[FINAL POST-IMPORT RECONCILIATION AUDIT]'}`);
+  console.log(`========================================================================================`);
+  console.log(`1. DOCUMENT & LINE ITEM TOTALS:`);
+  console.log(`   - Total Cash Memos (Orders) : ${salesGroups.size.toLocaleString()}`);
+  console.log(`   - Total Lines Uploaded      : ${rows.length.toLocaleString()}`);
+  console.log(`   - Uploaded QTY              : ${totalQtySum.toLocaleString()}`);
+  console.log(`   - Total WOST (Price W/O Tax): PKR ${totalWostSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - Total Discount            : PKR ${totalDiscountSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - Value Ex Sales Tax        : PKR ${totalValueExTaxSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - Total Sales Tax           : PKR ${totalSalesTaxSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - Value Including Sales Tax : PKR ${totalValueInclTaxSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`----------------------------------------------------------------------------------------`);
+  console.log(`2. PAYMENT TENDERS BREAKDOWN:`);
+  console.log(`   - CashSale                  : PKR ${totalCashSaleSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - CashReturn                : PKR ${totalCashReturnSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - CreditSale                : PKR ${totalCreditSaleSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - GiftVoucherAmount         : PKR ${totalGiftVoucherSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - CreditVoucherAmount       : PKR ${totalCreditVoucherSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - ExchangeVoucherAmount     : PKR ${totalExchangeVoucherSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - ClaimVoucherAmount        : PKR ${totalClaimVoucherSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - GiftVoucher_Corporate     : PKR ${totalGiftVoucherCorpSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - CreditVoucherIssuedAmount : PKR ${totalCreditVoucherIssuedSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - RewardVoucherAmount       : PKR ${totalRewardVoucherSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - OnCreditAmount            : PKR ${totalOnCreditSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`   - CardSale (Total)          : PKR ${totalCardSaleSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`----------------------------------------------------------------------------------------`);
+  console.log(`3. CARD MERCHANT & BANK TOTALS (Linked to MerchantConfig & POS Cards):`);
+  let sumOfAllBankBreakdown = 0;
+  for (const [k, data] of Object.entries(merchantTotals)) {
+    sumOfAllBankBreakdown += data.amount;
+    const paddedLabel = data.label.padEnd(20);
+    console.log(`   - ${paddedLabel}: PKR ${data.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).padStart(16)}  (${data.count.toLocaleString()} orders)`);
+  }
+  console.log(`   - Total Bank Cards Mapped   : PKR ${sumOfAllBankBreakdown.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  console.log(`========================================================================================\n`);
 }
 
 async function main() {
@@ -692,26 +1179,35 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'A-madison-sales.md');
+  const locArg = process.argv.find((arg) => arg.startsWith('--location=') || arg.startsWith('-l='));
+  const locationFilter = locArg ? locArg.split('=')[1] : undefined;
+
+  const defaultSalesFile = path.join(__dirname, '..', 'data', 'sales-july-&-aug.md');
+  const fallbackFile = path.join(__dirname, '..', 'data', 'A-madison-sales.md');
+
+  let filePath = fs.existsSync(defaultSalesFile) ? defaultSalesFile : fallbackFile;
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
     filePath = path.isAbsolute(customPath) ? customPath : path.join(process.cwd(), customPath);
   }
 
-  console.log(`🚀 Starting POS Sales Import Script...`);
+  console.log(`\n🚀 Starting POS Sales Import Pipeline...`);
   console.log(`📄 Target Data File: ${filePath}`);
+  if (locationFilter) {
+    console.log(`🏬 Filter Location: ${locationFilter}`);
+  }
   if (isDryRun) {
     console.log(`⚠️ DRY RUN ACTIVATED: No database changes will be committed.`);
   }
 
-  const rows = readAndParseSalesData(filePath, limit);
+  const rows = readAndParseSalesData(filePath, limit, locationFilter);
 
-  console.log(`📄 Successfully parsed and sorted ${rows.length} sales rows chronologically.`);
+  console.log(`📄 Successfully parsed and sorted ${rows.length.toLocaleString()} sales rows chronologically.`);
   if (rows.length > 0) {
     console.log('\n🔍 First Chronological Sales Row (#1):');
     console.log(`   - Doc No    : ${rows[0].docNo}`);
-    console.log(`   - Doc Date  : ${rows[0].docDateStr}`);
+    console.log(`   - Doc Date  : ${rows[0].docDate.toISOString().slice(0, 10)}`);
     console.log(`   - Location  : ${rows[0].costCentre} (${rows[0].locationCode})`);
     console.log(`   - Barcode   : ${rows[0].barCode}`);
     console.log(`   - Qty       : ${rows[0].quantity}`);
@@ -756,7 +1252,7 @@ async function main() {
 
         if (!connectionString) continue;
 
-        const tenantPool = new Pool({ connectionString });
+        const tenantPool = new Pool({ connectionString, max: 25, idleTimeoutMillis: 30000 });
         const tenantAdapter = new PrismaPg(tenantPool);
         const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
 
@@ -790,7 +1286,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('❌ Error executing script:', err);
-  process.exit(1);
-});
+// Only execute main when run directly from CLI
+if (require.main === module || !process.env.NODE_ENV || process.argv[1]?.includes('import-madison-sales')) {
+  main().catch((err) => {
+    console.error('❌ Error executing script:', err);
+    process.exit(1);
+  });
+}
