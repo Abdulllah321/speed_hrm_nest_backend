@@ -1850,6 +1850,8 @@ export class PosSalesController {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: string | number;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
@@ -1983,6 +1985,8 @@ export class PosSalesController {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: string | number;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;

@@ -258,6 +258,7 @@ export class SalesListExportProcessor {
       endDate.setHours(23, 59, 59, 999);
 
       const where: any = {
+        orderNumber: { not: { startsWith: 'RET-' } },
         status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
         createdAt: { gte: startDate, lte: endDate },
       };

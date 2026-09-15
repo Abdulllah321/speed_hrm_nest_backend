@@ -258,6 +258,8 @@ export class GrossSalesExportService {
     minAmount?: number;
     maxAmount?: number;
     fbrOnly?: boolean;
+    fiscalYear?: string;
+    year?: string | number;
   }): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
@@ -280,6 +282,8 @@ export class GrossSalesExportService {
         minAmount: opts.minAmount,
         maxAmount: opts.maxAmount,
         fbrOnly: opts.fbrOnly,
+        fiscalYear: opts.fiscalYear,
+        year: opts.year,
       },
       {
         jobId: `preview-${jobId}`,
@@ -308,6 +312,8 @@ export class GrossSalesExportService {
     minAmount?: number;
     maxAmount?: number;
     fbrOnly?: boolean;
+    fiscalYear?: string;
+    year?: string | number;
   }): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
@@ -330,6 +336,8 @@ export class GrossSalesExportService {
         minAmount: opts.minAmount,
         maxAmount: opts.maxAmount,
         fbrOnly: opts.fbrOnly,
+        fiscalYear: opts.fiscalYear,
+        year: opts.year,
       },
       {
         jobId: `preview-summary-${jobId}`,
@@ -617,6 +625,8 @@ export class GrossSalesExportService {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: string | number;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
   ): Promise<GrossSalesReturnReportResult> {
@@ -631,6 +641,8 @@ export class GrossSalesExportService {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
       onProgress,
     } = opts;
 
@@ -647,6 +659,12 @@ export class GrossSalesExportService {
           return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
         }
       }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return isEndOfDay
+          ? new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999))
+          : new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+      }
       if (dateStr.includes('T') || dateStr.includes('Z')) {
         const d = new Date(dateStr);
         if (isEndOfDay && !dateStr.includes('T23:59:59')) {
@@ -658,8 +676,47 @@ export class GrossSalesExportService {
       return new Date(`${dateStr}${timePart}`);
     };
 
-    const startDate = parseLocalDate(startStr, false);
-    const endDate = parseLocalDate(endStr, true);
+    // Determine Pakistan Fiscal Year bounds: July 1 to June 30
+    const getFiscalYearBounds = (fyStr?: string): { start: Date; end: Date } => {
+      let startYear: number;
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth(); // 0 = Jan, 6 = July
+      const defaultStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+
+      if (!fyStr || fyStr === 'current') {
+        startYear = defaultStartYear;
+      } else if (fyStr === 'previous') {
+        startYear = defaultStartYear - 1;
+      } else {
+        const match = fyStr.match(/(\d{4})/);
+        startYear = match ? parseInt(match[1], 10) : defaultStartYear;
+      }
+
+      const start = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(startYear + 1, 5, 30, 23, 59, 59, 999));
+      return { start, end };
+    };
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (fiscalYear) {
+      const bounds = getFiscalYearBounds(fiscalYear);
+      startDate = bounds.start;
+      endDate = bounds.end;
+    } else if (year) {
+      const yr = typeof year === 'string' ? parseInt(year, 10) : year;
+      const targetYear = !isNaN(yr) && yr > 2000 ? yr : now.getFullYear();
+      startDate = new Date(Date.UTC(targetYear, 0, 1, 0, 0, 0, 0));
+      endDate = new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999));
+    } else if (startStr || endStr) {
+      startDate = parseLocalDate(startStr, false);
+      endDate = parseLocalDate(endStr, true);
+    } else {
+      const bounds = getFiscalYearBounds('current');
+      startDate = bounds.start;
+      endDate = bounds.end;
+    }
 
     const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
@@ -1169,6 +1226,8 @@ export class GrossSalesExportService {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: string | number;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
   ): Promise<GrossSalesSummaryReportResult> {
@@ -1183,6 +1242,8 @@ export class GrossSalesExportService {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
       onProgress,
     } = opts;
 
@@ -1199,6 +1260,12 @@ export class GrossSalesExportService {
           return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
         }
       }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return isEndOfDay
+          ? new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999))
+          : new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+      }
       if (dateStr.includes('T') || dateStr.includes('Z')) {
         const d = new Date(dateStr);
         if (isEndOfDay && !dateStr.includes('T23:59:59')) {
@@ -1210,8 +1277,47 @@ export class GrossSalesExportService {
       return new Date(`${dateStr}${timePart}`);
     };
 
-    const startDate = parseLocalDate(startStr, false);
-    const endDate = parseLocalDate(endStr, true);
+    // Determine Pakistan Fiscal Year bounds: July 1 to June 30
+    const getFiscalYearBounds = (fyStr?: string): { start: Date; end: Date } => {
+      let startYear: number;
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth(); // 0 = Jan, 6 = July
+      const defaultStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+
+      if (!fyStr || fyStr === 'current') {
+        startYear = defaultStartYear;
+      } else if (fyStr === 'previous') {
+        startYear = defaultStartYear - 1;
+      } else {
+        const match = fyStr.match(/(\d{4})/);
+        startYear = match ? parseInt(match[1], 10) : defaultStartYear;
+      }
+
+      const start = new Date(Date.UTC(startYear, 6, 1, 0, 0, 0, 0));
+      const end = new Date(Date.UTC(startYear + 1, 5, 30, 23, 59, 59, 999));
+      return { start, end };
+    };
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (fiscalYear) {
+      const bounds = getFiscalYearBounds(fiscalYear);
+      startDate = bounds.start;
+      endDate = bounds.end;
+    } else if (year) {
+      const yr = typeof year === 'string' ? parseInt(year, 10) : year;
+      const targetYear = !isNaN(yr) && yr > 2000 ? yr : now.getFullYear();
+      startDate = new Date(Date.UTC(targetYear, 0, 1, 0, 0, 0, 0));
+      endDate = new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999));
+    } else if (startStr || endStr) {
+      startDate = parseLocalDate(startStr, false);
+      endDate = parseLocalDate(endStr, true);
+    } else {
+      const bounds = getFiscalYearBounds('current');
+      startDate = bounds.start;
+      endDate = bounds.end;
+    }
 
     const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
@@ -1232,7 +1338,8 @@ export class GrossSalesExportService {
     await onProgress?.(35, 'Querying POS sales order items for gross sales summary...');
 
     const where: any = {
-      status: { in: ['completed', 'partially_returned', 'exchanged', 'posted', 'returned', 'refunded'] },
+      orderNumber: { not: { startsWith: 'RET-' } },
+      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -1293,15 +1400,13 @@ export class GrossSalesExportService {
     const locationNodesMap = new Map<string, GrossSalesSummaryLocationNode>();
 
     const CHUNK = 3000;
-    let lastId: string | undefined;
     let processedCount = 0;
 
     while (true) {
       const chunkOrders: any[] = await prisma.salesOrder.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        cursor: lastId ? { id: lastId } : undefined,
-        skip: lastId ? 1 : 0,
+        skip: processedCount,
         take: CHUNK,
         include: {
           items: {
@@ -1326,7 +1431,6 @@ export class GrossSalesExportService {
       });
 
       if (!chunkOrders.length) break;
-      lastId = chunkOrders[chunkOrders.length - 1].id;
 
       for (const order of chunkOrders) {
       const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';

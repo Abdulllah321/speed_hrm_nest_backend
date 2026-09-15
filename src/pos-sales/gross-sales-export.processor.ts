@@ -57,6 +57,8 @@ export interface GrossSalesReturnPreviewJobData {
   minAmount?: number;
   maxAmount?: number;
   fbrOnly?: boolean;
+  fiscalYear?: string;
+  year?: string | number;
 }
 
 const COLUMNS = [
@@ -117,6 +119,8 @@ export class GrossSalesExportProcessor {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
     } = job.data;
     this.logger.log(`[GrossSalesReturnPreview ${jobId}] Starting background gross-sales-return preview computation`);
 
@@ -140,6 +144,8 @@ export class GrossSalesExportProcessor {
           minAmount,
           maxAmount,
           fbrOnly,
+          fiscalYear,
+          year,
           onProgress: async (percent, message) => {
             await job.progress({ percent, message });
           },
@@ -171,6 +177,8 @@ export class GrossSalesExportProcessor {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
     } = job.data;
     this.logger.log(`[GrossSalesSummaryPreview ${jobId}] Starting background gross-sales-summary preview computation`);
 
@@ -194,6 +202,8 @@ export class GrossSalesExportProcessor {
           minAmount,
           maxAmount,
           fbrOnly,
+          fiscalYear,
+          year,
           onProgress: async (percent, message) => {
             await job.progress({ percent, message });
           },

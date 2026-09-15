@@ -593,6 +593,7 @@ export class SalesListExportService {
     if (!locationNames) locationNames = 'All Outlets (Stores)';
 
     const where: any = {
+      orderNumber: { not: { startsWith: 'RET-' } },
       status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
       createdAt: { gte: startDate, lte: endDate },
     };
@@ -1148,7 +1149,6 @@ export class SalesListExportService {
 
     if (totalOrdersCount > 0) {
       const CHUNK = 2500;
-      let lastId: string | undefined;
 
       while (true) {
         if (opts.isAborted?.() || (opts.previewJobId && this.isJobCancelled(opts.previewJobId))) {
@@ -1161,8 +1161,7 @@ export class SalesListExportService {
         const chunkOrders: any[] = await prisma.salesOrder.findMany({
           where,
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          cursor: lastId ? { id: lastId } : undefined,
-          skip: lastId ? 1 : 0,
+          skip: processedOrders,
           take: CHUNK,
           select: {
             id: true,
@@ -1214,7 +1213,6 @@ export class SalesListExportService {
         });
 
         if (!chunkOrders.length) break;
-        lastId = chunkOrders[chunkOrders.length - 1].id;
 
         const chunkInvoiceNodes: SalesListInvoiceNode[] = [];
         for (const order of chunkOrders) {
