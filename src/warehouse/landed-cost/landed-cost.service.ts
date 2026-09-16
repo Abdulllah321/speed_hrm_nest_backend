@@ -296,11 +296,11 @@ export class LandedCostService {
         let totalInvoicePKR = 0;
         let totalLandedCost = 0;
 
-        for (const item of dto.items) {
+        for (const item of resolvedItems) {
           totalQuantity += item.qty;
           totalInvoiceForeign += item.qty * item.unitFob;
           totalInvoicePKR += item.qty * item.unitFob * dto.exchangeRate;
-          totalLandedCost += item.totalCostPKR;
+          totalLandedCost += item.totalCostPKR || (item.qty * item.normalizedUnitCostPKR.toNumber());
         }
 
         await tx.landedCost.update({
@@ -660,7 +660,7 @@ export class LandedCostService {
               movementType: MovementType.INBOUND,
               referenceType: 'LANDED_COST',
               referenceId: landedCost.id, // Use LandedCost ID
-              rate: weightedAvgRate,
+              rate: item.normalizedRate,
             },
             tx,
           );
