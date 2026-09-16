@@ -6,6 +6,7 @@ model SalesReturn {
   salesInvoiceId     String?          @map("sales_invoice_id")
   customerId         String           @map("customer_id")
   warehouseId        String           @map("warehouse_id")
+  finalWarehouseId   String?          @map("final_warehouse_id")
   returnDate         DateTime         @default(now()) @map("return_date")
   returnType         String           @default("DEFECTIVE") // DEFECTIVE, EXCESS, WRONG_ITEM, DAMAGED, SHORTAGE
   reason             String?
@@ -24,7 +25,8 @@ model SalesReturn {
   salesInvoice    ERPSalesInvoice? @relation(fields: [salesInvoiceId], references: [id])
   deliveryChallan DeliveryChallan? @relation(fields: [deliveryChallanId], references: [id])
   customer        Customer         @relation(fields: [customerId], references: [id])
-  warehouse       Warehouse        @relation(fields: [warehouseId], references: [id])
+  warehouse       Warehouse        @relation("SalesReturn_warehouse", fields: [warehouseId], references: [id])
+  finalWarehouse  Warehouse?       @relation("SalesReturn_finalWarehouse", fields: [finalWarehouseId], references: [id])
   creditNote      CreditNote?
 
   @@map("sales_returns")

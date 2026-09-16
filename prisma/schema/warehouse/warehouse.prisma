@@ -29,7 +29,8 @@ model Warehouse {
   erpSalesOrders   ERPSalesOrder[]
   deliveryChallans DeliveryChallan[]
   erpSalesInvoices ERPSalesInvoice[]
-  salesReturns     SalesReturn[]
+  salesReturns          SalesReturn[]   @relation("SalesReturn_warehouse")
+  finalWarehouseReturns SalesReturn[]   @relation("SalesReturn_finalWarehouse")
   purchaseInvoices PurchaseInvoice[]
 
   @@index([companyId])

@@ -27,7 +27,7 @@ export class SalesReturnService {
       const { nextReturnNumber } = await this.getNextReturnNumber();
       const returnNumber = nextReturnNumber;
 
-      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
+      const { subtotal, taxAmount, totalAmount } = await this.calculateTotals(createDto);
 
       const created = await this.prisma.salesReturn.create({
         data: {
@@ -37,6 +37,11 @@ export class SalesReturnService {
           salesInvoiceId: createDto.salesInvoiceId,
           customerId: createDto.customerId,
           warehouseId: createDto.warehouseId,
+          // finalWarehouseId: if provided and differs from warehouseId, 3 stock ledger entries are
+          // created on approval (INBOUND at warehouseId, OUTBOUND from warehouseId, INBOUND at finalWarehouseId)
+          finalWarehouseId: createDto.finalWarehouseId && createDto.finalWarehouseId !== createDto.warehouseId
+            ? createDto.finalWarehouseId
+            : null,
           returnType: createDto.returnType || 'DEFECTIVE',
           reason: createDto.reason,
           notes: createDto.notes,
@@ -64,6 +69,7 @@ export class SalesReturnService {
           deliveryChallan: true,
           customer: true,
           warehouse: true,
+          finalWarehouse: true,
         },
       });
 
@@ -183,6 +189,7 @@ export class SalesReturnService {
         creditNote: true,
         customer: true,
         warehouse: true,
+        finalWarehouse: true,
       },
     });
 
@@ -201,7 +208,7 @@ export class SalesReturnService {
         throw new BadRequestException('Only DRAFT returns can be updated');
       }
 
-      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(updateDto);
+      const { subtotal, taxAmount, totalAmount } = await this.calculateTotals(updateDto);
 
       const updateData: any = {
         subtotal,
@@ -485,23 +492,55 @@ export class SalesReturnService {
     }
   }
 
-  private calculateTotals(dto: Partial<CreateSalesReturnDto>) {
+  private async calculateTotals(dto: Partial<CreateSalesReturnDto>) {
     let subtotal = 0;
     let taxAmount = 0;
     let totalAmount = 0;
 
+    const roundToTwo = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
+
     if (dto.items && dto.items.length > 0) {
-      for (const item of dto.items) {
-        const lineTotal = Number(item.lineTotal || 0);
-        subtotal += lineTotal;
-        totalAmount += lineTotal;
+      for (const itemDto of dto.items) {
+        const item = await this.prisma.item.findUnique({ where: { id: itemDto.itemId } });
+        let rate = Number(item?.taxRate1 || 18);
+        
+        let originalItemDiscount = 0;
+        let originalItemQty = 1;
+
+        if (itemDto.salesInvoiceItemId) {
+          const invItem = await this.prisma.eRPSalesInvoiceItem.findUnique({
+            where: { id: itemDto.salesInvoiceItemId },
+            include: { item: true }
+          });
+          if (invItem) {
+            rate = Number(invItem.item?.taxRate1 || rate);
+            originalItemQty = Number(invItem.quantity || 1);
+            originalItemDiscount = Number(invItem.discount || 0);
+          }
+        }
+
+        const returnQty = Number(itemDto.returnQty || 0);
+        const unitPrice = Number(itemDto.unitPrice || 0);
+
+        const discountPerUnit = originalItemQty > 0 ? (originalItemDiscount / originalItemQty) : 0;
+        const itemDiscount = discountPerUnit * returnQty;
+
+        const wostUnitPrice = unitPrice / (1 + rate / 100);
+        const grossVal = wostUnitPrice * returnQty;
+
+        const taxableAmt = grossVal - itemDiscount;
+        const itemTaxAmt = (taxableAmt * rate) / 100;
+
+        subtotal += grossVal - itemDiscount;
+        taxAmount += itemTaxAmt;
+        totalAmount += grossVal - itemDiscount + itemTaxAmt;
       }
     }
 
     return {
-      subtotal: Math.round(subtotal * 100) / 100,
-      taxAmount: Math.round(taxAmount * 100) / 100,
-      totalAmount: Math.round(totalAmount * 100) / 100,
+      subtotal: roundToTwo(subtotal),
+      taxAmount: roundToTwo(taxAmount),
+      totalAmount: roundToTwo(totalAmount),
     };
   }
 
@@ -514,38 +553,84 @@ export class SalesReturnService {
       return;
     }
 
+    // Determine whether a final-destination transfer is required
+    const hasFinalWarehouse =
+      !!salesReturn.finalWarehouseId &&
+      salesReturn.finalWarehouseId !== salesReturn.warehouseId;
+
+    const referenceType = salesReturn.sourceType === 'DELIVERY_CHALLAN'
+      ? 'SALES_RETURN_DC'
+      : 'SALES_RETURN_INV';
+
+    // Validate warehouses up-front
+    const returnWarehouse = await this.prisma.warehouse.findUnique({
+      where: { id: salesReturn.warehouseId },
+    });
+    if (!returnWarehouse) {
+      throw new Error(`Return warehouse with ID ${salesReturn.warehouseId} does not exist`);
+    }
+
+    let finalWarehouse: any = null;
+    if (hasFinalWarehouse) {
+      finalWarehouse = await this.prisma.warehouse.findUnique({
+        where: { id: salesReturn.finalWarehouseId },
+      });
+      if (!finalWarehouse) {
+        throw new Error(`Final destination warehouse with ID ${salesReturn.finalWarehouseId} does not exist`);
+      }
+    }
+
+    // Build all stock ledger entries
     const stockLedgerEntries: any[] = [];
 
     for (const item of salesReturn.items) {
-      const referenceType = salesReturn.sourceType === 'DELIVERY_CHALLAN'
-        ? 'SALES_RETURN_DC'
-        : 'SALES_RETURN_INV';
-
       const itemExists = await this.prisma.item.findUnique({
         where: { id: item.itemId },
       });
-
-      const warehouseExists = await this.prisma.warehouse.findUnique({
-        where: { id: salesReturn.warehouseId },
-      });
-
       if (!itemExists) {
         throw new Error(`Item with ID ${item.itemId} does not exist`);
       }
-      if (!warehouseExists) {
-        throw new Error(`Warehouse with ID ${salesReturn.warehouseId} does not exist`);
-      }
 
+      const qty = Number(item.returnQty);
+      const unitCost = Number(item.unitPrice);
+
+      // ── Entry #1: Customer → Return Warehouse (INBOUND) ──────────────
       stockLedgerEntries.push({
         itemId: itemExists.id,
         warehouseId: salesReturn.warehouseId,
-        qty: Number(item.returnQty), // Positive for Sales Return (goods coming back into stock)
+        qty,
         movementType: 'INBOUND',
-        unitCost: Number(item.unitPrice),
-        rate: Number(item.unitPrice),
+        unitCost,
+        rate: unitCost,
         referenceType,
         referenceId: salesReturn.id,
       });
+
+      if (hasFinalWarehouse) {
+        // ── Entry #2: Return Warehouse → Final Warehouse (OUTBOUND) ──────
+        stockLedgerEntries.push({
+          itemId: itemExists.id,
+          warehouseId: salesReturn.warehouseId,
+          qty: -qty, // negative = stock leaving
+          movementType: 'OUTBOUND',
+          unitCost,
+          rate: unitCost,
+          referenceType: 'SALES_RETURN_TRANSFER_OUT',
+          referenceId: salesReturn.id,
+        });
+
+        // ── Entry #3: Final Warehouse (INBOUND) ───────────────────────────
+        stockLedgerEntries.push({
+          itemId: itemExists.id,
+          warehouseId: salesReturn.finalWarehouseId,
+          qty,
+          movementType: 'INBOUND',
+          unitCost,
+          rate: unitCost,
+          referenceType: 'SALES_RETURN_TRANSFER_IN',
+          referenceId: salesReturn.id,
+        });
+      }
     }
 
     if (stockLedgerEntries.length > 0) {
@@ -558,6 +643,8 @@ export class SalesReturnService {
 
   private async updateInventoryItems(stockLedgerEntries: any[]) {
     for (const entry of stockLedgerEntries) {
+      const delta = Number(entry.qty); // positive = add, negative = subtract
+
       const existingInventory = await this.prisma.inventoryItem.findFirst({
         where: {
           itemId: entry.itemId,
@@ -567,17 +654,18 @@ export class SalesReturnService {
       });
 
       if (existingInventory) {
-        const newQuantity = Number(existingInventory.quantity) + Number(entry.qty);
+        const newQuantity = Number(existingInventory.quantity) + delta;
         await this.prisma.inventoryItem.update({
           where: { id: existingInventory.id },
           data: { quantity: newQuantity },
         });
-      } else {
+      } else if (delta > 0) {
+        // Only create a new inventoryItem record for positive (INBOUND) movements
         await this.prisma.inventoryItem.create({
           data: {
             itemId: entry.itemId,
             warehouseId: entry.warehouseId,
-            quantity: Number(entry.qty),
+            quantity: delta,
             status: 'AVAILABLE',
           },
         });
