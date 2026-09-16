@@ -277,9 +277,13 @@ export class DeliveryNoteExportProcessor {
           let toLocName = '';
           if (transfer.transferType === 'OUTLET_TO_WAREHOUSE') {
             fromLocName = transfer.fromLocation?.name || 'Outlet';
-            toLocName = transfer.fromWarehouse?.name || 'Main Warehouse';
+            toLocName = transfer.toWarehouse?.name || transfer.fromWarehouse?.name || 'Main Warehouse';
+          } else if (transfer.transferType === 'OUTLET_TO_OUTLET') {
+            fromLocName = transfer.fromLocation?.name || 'Outlet';
+            toLocName = transfer.toLocation?.name || 'Outlet';
           } else {
-            fromLocName = transfer.fromWarehouse?.name || '';
+            // WAREHOUSE_TO_OUTLET or others
+            fromLocName = transfer.fromWarehouse?.name || transfer.fromLocation?.name || '';
             toLocName = transfer.toLocation?.name || transfer.toWarehouse?.name || '';
           }
 

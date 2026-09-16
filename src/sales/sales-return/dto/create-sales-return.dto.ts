@@ -72,6 +72,10 @@ export class CreateSalesReturnDto {
   @IsNotEmpty()
   warehouseId: string;
 
+  @IsOptional()
+  @IsString()
+  finalWarehouseId?: string; // If set and differs from warehouseId, auto-generates transfer entries in stock ledger
+
   @IsEnum(SalesReturnType)
   @IsOptional()
   returnType?: SalesReturnType;

@@ -399,6 +399,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     entityType?: string;
     entityId?: string;
     warehouseId?: string;
+    warehouseRoleOnly?: boolean;
   }) {
     const category = (args.category || 'warehouse').toLowerCase();
     const priority = args.priority || 'high';
@@ -420,41 +421,46 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       });
       const warehouseRoleIds = warehouseRoles.map((r) => r.id);
 
-      // 2. Also find permissions related to warehouse operations
-      const warehousePermissions = await this.prismaMaster.permission.findMany({
-        where: {
-          name: {
-            in: [
-              'erp.inventory.warehouse.stock-requisition.pending',
-              'erp.inventory.warehouse.view',
-              'erp.inventory.warehouse.stock-transfer',
-              'erp.inventory.stock-transfer.read',
-              'erp.inventory.transfer.create',
-              'erp.inventory.warehouse.manage',
-            ],
+      let allTargetRoleIds = warehouseRoleIds;
+      let directUsersWithPerm: { userId: string }[] = [];
+
+      if (!args.warehouseRoleOnly) {
+        // 2. Also find permissions related to warehouse operations
+        const warehousePermissions = await this.prismaMaster.permission.findMany({
+          where: {
+            name: {
+              in: [
+                'erp.inventory.warehouse.stock-requisition.pending',
+                'erp.inventory.warehouse.view',
+                'erp.inventory.warehouse.stock-transfer',
+                'erp.inventory.stock-transfer.read',
+                'erp.inventory.transfer.create',
+                'erp.inventory.warehouse.manage',
+              ],
+            },
           },
-        },
-        select: { id: true },
-      });
-      const warehousePermIds = warehousePermissions.map((p) => p.id);
+          select: { id: true },
+        });
+        const warehousePermIds = warehousePermissions.map((p) => p.id);
 
-      // 3. Find roles that have these permissions
-      const rolesWithPerm = await this.prismaMaster.rolePermission.findMany({
-        where: { permissionId: { in: warehousePermIds } },
-        select: { roleId: true },
-      });
-      const allTargetRoleIds = Array.from(
-        new Set([...warehouseRoleIds, ...rolesWithPerm.map((rp) => rp.roleId)]),
-      );
+        // 3. Find roles that have these permissions
+        const rolesWithPerm = await this.prismaMaster.rolePermission.findMany({
+          where: { permissionId: { in: warehousePermIds } },
+          select: { roleId: true },
+        });
+        allTargetRoleIds = Array.from(
+          new Set([...warehouseRoleIds, ...rolesWithPerm.map((rp) => rp.roleId)]),
+        );
 
-      // 4. Find all active users with these roles or direct permissions
-      const directUsersWithPerm = await this.prismaMaster.userPermission.findMany({
-        where: {
-          permissionId: { in: warehousePermIds },
-          isAllowed: true,
-        },
-        select: { userId: true },
-      });
+        // 4. Find all active users with these direct permissions
+        directUsersWithPerm = await this.prismaMaster.userPermission.findMany({
+          where: {
+            permissionId: { in: warehousePermIds },
+            isAllowed: true,
+          },
+          select: { userId: true },
+        });
+      }
 
       const targetUsers = await this.prismaMaster.user.findMany({
         where: {

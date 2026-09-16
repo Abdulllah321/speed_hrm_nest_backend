@@ -46,7 +46,7 @@ export class StockValuationExportService {
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
     private readonly fiscalClosingService: FiscalYearClosingService,
-  ) {}
+  ) { }
 
   isJobCancelled(jobId?: string): boolean {
     if (!jobId) return false;
@@ -639,7 +639,7 @@ export class StockValuationExportService {
       }
 
       const entries = ledgerMap.get(item.id) || [];
-      
+
       let qtyBalance = 0;
       let runningWac = defaultCost;
 
@@ -860,7 +860,7 @@ export class StockValuationExportService {
       const openingValue = (safeOpeningQty * openingWac) + periodOpeningVal;
       const finalOpeningQty = safeOpeningQty + periodOpeningQty;
       const finalOpeningWac = finalOpeningQty > 0 ? openingValue / finalOpeningQty : defaultCost;
-      
+
       const purchaseCost = purchaseQty > 0 ? purchaseVal / purchaseQty : 0;
       const purchaseRetCost = purchaseRetQty > 0 ? purchaseRetVal / purchaseRetQty : 0;
 
@@ -940,23 +940,23 @@ export class StockValuationExportService {
     const [resolvedLcs, resolvedGrns, resolvedSaleOrders] = await Promise.all([
       allLcIds.size > 0
         ? prisma.landedCost.findMany({
-            where: { id: { in: [...allLcIds] } },
-            select: { id: true, landedCostNumber: true, lcNo: true },
-          })
+          where: { id: { in: [...allLcIds] } },
+          select: { id: true, landedCostNumber: true, lcNo: true },
+        })
         : [],
       allGrnIds.size > 0
         ? prisma.goodsReceiptNote.findMany({
-            where: { id: { in: [...allGrnIds] } },
-            select: { id: true, grnNumber: true },
-          })
+          where: { id: { in: [...allGrnIds] } },
+          select: { id: true, grnNumber: true },
+        })
         : [],
       allSaleOrderIds.size > 0
         ? (prisma as any).salesOrder
-            ?.findMany?.({
-              where: { id: { in: [...allSaleOrderIds] } },
-              select: { id: true, orderNumber: true },
-            })
-            .catch(() => []) ?? []
+          ?.findMany?.({
+            where: { id: { in: [...allSaleOrderIds] } },
+            select: { id: true, orderNumber: true },
+          })
+          .catch(() => []) ?? []
         : [],
     ]);
 
@@ -988,7 +988,7 @@ export class StockValuationExportService {
         if (order) return { docNumber: order, docType: 'SALE' };
       }
       if (['POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALES_RETURN'].includes(referenceType)
-          || referenceType.startsWith('POS_RETURN') || referenceType.startsWith('SALES_RETURN')) {
+        || referenceType.startsWith('POS_RETURN') || referenceType.startsWith('SALES_RETURN')) {
         const order = saleOrderDocMap.get(referenceId);
         if (order) return { docNumber: order, docType: 'SALE_RETURN' };
       }

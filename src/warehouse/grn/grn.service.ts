@@ -21,7 +21,7 @@ export class GrnService {
     private stockLedgerService: StockLedgerService,
     private activityLogs: ActivityLogsService,
     private prismaMaster: PrismaMasterService,
-  ) {}
+  ) { }
 
   /**
    * Generates the next sequential GRN number for the current fiscal year.
@@ -269,12 +269,30 @@ export class GrnService {
       }),
     );
 
+    // Ensure warehouseId resolves to Logistic Area if not provided
+    let warehouseId = dto.warehouseId;
+    if (!warehouseId) {
+      const logisticWh = await this.prisma.warehouse.findFirst({
+        where: {
+          isDeleted: false,
+          OR: [
+            { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
+            { code: 'C40001' },
+            { code: { contains: 'LOGISTIC', mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (logisticWh) {
+        warehouseId = logisticWh.id;
+      }
+    }
+
     // Create GRN with PENDING_CHECKER status
     const grn = await this.prisma.goodsReceiptNote.create({
       data: {
         grnNumber,
         purchaseOrderId: dto.purchaseOrderId,
-        warehouseId: dto.warehouseId,
+        warehouseId,
         status: 'PENDING_CHECKER',
         notes: dto.notes,
         orderType: po.orderType || null,

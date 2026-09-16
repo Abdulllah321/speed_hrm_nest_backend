@@ -9,7 +9,7 @@ export class SalesOrderService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async findAll(search?: string, status?: string) {
     const where: any = {};
@@ -75,14 +75,14 @@ export class SalesOrderService {
 
   async findOne(id: string) {
     console.log('Finding sales order with ID:', id); // Debug log
-    
+
     // First, let's check if any sales orders exist at all
     const allOrders = await this.prisma.eRPSalesOrder.findMany({
       take: 5,
       select: { id: true, orderNo: true }
     });
     console.log('Sample orders in database:', allOrders); // Debug log
-    
+
     const salesOrder = await this.prisma.eRPSalesOrder.findUnique({
       where: { id },
       include: {
@@ -131,7 +131,7 @@ export class SalesOrderService {
         },
         orderBy: { createdAt: 'desc' },
       });
-      
+
       let nextNumber = 1;
       if (lastOrder?.orderNo) {
         const lastSeq = parseInt(lastOrder.orderNo.split('-').pop() || '0', 10);
@@ -171,13 +171,28 @@ export class SalesOrderService {
 
       const grandTotal = itemRecords.reduce((sum, it) => sum + it.total, 0);
 
-      // Validate warehouse if provided
-      if (createSalesOrderDto.warehouseId) {
+      // Resolve warehouse (fixed to Logistic Area if not provided)
+      let resolvedWarehouseId = createSalesOrderDto.warehouseId;
+      if (resolvedWarehouseId) {
         const warehouse = await this.prisma.warehouse.findUnique({
-          where: { id: createSalesOrderDto.warehouseId },
+          where: { id: resolvedWarehouseId },
         });
         if (!warehouse) {
           throw new BadRequestException('Warehouse not found');
+        }
+      } else {
+        const logisticWh = await this.prisma.warehouse.findFirst({
+          where: {
+            isDeleted: false,
+            OR: [
+              { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
+              { code: 'C40001' },
+              { code: { contains: 'LOGISTIC', mode: 'insensitive' } },
+            ],
+          },
+        });
+        if (logisticWh) {
+          resolvedWarehouseId = logisticWh.id;
         }
       }
 
@@ -186,7 +201,7 @@ export class SalesOrderService {
         data: {
           orderNo,
           customerId: createSalesOrderDto.customerId,
-          warehouseId: createSalesOrderDto.warehouseId,
+          warehouseId: resolvedWarehouseId,
           baseMargin: 0,
           cashMargin: 0,
           baseMarginAmount: 0,

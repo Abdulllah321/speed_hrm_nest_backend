@@ -64,7 +64,7 @@ export class PosSalesController {
     private readonly corporateVoucherExportService: CorporateVoucherExportService,
     private readonly creditVoucherExportService: CreditVoucherExportService,
     private readonly voucherRegisterExportService: VoucherRegisterExportService,
-  ) {}
+  ) { }
 
   // ─── POS Customer Endpoints ────────────────────────────────────────
   // These mirror /api/sales/customers but are mounted under /api/pos-sales/customers
@@ -287,7 +287,7 @@ export class PosSalesController {
         const decoded: any = jwt.decode(req.cookies.posTerminalToken);
         effectivePosId = decoded?.posId || decoded?.terminalId;
         if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 3. Fallback: any user with a locationId on their token
@@ -505,7 +505,7 @@ export class PosSalesController {
           if (!dto.posId) dto.posId = decoded.posId;
           if (!dto.locationId) dto.locationId = decoded.locationId;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     const ctx = {
       userId: req.user?.id,
@@ -624,7 +624,7 @@ export class PosSalesController {
       try {
         const decoded: any = jwt.decode(req.cookies.posTerminalToken);
         effectiveLocationId = decoded?.locationId;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return this.posSalesService.getSalesReport(req.user, {

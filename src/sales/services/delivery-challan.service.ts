@@ -12,7 +12,7 @@ export class DeliveryChallanService {
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
     private activityLogs: ActivityLogsService,
-  ) {}
+  ) { }
 
   async create(createData: CreateDeliveryChallanDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
@@ -67,7 +67,7 @@ export class DeliveryChallanService {
             where: { id: item.itemId },
             select: { unitCost: true }
           });
-          
+
           const retailPrice = Number(item.salePrice || 0);
           const deliveredQty = Number(item.deliveredQty || 0);
           const total = deliveredQty * retailPrice;
@@ -85,12 +85,32 @@ export class DeliveryChallanService {
         const totalAmount = itemRecords.reduce((sum: number, it: any) => sum + it.total, 0);
         const totalQty = items.reduce((sum: number, item: any) => sum + item.deliveredQty, 0);
 
+        // Resolve warehouse (fallback to Logistic Area if not assigned on sales order)
+        let warehouseId = salesOrder.warehouseId;
+        if (!warehouseId) {
+          const logisticWh = await tx.warehouse.findFirst({
+            where: {
+              isDeleted: false,
+              OR: [
+                { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
+                { code: 'C40001' },
+                { code: { contains: 'LOGISTIC', mode: 'insensitive' } },
+              ],
+            },
+          });
+          warehouseId = logisticWh?.id || null;
+        }
+
+        if (!warehouseId) {
+          throw new BadRequestException('Warehouse not found. Please ensure a Logistic Area warehouse exists.');
+        }
+
         const challan = await tx.deliveryChallan.create({
           data: {
             challanNo,
             salesOrderId,
             customerId: salesOrder.customerId,
-            warehouseId: salesOrder.warehouseId,
+            warehouseId,
             challanDate: new Date(),
             driverName,
             vehicleNo,
@@ -122,14 +142,10 @@ export class DeliveryChallanService {
 
         // Create stock ledger entries for inventory outbound (Physical delivery)
         for (const item of items) {
-          if (!salesOrder.warehouseId) {
-            throw new BadRequestException('Sales order must have a warehouse assigned');
-          }
-
           // Create stock ledger entry
           await this.stockLedgerService.createEntry({
             itemId: item.itemId,
-            warehouseId: salesOrder.warehouseId as string,
+            warehouseId: warehouseId as string,
             qty: -Number(item.deliveredQty),
             movementType: MovementType.OUTBOUND,
             referenceType: 'DELIVERY_CHALLAN',
@@ -314,7 +330,7 @@ export class DeliveryChallanService {
 
       const updated = await this.prisma.deliveryChallan.update({
         where: { id },
-        data: { 
+        data: {
           status: 'DELIVERED',
           deliveryDate: new Date(),
         },
@@ -430,9 +446,9 @@ export class DeliveryChallanService {
     try {
       const directQuery = await this.prisma.deliveryChallan.findUnique({
         where: { id },
-        select: { 
-          id: true, 
-          status: true, 
+        select: {
+          id: true,
+          status: true,
           challanNo: true,
           invoices: {
             select: { id: true, invoiceNo: true }
@@ -476,15 +492,15 @@ export class DeliveryChallanService {
         const invoiceNo = `${prefix}-${currentYear}-${String(nextInvSeq).padStart(4, '0')}`;
 
         // Calculate correct invoice totals using FBR WOST logic (customer margin & discount at invoice time)
-        const baseMargin = data?.baseMargin !== undefined 
-          ? Number(data.baseMargin) 
+        const baseMargin = data?.baseMargin !== undefined
+          ? Number(data.baseMargin)
           : Number((deliveryChallan.customer as any)?.baseMargin ?? (deliveryChallan.salesOrder as any)?.baseMargin ?? 0);
-        const cashMargin = data?.cashMargin !== undefined 
-          ? Number(data.cashMargin) 
+        const cashMargin = data?.cashMargin !== undefined
+          ? Number(data.cashMargin)
           : Number((deliveryChallan.customer as any)?.cashMargin ?? (deliveryChallan.salesOrder as any)?.cashMargin ?? 0);
         const marginPct = baseMargin + cashMargin;
-        const orderDiscount = data?.discount !== undefined 
-          ? Number(data.discount) 
+        const orderDiscount = data?.discount !== undefined
+          ? Number(data.discount)
           : Number((deliveryChallan.salesOrder as any)?.discount ?? 0);
 
         const itemRecords = await Promise.all(deliveryChallan.items.map(async (item: any) => {
@@ -492,7 +508,7 @@ export class DeliveryChallanService {
             where: { id: item.itemId },
             select: { unitCost: true, taxRate1: true }
           });
-          
+
           const retailPrice = Number(item.salePrice || 0);
           const itemTaxRate = Number(itemRecord?.taxRate1 ?? 18);
           const quantity = Number(item.deliveredQty || 0);

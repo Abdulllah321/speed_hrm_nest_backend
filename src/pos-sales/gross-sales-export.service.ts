@@ -826,7 +826,7 @@ export class GrossSalesExportService {
     const handledSalesOrderIds = new Set<string>(posReturns.map((r: any) => r.salesOrderId).filter(Boolean));
 
     // Find any orphan stock ledger return entries that don't belong to already loaded posReturns
-    const orphanEntries = returnLedgerEntries.filter((e: any) => 
+    const orphanEntries = returnLedgerEntries.filter((e: any) =>
       !handledPosReturnIds.has(e.referenceId) && !handledSalesOrderIds.has(e.referenceId)
     );
 
@@ -897,7 +897,7 @@ export class GrossSalesExportService {
         const matchesRet = retNo.toLowerCase().includes(q);
         const matchesOrd = orderNo.toLowerCase().includes(q);
         const matchesCust = custName.toLowerCase().includes(q) || custPhone.includes(q);
-        const matchesItems = ret.items.some((it: any) => 
+        const matchesItems = ret.items.some((it: any) =>
           (it.item?.sku && it.item.sku.toLowerCase().includes(q)) ||
           (it.item?.barCode && it.item.barCode.toLowerCase().includes(q)) ||
           (it.item?.description && it.item.description.toLowerCase().includes(q))
@@ -910,8 +910,8 @@ export class GrossSalesExportService {
       const lineItems: GrossSalesReturnLineItem[] = ret.items.map((it: any) => {
         const qty = Math.abs(Number(it.quantity || 1));
         const unitPrice = Number(it.originalUnitPrice || it.originalPaidPerUnit || 0);
-        const wostAmount = Number(it.lineTotalWost) !== 0 
-          ? Number(it.lineTotalWost) 
+        const wostAmount = Number(it.lineTotalWost) !== 0
+          ? Number(it.lineTotalWost)
           : Math.round(Number(it.unitPriceWost || 0) * qty * 100) / 100;
         const discountAmount = Number(it.discountWost || 0);
         const taxAmount = Number(it.taxAmount || 0);
@@ -1365,7 +1365,7 @@ export class GrossSalesExportService {
     await (prisma as any).$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS idx_sales_orders_created_at ON sales_orders(created_at);
       CREATE INDEX IF NOT EXISTS idx_sales_orders_loc_created ON sales_orders(location_id, created_at);
-    `).catch(() => {});
+    `).catch(() => { });
 
     await onProgress?.(25, 'Counting matching POS sales orders...');
     const totalOrdersCount = await prisma.salesOrder.count({ where });
@@ -1433,133 +1433,133 @@ export class GrossSalesExportService {
       if (!chunkOrders.length) break;
 
       for (const order of chunkOrders) {
-      const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
-      const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+        const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
+        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
 
-      let locNode = locationNodesMap.get(locKey);
-      if (isSeparate && !locNode) {
-        locNode = {
-          locationKey: locKey,
-          locationId: order.locationId || undefined,
-          locationName: locName,
-          categories: [],
-          totals: createEmptyTotals(),
-        };
-        locationNodesMap.set(locKey, locNode);
-      }
-
-      for (const item of order.items) {
-        const qty = Number(item.quantity || 0);
-        if (qty <= 0) continue;
-
-        const catName = item.item?.category?.name || 'Unassigned Category';
-        const brandName = item.item?.brand?.name || 'Default Brand';
-        const divisionName = item.item?.division?.name || 'Default Division';
-        const genderName = item.item?.gender?.name || 'Default Gender';
-        const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
-        const unitPrice = Number(item.unitPrice || 0);
-        const disc = Number(item.discountAmount || 0);
-        const tax = Number(item.taxAmount || 0);
-        const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
-
-        const calculatedTaxPct = taxPercent > 0
-          ? taxPercent
-          : (tax > 0 && (Number(item.lineTotal || 0) - tax) > 0
-              ? Math.round((tax / (Number(item.lineTotal || 0) - tax)) * 100 * 100) / 100
-              : (tax > 0 ? 18 : 0));
-        const taxDivisor = 1 + calculatedTaxPct / 100;
-
-        const wostPerUnit = unitPrice / taxDivisor;
-        const wostAmount = Math.round(wostPerUnit * qty * 100) / 100;
-        const valueExSalesTax = Math.round((wostAmount - disc) * 100) / 100;
-        const taxAmount = tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
-        const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
-
-        const gross = unitPrice * qty;
-        const subTotal = valueInclSalesTax;
-
-        const lineTotals: GrossSalesSummaryTotals = {
-          orderCount: 1,
-          totalItems: qty,
-          grossAmount: gross,
-          wostAmount,
-          discountAmount: disc,
-          netAmount: subTotal,
-          taxAmount: taxAmount,
-        };
-
-        addTotals(grandTotals, lineTotals);
-
-        const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
-        const barCode = item.item?.barCode || item.item?.sku || '-';
-        const description = item.item?.description || item.item?.sku || 'Article';
-        const sizeName = item.item?.size?.name || 'Default';
-        const colorName = item.item?.color?.name || 'Default';
-
-        // Aggregate by location and product variant dimensions
-        const variantKey = `${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
-        let existingRecord = flatItemsMap.get(variantKey);
-        if (!existingRecord) {
-          existingRecord = {
+        let locNode = locationNodesMap.get(locKey);
+        if (isSeparate && !locNode) {
+          locNode = {
+            locationKey: locKey,
             locationId: order.locationId || undefined,
             locationName: locName,
-            categoryName: catName,
-            brandName,
-            divisionName,
-            genderName,
-            silhouetteName,
-            sku,
-            barCode,
-            description,
-            sizeName,
-            colorName,
-            quantity: 0,
-            unitPrice,
-            wostAmount: 0,
-            discountAmount: 0,
-            taxAmount: 0,
-            subTotal: 0,
-          };
-          flatItemsMap.set(variantKey, existingRecord);
-        }
-
-        existingRecord.quantity += qty;
-        existingRecord.wostAmount = Math.round((existingRecord.wostAmount + wostAmount) * 100) / 100;
-        existingRecord.discountAmount = Math.round((existingRecord.discountAmount + disc) * 100) / 100;
-        existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
-        existingRecord.subTotal = Math.round((existingRecord.subTotal + subTotal) * 100) / 100;
-        if (existingRecord.quantity > 0) {
-          existingRecord.unitPrice = Math.round(((existingRecord.subTotal + existingRecord.discountAmount) / existingRecord.quantity) * 100) / 100;
-        }
-
-        // Add to global merged map (accumulate category totals only; line items live exclusively in flatItems)
-        let globalCat = globalCategoryNodesMap.get(catName);
-        if (!globalCat) {
-          globalCat = {
-            categoryName: catName,
-            brandName,
+            categories: [],
             totals: createEmptyTotals(),
-            items: [],
           };
-          globalCategoryNodesMap.set(catName, globalCat);
+          locationNodesMap.set(locKey, locNode);
         }
-        addTotals(globalCat.totals, lineTotals);
 
-        // Add to location map if separate
-        if (isSeparate && locNode) {
-          let locCat = locNode.categories.find((c) => c.categoryName === catName);
-          if (!locCat) {
-            locCat = {
+        for (const item of order.items) {
+          const qty = Number(item.quantity || 0);
+          if (qty <= 0) continue;
+
+          const catName = item.item?.category?.name || 'Unassigned Category';
+          const brandName = item.item?.brand?.name || 'Default Brand';
+          const divisionName = item.item?.division?.name || 'Default Division';
+          const genderName = item.item?.gender?.name || 'Default Gender';
+          const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
+          const unitPrice = Number(item.unitPrice || 0);
+          const disc = Number(item.discountAmount || 0);
+          const tax = Number(item.taxAmount || 0);
+          const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
+
+          const calculatedTaxPct = taxPercent > 0
+            ? taxPercent
+            : (tax > 0 && (Number(item.lineTotal || 0) - tax) > 0
+              ? Math.round((tax / (Number(item.lineTotal || 0) - tax)) * 100 * 100) / 100
+              : (tax > 0 ? 18 : 0));
+          const taxDivisor = 1 + calculatedTaxPct / 100;
+
+          const wostPerUnit = unitPrice / taxDivisor;
+          const wostAmount = Math.round(wostPerUnit * qty * 100) / 100;
+          const valueExSalesTax = Math.round((wostAmount - disc) * 100) / 100;
+          const taxAmount = tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
+          const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
+
+          const gross = unitPrice * qty;
+          const subTotal = valueInclSalesTax;
+
+          const lineTotals: GrossSalesSummaryTotals = {
+            orderCount: 1,
+            totalItems: qty,
+            grossAmount: gross,
+            wostAmount,
+            discountAmount: disc,
+            netAmount: subTotal,
+            taxAmount: taxAmount,
+          };
+
+          addTotals(grandTotals, lineTotals);
+
+          const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
+          const barCode = item.item?.barCode || item.item?.sku || '-';
+          const description = item.item?.description || item.item?.sku || 'Article';
+          const sizeName = item.item?.size?.name || 'Default';
+          const colorName = item.item?.color?.name || 'Default';
+
+          // Aggregate by location and product variant dimensions
+          const variantKey = `${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
+          let existingRecord = flatItemsMap.get(variantKey);
+          if (!existingRecord) {
+            existingRecord = {
+              locationId: order.locationId || undefined,
+              locationName: locName,
+              categoryName: catName,
+              brandName,
+              divisionName,
+              genderName,
+              silhouetteName,
+              sku,
+              barCode,
+              description,
+              sizeName,
+              colorName,
+              quantity: 0,
+              unitPrice,
+              wostAmount: 0,
+              discountAmount: 0,
+              taxAmount: 0,
+              subTotal: 0,
+            };
+            flatItemsMap.set(variantKey, existingRecord);
+          }
+
+          existingRecord.quantity += qty;
+          existingRecord.wostAmount = Math.round((existingRecord.wostAmount + wostAmount) * 100) / 100;
+          existingRecord.discountAmount = Math.round((existingRecord.discountAmount + disc) * 100) / 100;
+          existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
+          existingRecord.subTotal = Math.round((existingRecord.subTotal + subTotal) * 100) / 100;
+          if (existingRecord.quantity > 0) {
+            existingRecord.unitPrice = Math.round(((existingRecord.subTotal + existingRecord.discountAmount) / existingRecord.quantity) * 100) / 100;
+          }
+
+          // Add to global merged map (accumulate category totals only; line items live exclusively in flatItems)
+          let globalCat = globalCategoryNodesMap.get(catName);
+          if (!globalCat) {
+            globalCat = {
               categoryName: catName,
               brandName,
               totals: createEmptyTotals(),
               items: [],
             };
-            locNode.categories.push(locCat);
+            globalCategoryNodesMap.set(catName, globalCat);
           }
-          addTotals(locCat.totals, lineTotals);
-          addTotals(locNode.totals, lineTotals);
-        }
+          addTotals(globalCat.totals, lineTotals);
+
+          // Add to location map if separate
+          if (isSeparate && locNode) {
+            let locCat = locNode.categories.find((c) => c.categoryName === catName);
+            if (!locCat) {
+              locCat = {
+                categoryName: catName,
+                brandName,
+                totals: createEmptyTotals(),
+                items: [],
+              };
+              locNode.categories.push(locCat);
+            }
+            addTotals(locCat.totals, lineTotals);
+            addTotals(locNode.totals, lineTotals);
+          }
         }
       }
 
@@ -2126,19 +2126,19 @@ export class GrossSalesExportService {
     const summaryRow = sheet.addRow(
       exportType === 'flat'
         ? {
-            locationName: 'FILTERED TOTALS',
-            quantity: totalQty,
-            discountAmount: totalDiscount,
-            returnGrossAmount: totalGross,
-            returnNetAmount: totalNet,
-          }
+          locationName: 'FILTERED TOTALS',
+          quantity: totalQty,
+          discountAmount: totalDiscount,
+          returnGrossAmount: totalGross,
+          returnNetAmount: totalNet,
+        }
         : {
-            returnNumber: 'FILTERED TOTALS',
-            totalItems: totalQty,
-            grossAmount: totalGross,
-            discountAmount: totalDiscount,
-            netAmount: totalNet,
-          }
+          returnNumber: 'FILTERED TOTALS',
+          totalItems: totalQty,
+          grossAmount: totalGross,
+          discountAmount: totalDiscount,
+          netAmount: totalNet,
+        }
     );
     summaryRow.font = { bold: true };
     summaryRow.commit();
