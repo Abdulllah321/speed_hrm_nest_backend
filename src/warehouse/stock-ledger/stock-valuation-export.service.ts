@@ -699,8 +699,12 @@ export class StockValuationExportService {
           ref === 'ADJUSTMENT' ||
           ref === 'STOCK_ADJUSTMENT' ||
           ref === 'SADJ' ||
+          ref === 'CLOSING_BALANCE' ||
+          ref === 'MANUAL_ZERO_STOCK' ||
           ref.startsWith('SADJ') ||
-          ref.includes('ADJUSTMENT');
+          ref.includes('ADJUSTMENT') ||
+          ref.includes('CLOSING_BALANCE') ||
+          ref.includes('ZERO_STOCK');
 
         const isTransfer =
           entry.movementType === 'TRANSFER' ||
@@ -784,6 +788,13 @@ export class StockValuationExportService {
             } else if (isPosSalesReturn) {
               // Sales Return (stock returned by customer) reduces Net Sales
               salesQty -= entryQty;
+              saleBreakdownRaw.push({
+                referenceId: entry.referenceId || '',
+                referenceType: ref,
+                qty: -entryQty, // negative to indicate return
+                unitCost: runningWac,
+                date: entry.createdAt,
+              });
             } else if (isPurchase) {
               purchaseQty += entryQty;
               purchaseVal += entryQty * entryCost;
@@ -808,7 +819,11 @@ export class StockValuationExportService {
 
             const isSale =
               !isTransfer &&
-              (['POS_SALE', 'POS_EXCHANGE_OUT', 'POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID'].includes(ref) ||
+              !isAdjustment &&
+              !isOpening &&
+              (['POS_SALE', 'POS_EXCHANGE_OUT', 'POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALE', 'SALES_ORDER', 'DELIVERY_CHALLAN'].includes(ref) ||
+                ref.startsWith('POS_SALE') ||
+                ref.startsWith('SALE') ||
                 entry.movementType === 'OUTBOUND');
 
             const absQty = Math.abs(entryQty);
@@ -819,6 +834,7 @@ export class StockValuationExportService {
               purchaseRetVal += absQty * entryCost;
             } else if (isAdjustment) {
               adjQty += entryQty; // negative or positive net adjustment qty
+              adjVal += entryQty * entryCost;
             } else if (isTransfer) {
               // Internal transfers must NOT be counted in Sales or Purchase Returns
             } else if (isSale) {
