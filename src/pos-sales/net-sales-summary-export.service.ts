@@ -337,8 +337,23 @@ export class NetSalesSummaryExportService {
   async saveReportPreviewResult(jobId: string, result: NetSalesSummaryReportResult): Promise<void> {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
     await fs.promises.mkdir(previewDir, { recursive: true });
-    const filePath = this.getPreviewNdjsonFilePath(jobId);
 
+    // 1. Save compressed preview JSON directly (capped to 5,000 records for fast fallback loading)
+    try {
+      const jsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
+      const previewResult = {
+        ...result,
+        flatItems: (result.flatItems || []).slice(0, 5000),
+      };
+      const jsonStr = JSON.stringify(previewResult);
+      const compressedJson = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
+      await fs.promises.writeFile(jsonPath, compressedJson);
+    } catch (err: any) {
+      this.logger.warn(`Failed to save compressed preview JSON for ${jobId}: ${err.message}`);
+    }
+
+    // 2. Stream complete un-truncated NDJSON to disk with fine-grained 100-item chunks
+    const filePath = this.getPreviewNdjsonFilePath(jobId);
     const gzip = zlib.createGzip({ level: 6 });
     const writeStream = fs.createWriteStream(filePath);
 
@@ -368,7 +383,7 @@ export class NetSalesSummaryExportService {
             }) + '\n';
           await safeWrite(metaLine);
 
-          // Line 2: Categories (totals only, empty items)
+          // Line 2: Categories in chunks of 100
           const categories = result.categories || [];
           for (let i = 0; i < categories.length; i += 100) {
             const slice = categories.slice(i, i + 100);
@@ -383,10 +398,10 @@ export class NetSalesSummaryExportService {
             await new Promise((res) => setImmediate(res));
           }
 
-          // Line 3..N: Flat items chunked into batches (1,500 records per line)
+          // Line 3..N: Flat items chunked into batches (100 records per line)
           const flatItems = result.flatItems || [];
-          for (let i = 0; i < flatItems.length; i += 1500) {
-            const slice = flatItems.slice(i, i + 1500);
+          for (let i = 0; i < flatItems.length; i += 100) {
+            const slice = flatItems.slice(i, i + 100);
             const chunkLine =
               JSON.stringify({
                 type: 'flatItems',
