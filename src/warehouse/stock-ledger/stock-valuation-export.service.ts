@@ -668,11 +668,19 @@ export class StockValuationExportService {
       for (const entry of entries) {
         const entryQty = Number(entry.qty);
         let entryCost = Number(entry.unitCost ?? entry.rate ?? 0);
-        if (entryCost === 0) {
+        const ref = entry.referenceType || '';
+        
+        // For genuine inbound purchases (Landed Costs, GRNs), a 0 cost means Free of Cost (FOC).
+        // For outbound movements (Sales) missing a rate, cost them at running WAC.
+        const isInboundPurchase = 
+          entry.movementType === 'INBOUND' && 
+          (ref === 'LANDED_COST' || ref === 'GRN' || ref === 'PURCHASE' || ref.startsWith('GRN') || ref.startsWith('PURCHASE'));
+          
+        if (entryCost === 0 && !isInboundPurchase) {
           entryCost = runningWac;
         }
+        
         const isBeforePeriod = entry.createdAt < startDate;
-        const ref = entry.referenceType || '';
         const isFiscalYearOpening = ref === 'FISCAL_YEAR_OPENING';
 
         // Skip mid-range automated Fiscal Year Opening snapshots to prevent double counting when querying across fiscal years
