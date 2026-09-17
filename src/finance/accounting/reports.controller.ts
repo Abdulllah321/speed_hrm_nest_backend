@@ -147,20 +147,21 @@ export class ReportsController {
    */
   @Get('general-ledger-summary')
   @ApiOperation({ summary: 'General Ledger Subaccount Summary Report' })
-  @ApiQuery({ name: 'parentAccountId', required: true, type: String })
+  @ApiQuery({ name: 'parentAccountIds', required: true, type: String, description: 'Comma-separated parent account IDs' })
   @ApiQuery({ name: 'subAccountIds', required: false, type: String, description: 'Comma-separated sub-account IDs (optional)' })
   @ApiQuery({ name: 'from', required: false, type: String })
   @ApiQuery({ name: 'to', required: false, type: String })
   async generalLedgerSummary(
-    @Query('parentAccountId') parentAccountId: string,
+    @Query('parentAccountIds') parentAccountIds: string,
     @Query('subAccountIds') subAccountIds?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
+    const parentIds = parentAccountIds && parentAccountIds.trim() !== '' ? parentAccountIds.split(',') : [];
     const ids = subAccountIds && subAccountIds.trim() !== '' ? subAccountIds.split(',') : [];
     return {
       status: true,
-      data: await this.reports.getSubaccountSummary(parentAccountId, ids, from, to),
+      data: await this.reports.getSubaccountSummary(parentIds, ids, from, to),
     };
   }
 

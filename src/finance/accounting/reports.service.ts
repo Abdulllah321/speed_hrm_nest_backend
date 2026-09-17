@@ -1005,6 +1005,11 @@ export class ReportsService {
         const node = nodeMap.get(nodeId);
         if (!node) return;
 
+        // If includeTagAccounts is false, skip pushing sub-accounts (level >= 4) to rows.
+        if (!includeTagAccounts && level >= 4) {
+          return;
+        }
+
         const variance = node.amount - (node.compareAmount || 0);
         const percentageChange =
           node.compareAmount && node.compareAmount !== 0
@@ -1017,7 +1022,7 @@ export class ReportsService {
           name: node.name,
           type: node.type,
           isGroup: node.isGroup ?? false,
-          isTagAccount: node.isTagAccount ?? false,
+          isTagAccount: (node.isTagAccount ?? false) || (level >= 4),
           parentId: node.parentId,
           level,
           amount: node.amount,
@@ -1631,165 +1636,177 @@ export class ReportsService {
   }
 
   async getSubaccountSummary(
-    parentAccountId: string,
+    parentAccountIds: string[],
     subAccountIds: string[],
     from?: string,
     to?: string,
   ) {
-    const parentAccount = await this.prisma.chartOfAccount.findUnique({
-      where: { id: parentAccountId },
+    if (!parentAccountIds || parentAccountIds.length === 0) return [];
+
+    const parentAccounts = await this.prisma.chartOfAccount.findMany({
+      where: { id: { in: parentAccountIds } },
       select: { id: true, code: true, name: true, type: true },
+      orderBy: { code: 'asc' },
     });
-    if (!parentAccount) throw new NotFoundException('Parent account not found');
 
     const fromDate = parseFromDate(from);
     const toDate = parseToDate(to);
 
-    // If subAccountIds is empty, load all sub-accounts of the parent account
-    let targetIds = subAccountIds;
-    if (!targetIds || targetIds.length === 0) {
-      const children = await this.prisma.chartOfAccount.findMany({
-        where: { parentId: parentAccountId, isActive: true },
-        select: { id: true },
-      });
-      targetIds = children.map((c) => c.id);
-    }
+    return Promise.all(
+      parentAccounts.map(async (parentAccount) => {
+        let targetIds = subAccountIds;
+        if (!targetIds || targetIds.length === 0) {
+          const children = await this.prisma.chartOfAccount.findMany({
+            where: { parentId: parentAccount.id, isActive: true },
+            select: { id: true },
+          });
+          targetIds = children.map((c) => c.id);
+        }
 
-    if (targetIds.length === 0) {
-      return {
-        parentAccount,
-        rows: [],
-        totals: { openingBalance: 0, debit: 0, credit: 0, closingBalance: 0 },
-      };
-    }
+        if (targetIds.length === 0) {
+          return {
+            parentAccount,
+            rows: [],
+            totals: { openingBalance: 0, debit: 0, credit: 0, closingBalance: 0 },
+          };
+        }
 
-    const subAccounts = await this.prisma.chartOfAccount.findMany({
-      where: { id: { in: targetIds } },
-      select: { id: true, code: true, name: true },
-      orderBy: { code: 'asc' },
-    });
+        const subAccounts = await this.prisma.chartOfAccount.findMany({
+          where: { id: { in: targetIds }, parentId: parentAccount.id },
+          select: { id: true, code: true, name: true },
+          orderBy: { code: 'asc' },
+        });
 
-    // 1. Opening Balance aggregation
-    const openingWhere: any = {
-      AND: [
-        {
-          OR: [
-            { tagAccountId: { in: targetIds } },
-            { accountId: { in: targetIds } },
+        if (subAccounts.length === 0) {
+          return {
+            parentAccount,
+            rows: [],
+            totals: { openingBalance: 0, debit: 0, credit: 0, closingBalance: 0 },
+          };
+        }
+
+        const currentTargetIds = subAccounts.map((sa) => sa.id);
+
+        const openingWhere: any = {
+          AND: [
+            {
+              OR: [
+                { tagAccountId: { in: currentTargetIds } },
+                { accountId: { in: currentTargetIds } },
+              ],
+            },
           ],
-        },
-      ],
-    };
-    if (fromDate) {
-      openingWhere.AND.push({
-        OR: [
-          { sourceType: 'OPENING_BALANCE' },
-          {
-            transactionDate: { lt: fromDate },
-            sourceType: { not: 'OPENING_BALANCE' },
+        };
+        if (fromDate) {
+          openingWhere.AND.push({
+            OR: [
+              { sourceType: 'OPENING_BALANCE' },
+              {
+                transactionDate: { lt: fromDate },
+                sourceType: { not: 'OPENING_BALANCE' },
+              },
+            ],
+          });
+        } else {
+          openingWhere.AND.push({ sourceType: 'OPENING_BALANCE' });
+        }
+
+        const activityWhere: any = {
+          AND: [
+            {
+              OR: [
+                { tagAccountId: { in: currentTargetIds } },
+                { accountId: { in: currentTargetIds } },
+              ],
+            },
+            { sourceType: { not: 'OPENING_BALANCE' } },
+          ],
+        };
+        if (fromDate || toDate) {
+          const dateConditions: any = {};
+          if (fromDate) dateConditions.gte = fromDate;
+          if (toDate) dateConditions.lte = toDate;
+          activityWhere.AND.push({ transactionDate: dateConditions });
+        }
+
+        const [openingAggs, activityAggs] = await Promise.all([
+          this.prisma.accountTransaction.groupBy({
+            by: ['accountId', 'tagAccountId'],
+            where: openingWhere,
+            _sum: { debit: true, credit: true },
+          }),
+          this.prisma.accountTransaction.groupBy({
+            by: ['accountId', 'tagAccountId'],
+            where: activityWhere,
+            _sum: { debit: true, credit: true },
+          }),
+        ]);
+
+        const openingMap = new Map<string, { debit: number; credit: number }>();
+        openingAggs.forEach((agg) => {
+          const eid = agg.tagAccountId || agg.accountId;
+          if (eid) {
+            const existing = openingMap.get(eid) || { debit: 0, credit: 0 };
+            openingMap.set(eid, {
+              debit: existing.debit + Number(agg._sum.debit ?? 0),
+              credit: existing.credit + Number(agg._sum.credit ?? 0),
+            });
+          }
+        });
+
+        const activityMap = new Map<string, { debit: number; credit: number }>();
+        activityAggs.forEach((agg) => {
+          const eid = agg.tagAccountId || agg.accountId;
+          if (eid) {
+            const existing = activityMap.get(eid) || { debit: 0, credit: 0 };
+            activityMap.set(eid, {
+              debit: existing.debit + Number(agg._sum.debit ?? 0),
+              credit: existing.credit + Number(agg._sum.credit ?? 0),
+            });
+          }
+        });
+
+        let grandOpening = 0;
+        let grandDebit = 0;
+        let grandCredit = 0;
+        let grandClosing = 0;
+
+        const rows = subAccounts.map((sa) => {
+          const op = openingMap.get(sa.id) || { debit: 0, credit: 0 };
+          const act = activityMap.get(sa.id) || { debit: 0, credit: 0 };
+
+          const openingBalance = op.debit - op.credit;
+          const debit = act.debit;
+          const credit = act.credit;
+          const closingBalance = openingBalance + debit - credit;
+
+          grandOpening += openingBalance;
+          grandDebit += debit;
+          grandCredit += credit;
+          grandClosing += closingBalance;
+
+          return {
+            id: sa.id,
+            code: sa.code,
+            name: sa.name,
+            openingBalance,
+            debit,
+            credit,
+            closingBalance,
+          };
+        });
+
+        return {
+          parentAccount,
+          rows,
+          totals: {
+            openingBalance: grandOpening,
+            debit: grandDebit,
+            credit: grandCredit,
+            closingBalance: grandClosing,
           },
-        ],
-      });
-    } else {
-      openingWhere.AND.push({ sourceType: 'OPENING_BALANCE' });
-    }
-
-    // 2. Activity aggregation
-    const activityWhere: any = {
-      AND: [
-        {
-          OR: [
-            { tagAccountId: { in: targetIds } },
-            { accountId: { in: targetIds } },
-          ],
-        },
-        { sourceType: { not: 'OPENING_BALANCE' } },
-      ],
-    };
-    if (fromDate || toDate) {
-      const dateConditions: any = {};
-      if (fromDate) dateConditions.gte = fromDate;
-      if (toDate) dateConditions.lte = toDate;
-      activityWhere.AND.push({ transactionDate: dateConditions });
-    }
-
-    const [openingAggs, activityAggs] = await Promise.all([
-      this.prisma.accountTransaction.groupBy({
-        by: ['accountId', 'tagAccountId'],
-        where: openingWhere,
-        _sum: { debit: true, credit: true },
-      }),
-      this.prisma.accountTransaction.groupBy({
-        by: ['accountId', 'tagAccountId'],
-        where: activityWhere,
-        _sum: { debit: true, credit: true },
-      }),
-    ]);
-
-    const openingMap = new Map<string, { debit: number; credit: number }>();
-    openingAggs.forEach((agg) => {
-      const eid = agg.tagAccountId || agg.accountId;
-      if (eid) {
-        const existing = openingMap.get(eid) || { debit: 0, credit: 0 };
-        openingMap.set(eid, {
-          debit: existing.debit + Number(agg._sum.debit ?? 0),
-          credit: existing.credit + Number(agg._sum.credit ?? 0),
-        });
-      }
-    });
-
-    const activityMap = new Map<string, { debit: number; credit: number }>();
-    activityAggs.forEach((agg) => {
-      const eid = agg.tagAccountId || agg.accountId;
-      if (eid) {
-        const existing = activityMap.get(eid) || { debit: 0, credit: 0 };
-        activityMap.set(eid, {
-          debit: existing.debit + Number(agg._sum.debit ?? 0),
-          credit: existing.credit + Number(agg._sum.credit ?? 0),
-        });
-      }
-    });
-
-    let grandOpening = 0;
-    let grandDebit = 0;
-    let grandCredit = 0;
-    let grandClosing = 0;
-
-    const rows = subAccounts.map((sa) => {
-      const op = openingMap.get(sa.id) || { debit: 0, credit: 0 };
-      const act = activityMap.get(sa.id) || { debit: 0, credit: 0 };
-
-      // Balance = Debit - Credit
-      const openingBalance = op.debit - op.credit;
-      const debit = act.debit;
-      const credit = act.credit;
-      const closingBalance = openingBalance + debit - credit;
-
-      grandOpening += openingBalance;
-      grandDebit += debit;
-      grandCredit += credit;
-      grandClosing += closingBalance;
-
-      return {
-        id: sa.id,
-        code: sa.code,
-        name: sa.name,
-        openingBalance,
-        debit,
-        credit,
-        closingBalance,
-      };
-    });
-
-    return {
-      parentAccount,
-      rows,
-      totals: {
-        openingBalance: grandOpening,
-        debit: grandDebit,
-        credit: grandCredit,
-        closingBalance: grandClosing,
-      },
-    };
+        };
+      })
+    );
   }
 }
