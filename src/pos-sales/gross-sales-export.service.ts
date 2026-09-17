@@ -17,7 +17,7 @@ import { ExportHistoryService } from '../warehouse/export-history/export-history
 const gzipAsync = promisify(zlib.gzip);
 const gunzipAsync = promisify(zlib.gunzip);
 
-// ─── Gross Sales Return Interfaces ──────────────────────────────────────────
+// ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ─── Gross Sales Return Interfaces ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ───
 
 export interface GrossSalesReturnTotals {
   returnCount: number;
@@ -121,7 +121,7 @@ export interface GrossSalesReturnReportResult {
   locationNames: string;
 }
 
-// ─── Gross Sales Summary Interfaces ────────────────────────────────────────
+// ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ─── Gross Sales Summary Interfaces ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ────
 
 export interface GrossSalesSummaryTotals {
   orderCount: number;
@@ -244,7 +244,7 @@ export class GrossSalesExportService {
     }
   }
 
-  // ─── Gross Sales Return Preview Methods ───────────────────────────────────
+  // ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ─── Gross Sales Return Preview Methods ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ─────
 
   async queueReportPreview(opts: {
     userId: string;
@@ -298,7 +298,7 @@ export class GrossSalesExportService {
     return { jobId };
   }
 
-  // ─── Gross Sales Summary Preview Methods ──────────────────────────────────
+  // ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ─── Gross Sales Summary Preview Methods ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ────
 
   async queueSummaryReportPreview(opts: {
     userId: string;
@@ -1200,7 +1200,7 @@ export class GrossSalesExportService {
 
     await onProgress?.(100, 'Sales Return Register computation complete!');
 
-    return {
+    const finalResult = {
       reportType,
       locations: isSeparate ? Array.from(locationNodesMap.values()) : undefined,
       returns: returnNodes,
@@ -1209,9 +1209,13 @@ export class GrossSalesExportService {
       dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
       locationNames,
     };
+
+    console.log(`[generateGrossSalesReturnReportDataInternal] Result contains ${returnNodes.length} returnNodes and ${flatItems.length} flatItems.`);
+
+    return finalResult;
   }
 
-  // ─── Gross Sales Summary Computation Engine ───────────────────────────────
+  // ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ─── Gross Sales Summary Computation Engine ───If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ──────If it works don't touch it I know how i fixed it by spending hours of time and millions of token ────
 
   async generateGrossSalesSummaryReportDataInternal(
     prisma: PrismaService,
@@ -1812,71 +1816,60 @@ export class GrossSalesExportService {
     let totalTax = 0;
     let totalSubTotal = 0;
 
-    const fileStream = fs.createReadStream(filePath);
-    const gunzip = zlib.createGunzip();
-    const lineReader = readline.createInterface({
-      input: fileStream.pipe(gunzip),
-      crlfDelay: Infinity,
-    });
+    const data = await this.getReportPreviewResult(jobId);
+    if (!data) throw new NotFoundException('Gross sales summary preview result not found or expired');
 
-    for await (const line of lineReader) {
-      if (!line || !line.trim()) continue;
-      try {
-        const parsed = JSON.parse(line);
-        if (parsed.type === 'flatItems' && Array.isArray(parsed.flatItems)) {
-          for (const item of parsed.flatItems) {
-            if (locSet) {
-              const loc = (item.locationName || '').toLowerCase();
-              if (!locSet.has(loc)) continue;
-            }
-
-            if (q) {
-              const matches =
-                (item.sku || '').toLowerCase().includes(q) ||
-                (item.barCode || '').toLowerCase().includes(q) ||
-                (item.description || '').toLowerCase().includes(q) ||
-                (item.categoryName || '').toLowerCase().includes(q) ||
-                (item.brandName || '').toLowerCase().includes(q) ||
-                (item.locationName || '').toLowerCase().includes(q);
-              if (!matches) continue;
-            }
-
-            const qty = Number(item.quantity || 0);
-            const wost = Number(item.wostAmount || 0);
-            const disc = Number(item.discountAmount || 0);
-            const tax = Number(item.taxAmount || 0);
-            const sub = Number(item.subTotal || 0);
-
-            totalQty += qty;
-            totalWost += wost;
-            totalDiscount += disc;
-            totalTax += tax;
-            totalSubTotal += sub;
-
-            const row = sheet.addRow({
-              locationName: item.locationName || '-',
-              categoryName: item.categoryName || '-',
-              brandName: item.brandName || '-',
-              divisionName: item.divisionName || '-',
-              genderName: item.genderName || '-',
-              silhouetteName: item.silhouetteName || '-',
-              sku: item.sku || '-',
-              barCode: item.barCode || '-',
-              description: item.description || '-',
-              sizeName: item.sizeName || '-',
-              colorName: item.colorName || '-',
-              quantity: qty,
-              unitPrice: Number(item.unitPrice || 0),
-              wostAmount: wost,
-              discountAmount: disc,
-              taxAmount: tax,
-              subTotal: sub,
-            });
-            row.commit();
-          }
+    if (exportType === 'flat') {
+      const flatItems = data.flatItems || [];
+      for (const item of flatItems) {
+        if (locSet) {
+          const loc = (item.locationName || '').toLowerCase();
+          if (!locSet.has(loc)) continue;
         }
-      } catch (e) {
-        // Skip unparseable
+
+        if (q) {
+          const matches =
+            (item.sku || '').toLowerCase().includes(q) ||
+            (item.barCode || '').toLowerCase().includes(q) ||
+            (item.description || '').toLowerCase().includes(q) ||
+            (item.categoryName || '').toLowerCase().includes(q) ||
+            (item.brandName || '').toLowerCase().includes(q) ||
+            (item.locationName || '').toLowerCase().includes(q);
+          if (!matches) continue;
+        }
+
+        const qty = Number(item.quantity || 0);
+        const wost = Number(item.wostAmount || 0);
+        const disc = Number(item.discountAmount || 0);
+        const tax = Number(item.taxAmount || 0);
+        const sub = Number(item.subTotal || 0);
+
+        totalQty += qty;
+        totalWost += wost;
+        totalDiscount += disc;
+        totalTax += tax;
+        totalSubTotal += sub;
+
+        const row = sheet.addRow({
+          locationName: item.locationName || '-',
+          categoryName: item.categoryName || '-',
+          brandName: item.brandName || '-',
+          divisionName: item.divisionName || '-',
+          genderName: item.genderName || '-',
+          silhouetteName: item.silhouetteName || '-',
+          sku: item.sku || '-',
+          barCode: item.barCode || '-',
+          description: item.description || '-',
+          sizeName: item.sizeName || '-',
+          colorName: item.colorName || '-',
+          quantity: qty,
+          unitPrice: Number(item.unitPrice || 0),
+          wostAmount: wost,
+          discountAmount: disc,
+          taxAmount: tax,
+          subTotal: sub,
+        });
+        row.commit();
       }
     }
 
@@ -1997,129 +1990,118 @@ export class GrossSalesExportService {
     let totalDiscount = 0;
     let totalNet = 0;
 
-    const fileStream = fs.createReadStream(filePath);
-    const gunzip = zlib.createGunzip();
-    const lineReader = readline.createInterface({
-      input: fileStream.pipe(gunzip),
-      crlfDelay: Infinity,
-    });
+    const data = await this.getReportPreviewResult(jobId);
+    if (!data) throw new NotFoundException('Sales return preview result not found or expired');
 
-    for await (const line of lineReader) {
-      if (!line || !line.trim()) continue;
-      try {
-        const parsed = JSON.parse(line);
-
-        if (exportType === 'flat' && parsed.type === 'flatItems' && Array.isArray(parsed.flatItems)) {
-          for (const item of parsed.flatItems) {
-            if (locSet) {
-              const loc = (item.locationName || '').toLowerCase();
-              if (!locSet.has(loc)) continue;
-            }
-
-            if (pMode && (item.paymentMethod || '').toUpperCase() !== pMode) continue;
-            if (isFbrOnly && (!item.fbrInvoiceNumber || item.fbrInvoiceNumber === '-' || item.fbrInvoiceNumber.trim() === '')) continue;
-
-            if (q) {
-              const matches =
-                (item.returnNumber || '').toLowerCase().includes(q) ||
-                (item.orderNumber || '').toLowerCase().includes(q) ||
-                (item.customerName || '').toLowerCase().includes(q) ||
-                (item.customerPhone || '').toLowerCase().includes(q) ||
-                (item.cashierName || '').toLowerCase().includes(q) ||
-                (item.sku || '').toLowerCase().includes(q) ||
-                (item.barCode || '').toLowerCase().includes(q) ||
-                (item.description || '').toLowerCase().includes(q);
-              if (!matches) continue;
-            }
-
-            const qty = Number(item.quantity || 0);
-            const gross = Number(item.returnGrossAmount || (item.unitPrice * qty));
-            const disc = Number(item.discountAmount || 0);
-            const net = Number(item.returnNetAmount || item.subTotal || 0);
-
-            totalQty += qty;
-            totalGross += gross;
-            totalDiscount += disc;
-            totalNet += net;
-
-            const row = sheet.addRow({
-              locationName: item.locationName || '-',
-              returnNumber: item.returnNumber,
-              orderNumber: item.orderNumber,
-              returnDate: item.returnDate || '-',
-              cashierName: item.cashierName || '-',
-              customerName: item.customerName || 'Walk-in',
-              customerPhone: item.customerPhone || '-',
-              paymentMethod: item.paymentMethod || '-',
-              fbrInvoiceNumber: item.fbrInvoiceNumber || '-',
-              fbrStatus: item.fbrStatus || '-',
-              categoryName: item.categoryName || '-',
-              brandName: item.brandName || '-',
-              sku: item.sku || '-',
-              barCode: item.barCode || '-',
-              description: item.description || '-',
-              sizeName: item.sizeName || '-',
-              colorName: item.colorName || '-',
-              quantity: qty,
-              unitPrice: Number(item.unitPrice || 0),
-              wostAmount: Number(item.wostAmount || 0),
-              discountAmount: disc,
-              taxAmount: Number(item.taxAmount || 0),
-              subTotal: Number(item.subTotal || 0),
-              returnGrossAmount: gross,
-              returnNetAmount: net,
-            });
-            row.commit();
-          }
-        } else if (exportType === 'hierarchical' && parsed.type === 'returns' && Array.isArray(parsed.returns)) {
-          for (const ret of parsed.returns) {
-            if (pMode && (ret.paymentMethod || '').toUpperCase() !== pMode) continue;
-            if (isFbrOnly && (!ret.fbrInvoiceNumber || ret.fbrInvoiceNumber === '-' || ret.fbrInvoiceNumber.trim() === '')) continue;
-
-            if (q) {
-              const matches =
-                (ret.returnNumber || '').toLowerCase().includes(q) ||
-                (ret.orderNumber || '').toLowerCase().includes(q) ||
-                (ret.customerName || '').toLowerCase().includes(q) ||
-                (ret.customerPhone || '').toLowerCase().includes(q) ||
-                (ret.cashierName || '').toLowerCase().includes(q) ||
-                (ret.items || []).some((it: any) =>
-                  (it.sku || '').toLowerCase().includes(q) ||
-                  (it.barCode || '').toLowerCase().includes(q) ||
-                  (it.description || '').toLowerCase().includes(q)
-                );
-              if (!matches) continue;
-            }
-
-            const itemsCount = Number(ret.totals?.totalItems || 0);
-            const gross = Number(ret.totals?.grossAmount || 0);
-            const disc = Number(ret.totals?.discountAmount || 0);
-            const net = Number(ret.totals?.netAmount || 0);
-
-            totalQty += itemsCount;
-            totalGross += gross;
-            totalDiscount += disc;
-            totalNet += net;
-
-            const row = sheet.addRow({
-              returnNumber: ret.returnNumber,
-              orderNumber: ret.orderNumber,
-              createdAt: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
-              customerName: ret.customerName || 'Walk-in',
-              cashierName: ret.cashierName || '-',
-              paymentMethod: ret.paymentMethod || '-',
-              fbrInvoiceNumber: ret.fbrInvoiceNumber || '-',
-              totalItems: itemsCount,
-              grossAmount: gross,
-              discountAmount: disc,
-              taxAmount: Number(ret.totals?.taxAmount || 0),
-              netAmount: net,
-            });
-            row.commit();
-          }
+    if (exportType === 'flat') {
+      const flatItems = data.flatItems || [];
+      for (const item of flatItems) {
+        if (locSet) {
+          const loc = (item.locationName || '').toLowerCase();
+          if (!locSet.has(loc)) continue;
         }
-      } catch (e) {
-        // Skip unparseable
+
+        if (pMode && (item.paymentMethod || '').toUpperCase() !== pMode) continue;
+        if (isFbrOnly && (!item.fbrInvoiceNumber || item.fbrInvoiceNumber === '-' || item.fbrInvoiceNumber.trim() === '')) continue;
+
+        if (q) {
+          const matches =
+            (item.returnNumber || '').toLowerCase().includes(q) ||
+            (item.orderNumber || '').toLowerCase().includes(q) ||
+            (item.customerName || '').toLowerCase().includes(q) ||
+            (item.customerPhone || '').toLowerCase().includes(q) ||
+            (item.cashierName || '').toLowerCase().includes(q) ||
+            (item.sku || '').toLowerCase().includes(q) ||
+            (item.barCode || '').toLowerCase().includes(q) ||
+            (item.description || '').toLowerCase().includes(q);
+          if (!matches) continue;
+        }
+
+        const qty = Number(item.quantity || 0);
+        const gross = Number(item.returnGrossAmount || (item.unitPrice * qty));
+        const disc = Number(item.discountAmount || 0);
+        const net = Number(item.returnNetAmount || item.subTotal || 0);
+
+        totalQty += qty;
+        totalGross += gross;
+        totalDiscount += disc;
+        totalNet += net;
+
+        const row = sheet.addRow({
+          locationName: item.locationName || '-',
+          returnNumber: item.returnNumber,
+          orderNumber: item.orderNumber,
+          returnDate: item.returnDate || '-',
+          cashierName: item.cashierName || '-',
+          customerName: item.customerName || 'Walk-in',
+          customerPhone: item.customerPhone || '-',
+          paymentMethod: item.paymentMethod || '-',
+          fbrInvoiceNumber: item.fbrInvoiceNumber || '-',
+          fbrStatus: item.fbrStatus || '-',
+          categoryName: item.categoryName || '-',
+          brandName: item.brandName || '-',
+          sku: item.sku || '-',
+          barCode: item.barCode || '-',
+          description: item.description || '-',
+          sizeName: item.sizeName || '-',
+          colorName: item.colorName || '-',
+          quantity: qty,
+          unitPrice: Number(item.unitPrice || 0),
+          wostAmount: Number(item.wostAmount || 0),
+          discountAmount: disc,
+          taxAmount: Number(item.taxAmount || 0),
+          subTotal: Number(item.subTotal || 0),
+          returnGrossAmount: gross,
+          returnNetAmount: net,
+        });
+        row.commit();
+      }
+    } else if (exportType === 'hierarchical') {
+      const returns = data.returns || [];
+      for (const ret of returns) {
+        if (pMode && (ret.paymentMethod || '').toUpperCase() !== pMode) continue;
+        if (isFbrOnly && (!ret.fbrInvoiceNumber || ret.fbrInvoiceNumber === '-' || ret.fbrInvoiceNumber.trim() === '')) continue;
+
+        if (q) {
+          const matches =
+            (ret.returnNumber || '').toLowerCase().includes(q) ||
+            (ret.orderNumber || '').toLowerCase().includes(q) ||
+            (ret.customerName || '').toLowerCase().includes(q) ||
+            (ret.customerPhone || '').toLowerCase().includes(q) ||
+            (ret.cashierName || '').toLowerCase().includes(q) ||
+            (ret.items || []).some((it: any) =>
+              (it.sku || '').toLowerCase().includes(q) ||
+              (it.barCode || '').toLowerCase().includes(q) ||
+              (it.description || '').toLowerCase().includes(q)
+            );
+          if (!matches) continue;
+        }
+
+        const itemsCount = Number(ret.totals?.totalItems || 0);
+        const gross = Number(ret.totals?.grossAmount || 0);
+        const disc = Number(ret.totals?.discountAmount || 0);
+        const net = Number(ret.totals?.netAmount || 0);
+
+        totalQty += itemsCount;
+        totalGross += gross;
+        totalDiscount += disc;
+        totalNet += net;
+
+        const row = sheet.addRow({
+          returnNumber: ret.returnNumber,
+          orderNumber: ret.orderNumber,
+          createdAt: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+          customerName: ret.customerName || 'Walk-in',
+          cashierName: ret.cashierName || '-',
+          paymentMethod: ret.paymentMethod || '-',
+          fbrInvoiceNumber: ret.fbrInvoiceNumber || '-',
+          totalItems: itemsCount,
+          grossAmount: gross,
+          discountAmount: disc,
+          taxAmount: Number(ret.totals?.taxAmount || 0),
+          netAmount: net,
+        });
+        row.commit();
       }
     }
 
