@@ -695,10 +695,27 @@ export class SalesReturnService {
       });
     }
 
-    const creditNoteNo = `CN-${Date.now()}`;
     const totalAmount = Number(salesReturn.totalAmount);
 
     return this.prisma.$transaction(async (tx) => {
+      const currentYear = new Date().getFullYear();
+      const prefix = 'CN';
+      const lastCreditNote = await tx.creditNote.findFirst({
+        where: {
+          creditNoteNo: { startsWith: prefix },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      let nextCnSeq = 1;
+      if (lastCreditNote?.creditNoteNo) {
+        const lastSeq = parseInt(lastCreditNote.creditNoteNo.split('-').pop() || '0', 10);
+        if (!isNaN(lastSeq)) {
+          nextCnSeq = lastSeq + 1;
+        }
+      }
+      const creditNoteNo = `${prefix}-${currentYear}-${String(nextCnSeq).padStart(4, '0')}`;
+
       // 1. Create Credit Note
       const creditNote = await tx.creditNote.create({
         data: {
