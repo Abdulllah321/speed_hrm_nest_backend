@@ -244,13 +244,21 @@ export class SalesRegisterExportService {
 
   async getReportPreviewResult(jobId: string): Promise<SalesRegisterReportResult | null> {
     const filePath = path.join(this.previewStorageDir, `sales-register-preview-${jobId}.json.gz`);
+
+    // Retry once after 1s to handle the narrow race window where the Bull job emits
+    // progress=100 before the OS has fully flushed the gzip file to disk.
     if (!fs.existsSync(filePath)) {
-      return null;
+      await new Promise((r) => setTimeout(r, 1000));
+      if (!fs.existsSync(filePath)) {
+        return null;
+      }
     }
+
     const compressed = await fs.promises.readFile(filePath);
     const decompressed = await gunzipAsync(compressed);
     return JSON.parse(decompressed.toString('utf8'));
   }
+
 
   async generateSalesRegisterReportDataInternal(
     prisma: PrismaService,

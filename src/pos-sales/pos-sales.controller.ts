@@ -855,6 +855,7 @@ export class PosSalesController {
 
   // ─── Alliance Register Report Endpoints ──────────────────────────
 
+
   @Get('reports/alliance-register')
   @ApiOperation({
     summary: 'Get Alliance Register Report (alliance sales only)',

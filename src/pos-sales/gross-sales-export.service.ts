@@ -898,9 +898,9 @@ export class GrossSalesExportService {
         const matchesOrd = orderNo.toLowerCase().includes(q);
         const matchesCust = custName.toLowerCase().includes(q) || custPhone.includes(q);
         const matchesItems = ret.items.some((it: any) =>
-          (it.item?.sku && it.item.sku.toLowerCase().includes(q)) ||
-          (it.item?.barCode && it.item.barCode.toLowerCase().includes(q)) ||
-          (it.item?.description && it.item.description.toLowerCase().includes(q))
+          (it.item?.sku && (it.item.sku || '').toLowerCase().includes(q)) ||
+          (it.item?.barCode && (it.item.barCode || '').toLowerCase().includes(q)) ||
+          (it.item?.description && (it.item.description || '').toLowerCase().includes(q))
         );
         if (!matchesRet && !matchesOrd && !matchesCust && !matchesItems) {
           continue;
@@ -1751,7 +1751,7 @@ export class GrossSalesExportService {
     },
     res: any,
   ): Promise<void> {
-    const filePath = this.getPreviewFilePath(jobId);
+    const filePath = this.getPreviewNdjsonFilePath(jobId);
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('Gross sales summary preview result not found or expired');
     }
@@ -1816,62 +1816,88 @@ export class GrossSalesExportService {
     let totalTax = 0;
     let totalSubTotal = 0;
 
-    const data = await this.getReportPreviewResult(jobId);
-    if (!data) throw new NotFoundException('Gross sales summary preview result not found or expired');
+    await new Promise<void>((resolve, reject) => {
+      let hasError = false;
+      const gz = fs.createReadStream(filePath);
+      const gunzip = zlib.createGunzip();
+      const rl = readline.createInterface({ input: gz.pipe(gunzip) });
 
-    if (exportType === 'flat') {
-      const flatItems = data.flatItems || [];
-      for (const item of flatItems) {
-        if (locSet) {
-          const loc = (item.locationName || '').toLowerCase();
-          if (!locSet.has(loc)) continue;
+      rl.on('line', (line) => {
+        if (!line.trim()) return;
+        try {
+          if (exportType === 'flat' && line.includes('"type":"flatItems"')) {
+            const obj = JSON.parse(line);
+            if (Array.isArray(obj.flatItems)) {
+              for (const item of obj.flatItems) {
+                if (locSet) {
+                  const loc = (item.locationName || '').toLowerCase();
+                  if (!locSet.has(loc)) continue;
+                }
+
+                if (q) {
+                  const matches =
+                    (item.sku || '').toLowerCase().includes(q) ||
+                    (item.barCode || '').toLowerCase().includes(q) ||
+                    (item.description || '').toLowerCase().includes(q) ||
+                    (item.categoryName || '').toLowerCase().includes(q) ||
+                    (item.brandName || '').toLowerCase().includes(q) ||
+                    (item.locationName || '').toLowerCase().includes(q);
+                  if (!matches) continue;
+                }
+
+                const qty = Number(item.quantity || 0);
+                const wost = Number(item.wostAmount || 0);
+                const disc = Number(item.discountAmount || 0);
+                const tax = Number(item.taxAmount || 0);
+                const sub = Number(item.subTotal || 0);
+
+                totalQty += qty;
+                totalWost += wost;
+                totalDiscount += disc;
+                totalTax += tax;
+                totalSubTotal += sub;
+
+                const row = sheet.addRow({
+                  locationName: item.locationName || '-',
+                  categoryName: item.categoryName || '-',
+                  brandName: item.brandName || '-',
+                  divisionName: item.divisionName || '-',
+                  genderName: item.genderName || '-',
+                  silhouetteName: item.silhouetteName || '-',
+                  sku: item.sku || '-',
+                  barCode: item.barCode || '-',
+                  description: item.description || '-',
+                  sizeName: item.sizeName || '-',
+                  colorName: item.colorName || '-',
+                  quantity: qty,
+                  unitPrice: Number(item.unitPrice || 0),
+                  wostAmount: wost,
+                  discountAmount: disc,
+                  taxAmount: tax,
+                  subTotal: sub,
+                });
+                row.commit();
+              }
+            }
+          }
+        } catch {
+          // Ignore parse errors on chunks
         }
+      });
 
-        if (q) {
-          const matches =
-            (item.sku || '').toLowerCase().includes(q) ||
-            (item.barCode || '').toLowerCase().includes(q) ||
-            (item.description || '').toLowerCase().includes(q) ||
-            (item.categoryName || '').toLowerCase().includes(q) ||
-            (item.brandName || '').toLowerCase().includes(q) ||
-            (item.locationName || '').toLowerCase().includes(q);
-          if (!matches) continue;
-        }
+      rl.on('close', () => {
+        if (!hasError) resolve();
+      });
 
-        const qty = Number(item.quantity || 0);
-        const wost = Number(item.wostAmount || 0);
-        const disc = Number(item.discountAmount || 0);
-        const tax = Number(item.taxAmount || 0);
-        const sub = Number(item.subTotal || 0);
-
-        totalQty += qty;
-        totalWost += wost;
-        totalDiscount += disc;
-        totalTax += tax;
-        totalSubTotal += sub;
-
-        const row = sheet.addRow({
-          locationName: item.locationName || '-',
-          categoryName: item.categoryName || '-',
-          brandName: item.brandName || '-',
-          divisionName: item.divisionName || '-',
-          genderName: item.genderName || '-',
-          silhouetteName: item.silhouetteName || '-',
-          sku: item.sku || '-',
-          barCode: item.barCode || '-',
-          description: item.description || '-',
-          sizeName: item.sizeName || '-',
-          colorName: item.colorName || '-',
-          quantity: qty,
-          unitPrice: Number(item.unitPrice || 0),
-          wostAmount: wost,
-          discountAmount: disc,
-          taxAmount: tax,
-          subTotal: sub,
-        });
-        row.commit();
-      }
-    }
+      gz.on('error', (err) => {
+        hasError = true;
+        reject(err);
+      });
+      gunzip.on('error', (err) => {
+        hasError = true;
+        reject(err);
+      });
+    });
 
     const summaryRow = sheet.addRow({
       locationName: 'FILTERED TOTALS',
@@ -1899,7 +1925,7 @@ export class GrossSalesExportService {
     },
     res: any,
   ): Promise<void> {
-    const filePath = this.getPreviewFilePath(jobId);
+    const filePath = this.getPreviewNdjsonFilePath(jobId);
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException('Sales return preview result not found or expired');
     }
@@ -1990,120 +2016,148 @@ export class GrossSalesExportService {
     let totalDiscount = 0;
     let totalNet = 0;
 
-    const data = await this.getReportPreviewResult(jobId);
-    if (!data) throw new NotFoundException('Sales return preview result not found or expired');
+    await new Promise<void>((resolve, reject) => {
+      let hasError = false;
+      const gz = fs.createReadStream(filePath);
+      const gunzip = zlib.createGunzip();
+      const rl = readline.createInterface({ input: gz.pipe(gunzip) });
 
-    if (exportType === 'flat') {
-      const flatItems = data.flatItems || [];
-      for (const item of flatItems) {
-        if (locSet) {
-          const loc = (item.locationName || '').toLowerCase();
-          if (!locSet.has(loc)) continue;
+      rl.on('line', (line) => {
+        if (!line.trim()) return;
+        try {
+          if (exportType === 'flat' && line.includes('"type":"flatItems"')) {
+            const obj = JSON.parse(line);
+            if (Array.isArray(obj.flatItems)) {
+              for (const item of obj.flatItems) {
+                if (locSet) {
+                  const loc = (item.locationName || '').toLowerCase();
+                  if (!locSet.has(loc)) continue;
+                }
+
+                if (pMode && (item.paymentMethod || '').toUpperCase() !== pMode) continue;
+                if (isFbrOnly && (!item.fbrInvoiceNumber || item.fbrInvoiceNumber === '-' || item.fbrInvoiceNumber.trim() === '')) continue;
+
+                if (q) {
+                  const matches =
+                    (item.returnNumber || '').toLowerCase().includes(q) ||
+                    (item.orderNumber || '').toLowerCase().includes(q) ||
+                    (item.customerName || '').toLowerCase().includes(q) ||
+                    (item.customerPhone || '').toLowerCase().includes(q) ||
+                    (item.cashierName || '').toLowerCase().includes(q) ||
+                    (item.sku || '').toLowerCase().includes(q) ||
+                    (item.barCode || '').toLowerCase().includes(q) ||
+                    (item.description || '').toLowerCase().includes(q);
+                  if (!matches) continue;
+                }
+
+                const qty = Number(item.quantity || 0);
+                const gross = Number(item.returnGrossAmount || (item.unitPrice * qty));
+                const disc = Number(item.discountAmount || 0);
+                const net = Number(item.returnNetAmount || item.subTotal || 0);
+
+                totalQty += qty;
+                totalGross += gross;
+                totalDiscount += disc;
+                totalNet += net;
+
+                const row = sheet.addRow({
+                  locationName: item.locationName || '-',
+                  returnNumber: item.returnNumber,
+                  orderNumber: item.orderNumber,
+                  returnDate: item.returnDate || '-',
+                  cashierName: item.cashierName || '-',
+                  customerName: item.customerName || 'Walk-in',
+                  customerPhone: item.customerPhone || '-',
+                  paymentMethod: item.paymentMethod || '-',
+                  fbrInvoiceNumber: item.fbrInvoiceNumber || '-',
+                  fbrStatus: item.fbrStatus || '-',
+                  categoryName: item.categoryName || '-',
+                  brandName: item.brandName || '-',
+                  sku: item.sku || '-',
+                  barCode: item.barCode || '-',
+                  description: item.description || '-',
+                  sizeName: item.sizeName || '-',
+                  colorName: item.colorName || '-',
+                  quantity: qty,
+                  unitPrice: Number(item.unitPrice || 0),
+                  wostAmount: Number(item.wostAmount || 0),
+                  discountAmount: disc,
+                  taxAmount: Number(item.taxAmount || 0),
+                  subTotal: Number(item.subTotal || 0),
+                  returnGrossAmount: gross,
+                  returnNetAmount: net,
+                });
+                row.commit();
+              }
+            }
+          } else if (exportType === 'hierarchical' && line.includes('"type":"returns"')) {
+            const obj = JSON.parse(line);
+            if (Array.isArray(obj.returns)) {
+              for (const ret of obj.returns) {
+                if (pMode && (ret.paymentMethod || '').toUpperCase() !== pMode) continue;
+                if (isFbrOnly && (!ret.fbrInvoiceNumber || ret.fbrInvoiceNumber === '-' || ret.fbrInvoiceNumber.trim() === '')) continue;
+
+                if (q) {
+                  const matches =
+                    (ret.returnNumber || '').toLowerCase().includes(q) ||
+                    (ret.orderNumber || '').toLowerCase().includes(q) ||
+                    (ret.customerName || '').toLowerCase().includes(q) ||
+                    (ret.customerPhone || '').toLowerCase().includes(q) ||
+                    (ret.cashierName || '').toLowerCase().includes(q) ||
+                    (ret.items || []).some((it: any) =>
+                      (it.sku || '').toLowerCase().includes(q) ||
+                      (it.barCode || '').toLowerCase().includes(q) ||
+                      (it.description || '').toLowerCase().includes(q)
+                    );
+                  if (!matches) continue;
+                }
+
+                const itemsCount = Number(ret.totals?.totalItems || 0);
+                const gross = Number(ret.totals?.grossAmount || 0);
+                const disc = Number(ret.totals?.discountAmount || 0);
+                const net = Number(ret.totals?.netAmount || 0);
+
+                totalQty += itemsCount;
+                totalGross += gross;
+                totalDiscount += disc;
+                totalNet += net;
+
+                const row = sheet.addRow({
+                  returnNumber: ret.returnNumber,
+                  orderNumber: ret.orderNumber,
+                  createdAt: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                  customerName: ret.customerName || 'Walk-in',
+                  cashierName: ret.cashierName || '-',
+                  paymentMethod: ret.paymentMethod || '-',
+                  fbrInvoiceNumber: ret.fbrInvoiceNumber || '-',
+                  totalItems: itemsCount,
+                  grossAmount: gross,
+                  discountAmount: disc,
+                  taxAmount: Number(ret.totals?.taxAmount || 0),
+                  netAmount: net,
+                });
+                row.commit();
+              }
+            }
+          }
+        } catch {
+          // Ignore parsing errors on chunks
         }
+      });
 
-        if (pMode && (item.paymentMethod || '').toUpperCase() !== pMode) continue;
-        if (isFbrOnly && (!item.fbrInvoiceNumber || item.fbrInvoiceNumber === '-' || item.fbrInvoiceNumber.trim() === '')) continue;
+      rl.on('close', () => {
+        if (!hasError) resolve();
+      });
 
-        if (q) {
-          const matches =
-            (item.returnNumber || '').toLowerCase().includes(q) ||
-            (item.orderNumber || '').toLowerCase().includes(q) ||
-            (item.customerName || '').toLowerCase().includes(q) ||
-            (item.customerPhone || '').toLowerCase().includes(q) ||
-            (item.cashierName || '').toLowerCase().includes(q) ||
-            (item.sku || '').toLowerCase().includes(q) ||
-            (item.barCode || '').toLowerCase().includes(q) ||
-            (item.description || '').toLowerCase().includes(q);
-          if (!matches) continue;
-        }
-
-        const qty = Number(item.quantity || 0);
-        const gross = Number(item.returnGrossAmount || (item.unitPrice * qty));
-        const disc = Number(item.discountAmount || 0);
-        const net = Number(item.returnNetAmount || item.subTotal || 0);
-
-        totalQty += qty;
-        totalGross += gross;
-        totalDiscount += disc;
-        totalNet += net;
-
-        const row = sheet.addRow({
-          locationName: item.locationName || '-',
-          returnNumber: item.returnNumber,
-          orderNumber: item.orderNumber,
-          returnDate: item.returnDate || '-',
-          cashierName: item.cashierName || '-',
-          customerName: item.customerName || 'Walk-in',
-          customerPhone: item.customerPhone || '-',
-          paymentMethod: item.paymentMethod || '-',
-          fbrInvoiceNumber: item.fbrInvoiceNumber || '-',
-          fbrStatus: item.fbrStatus || '-',
-          categoryName: item.categoryName || '-',
-          brandName: item.brandName || '-',
-          sku: item.sku || '-',
-          barCode: item.barCode || '-',
-          description: item.description || '-',
-          sizeName: item.sizeName || '-',
-          colorName: item.colorName || '-',
-          quantity: qty,
-          unitPrice: Number(item.unitPrice || 0),
-          wostAmount: Number(item.wostAmount || 0),
-          discountAmount: disc,
-          taxAmount: Number(item.taxAmount || 0),
-          subTotal: Number(item.subTotal || 0),
-          returnGrossAmount: gross,
-          returnNetAmount: net,
-        });
-        row.commit();
-      }
-    } else if (exportType === 'hierarchical') {
-      const returns = data.returns || [];
-      for (const ret of returns) {
-        if (pMode && (ret.paymentMethod || '').toUpperCase() !== pMode) continue;
-        if (isFbrOnly && (!ret.fbrInvoiceNumber || ret.fbrInvoiceNumber === '-' || ret.fbrInvoiceNumber.trim() === '')) continue;
-
-        if (q) {
-          const matches =
-            (ret.returnNumber || '').toLowerCase().includes(q) ||
-            (ret.orderNumber || '').toLowerCase().includes(q) ||
-            (ret.customerName || '').toLowerCase().includes(q) ||
-            (ret.customerPhone || '').toLowerCase().includes(q) ||
-            (ret.cashierName || '').toLowerCase().includes(q) ||
-            (ret.items || []).some((it: any) =>
-              (it.sku || '').toLowerCase().includes(q) ||
-              (it.barCode || '').toLowerCase().includes(q) ||
-              (it.description || '').toLowerCase().includes(q)
-            );
-          if (!matches) continue;
-        }
-
-        const itemsCount = Number(ret.totals?.totalItems || 0);
-        const gross = Number(ret.totals?.grossAmount || 0);
-        const disc = Number(ret.totals?.discountAmount || 0);
-        const net = Number(ret.totals?.netAmount || 0);
-
-        totalQty += itemsCount;
-        totalGross += gross;
-        totalDiscount += disc;
-        totalNet += net;
-
-        const row = sheet.addRow({
-          returnNumber: ret.returnNumber,
-          orderNumber: ret.orderNumber,
-          createdAt: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
-          customerName: ret.customerName || 'Walk-in',
-          cashierName: ret.cashierName || '-',
-          paymentMethod: ret.paymentMethod || '-',
-          fbrInvoiceNumber: ret.fbrInvoiceNumber || '-',
-          totalItems: itemsCount,
-          grossAmount: gross,
-          discountAmount: disc,
-          taxAmount: Number(ret.totals?.taxAmount || 0),
-          netAmount: net,
-        });
-        row.commit();
-      }
-    }
+      gz.on('error', (err) => {
+        hasError = true;
+        reject(err);
+      });
+      gunzip.on('error', (err) => {
+        hasError = true;
+        reject(err);
+      });
+    });
 
     const summaryRow = sheet.addRow(
       exportType === 'flat'
