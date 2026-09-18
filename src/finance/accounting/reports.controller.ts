@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ReportsService } from './reports.service';
@@ -162,6 +162,41 @@ export class ReportsController {
     return {
       status: true,
       data: await this.reports.getSubaccountSummary(parentIds, ids, from, to),
+    };
+  }
+
+  /**
+   * POST /api/finance/reports/general-ledger-summary
+   * Sub-account summary accepting large list of parent and sub-account IDs in body.
+   */
+  @Post('general-ledger-summary')
+  @ApiOperation({ summary: 'General Ledger Subaccount Summary Report (POST)' })
+  async generalLedgerSummaryPost(
+    @Body()
+    body: {
+      parentAccountIds: string[] | string;
+      subAccountIds?: string[] | string;
+      from?: string;
+      to?: string;
+    },
+  ) {
+    let parentIds: string[] = [];
+    if (Array.isArray(body?.parentAccountIds)) {
+      parentIds = body.parentAccountIds;
+    } else if (typeof body?.parentAccountIds === 'string' && body.parentAccountIds.trim() !== '') {
+      parentIds = body.parentAccountIds.split(',');
+    }
+
+    let ids: string[] = [];
+    if (Array.isArray(body?.subAccountIds)) {
+      ids = body.subAccountIds;
+    } else if (typeof body?.subAccountIds === 'string' && body.subAccountIds.trim() !== '') {
+      ids = body.subAccountIds.split(',');
+    }
+
+    return {
+      status: true,
+      data: await this.reports.getSubaccountSummary(parentIds, ids, body?.from, body?.to),
     };
   }
 
