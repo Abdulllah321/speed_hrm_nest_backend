@@ -49,8 +49,13 @@ export class SalesInvoiceService {
   }
 
   async findOne(id: string) {
-    const salesInvoice = await this.prisma.eRPSalesInvoice.findUnique({
-      where: { id },
+    const salesInvoice = await this.prisma.eRPSalesInvoice.findFirst({
+      where: {
+        OR: [
+          { id },
+          { invoiceNo: id },
+        ],
+      },
       include: {
         customer: true,
         warehouse: true,

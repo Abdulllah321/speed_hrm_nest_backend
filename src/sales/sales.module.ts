@@ -11,6 +11,12 @@ import { SalesInvoiceExportService } from './services/sales-invoice-export.servi
 import { SalesInvoiceExportProcessor } from './services/sales-invoice-export.processor';
 import { DeliveryChallanService } from './services/delivery-challan.service';
 import { EzcommerceOrderService } from './services/ezcommerce-order.service';
+import { WholesaleInvoiceRegisterController } from './controllers/wholesale-invoice-register.controller';
+import { WholesaleInvoiceRegisterService } from './services/wholesale-invoice-register.service';
+import { WholesaleInvoiceRegisterProcessor } from './services/wholesale-invoice-register.processor';
+import { WholesaleReturnRegisterController } from './controllers/wholesale-return-register.controller';
+import { WholesaleReturnRegisterService } from './services/wholesale-return-register.service';
+import { WholesaleReturnRegisterProcessor } from './services/wholesale-return-register.processor';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { EncryptionService } from '../common/utils/encryption.service';
@@ -19,6 +25,7 @@ import { FinanceAccountConfigModule } from '../finance/finance-account-config/fi
 import { PosSalesModule } from '../pos-sales/pos-sales.module';
 import { SalesReturnModule } from './sales-return/sales-return.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ExportHistoryModule } from '../warehouse/export-history/export-history.module';
 
 @Module({
   imports: [
@@ -27,6 +34,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     SalesReturnModule,
     PosSalesModule,
     NotificationsModule,
+    ExportHistoryModule,
     BullModule.registerQueue({
       name: 'sales-invoice-export',
     }),
@@ -37,6 +45,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     SalesInvoiceExportController,
     DeliveryChallanController,
     EzcommerceOrderController,
+    WholesaleInvoiceRegisterController,
+    WholesaleReturnRegisterController,
   ],
   providers: [
     SalesOrderService,
@@ -45,6 +55,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
     SalesInvoiceExportProcessor,
     DeliveryChallanService,
     EzcommerceOrderService,
+    WholesaleInvoiceRegisterService,
+    WholesaleInvoiceRegisterProcessor,
+    WholesaleReturnRegisterService,
+    WholesaleReturnRegisterProcessor,
     PrismaService,
     PrismaMasterService,
     EncryptionService,

@@ -17,21 +17,37 @@ export class SalesInvoiceExportController {
     return this.exportService.queueExportJob(req.user.id, body.invoiceIds);
   }
 
+  @Post('sync')
+  async syncExport(@Req() req: any, @Body() body: { invoiceIds?: string[] }, @Res() res: Response) {
+    try {
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', `attachment; filename="sales-invoices-export.xlsx"`);
+      await this.exportService.streamExportFile(res, body.invoiceIds);
+    } catch (error: any) {
+      this.logger.error(`Error streaming export: ${error.message}`);
+      if (!res.headersSent) {
+        res.status(500).send({ message: 'Internal server error during export generation' });
+      }
+    }
+  }
+
   @Get('download/:jobId')
-  async downloadExport(@Param('jobId') jobId: string, @Res() res: Response) {
+  async downloadExport(@Param('jobId') jobId: string, @Res() res: any) {
     try {
       const fileName = `export-${jobId}.xlsx`;
       const filePath = path.join(process.cwd(), 'uploads', 'exports', fileName);
 
       if (!fs.existsSync(filePath)) {
-        res.status(404).json({ message: 'Export file not found or expired' });
+        res.status(404).send({ message: 'Export file not found or expired' });
         return;
       }
 
+      const stat = fs.statSync(filePath);
       const fileStream = fs.createReadStream(filePath);
       
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="sales-invoices-export.xlsx"`);
+      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header('Content-Disposition', `attachment; filename="sales-invoices-export.xlsx"`);
+      res.header('Content-Length', stat.size);
       
       fileStream.on('end', () => {
         fs.unlink(filePath, (err) => {
@@ -41,16 +57,16 @@ export class SalesInvoiceExportController {
 
       fileStream.on('error', (err) => {
         this.logger.error(`Stream error: ${err.message}`);
-        if (!res.headersSent) {
-          res.status(500).json({ message: 'Error streaming file' });
+        if (!res.sent) {
+          res.status(500).send({ message: 'Error streaming file' });
         }
       });
 
-      fileStream.pipe(res);
+      res.send(fileStream);
     } catch (error: any) {
       this.logger.error(`Download error: ${error.message}`);
-      if (!res.headersSent) {
-        res.status(500).json({ message: 'Internal server error during download' });
+      if (!res.sent) {
+        res.status(500).send({ message: 'Internal server error during download' });
       }
     }
   }
