@@ -41,8 +41,8 @@ export interface WholesaleReturnPreviewJobData {
 
 const COLUMNS = [
   { header: 'Customer', key: 'customerName', width: 25, align: 'left' },
-  { header: 'Invoice No', key: 'invoiceNo', width: 20, align: 'left' },
-  { header: 'Date', key: 'invoiceDate', width: 15, align: 'center' },
+  { header: 'Return No', key: 'returnNumber', width: 20, align: 'left' },
+  { header: 'Date', key: 'returnDate', width: 15, align: 'center' },
   { header: 'GPC / Category', key: 'categoryName', width: 20, align: 'left' },
   { header: 'Brand / SubCat', key: 'brandName', width: 20, align: 'left' },
   { header: 'Product', key: 'description', width: 25, align: 'left' },
@@ -266,8 +266,8 @@ export class WholesaleReturnRegisterProcessor {
               }
               const rowData = {
                 customerName: r.customerName,
-                invoiceNo: r.invoiceNo,
-                invoiceDate: new Date(r.invoiceDate).toLocaleDateString(),
+                returnNumber: r.returnNumber,
+                returnDate: r.returnDate ? new Date(r.returnDate).toLocaleDateString() : 'N/A',
                 categoryName: r.categoryName,
                 brandName: r.brandName,
                 description: r.description,
@@ -305,8 +305,8 @@ export class WholesaleReturnRegisterProcessor {
             // Add Grand Totals
             const totalRow = ws.addRow({
               customerName: 'GRAND TOTALS',
-              invoiceNo: '',
-              invoiceDate: '',
+              returnNumber: '',
+              returnDate: '',
               categoryName: '',
               brandName: '',
               description: '',
@@ -398,8 +398,8 @@ export class WholesaleReturnRegisterProcessor {
       rowsHtml += `
         <tr class="variant-row">
           <td>${r.customerName || '-'}</td>
-          <td class="center">${r.invoiceNo || '-'}</td>
-          <td class="center">${new Date(r.invoiceDate).toLocaleDateString()}</td>
+          <td class="center">${r.returnNumber || '-'}</td>
+          <td class="center">${r.returnDate ? new Date(r.returnDate).toLocaleDateString() : '-'}</td>
           <td>${r.categoryName || '-'}</td>
           <td>${r.brandName || '-'}</td>
           <td>${r.description || '-'}</td>
@@ -511,7 +511,7 @@ export class WholesaleReturnRegisterProcessor {
           <thead>
             <tr>
               <th>Customer</th>
-              <th>Invoice No</th>
+              <th>Return No</th>
               <th>Date</th>
               <th>GPC / Category</th>
               <th>Brand / SubCat</th>

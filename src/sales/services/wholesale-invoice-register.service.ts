@@ -37,6 +37,7 @@ export interface WholesaleInvoiceLineItem {
   silhouetteName: string;
   sizeName: string;
   colorName: string;
+  taxRate: number;
   quantity: number;
   unitPrice: number;
   wostAmount: number;
@@ -87,10 +88,14 @@ export interface WholesaleInvoiceFlatRecord {
   status: string;
   categoryName: string;
   brandName: string;
+  divisionName: string;
+  genderName: string;
+  silhouetteName: string;
   sku: string;
   description: string;
   sizeName: string;
   colorName: string;
+  taxRate: number;
   quantity: number;
   unitPrice: number;
   wostAmount: number;
