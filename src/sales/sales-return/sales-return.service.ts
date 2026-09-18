@@ -404,7 +404,7 @@ export class SalesReturnService {
   }
 
   async getEligibleInvoices() {
-    return this.prisma.eRPSalesInvoice.findMany({
+    const invoices = await this.prisma.eRPSalesInvoice.findMany({
       where: {
         status: 'POSTED',
       },
@@ -421,15 +421,44 @@ export class SalesReturnService {
                 brand: true,
               },
             },
+            salesReturnItems: {
+              where: {
+                salesReturn: {
+                  status: {
+                    not: 'REJECTED'
+                  }
+                }
+              }
+            }
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return invoices
+      .map(invoice => {
+        const filteredItems = invoice.items
+          .map(item => {
+            const returnedQty = item.salesReturnItems.reduce((sum, ri) => sum + Number(ri.returnQty), 0);
+            const availableQty = Number(item.quantity) - returnedQty;
+            return {
+              ...item,
+              quantity: availableQty,
+            };
+          })
+          .filter(item => item.quantity > 0);
+          
+        return {
+          ...invoice,
+          items: filteredItems,
+        };
+      })
+      .filter(invoice => invoice.items.length > 0);
   }
 
   async getEligibleChallans() {
-    return this.prisma.deliveryChallan.findMany({
+    const challans = await this.prisma.deliveryChallan.findMany({
       include: {
         customer: true,
         warehouse: true,
@@ -442,11 +471,41 @@ export class SalesReturnService {
                 brand: true,
               },
             },
+            salesReturnItems: {
+              where: {
+                salesReturn: {
+                  status: {
+                    not: 'REJECTED'
+                  }
+                }
+              }
+            }
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return challans
+      .map(challan => {
+        const filteredItems = challan.items
+          .map(item => {
+            const returnedQty = item.salesReturnItems.reduce((sum, ri) => sum + Number(ri.returnQty), 0);
+            const availableQty = Number(item.deliveredQty) - returnedQty;
+            return {
+              ...item,
+              deliveredQty: availableQty,
+              quantity: availableQty, // Alias for frontend
+            };
+          })
+          .filter(item => item.deliveredQty > 0);
+          
+        return {
+          ...challan,
+          items: filteredItems,
+        };
+      })
+      .filter(challan => challan.items.length > 0);
   }
 
   async getNextReturnNumber() {

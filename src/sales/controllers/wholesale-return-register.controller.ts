@@ -1,0 +1,152 @@
+import { Controller, Get, Post, Body, Param, Res, UseGuards, Request, Sse, MessageEvent } from '@nestjs/common';
+import { Response } from 'express';
+import { Observable, interval } from 'rxjs';
+import { switchMap, takeWhile } from 'rxjs/operators';
+import * as fs from 'fs';
+import * as path from 'path';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { WholesaleReturnRegisterService } from '../services/wholesale-return-register.service';
+
+@Controller('api/sales/reports/wholesale-return-register')
+@UseGuards(JwtAuthGuard)
+export class WholesaleReturnRegisterController {
+  constructor(private readonly wholesaleReturnRegisterService: WholesaleReturnRegisterService) {}
+
+  @Post('queue')
+  async queueReportPreview(
+    @Request() req,
+    @Body() body: {
+      customerId?: string;
+      startDate?: string;
+      endDate?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      fiscalYear?: string;
+      year?: string | number;
+    },
+  ) {
+    const result = await this.wholesaleReturnRegisterService.queueReportPreview({
+      userId: req.user.userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('result/:jobId')
+  async getReportPreviewResult(@Param('jobId') jobId: string) {
+    const result = await this.wholesaleReturnRegisterService.getReportPreviewResult(jobId);
+    if (result) {
+      return { status: true, data: result };
+    }
+    return { status: false, message: 'Preview not ready or expired' };
+  }
+
+  @Sse('stream/:jobId')
+  streamWholesaleReturnRegisterStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus = await this.wholesaleReturnRegisterService.getJobQueueStatus(jobId);
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
+        
+        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message: queueStatus.message || `Processing wholesale invoice register (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Post('export/queue')
+  async queueReportExport(
+    @Request() req,
+    @Body() body: {
+      customerId?: string;
+      startDate?: string;
+      endDate?: string;
+      format: 'xlsx' | 'pdf';
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      fiscalYear?: string;
+      year?: string | number;
+    },
+  ) {
+    const { Queue } = require('bull');
+    const exportQueue: Queue = (this.wholesaleReturnRegisterService as any).exportQueue;
+
+    const jobId = require('uuid').v4();
+    
+    await exportQueue.add(
+      'export-wholesale-return-register-report',
+      {
+        jobId,
+        userId: req.user.userId,
+        tenantId: req.user.tenantId,
+        tenantDbUrl: req.user.tenantDbUrl,
+        ...body,
+      },
+      {
+        jobId: jobId,
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+        timeout: 60 * 60 * 1000,
+      },
+    );
+
+    return { status: true, data: { jobId } };
+  }
+
+  @Get('export/:jobId/status')
+  async getExportStatus(@Param('jobId') jobId: string) {
+    const status = await this.wholesaleReturnRegisterService.getJobQueueStatus(jobId);
+    return { status: true, data: status };
+  }
+
+  @Get('export/:jobId/download/:filename')
+  async downloadExport(
+    @Param('jobId') jobId: string,
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    const exportDir = path.join(process.cwd(), 'uploads', 'exports');
+    const ext = filename.endsWith('.pdf') ? 'pdf' : 'xlsx';
+    const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
+
+    if (fs.existsSync(filePath)) {
+      res.download(filePath, filename);
+    } else {
+      res.status(404).send('Export file not found or expired.');
+    }
+  }
+
+  @Get('stream-preview-excel/:jobId/:filename')
+  async streamPreviewExcel(
+    @Param('jobId') jobId: string,
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    // Currently relying on client side exports for smaller datasets or full export via background job
+    // This is a stub if we wanted to implement fast streaming in the future.
+    res.status(404).send('Streaming Excel not yet supported on this route. Use export background job.');
+  }
+}
