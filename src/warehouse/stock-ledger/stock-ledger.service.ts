@@ -224,12 +224,37 @@ export class StockLedgerService {
       endDate,
     } = options || {};
 
-    const pageNum = Math.max(1, Number(page) || 1);
-    const pageSize = Math.max(1, Math.min(500, Number(limit) || 25));
+    const pageNum = page || 1;
+    const pageSize = limit;
+
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const targetLocationIds: string[] = [...locIds];
+    if (whIds.length > 0) {
+      const [allLocations, allWarehouses]: [any[], any[]] = await Promise.all([
+        (this.prisma as any).location.findMany({ select: { id: true, code: true, warehouseId: true } }),
+        this.prisma.warehouse.findMany({ select: { id: true, code: true } }),
+      ]);
+      for (const whId of whIds) {
+        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whCode = whObj?.code || whId;
+        const matchingLocs = allLocations.filter(
+          l => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+        );
+        for (const ml of matchingLocs) targetLocationIds.push(ml.id);
+      }
+    }
+
+    const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
+    const locationWhere = uniqueTargetLocationIds.length > 1
+      ? { in: uniqueTargetLocationIds }
+      : uniqueTargetLocationIds.length === 1
+      ? uniqueTargetLocationIds[0]
+      : undefined;
 
     const where: any = {
-      ...(warehouseId && { warehouseId }),
-      ...(locationId && { locationId }),
+      ...(locationWhere && { locationId: locationWhere }),
       ...(movementType && { movementType }),
       ...(itemId && { itemId }),
       ...(referenceType && { referenceType }),
@@ -305,7 +330,7 @@ export class StockLedgerService {
 
       // 5. Resolve user-friendly document numbers to referenceIds
       const [matchedTransfers, matchedLcs, matchedSales, matchedGrns, matchedAdj] = await Promise.all([
-        this.prisma.transferRequest.findMany({
+        (this.prisma as any).transferRequest.findMany({
           where: {
             OR: [
               { requestNo: { contains: search, mode: 'insensitive' } },
@@ -315,30 +340,48 @@ export class StockLedgerService {
           select: { id: true },
           take: 200,
         }),
-        this.prisma.landedCost.findMany({
+        (this.prisma as any).landedCost.findMany({
           where: {
             OR: [
               { landedCostNumber: { contains: search, mode: 'insensitive' } },
-              { lcNo: { contains: search, mode: 'insensitive' } },
+              { notes: { contains: search, mode: 'insensitive' } },
             ],
           },
           select: { id: true },
-          take: 100,
+          take: 200,
         }),
-        this.prisma.salesOrder.findMany({
-          where: { orderNumber: { contains: search, mode: 'insensitive' } },
+        (this.prisma as any).salesOrder.findMany({
+          where: {
+            OR: [
+              { orderNumber: { contains: search, mode: 'insensitive' } },
+              { returnNumber: { contains: search, mode: 'insensitive' } },
+              { refundNumber: { contains: search, mode: 'insensitive' } },
+            ],
+          },
           select: { id: true },
-          take: 100,
+          take: 200,
         }),
-        this.prisma.goodsReceiptNote.findMany({
-          where: { grnNumber: { contains: search, mode: 'insensitive' } },
+        (this.prisma as any).goodsReceiptNote.findMany({
+          where: {
+            OR: [
+              { grnNumber: { contains: search, mode: 'insensitive' } },
+              { deliveryChallanNo: { contains: search, mode: 'insensitive' } },
+              { gatePassNumber: { contains: search, mode: 'insensitive' } },
+              { note: { contains: search, mode: 'insensitive' } },
+            ],
+          },
           select: { id: true },
-          take: 100,
+          take: 200,
         }),
-        this.prisma.stockAdjustment.findMany({
-          where: { adjustmentNo: { contains: search, mode: 'insensitive' } },
+        (this.prisma as any).stockAdjustment.findMany({
+          where: {
+            OR: [
+              { adjustmentNo: { contains: search, mode: 'insensitive' } },
+              { notes: { contains: search, mode: 'insensitive' } },
+            ],
+          },
           select: { id: true },
-          take: 100,
+          take: 200,
         }),
       ]);
 
@@ -445,11 +488,36 @@ export class StockLedgerService {
       locationId = options.locationId;
     }
 
+    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const targetLocationIds: string[] = [...locIds];
+    if (whIds.length > 0) {
+      const [allLocations, allWarehouses]: [any[], any[]] = await Promise.all([
+        (this.prisma as any).location.findMany({ select: { id: true, code: true, warehouseId: true } }),
+        this.prisma.warehouse.findMany({ select: { id: true, code: true } }),
+      ]);
+      for (const whId of whIds) {
+        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whCode = whObj?.code || whId;
+        const matchingLocs = allLocations.filter(
+          l => (l as any).warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+        );
+        for (const ml of matchingLocs) targetLocationIds.push(ml.id);
+      }
+    }
+
+    const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
+    const locationWhere = uniqueTargetLocationIds.length > 1
+      ? { in: uniqueTargetLocationIds }
+      : uniqueTargetLocationIds.length === 1
+      ? uniqueTargetLocationIds[0]
+      : undefined;
+
     const groupBy = await this.prisma.stockLedger.groupBy({
       by: ['itemId', 'warehouseId', 'locationId'],
       where: {
-        ...(warehouseId ? { warehouseId } : {}),
-        ...(locationId ? { locationId } : {}),
+        ...(locationWhere && { locationId: locationWhere }),
       },
       _sum: {
         qty: true,
@@ -464,7 +532,7 @@ export class StockLedgerService {
     const itemChunks = chunkArray(itemIds, 1000);
     const itemsNested = await Promise.all(
       itemChunks.map((chunk) =>
-        this.prisma.item.findMany({
+        (this.prisma as any).item.findMany({
           where: { id: { in: chunk } },
           select: { id: true, itemId: true, sku: true, description: true },
         }),
@@ -791,18 +859,36 @@ export class StockLedgerService {
     const { locationId, warehouseId, startDate: startStr, endDate: endStr } = options;
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
-
     const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
 
-    const locOrWhFilters: any[] = [];
-    if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
-    if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
+    const [allLocations, allWarehouses]: [any[], any[]] = await Promise.all([
+      (this.prisma as any).location.findMany({ select: { id: true, name: true, code: true, warehouseId: true } }),
+      this.prisma.warehouse.findMany({ select: { id: true, name: true, code: true } }),
+    ]);
 
-    const locationOrWarehouseWhere = locOrWhFilters.length > 1
-      ? { OR: locOrWhFilters }
-      : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
+    const targetLocationIds: string[] = [...locIds];
+    const targetWarehouseLocationIds: string[] = [];
+    if (whIds.length > 0) {
+      for (const whId of whIds) {
+        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whCode = whObj?.code || whId;
+        const matchingLocs = allLocations.filter(
+          l => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+        );
+        for (const ml of matchingLocs) {
+          targetLocationIds.push(ml.id);
+          targetWarehouseLocationIds.push(ml.id);
+        }
+      }
+    }
+
+    const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
+    const locationWhere = uniqueTargetLocationIds.length > 1 
+      ? { in: uniqueTargetLocationIds } 
+      : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
+
+    const locationOrWarehouseWhere = locationWhere ? { locationId: locationWhere } : {};
 
     const showBrand = options.showBrand !== false;
     const showDivision = options.showDivision !== false;
@@ -862,7 +948,7 @@ export class StockLedgerService {
     const uniqueItemChunks = chunkArray(uniqueItemIds, 1000);
     const itemsNested = await Promise.all(
       uniqueItemChunks.map((chunk) =>
-        this.prisma.item.findMany({
+        (this.prisma as any).item.findMany({
           where: {
             OR: [
               { id: { in: chunk } },
@@ -955,7 +1041,11 @@ export class StockLedgerService {
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
-    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+    if (targetWarehouseLocationIds.length > 0) {
+      toLocOrWhFilters.push({ toLocationId: { in: targetWarehouseLocationIds } });
+    } else if (warehouseWhere) {
+      toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+    }
 
     const toLocOrWhWhere = toLocOrWhFilters.length > 1
       ? { OR: toLocOrWhFilters }
@@ -1023,10 +1113,12 @@ export class StockLedgerService {
       if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
         m.adj += qty;
       } else if (qty > 0) {
-        if (ref === 'TRANSFER_REQUEST') {
+        if (ref === 'TRANSFER_REQUEST' || ref === 'TRANSFER_IN' || ref === 'DIRECT_TRANSFER_IN' || ref === 'STOCK_TRANSFER') {
           m.fromWarehouse += qty;
         } else if (ref === 'OUTLET_TRANSFER_IN') {
           m.fromOutlet += qty;
+        } else if (ref === 'LANDED_COST' || ref === 'GRN') {
+          m.fromWarehouse += qty;
         } else if (['POS_RETURN', 'POS_EXCHANGE_IN'].includes(ref)) {
           m.exchg += qty;
         } else if (['POS_REFUND', 'POS_VOID'].includes(ref)) {
@@ -1038,9 +1130,11 @@ export class StockLedgerService {
         }
       } else if (qty < 0) {
         const absQty = Math.abs(qty);
-        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(ref)) {
+        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'PURCHASE_RETURN_INV', 'PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC'].includes(ref)) {
           m.toWarehouse += absQty;
-        } else if (ref === 'OUTLET_TRANSFER_OUT') {
+        } else if (['OUTLET_TRANSFER_OUT', 'DELIVERY_CHALLAN'].includes(ref)) {
+          m.toOutlet += absQty;
+        } else if (['TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER_OUT'].includes(ref)) {
           m.toOutlet += absQty;
         } else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) {
           m.sales += absQty;
@@ -1204,18 +1298,36 @@ export class StockLedgerService {
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
-
     const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
 
-    const locOrWhFilters: any[] = [];
-    if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
-    if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
+    const [allLocations, allWarehouses]: [any[], any[]] = await Promise.all([
+      (prisma as any).location.findMany({ select: { id: true, name: true, code: true, warehouseId: true } }),
+      prisma.warehouse.findMany({ select: { id: true, name: true, code: true } }),
+    ]);
 
-    const locationOrWarehouseWhere = locOrWhFilters.length > 1
-      ? { OR: locOrWhFilters }
-      : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
+    const targetLocationIds: string[] = [...locIds];
+    const targetWarehouseLocationIds: string[] = [];
+    if (whIds.length > 0) {
+      for (const whId of whIds) {
+        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whCode = whObj?.code || whId;
+        const matchingLocs = allLocations.filter(
+          l => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+        );
+        for (const ml of matchingLocs) {
+          targetLocationIds.push(ml.id);
+          targetWarehouseLocationIds.push(ml.id);
+        }
+      }
+    }
+
+    const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
+    const locationWhere = uniqueTargetLocationIds.length > 1 
+      ? { in: uniqueTargetLocationIds } 
+      : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
+
+    const locationOrWarehouseWhere = locationWhere ? { locationId: locationWhere } : {};
 
     // 1. Resolve matching Item IDs from inventory levels & ledger
     const inventoryItems = await prisma.inventoryItem.findMany({
@@ -1343,14 +1455,8 @@ export class StockLedgerService {
           { referenceType: 'OPENING_BALANCE' },
           { referenceType: 'BULK_STOCK_UPLOAD' },
         ],
+        ...locationOrWarehouseWhere,
       };
-
-      if (locOrWhFilters.length > 0) {
-        chunkWhere.OR = [
-          ...locOrWhFilters,
-          { referenceType: { in: ['TRANSFER_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'RETURN_REQUEST', 'TRANSFER', 'STOCK_TRANSFER', 'TRANSFER_IN', 'TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER', 'DIRECT_TRANSFER_IN', 'DIRECT_TRANSFER_OUT', 'STOCK_MOVEMENT'] } },
-        ];
-      }
 
       const chunkEntries = await prisma.stockLedger.findMany({
         where: chunkWhere,
@@ -1361,7 +1467,11 @@ export class StockLedgerService {
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
-    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+    if (targetWarehouseLocationIds.length > 0) {
+      toLocOrWhFilters.push({ toLocationId: { in: targetWarehouseLocationIds } });
+    } else if (warehouseWhere) {
+      toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+    }
 
     const toLocOrWhWhere = toLocOrWhFilters.length > 1
       ? { OR: toLocOrWhFilters }
@@ -1452,15 +1562,15 @@ export class StockLedgerService {
       stockMovements,
       posReturns,
     ] = await Promise.all([
-      grnIds.size > 0 ? fetchInChunks([...grnIds], (c) => prisma.goodsReceiptNote.findMany({
+      grnIds.size > 0 ? fetchInChunks([...grnIds], (c: string[]) => (prisma as any).goodsReceiptNote.findMany({
         where: { id: { in: c } },
         select: { id: true, grnNumber: true },
       })) : Promise.resolve([]),
-      salesOrderIds.size > 0 ? fetchInChunks([...salesOrderIds], (c) => prisma.salesOrder.findMany({
+      salesOrderIds.size > 0 ? fetchInChunks([...salesOrderIds], (c: string[]) => (prisma as any).salesOrder.findMany({
         where: { id: { in: c } },
         select: { id: true, orderNumber: true, returnNumber: true, refundNumber: true },
       })) : Promise.resolve([]),
-      transferIds.size > 0 ? fetchInChunks([...transferIds], (c) => prisma.transferRequest.findMany({
+      transferIds.size > 0 ? fetchInChunks([...transferIds], (c: string[]) => (prisma as any).transferRequest.findMany({
         where: { id: { in: c } },
         select: {
           id: true,
@@ -1475,31 +1585,31 @@ export class StockLedgerService {
           toLocation: { select: { name: true } },
         },
       })) : Promise.resolve([]),
-      claimIds.size > 0 ? fetchInChunks([...claimIds], (c) => prisma.posClaim.findMany({
+      claimIds.size > 0 ? fetchInChunks([...claimIds], (c: string[]) => (prisma as any).posClaim.findMany({
         where: { id: { in: c } },
         select: { id: true, claimNumber: true },
       })) : Promise.resolve([]),
-      adjustmentIds.size > 0 ? fetchInChunks([...adjustmentIds], (c) => prisma.stockAdjustment.findMany({
+      adjustmentIds.size > 0 ? fetchInChunks([...adjustmentIds], (c: string[]) => (prisma as any).stockAdjustment.findMany({
         where: { id: { in: c } },
         select: { id: true, adjustmentNo: true },
       })) : Promise.resolve([]),
-      landedCostIds.size > 0 ? fetchInChunks([...landedCostIds], (c) => prisma.landedCost.findMany({
+      landedCostIds.size > 0 ? fetchInChunks([...landedCostIds], (c: string[]) => (prisma as any).landedCost.findMany({
         where: { id: { in: c } },
         select: { id: true, landedCostNumber: true },
       })) : Promise.resolve([]),
-      purchaseReturnIds.size > 0 ? fetchInChunks([...purchaseReturnIds], (c) => prisma.purchaseReturn.findMany({
+      purchaseReturnIds.size > 0 ? fetchInChunks([...purchaseReturnIds], (c: string[]) => (prisma as any).purchaseReturn.findMany({
         where: { id: { in: c } },
         select: { id: true, returnNumber: true },
       })) : Promise.resolve([]),
-      purchaseInvoiceIds.size > 0 ? fetchInChunks([...purchaseInvoiceIds], (c) => prisma.purchaseInvoice.findMany({
+      purchaseInvoiceIds.size > 0 ? fetchInChunks([...purchaseInvoiceIds], (c: string[]) => (prisma as any).purchaseInvoice.findMany({
         where: { id: { in: c } },
         select: { id: true, invoiceNumber: true },
       })) : Promise.resolve([]),
-      stockRequisitionIds.size > 0 ? fetchInChunks([...stockRequisitionIds], (c) => prisma.stockRequisition.findMany({
+      stockRequisitionIds.size > 0 ? fetchInChunks([...stockRequisitionIds], (c: string[]) => (prisma as any).stockRequisition.findMany({
         where: { id: { in: c } },
         select: { id: true, requisitionNo: true },
       })) : Promise.resolve([]),
-      stockMovementIds.size > 0 ? fetchInChunks([...stockMovementIds], (c) => prisma.stockMovement.findMany({
+      stockMovementIds.size > 0 ? fetchInChunks([...stockMovementIds], (c: string[]) => (prisma as any).stockMovement.findMany({
         where: { id: { in: c } },
         select: {
           id: true,
@@ -1508,7 +1618,7 @@ export class StockLedgerService {
           toLocationId: true,
         },
       })) : Promise.resolve([]),
-      posReturnIds.size > 0 ? fetchInChunks([...posReturnIds], (c) => prisma.posReturn.findMany({
+      posReturnIds.size > 0 ? fetchInChunks([...posReturnIds], (c: string[]) => (prisma as any).posReturn.findMany({
         where: { id: { in: c } },
         select: { id: true, returnNumber: true },
       })) : Promise.resolve([]),
@@ -1542,6 +1652,11 @@ export class StockLedgerService {
       const refId = entry.referenceId;
       const refType = entry.referenceType;
 
+      // Location filter safeguard
+      if (uniqueTargetLocationIds.length > 0 && entry.locationId && !uniqueTargetLocationIds.includes(entry.locationId)) {
+        continue;
+      }
+
       // Transfer Direction Filter: match Inbound transfers with target dest & Outbound with target source
       const isTransferRef = ['TRANSFER_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT', 'RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'TRANSFER', 'STOCK_TRANSFER', 'TRANSFER_IN', 'TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER', 'DIRECT_TRANSFER_IN', 'DIRECT_TRANSFER_OUT', 'STOCK_MOVEMENT'].includes(refType);
       if (isTransferRef) {
@@ -1566,12 +1681,12 @@ export class StockLedgerService {
 
         if (whIds.length > 0) {
           if (qty > 0) {
-            const matchesDest = toWh && whIds.includes(toWh);
-            const matchesEntry = entry.warehouseId && whIds.includes(entry.warehouseId) && fromWh !== entry.warehouseId;
+            const matchesDest = (toWh && whIds.includes(toWh)) || (toLoc && targetWarehouseLocationIds.includes(toLoc));
+            const matchesEntry = entry.locationId && targetWarehouseLocationIds.includes(entry.locationId);
             if (!matchesDest && !matchesEntry) continue;
           } else if (qty < 0) {
-            const matchesSource = fromWh && whIds.includes(fromWh);
-            const matchesEntry = entry.warehouseId && whIds.includes(entry.warehouseId) && toWh !== entry.warehouseId;
+            const matchesSource = (fromWh && whIds.includes(fromWh)) || (fromLoc && targetWarehouseLocationIds.includes(fromLoc));
+            const matchesEntry = entry.locationId && targetWarehouseLocationIds.includes(entry.locationId) && toLoc !== entry.locationId;
             if (!matchesSource && !matchesEntry) continue;
           }
         }
@@ -1622,6 +1737,10 @@ export class StockLedgerService {
           const destName = t?.toWarehouse?.name || t?.toLocation?.name || 'Warehouse/Location';
           remarks = `Transferred to ${destName}`;
         }
+      } else if (refType === 'DELIVERY_CHALLAN') {
+        docType = 'Delivery Challan';
+        docRef = refId || '-';
+        remarks = 'Delivery Challan Outbound';
       } else if (refType === 'POS_SALE') {
         docType = 'Sale Retail';
         const s = salesOrderMap.get(refId);

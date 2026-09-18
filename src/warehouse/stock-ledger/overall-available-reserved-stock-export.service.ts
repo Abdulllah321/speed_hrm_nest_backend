@@ -445,26 +445,60 @@ export class OverallAvailableReservedStockExportService {
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
-    const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
-
-    const locOrWhFilters: any[] = [];
-    if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
-    if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
-
-    const locationOrWarehouseWhere = locOrWhFilters.length > 1
-      ? { OR: locOrWhFilters }
-      : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
-
     // Fetch active Warehouses & Stock Locations
-    const warehouses = await prisma.warehouse.findMany({
-      where: {
-        isDeleted: false,
-        ...(whIds.length > 0 ? { id: { in: whIds } } : {}),
-      },
-      select: { id: true, name: true, code: true },
-      orderBy: { name: 'asc' },
-    });
+    const [allLocations, allWarehouses]: [
+      Array<{ id: string; name: string; code: string; shortCode?: string | null; warehouseId?: string | null; isStockLocation?: boolean }>,
+      Array<{ id: string; name: string; code: string }>
+    ] = await Promise.all([
+      (prisma as any).location.findMany({
+        where: { isDeleted: false },
+        select: { id: true, name: true, code: true, shortCode: true, warehouseId: true, isStockLocation: true },
+        orderBy: { name: 'asc' },
+      }),
+      (prisma as any).warehouse.findMany({
+        where: { isDeleted: false },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    // Build mapping from dedicated warehouse location IDs to parent warehouse ID
+    const whLocIdToWhIdMap = new Map<string, string>();
+    const warehouseLocIdsSet = new Set<string>();
+
+    for (const wh of allWarehouses) {
+      const matchingLocs = allLocations.filter(
+        l => (l as any).warehouseId === wh.id || l.id === wh.id || l.code === `WH-${wh.code}` || l.code === wh.code
+      );
+      for (const ml of matchingLocs) {
+        whLocIdToWhIdMap.set(ml.id, wh.id);
+        warehouseLocIdsSet.add(ml.id);
+      }
+    }
+
+    // Resolve target location IDs for queries
+    const targetLocationIds: string[] = [...locIds];
+    if (whIds.length > 0) {
+      for (const whId of whIds) {
+        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whCode = whObj?.code || whId;
+        const matchingLocs = allLocations.filter(
+          l => (l as any).warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+        );
+        for (const ml of matchingLocs) {
+          targetLocationIds.push(ml.id);
+        }
+      }
+    }
+
+    const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
+    const locationWhere = uniqueTargetLocationIds.length > 1
+      ? { in: uniqueTargetLocationIds }
+      : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
+
+    const locationOrWarehouseWhere = locationWhere ? { locationId: locationWhere } : {};
+
+    const warehouses = allWarehouses.filter(w => whIds.length === 0 || whIds.includes(w.id) || whIds.includes(w.code));
 
     const now = new Date();
     const endDate = asOfStr ? new Date(asOfStr) : new Date();
@@ -506,17 +540,12 @@ export class OverallAvailableReservedStockExportService {
       ...ledgerItems.map(l => l.locationId),
     ].filter(Boolean))] as string[];
 
-    const stockLocations = await prisma.location.findMany({
-      where: {
-        isDeleted: false,
-        OR: [
-          { isStockLocation: true },
-          ...(activeStockLocIds.length > 0 ? [{ id: { in: activeStockLocIds } }] : []),
-        ],
-        ...(locIds.length > 0 ? { id: { in: locIds } } : {}),
-      },
-      select: { id: true, name: true, code: true, shortCode: true },
-      orderBy: { name: 'asc' },
+    // stockLocations are store/outlet stock locations (excluding physical warehouse locations)
+    const stockLocations = allLocations.filter(l => {
+      if (warehouseLocIdsSet.has(l.id)) return false;
+      if (locIds.length > 0) return locIds.includes(l.id);
+      if (whIds.length > 0 && locIds.length === 0) return false;
+      return l.isStockLocation || activeStockLocIds.includes(l.id);
     });
 
     let uniqueItemIds = [...new Set([
@@ -544,11 +573,11 @@ export class OverallAvailableReservedStockExportService {
 
     await onProgress?.(45, 'Executing relational aggregations for stock movements, transit & reserves...');
 
-    const groupByCols: ('itemId' | 'locationId' | 'warehouseId')[] = ['itemId', 'locationId', 'warehouseId'];
+    const groupByCols: ('itemId' | 'locationId' | 'warehouseId' | 'referenceType')[] = ['itemId', 'locationId', 'warehouseId', 'referenceType'];
 
     const toLocOrWhFilters: any[] = [];
-    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
-    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+    if (uniqueTargetLocationIds.length > 0) toLocOrWhFilters.push({ toLocationId: { in: uniqueTargetLocationIds } });
+    if (whIds.length > 0) toLocOrWhFilters.push({ toWarehouseId: { in: warehouses.map(w => w.id) } });
 
     const toLocOrWhWhere = toLocOrWhFilters.length > 1
       ? { OR: toLocOrWhFilters }
@@ -623,7 +652,7 @@ export class OverallAvailableReservedStockExportService {
       prisma.stockReserve.groupBy({
         by: ['itemId', 'warehouseId'],
         where: {
-          ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+          ...(whIds.length > 0 ? { warehouseId: { in: warehouses.map(w => w.id) } } : {}),
           OR: [
             { expiresAt: null },
             { expiresAt: { gte: new Date() } },
@@ -640,15 +669,29 @@ export class OverallAvailableReservedStockExportService {
       }),
     ]);
 
+    const getLocOrWhKey = (locId?: string | null, whId?: string | null, ref?: string | null) => {
+      if (locId) {
+        if (whLocIdToWhIdMap.has(locId)) {
+          return `wh:${whLocIdToWhIdMap.get(locId)}`;
+        }
+        return `loc:${locId}`;
+      }
+      if (whId) {
+        if (ref && ref.startsWith('POS_')) return 'unknown';
+        return `wh:${whId}`;
+      }
+      return 'unknown';
+    };
+
     // Build B/F Opening map
     const bfMap = new Map<string, number>();
     for (const r of bfGroupResults) {
-      const locKey = r.locationId ? `loc:${r.locationId}` : (r.warehouseId ? `wh:${r.warehouseId}` : 'unknown');
+      const locKey = getLocOrWhKey(r.locationId, r.warehouseId, (r as any).referenceType);
       const key = `${locKey}_${r.itemId}`;
       bfMap.set(key, (bfMap.get(key) || 0) + Number(r._sum?.qty || 0));
     }
     for (const r of inRangeOpeningResults) {
-      const locKey = r.locationId ? `loc:${r.locationId}` : (r.warehouseId ? `wh:${r.warehouseId}` : 'unknown');
+      const locKey = getLocOrWhKey(r.locationId, r.warehouseId, (r as any).referenceType);
       const key = `${locKey}_${r.itemId}`;
       bfMap.set(key, (bfMap.get(key) || 0) + Number(r._sum?.qty || 0));
     }
@@ -664,7 +707,7 @@ export class OverallAvailableReservedStockExportService {
     for (const row of transitItemsResults) {
       const qty = Number(row.quantity || 0);
       const tr = row.transferRequest;
-      const locKey = tr.toLocationId ? `loc:${tr.toLocationId}` : (tr.toWarehouseId ? `wh:${tr.toWarehouseId}` : 'unknown');
+      const locKey = getLocOrWhKey(tr.toLocationId, tr.toWarehouseId);
       const key = `${locKey}_${row.itemId}`;
       transitMap.set(key, (transitMap.get(key) || 0) + qty);
     }
@@ -695,7 +738,7 @@ export class OverallAvailableReservedStockExportService {
     }>();
 
     for (const entry of ledgerEntriesResults) {
-      const locKey = entry.locationId ? `loc:${entry.locationId}` : (entry.warehouseId ? `wh:${entry.warehouseId}` : 'unknown');
+      const locKey = getLocOrWhKey(entry.locationId, entry.warehouseId, entry.referenceType);
       const key = `${locKey}_${entry.itemId}`;
 
       let m = movementMetricsMap.get(key);
@@ -711,21 +754,33 @@ export class OverallAvailableReservedStockExportService {
       const ref = entry.referenceType || '';
       const mov = entry.movementType;
 
-      if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
+      if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT' || ref === 'STOCK_RECONCILIATION') {
         m.adj += qty;
       } else if (qty > 0) {
-        if (ref === 'TRANSFER_REQUEST') m.fromWarehouse += qty;
-        else if (ref === 'OUTLET_TRANSFER_IN') m.fromOutlet += qty;
-        else if (['POS_RETURN', 'POS_EXCHANGE_IN'].includes(ref)) m.exchg += qty;
-        else if (['POS_REFUND', 'POS_VOID'].includes(ref)) m.refund += qty;
-        else if (ref === 'POS_CLAIM_APPROVED') m.claim += qty;
-        else m.adj += qty;
+        if (ref === 'TRANSFER_REQUEST' || ref === 'TRANSFER_IN' || ref === 'LANDED_COST' || ref === 'PURCHASE_INVOICE' || ref === 'GRN') {
+          m.fromWarehouse += qty;
+        } else if (ref === 'OUTLET_TRANSFER_IN') {
+          m.fromOutlet += qty;
+        } else if (['POS_RETURN', 'POS_EXCHANGE_IN', 'CUSTOMER_RETURN'].includes(ref)) {
+          m.exchg += qty;
+        } else if (['POS_REFUND', 'POS_VOID'].includes(ref)) {
+          m.refund += qty;
+        } else if (ref === 'POS_CLAIM_APPROVED') {
+          m.claim += qty;
+        } else {
+          m.adj += qty;
+        }
       } else if (qty < 0) {
         const absQty = Math.abs(qty);
-        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(ref)) m.toWarehouse += absQty;
-        else if (ref === 'OUTLET_TRANSFER_OUT') m.toOutlet += absQty;
-        else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) m.sales += absQty;
-        else m.adj += qty;
+        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'PURCHASE_RETURN_INV', 'PURCHASE_RETURN', 'DELIVERY_CHALLAN'].includes(ref)) {
+          m.toWarehouse += absQty;
+        } else if (ref === 'OUTLET_TRANSFER_OUT' || ref === 'TRANSFER_OUT') {
+          m.toOutlet += absQty;
+        } else if (['POS_SALE', 'POS_EXCHANGE_OUT', 'SALES_INVOICE', 'INVOICE'].includes(ref)) {
+          m.sales += absQty;
+        } else {
+          m.adj += qty;
+        }
       }
     }
 

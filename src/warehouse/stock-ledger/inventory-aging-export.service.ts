@@ -360,40 +360,56 @@ export class InventoryAgingExportService {
 
     // 1. Fetch Location & Warehouse metadata
     await onProgress(15, 'Loading stores & warehouse master catalog...');
-    const [locations, warehouses] = await Promise.all([
+    const [allLocations, allWarehouses] = await Promise.all([
       prisma.location.findMany({
-        where: {
-          isDeleted: false,
-          ...(locationIdFilter.length > 0 ? { id: { in: locationIdFilter } } : {}),
-        },
-        select: { id: true, name: true, code: true },
+        where: { isDeleted: false },
+        select: { id: true, name: true, code: true, warehouseId: true } as any,
         orderBy: { name: 'asc' },
       }),
       prisma.warehouse.findMany({
-        where: {
-          isDeleted: false,
-          ...(warehouseIdFilter.length > 0 ? { id: { in: warehouseIdFilter } } : {}),
-        },
+        where: { isDeleted: false },
         select: { id: true, name: true, code: true },
         orderBy: { name: 'asc' },
       }),
     ]);
 
-    const targetLocationIds = locations.map((l: any) => l.id);
-    const targetWarehouseIds = warehouses.map((w: any) => w.id);
+    const whLocIdToWhIdMap = new Map<string, string>();
+    const warehouseLocIdsSet = new Set<string>();
+
+    for (const wh of allWarehouses) {
+      const matchingLocs = allLocations.filter(
+        l => (l as any).warehouseId === wh.id || l.id === wh.id || l.code === `WH-${wh.code}` || l.code === wh.code
+      );
+      for (const ml of matchingLocs) {
+        whLocIdToWhIdMap.set(ml.id, wh.id);
+        warehouseLocIdsSet.add(ml.id);
+      }
+    }
+
+    const targetLocationIds: string[] = [...locationIdFilter];
+    if (warehouseIdFilter.length > 0) {
+      for (const whId of warehouseIdFilter) {
+        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whCode = whObj?.code || whId;
+        const matchingLocs = allLocations.filter(
+          l => (l as any).warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+        );
+        for (const ml of matchingLocs) {
+          targetLocationIds.push(ml.id);
+        }
+      }
+    }
+
+    const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
+    const locationWhere = uniqueTargetLocationIds.length > 1
+      ? { in: uniqueTargetLocationIds }
+      : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
 
     // 2. Fetch inventory items stock balances
     await onProgress(35, 'Calculating stock balances & ledger movements...');
     const inventoryItems = await prisma.inventoryItem.findMany({
       where: {
-        ...(targetLocationIds.length > 0 || targetWarehouseIds.length > 0
-          ? {
-              OR: [
-                ...(targetLocationIds.length > 0 ? [{ locationId: { in: targetLocationIds } }] : []),
-                ...(targetWarehouseIds.length > 0 ? [{ warehouseId: { in: targetWarehouseIds } }] : []),
-              ],
-            }
-          : {}),
+        ...(locationWhere ? { locationId: locationWhere } : {}),
       },
       select: {
         itemId: true,
@@ -438,6 +454,7 @@ export class InventoryAgingExportService {
           prisma.stockLedger.findMany({
             where: {
               itemId: { in: chunk },
+              ...(locationWhere ? { locationId: locationWhere } : {}),
               ...(queryStartDate ? { createdAt: { gte: queryStartDate, lte: asOfDate } } : { createdAt: { lte: asOfDate } }),
               OR: [
                 { unitCost: { gt: 0 } },
@@ -456,6 +473,7 @@ export class InventoryAgingExportService {
             where: {
               itemId: { in: chunk },
               transferRequest: {
+                ...(locationWhere ? { toLocationId: locationWhere } : {}),
                 status: { in: ['PENDING', 'PENDING_CHECKER', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
                 transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
               },
@@ -523,9 +541,13 @@ export class InventoryAgingExportService {
 
       entry.totalQty += qty;
       if (inv.locationId) {
-        entry.locationStocks[inv.locationId] = (entry.locationStocks[inv.locationId] || 0) + qty;
-      }
-      if (inv.warehouseId) {
+        if (whLocIdToWhIdMap.has(inv.locationId)) {
+          const whId = whLocIdToWhIdMap.get(inv.locationId)!;
+          entry.warehouseStocks[whId] = (entry.warehouseStocks[whId] || 0) + qty;
+        } else {
+          entry.locationStocks[inv.locationId] = (entry.locationStocks[inv.locationId] || 0) + qty;
+        }
+      } else if (inv.warehouseId) {
         entry.warehouseStocks[inv.warehouseId] = (entry.warehouseStocks[inv.warehouseId] || 0) + qty;
       }
     }
@@ -550,9 +572,13 @@ export class InventoryAgingExportService {
       entry.totalQty += qty;
       const tr = t.transferRequest;
       if (tr?.toLocationId) {
-        entry.locationStocks[tr.toLocationId] = (entry.locationStocks[tr.toLocationId] || 0) + qty;
-      }
-      if (tr?.toWarehouseId) {
+        if (whLocIdToWhIdMap.has(tr.toLocationId)) {
+          const whId = whLocIdToWhIdMap.get(tr.toLocationId)!;
+          entry.warehouseStocks[whId] = (entry.warehouseStocks[whId] || 0) + qty;
+        } else {
+          entry.locationStocks[tr.toLocationId] = (entry.locationStocks[tr.toLocationId] || 0) + qty;
+        }
+      } else if (tr?.toWarehouseId) {
         entry.warehouseStocks[tr.toWarehouseId] = (entry.warehouseStocks[tr.toWarehouseId] || 0) + qty;
       }
     }
@@ -566,6 +592,7 @@ export class InventoryAgingExportService {
         prisma.stockMovement.findMany({
           where: {
             itemId: { in: chunk },
+            ...(locationWhere ? { toLocationId: locationWhere } : {}),
             createdAt: queryStartDate ? { gte: queryStartDate, lte: asOfDate } : { lte: asOfDate },
             type: { in: [MovementType.INBOUND, MovementType.OPENING_BALANCE, MovementType.TRANSFER, MovementType.ADJUSTMENT] },
           },
@@ -752,6 +779,14 @@ export class InventoryAgingExportService {
       : 0;
 
     await onProgress(100, 'Inventory aging calculations completed.');
+
+    const locations = allLocations.filter((l: any) => {
+      if (warehouseLocIdsSet.has(l.id)) return false;
+      if (locationIdFilter.length > 0) return locationIdFilter.includes(l.id);
+      if (warehouseIdFilter.length > 0 && locationIdFilter.length === 0) return false;
+      return true;
+    });
+    const warehouses = allWarehouses.filter((w: any) => warehouseIdFilter.length === 0 || warehouseIdFilter.includes(w.id) || warehouseIdFilter.includes(w.code));
 
     return {
       status: true,

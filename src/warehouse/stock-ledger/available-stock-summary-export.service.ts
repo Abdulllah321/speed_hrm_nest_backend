@@ -499,17 +499,7 @@ export class AvailableStockSummaryExportService {
 
     const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
     const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
-
-    const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
     const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
-
-    const locOrWhFilters: any[] = [];
-    if (locationWhere) locOrWhFilters.push({ locationId: locationWhere });
-    if (warehouseWhere) locOrWhFilters.push({ warehouseId: warehouseWhere });
-
-    const locationOrWarehouseWhere = locOrWhFilters.length > 1
-      ? { OR: locOrWhFilters }
-      : (locOrWhFilters.length === 1 ? locOrWhFilters[0] : {});
 
     const isSeparate = reportType === 'separate';
 
@@ -549,12 +539,46 @@ export class AvailableStockSummaryExportService {
     await onProgress?.(15, 'Loading outlet and warehouse location metadata...');
 
     // Location & Warehouse names lookup for all locations
-    const [allLocations, allWarehouses] = await Promise.all([
-      prisma.location.findMany({ select: { id: true, name: true } }),
-      prisma.warehouse.findMany({ select: { id: true, name: true } }),
+    const [allLocations, allWarehouses]: [
+      Array<{ id: string; name: string; code: string; warehouseId?: string | null }>,
+      Array<{ id: string; name: string; code: string }>
+    ] = await Promise.all([
+      (prisma as any).location.findMany({ select: { id: true, name: true, code: true, warehouseId: true } }),
+      (prisma as any).warehouse.findMany({ select: { id: true, name: true, code: true } }),
     ]);
+
+    // Map any passed warehouseId to its dedicated stock-holding location (e.g. C40001 -> WH-C40001)
+    const targetLocationIds: string[] = [...locIds];
+    const targetWarehouseLocationIds: string[] = [];
+    if (whIds.length > 0) {
+      for (const whId of whIds) {
+        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whCode = whObj?.code || whId;
+        const matchingLocs = allLocations.filter(
+          l => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+        );
+        for (const ml of matchingLocs) {
+          targetLocationIds.push(ml.id);
+          targetWarehouseLocationIds.push(ml.id);
+        }
+      }
+    }
+
+    const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
+    const locationWhere = uniqueTargetLocationIds.length > 1 
+      ? { in: uniqueTargetLocationIds } 
+      : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
+
+    const locationOrWarehouseWhere = locationWhere ? { locationId: locationWhere } : {};
+
     const locationNameMap = new Map<string, string>();
-    for (const l of allLocations) locationNameMap.set(`loc:${l.id}`, `${l.name} (Outlet)`);
+    for (const l of allLocations) {
+      if (l.code?.startsWith('WH-') || l.code?.startsWith('C4') || l.code?.startsWith('C3') || l.code?.startsWith('C2') || l.code?.includes('TSDMC')) {
+        locationNameMap.set(`loc:${l.id}`, `${l.name} (Warehouse)`);
+      } else {
+        locationNameMap.set(`loc:${l.id}`, `${l.name} (Outlet)`);
+      }
+    }
     for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
 
     // Resolve nearest Fiscal Opening Snapshot date
@@ -604,11 +628,15 @@ export class AvailableStockSummaryExportService {
 
     await onProgress?.(40, 'Fetching product catalog, brands, categories & size details...');
 
-    const groupByCols: ('itemId' | 'locationId' | 'warehouseId')[] = ['itemId', 'locationId', 'warehouseId'];
+    const groupByCols: ('itemId' | 'locationId' | 'warehouseId' | 'referenceType')[] = ['itemId', 'locationId', 'warehouseId', 'referenceType'];
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
-    if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+    if (targetWarehouseLocationIds.length > 0) {
+      toLocOrWhFilters.push({ toLocationId: { in: targetWarehouseLocationIds } });
+    } else if (warehouseWhere) {
+      toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+    }
 
     const toLocOrWhWhere = toLocOrWhFilters.length > 1
       ? { OR: toLocOrWhFilters }
@@ -775,21 +803,27 @@ export class AvailableStockSummaryExportService {
       return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
     }
 
+    const getLocOrWhKey = (locId?: string | null, whId?: string | null, ref?: string | null) => {
+      if (!isSeparate) return 'all';
+      if (locId) return `loc:${locId}`;
+      if (whId) {
+        if (ref && ref.startsWith('POS_')) return 'unknown';
+        return `wh:${whId}`;
+      }
+      return 'unknown';
+    };
+
     // Populate BF Map
     const bfMap = new Map<string, number>();
     for (const row of bfGroupResults) {
-      const locKey = isSeparate
-        ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
-        : 'all';
+      const locKey = getLocOrWhKey(row.locationId, row.warehouseId, (row as any).referenceType);
       const key = `${locKey}_${row.itemId}`;
       bfMap.set(key, (bfMap.get(key) || 0) + Number(row._sum.qty || 0));
     }
 
     // Add In-Range Openings to BF Map
     for (const row of inRangeOpeningResults) {
-      const locKey = isSeparate
-        ? (row.locationId ? `loc:${row.locationId}` : (row.warehouseId ? `wh:${row.warehouseId}` : 'unknown'))
-        : 'all';
+      const locKey = getLocOrWhKey(row.locationId, row.warehouseId, (row as any).referenceType);
       const key = `${locKey}_${row.itemId}`;
       const currentBf = bfMap.get(key) || 0;
       bfMap.set(key, currentBf + Number(row._sum.qty || 0));
@@ -849,9 +883,7 @@ export class AvailableStockSummaryExportService {
     }>();
 
     for (const entry of ledgerEntries) {
-      const locKey = isSeparate
-        ? (entry.locationId ? `loc:${entry.locationId}` : (entry.warehouseId ? `wh:${entry.warehouseId}` : 'unknown'))
-        : 'all';
+      const locKey = getLocOrWhKey(entry.locationId, entry.warehouseId, entry.referenceType);
       const key = `${locKey}_${entry.itemId}`;
 
       let m = movementMetricsMap.get(key);
@@ -870,10 +902,12 @@ export class AvailableStockSummaryExportService {
       if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
         m.adj += qty;
       } else if (qty > 0) {
-        if (ref === 'TRANSFER_REQUEST') {
+        if (ref === 'TRANSFER_REQUEST' || ref === 'TRANSFER_IN' || ref === 'DIRECT_TRANSFER_IN' || ref === 'STOCK_TRANSFER') {
           m.fromWarehouse += qty;
         } else if (ref === 'OUTLET_TRANSFER_IN') {
           m.fromOutlet += qty;
+        } else if (ref === 'LANDED_COST' || ref === 'GRN') {
+          m.fromWarehouse += qty;
         } else if (['POS_RETURN', 'POS_EXCHANGE_IN'].includes(ref)) {
           m.exchg += qty;
         } else if (['POS_REFUND', 'POS_VOID'].includes(ref)) {
@@ -885,9 +919,11 @@ export class AvailableStockSummaryExportService {
         }
       } else if (qty < 0) {
         const absQty = Math.abs(qty);
-        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(ref)) {
+        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'PURCHASE_RETURN_INV', 'PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC'].includes(ref)) {
           m.toWarehouse += absQty;
-        } else if (ref === 'OUTLET_TRANSFER_OUT') {
+        } else if (['OUTLET_TRANSFER_OUT', 'DELIVERY_CHALLAN'].includes(ref)) {
+          m.toOutlet += absQty;
+        } else if (['TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER_OUT'].includes(ref)) {
           m.toOutlet += absQty;
         } else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) {
           m.sales += absQty;

@@ -2198,21 +2198,19 @@ export class PosSalesController {
     @Req() req: any,
     @Res() res: any,
   ) {
-    const filePath = this.netSalesSummaryExportService.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
-      if (typeof res.status === 'function') {
+    const ndjsonPath = this.netSalesSummaryExportService.getPreviewNdjsonFilePath(jobId);
+    const hasNdjson = fs.existsSync(ndjsonPath);
+    const acceptsNdjson = (formatQuery === 'ndjson' || (req.headers?.['accept'] || '').includes('application/x-ndjson')) && hasNdjson;
+
+    if (!acceptsNdjson) {
+      const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
+      if (!data) {
         const errPayload = {
           status: false,
           message: 'Net sales summary preview result not found or expired',
         };
         return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
       }
-      throw new NotFoundException('Net sales summary preview result not found or expired');
-    }
-
-    const acceptsNdjson = formatQuery === 'ndjson' || (req.headers?.['accept'] || '').includes('application/x-ndjson');
-    if (!acceptsNdjson) {
-      const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
       const payload = { status: true, data };
       return typeof res.send === 'function' ? res.send(payload) : res.json(payload);
     }
@@ -2222,13 +2220,13 @@ export class PosSalesController {
 
     if (typeof res.header === 'function') {
       res.header('Content-Type', contentType);
+      res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else if (typeof res.setHeader === 'function') {
       res.setHeader('Content-Type', contentType);
-    } else if (res.raw?.setHeader) {
-      res.raw.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
-    const stream = fs.createReadStream(filePath);
+    const stream = fs.createReadStream(ndjsonPath);
     stream.on('error', (err) => {
       this.logger.error(`NetSalesSummary stream error ${jobId}: ${err.message}`);
     });
@@ -2238,8 +2236,6 @@ export class PosSalesController {
         res.header('Content-Encoding', 'gzip');
       } else if (typeof res.setHeader === 'function') {
         res.setHeader('Content-Encoding', 'gzip');
-      } else if (res.raw?.setHeader) {
-        res.raw.setHeader('Content-Encoding', 'gzip');
       }
 
       if (typeof res.send === 'function') {
