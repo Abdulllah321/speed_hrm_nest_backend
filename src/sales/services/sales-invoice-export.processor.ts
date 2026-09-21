@@ -71,7 +71,6 @@ export class SalesInvoiceExportProcessor {
       { header: 'Movement Type', key: 'movementType', width: 15 },
       { header: 'Quantity', key: 'quantity', width: 10 },
       { header: 'UnitPrice', key: 'unitPrice', width: 15 },
-      { header: 'Discount %', key: 'discountPct', width: 10 },
       { header: 'Price_W_O_T', key: 'priceWot', width: 15 },
       { header: 'Total_Price_W_O_T', key: 'totalPriceWot', width: 15 },
       { header: 'DiscountAmount', key: 'discountAmount', width: 15 },
@@ -190,10 +189,10 @@ export class SalesInvoiceExportProcessor {
             const wostUnitPrice = unitPrice / (1 + (taxRate / 100));
             const wostTotal = wostUnitPrice * quantity;
             
-            const valueExclTax = wostTotal;
-            const taxableAmt = Math.max(0, valueExclTax - discountAmount);
+            const taxableAmt = Math.max(0, wostTotal - discountAmount);
+            const valueExclTax = taxableAmt;
             const salesTax = (taxableAmt * taxRate) / 100;
-            const valueInclTax = valueExclTax - discountAmount + salesTax;
+            const valueInclTax = valueExclTax + salesTax;
             const discountPct = quantity > 0 && unitPrice > 0 ? (discountAmount / (unitPrice * quantity)) * 100 : 0;
 
             const rowData = {
@@ -228,7 +227,6 @@ export class SalesInvoiceExportProcessor {
               movementType: product.movementType || 'N/A',
               quantity: quantity,
               unitPrice: unitPrice,
-              discountPct: Number(discountPct.toFixed(2)),
               priceWot: Number(wostUnitPrice.toFixed(2)),
               totalPriceWot: Number(wostTotal.toFixed(2)),
               discountAmount: Number(discountAmount.toFixed(2)),
