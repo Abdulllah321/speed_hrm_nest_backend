@@ -170,6 +170,62 @@ export class WholesaleReturnRegisterService {
     return { jobId };
   }
 
+  async queueReportExport(opts: {
+    userId: string;
+    customerId?: string;
+    startDate?: string;
+    endDate?: string;
+    reportType?: 'merged' | 'separate';
+    search?: string;
+    fiscalYear?: string;
+    year?: string | number;
+    format: 'xlsx' | 'pdf';
+  }): Promise<{ jobId: string }> {
+    const jobId = uuidv4();
+    const tenantId = this.prisma.getTenantId() ?? '';
+    const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+    const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
+
+    await this.prisma.exportHistory.create({
+      data: {
+        id: jobId,
+        userId: opts.userId,
+        fileName: `wholesale-return-register-report-${new Date().toISOString().slice(0, 10)}.${ext}`,
+        filePath: path.join('uploads', 'exports', `export-${jobId}.${ext}`),
+        moduleName: 'WHOLESALE_RETURN_REGISTER_REPORT',
+        status: 'PENDING',
+      },
+    });
+
+    await this.exportQueue.add(
+      'export-wholesale-return-register-report',
+      {
+        jobId,
+        userId: opts.userId,
+        tenantId,
+        tenantDbUrl,
+        customerId: opts.customerId,
+        startDate: opts.startDate,
+        endDate: opts.endDate,
+        reportType: opts.reportType || 'merged',
+        search: opts.search,
+        fiscalYear: opts.fiscalYear,
+        year: opts.year,
+        format: opts.format,
+      },
+      {
+        jobId: jobId,
+        attempts: 1,
+        removeOnComplete: false,
+        removeOnFail: false,
+        timeout: 60 * 60 * 1000,
+      },
+    );
+
+    this.logger.log(`[WholesaleReturnRegister] Queued export job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    return { jobId };
+  }
+
   async getJobQueueStatus(jobId: string): Promise<any> {
     const job = await this.exportQueue.getJob(`preview-wr-${jobId}`) ||
                 await this.exportQueue.getJob(jobId);

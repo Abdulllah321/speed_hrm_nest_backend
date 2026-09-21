@@ -90,30 +90,12 @@ export class WholesaleReturnRegisterController {
       year?: string | number;
     },
   ) {
-    const { Queue } = require('bull');
-    const exportQueue: Queue = (this.wholesaleReturnRegisterService as any).exportQueue;
+    const result = await this.wholesaleReturnRegisterService.queueReportExport({
+      userId: req.user.userId,
+      ...body,
+    });
 
-    const jobId = require('uuid').v4();
-    
-    await exportQueue.add(
-      'export-wholesale-return-register-report',
-      {
-        jobId,
-        userId: req.user.userId,
-        tenantId: req.user.tenantId,
-        tenantDbUrl: req.user.tenantDbUrl,
-        ...body,
-      },
-      {
-        jobId: jobId,
-        attempts: 1,
-        removeOnComplete: false,
-        removeOnFail: false,
-        timeout: 60 * 60 * 1000,
-      },
-    );
-
-    return { status: true, data: { jobId } };
+    return { status: true, data: result };
   }
 
   @Get('export/:jobId/status')
@@ -128,15 +110,9 @@ export class WholesaleReturnRegisterController {
     @Param('filename') filename: string,
     @Res() res: Response,
   ) {
-    const exportDir = path.join(process.cwd(), 'uploads', 'exports');
-    const ext = filename.endsWith('.pdf') ? 'pdf' : 'xlsx';
-    const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
-
-    if (fs.existsSync(filePath)) {
-      res.download(filePath, filename);
-    } else {
-      res.status(404).send('Export file not found or expired.');
-    }
+    // Redirect to the global ExportHistory download endpoint which handles URLs and S3 correctly
+    // instead of looking for the deleted local temporary file.
+    return res.redirect(`/api/export-history/${jobId}/download`, 302);
   }
 
   @Get('stream-preview-excel/:jobId/:filename')
