@@ -509,22 +509,29 @@ export class SalesReturnService {
   }
 
   async getNextReturnNumber() {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const startY = currentMonth >= 6 ? currentYear : currentYear - 1;
+    const fyStr = `${String(startY).slice(-2)}-${String(startY + 1).slice(-2)}`;
+    
+    const prefix = `SR-${fyStr}`;
+
     const lastReturn = await this.prisma.salesReturn.findFirst({
+      where: {
+        returnNumber: { startsWith: prefix },
+      },
       orderBy: { createdAt: 'desc' },
       select: { returnNumber: true },
     });
 
     if (!lastReturn || !lastReturn.returnNumber) {
-      return { nextReturnNumber: 'SR-00001' };
+      return { nextReturnNumber: `${prefix}-0001` };
     }
 
-    const match = lastReturn.returnNumber.match(/SR-(\d+)/);
-    if (match) {
-      const nextNum = parseInt(match[1], 10) + 1;
-      return { nextReturnNumber: `SR-${nextNum.toString().padStart(5, '0')}` };
-    }
-
-    return { nextReturnNumber: `SR-${Date.now()}` };
+    const lastSeq = parseInt(lastReturn.returnNumber.split('-').pop() || '0', 10);
+    const nextNum = isNaN(lastSeq) ? 1 : lastSeq + 1;
+    return { nextReturnNumber: `${prefix}-${nextNum.toString().padStart(4, '0')}` };
   }
 
   private async validateSourceDocument(createDto: CreateSalesReturnDto) {
@@ -757,8 +764,13 @@ export class SalesReturnService {
     const totalAmount = Number(salesReturn.totalAmount);
 
     return this.prisma.$transaction(async (tx) => {
-      const currentYear = new Date().getFullYear();
-      const prefix = 'CN';
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const startY = currentMonth >= 6 ? currentYear : currentYear - 1;
+      const fyStr = `${String(startY).slice(-2)}-${String(startY + 1).slice(-2)}`;
+
+      const prefix = `CN-${fyStr}`;
       const lastCreditNote = await tx.creditNote.findFirst({
         where: {
           creditNoteNo: { startsWith: prefix },
@@ -773,7 +785,7 @@ export class SalesReturnService {
           nextCnSeq = lastSeq + 1;
         }
       }
-      const creditNoteNo = `${prefix}-${currentYear}-${String(nextCnSeq).padStart(4, '0')}`;
+      const creditNoteNo = `${prefix}-${String(nextCnSeq).padStart(4, '0')}`;
 
       // 1. Create Credit Note
       const creditNote = await tx.creditNote.create({
