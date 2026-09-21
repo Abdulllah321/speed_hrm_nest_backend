@@ -1500,8 +1500,8 @@ export class GrossSalesExportService {
           const sizeName = item.item?.size?.name || 'Default';
           const colorName = item.item?.color?.name || 'Default';
 
-          // Aggregate by location and product variant dimensions
-          const variantKey = `${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
+          // Aggregate by location, product variant dimensions, and order
+          const variantKey = `${order.id}|${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
           let existingRecord = flatItemsMap.get(variantKey);
           if (!existingRecord) {
             existingRecord = {
@@ -1512,6 +1512,9 @@ export class GrossSalesExportService {
               divisionName,
               genderName,
               silhouetteName,
+              orderNumber: order.orderNumber,
+              fbrInvoiceNumber: order.fbrInvoiceNumber,
+              createdAt: order.createdAt,
               sku,
               barCode,
               description,
@@ -1792,6 +1795,8 @@ export class GrossSalesExportService {
       { header: 'Division', key: 'divisionName', width: 16 },
       { header: 'Gender', key: 'genderName', width: 14 },
       { header: 'Silhouette', key: 'silhouetteName', width: 16 },
+      { header: 'Order Number', key: 'orderNumber', width: 20 },
+      { header: 'FBR Invoice', key: 'fbrInvoiceNumber', width: 20 },
       { header: 'SKU', key: 'sku', width: 16 },
       { header: 'Barcode', key: 'barCode', width: 16 },
       { header: 'Description', key: 'description', width: 28 },
@@ -1801,6 +1806,7 @@ export class GrossSalesExportService {
       { header: 'Unit Price', key: 'unitPrice', width: 12 },
       { header: 'WOST', key: 'wostAmount', width: 14 },
       { header: 'Discount', key: 'discountAmount', width: 12 },
+      { header: 'After Disc Amt', key: 'afterDiscAmt', width: 14 },
       { header: 'Tax', key: 'taxAmount', width: 12 },
       { header: 'SubTotal', key: 'subTotal', width: 14 },
     ];
@@ -1864,6 +1870,8 @@ export class GrossSalesExportService {
                   divisionName: item.divisionName || '-',
                   genderName: item.genderName || '-',
                   silhouetteName: item.silhouetteName || '-',
+                  orderNumber: item.orderNumber || '-',
+                  fbrInvoiceNumber: item.fbrInvoiceNumber || '-',
                   sku: item.sku || '-',
                   barCode: item.barCode || '-',
                   description: item.description || '-',
@@ -1873,6 +1881,7 @@ export class GrossSalesExportService {
                   unitPrice: Number(item.unitPrice || 0),
                   wostAmount: wost,
                   discountAmount: disc,
+                  afterDiscAmt: wost - disc,
                   taxAmount: tax,
                   subTotal: sub,
                 });
@@ -1904,6 +1913,7 @@ export class GrossSalesExportService {
       quantity: totalQty,
       wostAmount: totalWost,
       discountAmount: totalDiscount,
+      afterDiscAmt: totalWost - totalDiscount,
       taxAmount: totalTax,
       subTotal: totalSubTotal,
     });
