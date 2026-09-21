@@ -119,14 +119,19 @@ export class SalesOrderService {
 
   async create(createSalesOrderDto: CreateSalesOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
     try {
-      // Generate order number (PI format: SO-YYYY-0001)
-      const currentYear = new Date().getFullYear();
-      const prefix = 'SO';
+      // Generate order number (PI format: SO-FY-0001)
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const startY = currentMonth >= 6 ? currentYear : currentYear - 1;
+      const fyStr = `${String(startY).slice(-2)}-${String(startY + 1).slice(-2)}`;
+      
+      const prefix = `SO-${fyStr}`;
       const lastOrder = await this.prisma.eRPSalesOrder.findFirst({
         where: {
           OR: [
-            { orderNo: { startsWith: 'SO' } },
-            { orderNo: { startsWith: 'SI' } },
+            { orderNo: { startsWith: prefix } },
+            { orderNo: { startsWith: `SI-${fyStr}` } },
           ],
         },
         orderBy: { createdAt: 'desc' },
@@ -139,7 +144,7 @@ export class SalesOrderService {
           nextNumber = lastSeq + 1;
         }
       }
-      const orderNo = `${prefix}-${currentYear}-${String(nextNumber).padStart(4, '0')}`;
+      const orderNo = `${prefix}-${String(nextNumber).padStart(4, '0')}`;
 
       // Validate customer exists
       const customer = await this.prisma.customer.findUnique({

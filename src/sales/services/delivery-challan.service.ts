@@ -41,9 +41,14 @@ export class DeliveryChallanService {
           throw new BadRequestException('Sales order must be warehouse verified to create delivery challan');
         }
 
-        // Generate challan number (PI format: DC-YYYY-0001)
-        const currentYear = new Date().getFullYear();
-        const prefix = 'DC';
+        // Generate challan number (PI format: DC-FY-0001)
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        const startY = currentMonth >= 6 ? currentYear : currentYear - 1;
+        const fyStr = `${String(startY).slice(-2)}-${String(startY + 1).slice(-2)}`;
+        
+        const prefix = `DC-${fyStr}`;
         const lastChallan = await tx.deliveryChallan.findFirst({
           where: {
             challanNo: { startsWith: prefix },
@@ -58,7 +63,7 @@ export class DeliveryChallanService {
             nextChallanSeq = lastSeq + 1;
           }
         }
-        const challanNo = `${prefix}-${currentYear}-${String(nextChallanSeq).padStart(4, '0')}`;
+        const challanNo = `${prefix}-${String(nextChallanSeq).padStart(4, '0')}`;
 
         // Simple retail totals for delivery challan
         const itemRecords = await Promise.all(items.map(async (item: any) => {
@@ -469,14 +474,19 @@ export class DeliveryChallanService {
       }
 
       const result = await this.prisma.$transaction(async (tx) => {
-        // Generate invoice number (PI format: INV-YYYY-0001)
-        const currentYear = new Date().getFullYear();
-        const prefix = 'INV';
+        // Generate invoice number (PI format: INV-FY-0001)
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        const startY = currentMonth >= 6 ? currentYear : currentYear - 1;
+        const fyStr = `${String(startY).slice(-2)}-${String(startY + 1).slice(-2)}`;
+
+        const prefix = `INV-${fyStr}`;
         const lastInvoice = await tx.eRPSalesInvoice.findFirst({
           where: {
             OR: [
-              { invoiceNo: { startsWith: 'INV' } },
-              { invoiceNo: { startsWith: 'SI' } },
+              { invoiceNo: { startsWith: prefix } },
+              { invoiceNo: { startsWith: `SI-${fyStr}` } },
             ],
           },
           orderBy: { createdAt: 'desc' },
@@ -489,7 +499,7 @@ export class DeliveryChallanService {
             nextInvSeq = lastSeq + 1;
           }
         }
-        const invoiceNo = `${prefix}-${currentYear}-${String(nextInvSeq).padStart(4, '0')}`;
+        const invoiceNo = `${prefix}-${String(nextInvSeq).padStart(4, '0')}`;
 
         // Calculate correct invoice totals using FBR WOST logic (customer margin & discount at invoice time)
         const baseMargin = data?.baseMargin !== undefined
