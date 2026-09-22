@@ -27,8 +27,11 @@ export class PurchaseReturnController {
   @Get()
   @ApiOperation({ summary: 'Get all purchase returns' })
   @ApiResponse({ status: 200, description: 'List of purchase returns' })
-  findAll(@Query('status') status?: string) {
-    return this.purchaseReturnService.findAll(status);
+  findAll(
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.purchaseReturnService.findAll(status, search);
   }
 
   @Get('eligible-grns')

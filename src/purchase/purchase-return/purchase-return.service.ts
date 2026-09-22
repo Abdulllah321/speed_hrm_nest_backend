@@ -153,9 +153,22 @@ export class PurchaseReturnService {
     }
   }
 
-  async findAll(status?: string) {
+  async findAll(status?: string, search?: string) {
+    const where: any = {};
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+
+    if (search && search.trim() !== '') {
+      where.OR = [
+        { returnNumber: { contains: search, mode: 'insensitive' } },
+        { purchaseInvoice: { invoiceNumber: { contains: search, mode: 'insensitive' } } },
+        { supplier: { name: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
     return this.prisma.purchaseReturn.findMany({
-      where: status && status !== 'ALL' ? { status } : {},
+      where,
       include: {
         items: {
           include: {
