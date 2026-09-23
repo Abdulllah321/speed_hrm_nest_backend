@@ -156,7 +156,9 @@ export class SalesRegisterExportProcessor {
     const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, cashierUserId, format, search } = job.data;
     this.logger.log(`[SalesRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`);
 
-    const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma = (tenantId && tenantDbUrl)
+      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+      : new PrismaService({ tenantId, tenantDbUrl } as any);
     const prismaMaster = new PrismaMasterService();
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
@@ -187,7 +189,7 @@ export class SalesRegisterExportProcessor {
         const chunk = await prisma.salesOrder.findMany({
           where: {
             locationId,
-            status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged'] },
+            status: { notIn: ['returned', 'hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED'] },
             createdAt: { gte: startDate, lte: endDate },
             ...(cashierUserId ? { cashierUserId } : {}),
             ...(search ? { orderNumber: { contains: search, mode: 'insensitive' } } : {}),
@@ -226,7 +228,7 @@ export class SalesRegisterExportProcessor {
       // Fetch claims & returns to construct negative documents
       const returnLedgerEntries = await prisma.stockLedger.findMany({
         where: {
-          referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+          referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'SALES_RETURN', 'SRN'] },
           createdAt: { gte: startDate, lte: endDate },
           locationId,
         },
@@ -238,6 +240,22 @@ export class SalesRegisterExportProcessor {
           },
         },
       });
+
+      const returnMovements = await prisma.stockMovement.findMany({
+        where: {
+          referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'SALES_RETURN', 'SRN'] },
+          createdAt: { gte: startDate, lte: endDate },
+          ...(locationId ? { toLocationId: locationId } : {}),
+        },
+        select: { referenceId: true, movementNo: true, notes: true },
+      });
+
+      const movMap = new Map<string, { docNo: string; notes: string }>();
+      for (const m of returnMovements) {
+        if (m.referenceId) {
+          movMap.set(m.referenceId, { docNo: m.movementNo, notes: m.notes || '' });
+        }
+      }
 
       const referenceOrderIds = [...new Set(returnLedgerEntries.map(e => e.referenceId).filter(Boolean))];
       const referenceOrders = referenceOrderIds.length
@@ -401,15 +419,14 @@ export class SalesRegisterExportProcessor {
       // 2. Map Returns and Refunds
       const groupedReturns = new Map<string, any[]>();
       for (const entry of returnLedgerEntries) {
-        if (!entry.referenceId) continue;
-        const list = groupedReturns.get(entry.referenceId) || [];
+        const key = entry.referenceId || `ret-${entry.id}`;
+        const list = groupedReturns.get(key) || [];
         list.push(entry);
-        groupedReturns.set(entry.referenceId, list);
+        groupedReturns.set(key, list);
       }
 
       for (const [refId, entries] of groupedReturns.entries()) {
         const order = referenceOrderMap.get(refId);
-        if (!order) continue;
 
         let grossSale = 0;
         let grossSaleWost = 0;
@@ -417,18 +434,24 @@ export class SalesRegisterExportProcessor {
         let sTax = 0;
 
         for (const entry of entries) {
-          const qty = Math.abs(Number(entry.qty));
-          const orderItem = order.items.find((oi: any) => oi.itemId === entry.itemId);
-          if (!orderItem) continue;
+          const qty = Math.abs(Number(entry.qty || 1));
+          const orderItem = order?.items?.find((oi: any) => oi.itemId === entry.itemId);
+          if (orderItem) {
+            const price = Number(orderItem.unitPrice || 0);
+            const taxRate = Number(orderItem.taxPercent || 0);
+            const itemQty = Number(orderItem.quantity || 1);
 
-          const price = Number(orderItem.unitPrice || 0);
-          const taxRate = Number(orderItem.taxPercent || 0);
-          const itemQty = Number(orderItem.quantity || 1);
-
-          grossSale += qty * price;
-          grossSaleWost += qty * (price / (1 + taxRate / 100));
-          disc += (qty / itemQty) * Number(orderItem.discountAmount || 0);
-          sTax += (qty / itemQty) * Number(orderItem.taxAmount || 0);
+            grossSale += qty * price;
+            grossSaleWost += qty * (price / (1 + taxRate / 100));
+            disc += (qty / itemQty) * Number(orderItem.discountAmount || 0);
+            sTax += (qty / itemQty) * Number(orderItem.taxAmount || 0);
+          } else {
+            const rawRate = Number(entry.rate || 0);
+            const price = Number(entry.item?.unitPrice || Math.abs(rawRate) || 0);
+            const amt = rawRate !== 0 ? Math.abs(rawRate) : qty * price;
+            grossSale += amt;
+            grossSaleWost += amt;
+          }
         }
 
         const returnHsCodes = [
@@ -459,9 +482,10 @@ export class SalesRegisterExportProcessor {
           exchangeAmt = -netSale;
         }
 
-        const docNum = isRefund
-          ? (order.refundNumber || `Refund for ${order.orderNumber}`)
-          : (order.returnNumber || `Return for ${order.orderNumber}`);
+        const mov = movMap.get(refId);
+        const docNum = order
+          ? (isRefund ? (order.refundNumber || `Refund for ${order.orderNumber}`) : (order.returnNumber || `Return for ${order.orderNumber}`))
+          : (mov?.notes?.replace(/^POS Return:\s*/i, '')?.split(' ')[0] || `RET-${refId.slice(0, 8)}`);
 
         rows.push({
           id: `${refId}-return`,

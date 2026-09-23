@@ -23,6 +23,7 @@ export interface StockActivityExportJobData {
   warehouseId?: string;
   startDate?: string;
   endDate?: string;
+  reportType?: 'merged' | 'separate' | 'detailed';
   format: 'xlsx' | 'pdf';
   summaryOnly?: boolean;
   showBrand?: boolean;
@@ -43,7 +44,7 @@ export interface StockActivityPreviewJobData {
   warehouseId?: string;
   startDate?: string;
   endDate?: string;
-  reportType?: 'merged' | 'separate';
+  reportType?: 'merged' | 'separate' | 'detailed';
   search?: string;
 }
 
@@ -72,6 +73,28 @@ const COLUMNS = [
   { header: 'Sales', key: 'sales', width: 12, group: 'Movements', align: 'right' as const },
   { header: 'Adj', key: 'adj', width: 12, group: 'Movements', align: 'right' as const },
   { header: 'Available', key: 'availableStock', width: 14, group: 'Balances', align: 'right' as const },
+  { header: 'Transit', key: 'transit', width: 12, group: 'Balances', align: 'right' as const },
+  { header: 'Balance', key: 'balance', width: 16, group: 'Balances', align: 'right' as const },
+];
+
+const DETAILED_COLUMNS = [
+  { header: 'SKU / Variant Info', key: 'sku', width: 32, group: 'General' },
+  { header: 'Color', key: 'color', width: 14, group: 'General', align: 'center' as const },
+  { header: 'Size', key: 'size', width: 10, group: 'General', align: 'center' as const },
+  { header: 'Opening', key: 'bf', width: 14, group: 'General', align: 'right' as const },
+  { header: 'Purchases', key: 'purchases', width: 12, group: 'Transfer IN', align: 'right' as const },
+  { header: 'Purchase Ret', key: 'purchaseReturn', width: 12, group: 'Transfer IN', align: 'right' as const },
+  { header: 'From Outlet', key: 'fromOutlet', width: 12, group: 'Transfer IN', align: 'right' as const },
+  { header: 'To Outlet', key: 'toOutlet', width: 12, group: 'Transfer OUT', align: 'right' as const },
+  { header: 'Delivery Challan', key: 'deliveryChallan', width: 14, group: 'Transfer OUT', align: 'right' as const },
+  { header: 'Wholesale Ret', key: 'wholesaleReturn', width: 14, group: 'Transfer OUT', align: 'right' as const },
+  { header: 'Adj', key: 'adj', width: 12, group: 'Movements', align: 'right' as const },
+  { header: 'Available', key: 'availableStock', width: 14, group: 'Balances', align: 'right' as const },
+  { header: 'Reserved SO', key: 'reservedSO', width: 12, group: 'Balances', align: 'right' as const },
+  { header: 'Reserved SRN', key: 'reservedSRN', width: 12, group: 'Balances', align: 'right' as const },
+  { header: 'Total Reserved', key: 'totalReserved', width: 14, group: 'Balances', align: 'right' as const },
+  { header: 'Stock After Res', key: 'stockAfterRes', width: 14, group: 'Balances', align: 'right' as const },
+  { header: 'Transit GRN', key: 'transitGRN', width: 14, group: 'Balances', align: 'right' as const },
   { header: 'Transit', key: 'transit', width: 12, group: 'Balances', align: 'right' as const },
   { header: 'Balance', key: 'balance', width: 16, group: 'Balances', align: 'right' as const },
 ];
@@ -146,7 +169,7 @@ export class StockActivityExportProcessor {
   async handleExport(job: Job<StockActivityExportJobData>): Promise<void> {
     const {
       jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format, summaryOnly,
-      showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant
+      showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant, reportType = 'merged',
     } = job.data;
     this.logger.log(`[StockActivityExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
 
@@ -162,55 +185,72 @@ export class StockActivityExportProcessor {
       await job.progress(5);
 
       const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+
       const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
       const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
 
-      // Load Location & Warehouse Names Lookup
-      const [allLocations, allWarehouses]: [
-        Array<{ id: string; name: string; code: string; warehouseId?: string | null }>,
-        Array<{ id: string; name: string; code: string }>
-      ] = await Promise.all([
-        (prisma as any).location.findMany({ select: { id: true, name: true, code: true, warehouseId: true } }),
-        (prisma as any).warehouse.findMany({ select: { id: true, name: true, code: true } }),
+      const [allLocations, allWarehouses] = await Promise.all([
+        prisma.location.findMany({ select: { id: true, name: true, code: true } }),
+        prisma.warehouse.findMany({ select: { id: true, name: true, code: true } }),
       ]);
 
-      // Map any passed warehouseId to its dedicated stock-holding location (e.g. C40001 -> WH-C40001)
-      const targetLocationIds: string[] = [...locIds];
-      const targetWarehouseLocationIds: string[] = [];
-      if (whIds.length > 0) {
-        for (const whId of whIds) {
-          const whObj = allWarehouses.find((w) => w.id === whId || w.code === whId);
-          const whCode = whObj?.code || whId;
-          const matchingLocs = allLocations.filter(
-            (l) => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
-          );
-          for (const ml of matchingLocs) {
-            targetLocationIds.push(ml.id);
-            targetWarehouseLocationIds.push(ml.id);
+      let locationOrWarehouseWhere: any = {};
+      let locationName = '';
+
+      if (reportType === 'detailed') {
+        const c40001Wh = allWarehouses.find((w: any) => w.code === 'C40001') || allWarehouses[0];
+        const targetWhIds = whIds.length > 0 ? whIds : (c40001Wh ? [c40001Wh.id] : []);
+        const warehouseWhere = targetWhIds.length > 1 ? { in: targetWhIds } : targetWhIds.length === 1 ? targetWhIds[0] : undefined;
+
+        locationOrWarehouseWhere = warehouseWhere
+          ? { warehouseId: warehouseWhere, locationId: null }
+          : { warehouseId: { not: null }, locationId: null };
+
+        const matchedWhs = allWarehouses.filter((w) => targetWhIds.includes(w.id));
+        locationName = matchedWhs.length > 0 ? matchedWhs.map((w) => `${w.name} (${w.code || 'WH'})`).join(', ') : 'Central Warehouse (C40001)';
+      } else {
+        const storeLocations = allLocations.filter(
+          (l) => l.code !== 'C40001' && l.code !== 'WH-C40001' && !l.name.includes('LOGISTIC AREA'),
+        );
+        const storeLocIds = storeLocations.map((l) => l.id);
+        const nonC40001Warehouses = allWarehouses.filter((w) => w.code !== 'C40001');
+        const nonC40001WhIds = nonC40001Warehouses.map((w) => w.id);
+
+        const actualLocIds = locIds
+          .filter((id) => !id.startsWith('wh:'))
+          .filter((id) => storeLocIds.includes(id));
+        const passedWhIds = [
+          ...whIds,
+          ...locIds.filter((id) => id.startsWith('wh:')).map((id) => id.replace('wh:', '')),
+        ].filter((id) => nonC40001WhIds.includes(id));
+
+        if (actualLocIds.length > 0 || passedWhIds.length > 0) {
+          const orConds: any[] = [];
+          if (actualLocIds.length > 0) {
+            orConds.push({ locationId: actualLocIds.length > 1 ? { in: actualLocIds } : actualLocIds[0] });
           }
+          if (passedWhIds.length > 0) {
+            orConds.push({
+              warehouseId: passedWhIds.length > 1 ? { in: passedWhIds } : passedWhIds[0],
+              locationId: null,
+            });
+          }
+          locationOrWarehouseWhere = orConds.length > 1 ? { OR: orConds } : (orConds.length === 1 ? orConds[0] : {});
+
+          const selectedLocNames = storeLocations.filter((l) => actualLocIds.includes(l.id)).map((l) => l.name);
+          const selectedWhNames = nonC40001Warehouses.filter((w) => passedWhIds.includes(w.id)).map((w) => `${w.name} (Warehouse)`);
+          locationName = [...selectedLocNames, ...selectedWhNames].join(', ');
+        } else {
+          locationOrWarehouseWhere = {
+            OR: [
+              { locationId: { in: storeLocIds } },
+              { warehouseId: { in: nonC40001WhIds }, locationId: null },
+            ],
+          };
+          locationName = 'All Outlets & Warehouses';
         }
       }
-
-      const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
-      const locationWhere = uniqueTargetLocationIds.length > 1
-        ? { in: uniqueTargetLocationIds }
-        : uniqueTargetLocationIds.length === 1
-        ? uniqueTargetLocationIds[0]
-        : undefined;
-
-      const locationOrWarehouseWhere = locationWhere ? { locationId: locationWhere } : {};
-
-      let locationName = '';
-      if (locIds.length > 0) {
-        const locs = allLocations.filter(l => locIds.includes(l.id));
-        locationName += locs.map(l => l.name).join(', ');
-      }
-      if (whIds.length > 0) {
-        if (locationName) locationName += ' & ';
-        const whs = allWarehouses.filter(w => whIds.includes(w.id));
-        locationName += whs.map(w => w.name).join(', ');
-      }
-      if (!locationName) locationName = 'All Locations & Warehouses';
 
       const now = new Date();
       const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -239,8 +279,9 @@ export class StockActivityExportProcessor {
       ])];
 
       if (uniqueItemIds.length === 0) {
+        const selectedColumns = reportType === 'detailed' ? DETAILED_COLUMNS : COLUMNS;
         if (format === 'xlsx') {
-          await this.writeEmptyWorkbook(filePath);
+          await this.writeEmptyWorkbook(filePath, selectedColumns);
         } else {
           await this.writeEmptyPdf(filePath, locationName, startDate, endDate);
         }
@@ -284,9 +325,13 @@ export class StockActivityExportProcessor {
         const bfGroup = await prisma.stockLedger.groupBy({
           by: ['itemId'],
           where: {
-            ...locationOrWarehouseWhere,
-            itemId: { in: chunk },
-            createdAt: { lt: startDate },
+            AND: [
+              locationOrWarehouseWhere,
+              {
+                itemId: { in: chunk },
+                createdAt: { lt: startDate },
+              },
+            ],
           },
           _sum: { qty: true },
         });
@@ -298,14 +343,19 @@ export class StockActivityExportProcessor {
         const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
           by: ['itemId'],
           where: {
-            ...locationOrWarehouseWhere,
-            itemId: { in: chunk },
-            createdAt: { gte: startDate, lte: endDate },
-            OR: [
-              { movementType: MovementType.OPENING_BALANCE },
-              { referenceType: 'OPENING_BALANCE' },
-              { referenceType: 'BULK_STOCK_UPLOAD' }
-            ]
+            AND: [
+              locationOrWarehouseWhere,
+              {
+                itemId: { in: chunk },
+                createdAt: { gte: startDate, lte: endDate },
+                OR: [
+                  { movementType: MovementType.OPENING_BALANCE },
+                  { referenceType: 'OPENING_BALANCE' },
+                  { referenceType: 'BULK_STOCK_UPLOAD' },
+                  { referenceType: 'FISCAL_YEAR_OPENING' },
+                ],
+              },
+            ],
           },
           _sum: { qty: true },
         });
@@ -320,19 +370,25 @@ export class StockActivityExportProcessor {
       for (const chunk of matchedItemChunks) {
         const chunkEntries = await prisma.stockLedger.findMany({
           where: {
-            ...locationOrWarehouseWhere,
-            itemId: { in: chunk },
-            createdAt: { gte: startDate, lte: endDate },
-            NOT: [
-              { movementType: MovementType.OPENING_BALANCE },
-              { referenceType: 'OPENING_BALANCE' },
-              { referenceType: 'BULK_STOCK_UPLOAD' }
-            ]
+            AND: [
+              locationOrWarehouseWhere,
+              {
+                itemId: { in: chunk },
+                createdAt: { gte: startDate, lte: endDate },
+                NOT: [
+                  { movementType: MovementType.OPENING_BALANCE },
+                  { referenceType: 'OPENING_BALANCE' },
+                  { referenceType: 'BULK_STOCK_UPLOAD' },
+                  { referenceType: 'FISCAL_YEAR_OPENING' },
+                ],
+              },
+            ],
           },
           select: {
             itemId: true,
             qty: true,
             referenceType: true,
+            referenceId: true,
             movementType: true,
           },
         });
@@ -341,11 +397,7 @@ export class StockActivityExportProcessor {
 
       const toLocOrWhFilters: any[] = [];
       if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
-      if (targetWarehouseLocationIds.length > 0) {
-        toLocOrWhFilters.push({ toLocationId: { in: targetWarehouseLocationIds } });
-      } else if (warehouseWhere) {
-        toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
-      }
+      if (warehouseWhere) toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
 
       const toLocOrWhWhere = toLocOrWhFilters.length > 1
         ? { OR: toLocOrWhFilters }
@@ -376,6 +428,66 @@ export class StockActivityExportProcessor {
         transitMap.set(row.itemId, (transitMap.get(row.itemId) || 0) + qty);
       }
 
+      const centralWh = await prisma.warehouse.findFirst({
+        where: { code: 'C40001' },
+        select: { id: true },
+      });
+      const centralWhId = centralWh?.id;
+      const isCentralWarehouseScope = warehouseId === centralWhId;
+
+      const transferRefs = [
+        'TRANSFER_REQUEST',
+        'TRANSFER_IN',
+        'TRANSFER_OUT',
+        'OUTLET_TRANSFER_IN',
+        'OUTLET_TRANSFER_OUT',
+        'RETURN_REQUEST',
+        'CLAIM_RETURN',
+        'CLAIM_TO_PLM',
+        'CLAIM_RETURN_REQUEST',
+      ];
+      const transferRefIds = [
+        ...new Set(
+          ledgerEntries
+            .filter((e) => transferRefs.includes(e.referenceType))
+            .map((e) => e.referenceId)
+            .filter(Boolean),
+        ),
+      ];
+
+      const trMap = new Map<
+        string,
+        { fromWarehouseId: string | null; toWarehouseId: string | null; transferType: string }
+      >();
+      if (transferRefIds.length > 0) {
+        const trChunks = chunkArray(transferRefIds, 1000);
+        const trsNested = await Promise.all(
+          trChunks.map((chunk) =>
+            prisma.transferRequest.findMany({
+              where: {
+                OR: [{ id: { in: chunk } }, { requestNo: { in: chunk } }],
+              },
+              select: {
+                id: true,
+                requestNo: true,
+                fromWarehouseId: true,
+                toWarehouseId: true,
+                transferType: true,
+              },
+            }),
+          ),
+        );
+        for (const tr of trsNested.flat()) {
+          const meta = {
+            fromWarehouseId: tr.fromWarehouseId,
+            toWarehouseId: tr.toWarehouseId,
+            transferType: tr.transferType,
+          };
+          trMap.set(tr.id, meta);
+          trMap.set(tr.requestNo, meta);
+        }
+      }
+
       await job.progress(60);
 
       const itemMetricsMap = new Map<string, {
@@ -388,6 +500,10 @@ export class StockActivityExportProcessor {
         claim: number;
         sales: number;
         adj: number;
+        purchases: number;
+        purchaseReturn: number;
+        deliveryChallan: number;
+        wholesaleReturn: number;
       }>();
 
       for (const entry of ledgerEntries) {
@@ -397,6 +513,7 @@ export class StockActivityExportProcessor {
           m = {
             fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
             exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
+            purchases: 0, purchaseReturn: 0, deliveryChallan: 0, wholesaleReturn: 0,
           };
           itemMetricsMap.set(itemId, m);
         }
@@ -408,31 +525,65 @@ export class StockActivityExportProcessor {
         if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
           m.adj += qty;
         } else if (qty > 0) {
-          if (ref === 'TRANSFER_REQUEST' || ref === 'TRANSFER_IN' || ref === 'DIRECT_TRANSFER_IN' || ref === 'STOCK_TRANSFER') {
-            m.fromWarehouse += qty;
-          } else if (ref === 'OUTLET_TRANSFER_IN') {
-            m.fromOutlet += qty;
-          } else if (ref === 'LANDED_COST' || ref === 'GRN') {
-            m.fromWarehouse += qty;
+          if (['TRANSFER_REQUEST', 'TRANSFER_IN', 'OUTLET_TRANSFER_IN'].includes(ref)) {
+            const tr = entry.referenceId ? trMap.get(entry.referenceId) : null;
+            if (tr) {
+              if (tr.fromWarehouseId === centralWhId) {
+                m.fromWarehouse += qty;
+              } else {
+                m.fromOutlet += qty;
+              }
+            } else {
+              if (ref === 'OUTLET_TRANSFER_IN') {
+                m.fromOutlet += qty;
+              } else if (isCentralWarehouseScope) {
+                m.fromOutlet += qty;
+              } else {
+                m.fromWarehouse += qty;
+              }
+            }
           } else if (['POS_RETURN', 'POS_EXCHANGE_IN'].includes(ref)) {
             m.exchg += qty;
           } else if (['POS_REFUND', 'POS_VOID'].includes(ref)) {
             m.refund += qty;
           } else if (ref === 'POS_CLAIM_APPROVED') {
             m.claim += qty;
+          } else if (['LANDED_COST', 'GRN', 'PURCHASE_INVOICE', 'PURCHASE_RECEIPT'].includes(ref)) {
+            m.purchases += qty;
+          } else if (['SALES_RETURN_DC', 'SALES_RETURN_INV', 'WHOLESALE_RETURN'].includes(ref)) {
+            m.wholesaleReturn += qty;
+          } else if (['RETURN_REQUEST', 'CLAIM_RETURN', 'OUTLET_RETURN', 'CLAIM_RETURN_RECEIPT'].includes(ref)) {
+            m.fromOutlet += qty;
           } else {
             m.adj += qty;
           }
         } else if (qty < 0) {
           const absQty = Math.abs(qty);
-          if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'PURCHASE_RETURN_INV', 'PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC'].includes(ref)) {
+          if (['TRANSFER_REQUEST', 'TRANSFER_OUT', 'OUTLET_TRANSFER_OUT'].includes(ref)) {
+            const tr = entry.referenceId ? trMap.get(entry.referenceId) : null;
+            if (tr) {
+              if (tr.toWarehouseId === centralWhId) {
+                m.toWarehouse += absQty;
+              } else {
+                m.toOutlet += absQty;
+              }
+            } else {
+              if (ref === 'OUTLET_TRANSFER_OUT') {
+                m.toOutlet += absQty;
+              } else if (isCentralWarehouseScope) {
+                m.toOutlet += absQty;
+              } else {
+                m.toOutlet += absQty;
+              }
+            }
+          } else if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST'].includes(ref)) {
             m.toWarehouse += absQty;
-          } else if (['OUTLET_TRANSFER_OUT', 'DELIVERY_CHALLAN'].includes(ref)) {
-            m.toOutlet += absQty;
-          } else if (['TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER_OUT'].includes(ref)) {
-            m.toOutlet += absQty;
           } else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) {
             m.sales += absQty;
+          } else if (['PURCHASE_RETURN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_INV'].includes(ref)) {
+            m.purchaseReturn += absQty;
+          } else if (['DELIVERY_CHALLAN', 'SALES_DELIVERY'].includes(ref)) {
+            m.deliveryChallan += absQty;
           } else {
             m.adj += qty;
           }
@@ -467,24 +618,33 @@ export class StockActivityExportProcessor {
         toWarehouse: 0, toOutlet: 0, totalTrfOut: 0, exchg: 0,
         refund: 0, claim: 0, sales: 0, adj: 0, availableStock: 0,
         transit: 0, balance: 0,
+        purchases: 0, purchaseReturn: 0, deliveryChallan: 0, wholesaleReturn: 0,
+        reservedSO: 0, reservedSRN: 0, transitGRN: 0,
       });
 
       const addTotals = (target: any, source: any) => {
-        target.bf += source.bf;
-        target.fromWarehouse += source.fromWarehouse;
-        target.fromOutlet += source.fromOutlet;
-        target.totalTrfIn += source.totalTrfIn;
-        target.toWarehouse += source.toWarehouse;
-        target.toOutlet += source.toOutlet;
-        target.totalTrfOut += source.totalTrfOut;
-        target.exchg += source.exchg;
-        target.refund += source.refund;
-        target.claim += source.claim;
-        target.sales += source.sales;
-        target.adj += source.adj;
-        target.availableStock += source.availableStock;
-        target.transit += source.transit;
-        target.balance += source.balance;
+        target.bf += source.bf || 0;
+        target.fromWarehouse += source.fromWarehouse || 0;
+        target.fromOutlet += source.fromOutlet || 0;
+        target.totalTrfIn += source.totalTrfIn || 0;
+        target.toWarehouse += source.toWarehouse || 0;
+        target.toOutlet += source.toOutlet || 0;
+        target.totalTrfOut += source.totalTrfOut || 0;
+        target.exchg += source.exchg || 0;
+        target.refund += source.refund || 0;
+        target.claim += source.claim || 0;
+        target.sales += source.sales || 0;
+        target.adj += source.adj || 0;
+        target.availableStock += source.availableStock || 0;
+        target.transit += source.transit || 0;
+        target.balance += source.balance || 0;
+        target.purchases = (target.purchases || 0) + (source.purchases || 0);
+        target.purchaseReturn = (target.purchaseReturn || 0) + (source.purchaseReturn || 0);
+        target.deliveryChallan = (target.deliveryChallan || 0) + (source.deliveryChallan || 0);
+        target.wholesaleReturn = (target.wholesaleReturn || 0) + (source.wholesaleReturn || 0);
+        target.reservedSO = (target.reservedSO || 0) + (source.reservedSO || 0);
+        target.reservedSRN = (target.reservedSRN || 0) + (source.reservedSRN || 0);
+        target.transitGRN = (target.transitGRN || 0) + (source.transitGRN || 0);
       };
 
       for (const item of items) {
@@ -516,6 +676,13 @@ export class StockActivityExportProcessor {
           availableStock,
           transit,
           balance,
+          purchases: (m as any).purchases || 0,
+          purchaseReturn: (m as any).purchaseReturn || 0,
+          deliveryChallan: (m as any).deliveryChallan || 0,
+          wholesaleReturn: (m as any).wholesaleReturn || 0,
+          reservedSO: (m as any).reservedSO || 0,
+          reservedSRN: (m as any).reservedSRN || 0,
+          transitGRN: (m as any).transitGRN || 0,
         };
 
         let currentLevelNodes = root;
@@ -640,18 +807,19 @@ export class StockActivityExportProcessor {
           views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
         });
 
-        ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
+        const selectedColumns = reportType === 'detailed' ? DETAILED_COLUMNS : COLUMNS;
+        ws.columns = selectedColumns.map(c => ({ key: c.key, width: c.width }));
 
         // 1. Group Header bands
         const groups: Record<string, { start: number; end: number }> = {};
-        COLUMNS.forEach((col, idx) => {
+        selectedColumns.forEach((col, idx) => {
           const n = idx + 1;
           if (!groups[col.group]) groups[col.group] = { start: n, end: n };
           else groups[col.group].end = n;
         });
 
         const groupRow = ws.getRow(1);
-        COLUMNS.forEach((col, idx) => {
+        selectedColumns.forEach((col, idx) => {
           const cell = groupRow.getCell(idx + 1);
           const { start } = groups[col.group];
           if (idx + 1 === start) cell.value = col.group.toUpperCase();
@@ -670,7 +838,7 @@ export class StockActivityExportProcessor {
 
         // 2. Main Columns headers
         const headerRow = ws.getRow(2);
-        COLUMNS.forEach((col, idx) => {
+        selectedColumns.forEach((col, idx) => {
           const cell = headerRow.getCell(idx + 1);
           cell.value = col.header;
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
@@ -746,28 +914,48 @@ export class StockActivityExportProcessor {
             label = ' '.repeat(style.indent) + style.prefix + node.value.toUpperCase();
           }
           
-          const row = ws.addRow({
-            sku: label,
-            color: colorVal,
-            size: sizeVal,
-            bf: node.totals.bf,
-            fromWarehouse: node.totals.fromWarehouse,
-            fromOutlet: node.totals.fromOutlet,
-            totalTrfIn: node.totals.totalTrfIn,
-            toWarehouse: node.totals.toWarehouse,
-            toOutlet: node.totals.toOutlet,
-            totalTrfOut: node.totals.totalTrfOut,
-            exchg: node.totals.exchg,
-            refund: node.totals.refund,
-            claim: node.totals.claim,
-            sales: node.totals.sales,
-            adj: node.totals.adj,
-            availableStock: node.totals.availableStock,
-            transit: node.totals.transit,
-            balance: node.totals.balance,
-          });
+          const t = node.totals;
+          const rowVals: any[] = [label, colorVal, sizeVal, t.bf];
+          if (reportType !== 'detailed') {
+            rowVals.push(
+              t.fromWarehouse,
+              t.fromOutlet,
+              t.totalTrfIn,
+              t.toWarehouse,
+              t.toOutlet,
+              t.totalTrfOut,
+              t.exchg,
+              t.refund,
+              t.claim,
+              t.sales,
+              t.adj,
+              t.availableStock,
+              t.transit,
+              t.balance
+            );
+          } else {
+            rowVals.push(
+              t.purchases || 0,
+              t.purchaseReturn || 0,
+              t.fromOutlet,
+              t.toOutlet,
+              t.deliveryChallan || 0,
+              t.wholesaleReturn || 0,
+              t.adj,
+              t.availableStock,
+              t.reservedSO || 0,
+              t.reservedSRN || 0,
+              (t.reservedSO || 0) + (t.reservedSRN || 0),
+              (t.availableStock || 0) - ((t.reservedSO || 0) + (t.reservedSRN || 0)),
+              t.transitGRN || 0,
+              t.transit,
+              t.balance
+            );
+          }
           
-          for (let colNum = 1; colNum <= 18; colNum++) {
+          const row = ws.addRow(rowVals);
+          
+          for (let colNum = 1; colNum <= selectedColumns.length; colNum++) {
             const cell = row.getCell(colNum);
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
             cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
@@ -791,26 +979,45 @@ export class StockActivityExportProcessor {
         }
 
         // Add GRAND TOTALS Row at bottom of Excel
-        const totalRow = ws.addRow({
-          sku: 'GRAND TOTAL',
-          color: '',
-          size: '',
-          bf: grandTotals.bf,
-          fromWarehouse: grandTotals.fromWarehouse,
-          fromOutlet: grandTotals.fromOutlet,
-          totalTrfIn: grandTotals.totalTrfIn,
-          toWarehouse: grandTotals.toWarehouse,
-          toOutlet: grandTotals.toOutlet,
-          totalTrfOut: grandTotals.totalTrfOut,
-          exchg: grandTotals.exchg,
-          refund: grandTotals.refund,
-          claim: grandTotals.claim,
-          sales: grandTotals.sales,
-          adj: grandTotals.adj,
-          availableStock: grandTotals.availableStock,
-          transit: grandTotals.transit,
-          balance: grandTotals.balance,
-        });
+        const gtRowVals: any[] = ['GRAND TOTAL', '', '', grandTotals.bf];
+        if (reportType !== 'detailed') {
+          gtRowVals.push(
+            grandTotals.fromWarehouse,
+            grandTotals.fromOutlet,
+            grandTotals.totalTrfIn,
+            grandTotals.toWarehouse,
+            grandTotals.toOutlet,
+            grandTotals.totalTrfOut,
+            grandTotals.exchg,
+            grandTotals.refund,
+            grandTotals.claim,
+            grandTotals.sales,
+            grandTotals.adj,
+            grandTotals.availableStock,
+            grandTotals.transit,
+            grandTotals.balance
+          );
+        } else {
+          gtRowVals.push(
+            grandTotals.purchases || 0,
+            grandTotals.purchaseReturn || 0,
+            grandTotals.fromOutlet,
+            grandTotals.toOutlet,
+            grandTotals.deliveryChallan || 0,
+            grandTotals.wholesaleReturn || 0,
+            grandTotals.adj,
+            grandTotals.availableStock,
+            grandTotals.reservedSO || 0,
+            grandTotals.reservedSRN || 0,
+            (grandTotals.reservedSO || 0) + (grandTotals.reservedSRN || 0),
+            (grandTotals.availableStock || 0) - ((grandTotals.reservedSO || 0) + (grandTotals.reservedSRN || 0)),
+            grandTotals.transitGRN || 0,
+            grandTotals.transit,
+            grandTotals.balance
+          );
+        }
+
+        const totalRow = ws.addRow(gtRowVals);
 
         totalRow.eachCell((cell, colNum) => {
           cell.font = { bold: true, size: 10, color: { argb: 'FF000000' } };
@@ -1215,13 +1422,14 @@ export class StockActivityExportProcessor {
     `;
   }
 
-  private async writeEmptyWorkbook(filePath: string): Promise<void> {
+  private async writeEmptyWorkbook(filePath: string, selectedColumns = COLUMNS): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
       useSharedStrings: false,
     });
     const ws = workbook.addWorksheet('Stock Activity Report');
+    ws.columns = selectedColumns.map(c => ({ key: c.key, width: c.width }));
     const r = ws.addRow({ A: 'No data matches filters' });
     r.commit();
     await workbook.commit();

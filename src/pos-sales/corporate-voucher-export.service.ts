@@ -127,6 +127,9 @@ export class CorporateVoucherExportService {
             contactNo: true,
           },
         },
+        transactions: {
+          orderBy: { createdAt: 'desc' },
+        },
         redemptions: {
           include: {
             order: {
@@ -206,6 +209,23 @@ export class CorporateVoucherExportService {
         for (const r of v.redemptions) {
           totalSettledAmount += Number(r.amountUsed || 0);
         }
+      } else if (v.isRedeemed) {
+        const redeemTx = v.transactions?.find((t) => t.action === 'REDEEMED');
+        if (redeemTx) {
+          settledInInvoice = redeemTx.notes || 'Settled (Legacy)';
+          if (redeemTx.createdAt) {
+            settledDtStr = new Date(redeemTx.createdAt).toLocaleString('en-GB', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          }
+        } else {
+          settledInInvoice = 'Settled (Historical)';
+        }
+        totalSettledAmount += faceValue;
       }
 
       items.push({

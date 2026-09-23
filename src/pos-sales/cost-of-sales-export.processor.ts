@@ -62,7 +62,9 @@ export class CostOfSalesExportProcessor {
     this.logger.log(`[CostOfSalesPreview ${jobId}] Starting background cost-of-sales preview computation`);
     try {
       await job.progress({ percent: 5, message: 'Worker active. Connecting to tenant database...' });
-      const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
+      const prisma = (tenantId && tenantDbUrl)
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
       const data = await this.costOfSalesExportService.generateCostOfSalesReportDataInternal(
         prisma,

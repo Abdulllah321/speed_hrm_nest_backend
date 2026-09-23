@@ -255,11 +255,11 @@ export class StockTransactionDetailExportProcessor {
           const label = `${node.level.toUpperCase()}: ${node.value}`;
           row.getCell(1).value = labelPrefix + label;
           row.getCell(1).font = { bold: true, size: 10 };
-          row.getCell(7).value = `Open: ${node.totals.openingBalance}  |  Close: ${node.totals.closingBalance}  |  Transit: ${node.totals.inTransitQty}`;
-          row.getCell(7).font = { bold: true, size: 9, color: { argb: 'FF475569' } };
+          row.getCell(8).value = `Open: ${node.totals.openingBalance}  |  Close: ${node.totals.closingBalance}  |  Transit: ${node.totals.inTransitQty}`;
+          row.getCell(8).font = { bold: true, size: 9, color: { argb: 'FF475569' } };
 
           const colFillColor = LEVEL_COLORS[node.level] || 'F1F5F9';
-          for (let c = 1; c <= 7; c++) {
+          for (let c = 1; c <= 8; c++) {
             const cell = row.getCell(c);
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${colFillColor}` } };
             cell.border = borderThin;
@@ -272,13 +272,13 @@ export class StockTransactionDetailExportProcessor {
           if (node.transactions) {
             // Write ledger columns headers
             const ledgerHeaderRow = ws.getRow(currentRowNum);
-            const headers = ['Date', 'Doc Type', 'Doc Ref', 'Narration / Remarks', 'In', 'Out', 'Balance'];
+            const headers = ['Date', 'Doc Type', 'Store / Location', 'Doc Ref', 'Narration / Remarks', 'In', 'Out', 'Balance'];
             headers.forEach((h, idx) => {
               const cell = ledgerHeaderRow.getCell(idx + 1);
               cell.value = h;
               cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
-              cell.alignment = { horizontal: idx >= 4 ? 'right' : 'left' };
+              cell.alignment = { horizontal: idx >= 5 ? 'right' : 'left' };
               cell.border = borderThin;
             });
             ledgerHeaderRow.height = 18;
@@ -290,15 +290,16 @@ export class StockTransactionDetailExportProcessor {
             opRow.getCell(1).value = startDate.toLocaleDateString();
             opRow.getCell(2).value = 'Opening Balance';
             opRow.getCell(3).value = '-';
-            opRow.getCell(4).value = 'Opening Balance B/F';
-            opRow.getCell(5).value = '-';
+            opRow.getCell(4).value = '-';
+            opRow.getCell(5).value = 'Opening Balance B/F';
             opRow.getCell(6).value = '-';
-            opRow.getCell(7).value = node.openingBalance;
+            opRow.getCell(7).value = '-';
+            opRow.getCell(8).value = node.openingBalance;
             
-            for (let c = 1; c <= 7; c++) {
+            for (let c = 1; c <= 8; c++) {
               const cell = opRow.getCell(c);
               cell.font = { size: 9, color: { argb: 'FF475569' } };
-              cell.alignment = { horizontal: c >= 5 ? 'right' : 'left' };
+              cell.alignment = { horizontal: c >= 6 ? 'right' : 'left' };
               cell.border = borderThin;
             }
             opRow.height = 18;
@@ -310,16 +311,17 @@ export class StockTransactionDetailExportProcessor {
               const txRow = ws.getRow(currentRowNum);
               txRow.getCell(1).value = new Date(t.date).toLocaleDateString();
               txRow.getCell(2).value = t.docType;
-              txRow.getCell(3).value = t.docRef;
-              txRow.getCell(4).value = t.remarks;
-              txRow.getCell(5).value = formatQty(t.inQty);
-              txRow.getCell(6).value = formatQty(t.outQty);
-              txRow.getCell(7).value = t.balance;
+              txRow.getCell(3).value = t.storeName || '-';
+              txRow.getCell(4).value = t.docRef;
+              txRow.getCell(5).value = t.remarks;
+              txRow.getCell(6).value = formatQty(t.inQty);
+              txRow.getCell(7).value = formatQty(t.outQty);
+              txRow.getCell(8).value = t.balance;
 
-              for (let c = 1; c <= 7; c++) {
+              for (let c = 1; c <= 8; c++) {
                 const cell = txRow.getCell(c);
                 cell.font = { size: 9 };
-                cell.alignment = { horizontal: c >= 5 ? 'right' : 'left' };
+                cell.alignment = { horizontal: c >= 6 ? 'right' : 'left' };
                 cell.border = borderThin;
                 if (t.isInTransit) {
                   cell.font = { italic: true, color: { argb: 'FFB45309' }, size: 9 }; // Amber italic for transit
@@ -335,15 +337,16 @@ export class StockTransactionDetailExportProcessor {
             clRow.getCell(1).value = endDate.toLocaleDateString();
             clRow.getCell(2).value = 'Closing Balance';
             clRow.getCell(3).value = '-';
-            clRow.getCell(4).value = 'Closing Balance C/F';
-            clRow.getCell(5).value = '-';
+            clRow.getCell(4).value = '-';
+            clRow.getCell(5).value = 'Closing Balance C/F';
             clRow.getCell(6).value = '-';
-            clRow.getCell(7).value = node.closingBalance;
+            clRow.getCell(7).value = '-';
+            clRow.getCell(8).value = node.closingBalance;
 
-            for (let c = 1; c <= 7; c++) {
+            for (let c = 1; c <= 8; c++) {
               const cell = clRow.getCell(c);
               cell.font = { bold: true, size: 9, color: { argb: 'FF0F172A' } };
-              cell.alignment = { horizontal: c >= 5 ? 'right' : 'left' };
+              cell.alignment = { horizontal: c >= 6 ? 'right' : 'left' };
               cell.border = borderThin;
             }
             clRow.height = 18;
@@ -370,9 +373,9 @@ export class StockTransactionDetailExportProcessor {
         const gtRow = ws.getRow(currentRowNum);
         gtRow.getCell(1).value = 'GRAND TOTALS';
         gtRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        gtRow.getCell(7).value = `Open: ${grandTotals.openingBalance}  |  Close: ${grandTotals.closingBalance}  |  Transit: ${grandTotals.inTransitQty}`;
-        gtRow.getCell(7).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        for (let c = 1; c <= 7; c++) {
+        gtRow.getCell(8).value = `Open: ${grandTotals.openingBalance}  |  Close: ${grandTotals.closingBalance}  |  Transit: ${grandTotals.inTransitQty}`;
+        gtRow.getCell(8).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        for (let c = 1; c <= 8; c++) {
           const cell = gtRow.getCell(c);
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
           cell.border = borderThin;
@@ -454,7 +457,8 @@ export class StockTransactionDetailExportProcessor {
             <th style="width: 12%; border: 1px solid #cbd5e1; text-align: left; padding-left: 8px;">Date</th>
             <th style="width: 15%; border: 1px solid #cbd5e1; text-align: left; padding-left: 8px;">Doc Type</th>
             <th style="width: 12%; border: 1px solid #cbd5e1; text-align: left; padding-left: 8px;">Doc Ref</th>
-            <th style="width: 33%; border: 1px solid #cbd5e1; text-align: left; padding-left: 8px;">Narration / Remarks</th>
+            <th style="width: 15%; border: 1px solid #cbd5e1; text-align: left; padding-left: 8px;">Store / Location</th>
+            <th style="width: 18%; border: 1px solid #cbd5e1; text-align: left; padding-left: 8px;">Narration / Remarks</th>
             <th style="width: 9%; border: 1px solid #cbd5e1; text-align: right; padding-right: 8px;">In</th>
             <th style="width: 9%; border: 1px solid #cbd5e1; text-align: right; padding-right: 8px;">Out</th>
             <th style="width: 10%; border: 1px solid #cbd5e1; text-align: right; padding-right: 8px;">Balance</th>
@@ -466,6 +470,7 @@ export class StockTransactionDetailExportProcessor {
           <tr style="font-size: 9px; height: 24px; color: #475569;">
             <td style="border: 1px solid #e2e8f0; padding-left: 8px;">${fromDateStr}</td>
             <td style="border: 1px solid #e2e8f0; padding-left: 8px;">Opening Balance</td>
+            <td style="border: 1px solid #e2e8f0; padding-left: 8px;">-</td>
             <td style="border: 1px solid #e2e8f0; padding-left: 8px;">-</td>
             <td style="border: 1px solid #e2e8f0; padding-left: 8px;">Opening Balance B/F</td>
             <td style="border: 1px solid #e2e8f0; text-align: right; padding-right: 8px;">-</td>
@@ -485,6 +490,7 @@ export class StockTransactionDetailExportProcessor {
               <td style="border: 1px solid #e2e8f0; padding-left: 8px;">${new Date(t.date).toLocaleDateString()}</td>
               <td style="border: 1px solid #e2e8f0; padding-left: 8px;">${t.docType}</td>
               <td style="border: 1px solid #e2e8f0; padding-left: 8px;">${t.docRef}</td>
+              <td style="border: 1px solid #e2e8f0; padding-left: 8px;">${t.storeName || '-'}</td>
               <td style="border: 1px solid #e2e8f0; padding-left: 8px;">${t.remarks}</td>
               <td style="border: 1px solid #e2e8f0; text-align: right; padding-right: 8px;">${inVal}</td>
               <td style="border: 1px solid #e2e8f0; text-align: right; padding-right: 8px;">${outVal}</td>
@@ -499,12 +505,13 @@ export class StockTransactionDetailExportProcessor {
             <td style="border: 1px solid #cbd5e1; padding-left: 8px;">${toDateStr}</td>
             <td style="border: 1px solid #cbd5e1; padding-left: 8px;">Closing Balance</td>
             <td style="border: 1px solid #cbd5e1; padding-left: 8px;">-</td>
+            <td style="border: 1px solid #cbd5e1; padding-left: 8px;">-</td>
             <td style="border: 1px solid #cbd5e1; padding-left: 8px;">Closing Balance C/F</td>
             <td style="border: 1px solid #cbd5e1; text-align: right; padding-right: 8px;">-</td>
             <td style="border: 1px solid #cbd5e1; text-align: right; padding-right: 8px;">-</td>
             <td style="border: 1px solid #cbd5e1; text-align: right; padding-right: 8px;">${node.closingBalance}</td>
           </tr>
-          <tr style="height: 12px;"><td colspan="7"></td></tr>
+          <tr style="height: 12px;"><td colspan="8"></td></tr>
         `;
       }
 
@@ -595,7 +602,8 @@ export class StockTransactionDetailExportProcessor {
             <col style="width: 12%;" />
             <col style="width: 15%;" />
             <col style="width: 12%;" />
-            <col style="width: 33%;" />
+            <col style="width: 15%;" />
+            <col style="width: 18%;" />
             <col style="width: 9%;" />
             <col style="width: 9%;" />
             <col style="width: 10%;" />

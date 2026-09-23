@@ -569,7 +569,15 @@ export class AvailableStockSummaryExportService {
       ? { in: uniqueTargetLocationIds } 
       : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
 
-    const locationOrWarehouseWhere = locationWhere ? { locationId: locationWhere } : {};
+    const orConditions: any[] = [];
+    if (uniqueTargetLocationIds.length > 0) {
+      orConditions.push({ locationId: { in: uniqueTargetLocationIds } });
+    }
+    if (whIds.length > 0) {
+      orConditions.push({ warehouseId: { in: whIds } });
+    }
+    
+    const locationOrWarehouseWhere = orConditions.length > 0 ? { OR: orConditions } : {};
 
     const locationNameMap = new Map<string, string>();
     for (const l of allLocations) {

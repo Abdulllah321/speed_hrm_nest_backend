@@ -240,7 +240,7 @@ export class StockLedgerService {
         const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
         const whCode = whObj?.code || whId;
         const matchingLocs = allLocations.filter(
-          l => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+          l => l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
         );
         for (const ml of matchingLocs) targetLocationIds.push(ml.id);
       }
@@ -874,7 +874,7 @@ export class StockLedgerService {
         const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
         const whCode = whObj?.code || whId;
         const matchingLocs = allLocations.filter(
-          l => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+          l => l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
         );
         for (const ml of matchingLocs) {
           targetLocationIds.push(ml.id);
@@ -1313,7 +1313,7 @@ export class StockLedgerService {
         const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
         const whCode = whObj?.code || whId;
         const matchingLocs = allLocations.filter(
-          l => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+          l => l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
         );
         for (const ml of matchingLocs) {
           targetLocationIds.push(ml.id);
@@ -1327,31 +1327,74 @@ export class StockLedgerService {
       ? { in: uniqueTargetLocationIds } 
       : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
 
-    const locationOrWarehouseWhere = locationWhere ? { locationId: locationWhere } : {};
+    const orConditions: any[] = [];
+    if (uniqueTargetLocationIds.length > 0) {
+      orConditions.push({ locationId: { in: uniqueTargetLocationIds } });
+    }
+    if (whIds.length > 0) {
+      orConditions.push({ warehouseId: { in: whIds } });
+    }
+    const locationOrWarehouseWhere = orConditions.length > 0 ? { OR: orConditions } : {};
 
-    // 1. Resolve matching Item IDs from inventory levels & ledger
-    const inventoryItems = await prisma.inventoryItem.findMany({
-      where: {
-        ...locationOrWarehouseWhere,
-        status: 'AVAILABLE',
-        ...(itemId && { itemId }),
-      },
-      select: { itemId: true },
-    });
+    const toLocOrWhFilters: any[] = [];
+    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
+    if (targetWarehouseLocationIds.length > 0) {
+      toLocOrWhFilters.push({ toLocationId: { in: targetWarehouseLocationIds } });
+    } else if (warehouseWhere) {
+      toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
+    }
 
-    const ledgerItems = await prisma.stockLedger.findMany({
-      where: {
-        ...locationOrWarehouseWhere,
-        ...(itemId && { itemId }),
-      },
-      select: { itemId: true },
-      distinct: ['itemId'],
-    });
+    const toLocOrWhWhere = toLocOrWhFilters.length > 1
+      ? { OR: toLocOrWhFilters }
+      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
-    const uniqueItemIds = [...new Set([
+    // 1. Resolve latest fiscal year opening snapshot date
+    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
+    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : undefined;
+
+    // 2. Resolve matching Item IDs from inventory levels, ledger history, and in-transit transfers
+    const [inventoryItems, ledgerItems, transitItems] = await Promise.all([
+      prisma.inventoryItem.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          ...(itemId && { itemId }),
+        },
+        select: { itemId: true },
+      }),
+      prisma.stockLedger.findMany({
+        where: {
+          ...locationOrWarehouseWhere,
+          createdAt: queryStartDate ? { gte: queryStartDate, lte: endDate } : { lte: endDate },
+          ...(itemId && { itemId }),
+        },
+        select: { itemId: true },
+        distinct: ['itemId'],
+      }),
+      prisma.transferRequestItem.findMany({
+        where: {
+          ...(itemId && { itemId }),
+          transferRequest: {
+            ...toLocOrWhWhere,
+            status: { in: ['PENDING', 'PENDING_CHECKER', 'PENDING_AUTHORIZER', 'PENDING_APPROVER', 'APPROVED', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
+          },
+        },
+        select: { itemId: true },
+      }),
+    ]);
+
+    let uniqueItemIds = [...new Set([
       ...inventoryItems.map(i => i.itemId),
       ...ledgerItems.map(l => l.itemId),
+      ...transitItems.map(t => t.itemId),
     ])];
+
+    if (uniqueItemIds.length === 0) {
+      const allItemsFallback = await prisma.item.findMany({
+        select: { id: true },
+        take: 2000,
+      });
+      uniqueItemIds = allItemsFallback.map(i => i.id);
+    }
 
     if (uniqueItemIds.length === 0) {
       return { root: [], grandTotals: { openingBalance: 0, closingBalance: 0, inTransitQty: 0 } };
@@ -1398,17 +1441,14 @@ export class StockLedgerService {
 
     const matchedItemChunks = chunkArray(matchedItemIds, 1000);
 
-    // 3. Resolve latest fiscal year opening snapshot date to prevent historical overflow
-    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
-
-    // 3. Fetch Opening Balances (B/F) bounded from snapshotDate to startDate
+    // 3. Fetch Opening Balances (B/F) bounded from queryStartDate to startDate
     const bfMap = new Map<string, number>();
     for (const chunk of matchedItemChunks) {
       const bfWhere: any = {
         ...locationOrWarehouseWhere,
         itemId: { in: chunk },
-        createdAt: snapshotDate
-          ? { gte: snapshotDate, lt: startDate }
+        createdAt: queryStartDate
+          ? { gte: queryStartDate, lt: startDate }
           : { lt: startDate },
       };
 
@@ -1464,18 +1504,6 @@ export class StockLedgerService {
       });
       ledgerEntries.push(...chunkEntries);
     }
-
-    const toLocOrWhFilters: any[] = [];
-    if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
-    if (targetWarehouseLocationIds.length > 0) {
-      toLocOrWhFilters.push({ toLocationId: { in: targetWarehouseLocationIds } });
-    } else if (warehouseWhere) {
-      toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
-    }
-
-    const toLocOrWhWhere = toLocOrWhFilters.length > 1
-      ? { OR: toLocOrWhFilters }
-      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
 
     // 5. Fetch In-Transit Requests
     const transitRequests: any[] = [];
@@ -1784,6 +1812,15 @@ export class StockLedgerService {
       const inQty = qty > 0 ? qty : 0;
       const outQty = qty < 0 ? Math.abs(qty) : 0;
 
+      let locName = 'Unknown Location';
+      if (entry.locationId) {
+        locName = allLocations.find(l => l.id === entry.locationId)?.name || 'Unknown Location';
+        locName += ' (Outlet)';
+      } else if (entry.warehouseId) {
+        locName = allWarehouses.find(w => w.id === entry.warehouseId)?.name || 'Unknown Warehouse';
+        locName += ' (Warehouse)';
+      }
+
       txs.push({
         id: entry.id,
         date: entry.createdAt,
@@ -1794,6 +1831,7 @@ export class StockLedgerService {
         inQty,
         outQty,
         isInTransit: false,
+        storeName: locName,
       });
     }
 
@@ -1816,11 +1854,13 @@ export class StockLedgerService {
         inQty: qty,
         outQty: 0,
         isInTransit: true,
+        storeName: 'In Transit',
       });
     }
 
     // 7. Group items by SKU if showVariant is false, else keep them per item
     const skuGroupsMap = new Map<string, {
+      id: string;
       sku: string;
       barCode: string;
       description: string;
@@ -1849,6 +1889,7 @@ export class StockLedgerService {
       const txs = itemTransactionsMap.get(item.id) || [];
 
       group.push({
+        id: item.id,
         sku: item.sku,
         barCode: item.barCode || '',
         description: item.description || '',
@@ -1911,7 +1952,7 @@ export class StockLedgerService {
           color: '-',
           size: '-',
           openingBalance: totalBf,
-          closingBalance: runningBalance,
+          closingBalance: runningBalance + totalTransit,
           inTransitQty: totalTransit,
           transactions: processedTxs,
         });
@@ -1935,6 +1976,7 @@ export class StockLedgerService {
           }
 
           itemDataList.push({
+            itemId: v.id || key,
             sku: v.sku,
             barCode: v.barCode || '',
             description: v.description,
@@ -1946,7 +1988,7 @@ export class StockLedgerService {
             color: v.color,
             size: v.size,
             openingBalance: v.openingBalance,
-            closingBalance: runningBalance,
+            closingBalance: runningBalance + transitSum,
             inTransitQty: transitSum,
             transactions: processedTxs,
           });
@@ -1997,7 +2039,8 @@ export class StockLedgerService {
           extraFields.barCode = itemData.barCode;
           extraFields.articleName = itemData.description;
         } else if (levelName === 'variant') {
-          nodeVal = `${itemData.color}-${itemData.size}`;
+          nodeVal = `${itemData.color}-${itemData.size}-${itemData.itemId || itemData.barCode || ''}`;
+          extraFields.itemId = itemData.itemId;
           extraFields.color = itemData.color;
           extraFields.size = itemData.size;
           extraFields.barCode = itemData.barCode;
@@ -2013,12 +2056,19 @@ export class StockLedgerService {
             children: [],
           };
           if (i === levels.length - 1) {
-            existingNode.transactions = itemData.transactions;
+            existingNode.transactions = [...itemData.transactions];
             existingNode.openingBalance = itemData.openingBalance;
             existingNode.closingBalance = itemData.closingBalance;
             existingNode.inTransitQty = itemData.inTransitQty;
           }
           currentLevelNodes.push(existingNode);
+        } else if (i === levels.length - 1) {
+          existingNode.openingBalance = (existingNode.openingBalance || 0) + itemData.openingBalance;
+          existingNode.closingBalance = (existingNode.closingBalance || 0) + itemData.closingBalance;
+          existingNode.inTransitQty = (existingNode.inTransitQty || 0) + itemData.inTransitQty;
+          if (itemData.transactions && itemData.transactions.length > 0) {
+            existingNode.transactions = [...(existingNode.transactions || []), ...itemData.transactions];
+          }
         }
 
         addTotals(existingNode.totals, metrics);

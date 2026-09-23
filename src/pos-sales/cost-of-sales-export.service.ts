@@ -395,9 +395,9 @@ export class CostOfSalesExportService {
     const startDate = parseLocalDate(startStr, false);
     const endDate = parseLocalDate(endStr, true);
 
-    const whereSales: any = {
+    const whereSalesLedger: any = {
+      referenceType: { in: ['POS_SALE', 'POS_EXCHANGE_OUT', 'SALE'] },
       createdAt: { gte: startDate, lte: endDate },
-      status: { notIn: ['voided', 'cancelled', 'VOIDED', 'CANCELLED'] },
     };
 
     if (locationId && locationId.trim() !== '' && locationId !== 'all') {
@@ -406,26 +406,8 @@ export class CostOfSalesExportService {
         .map((s) => s.trim())
         .filter(Boolean);
       if (locationIds.length > 0) {
-        whereSales.locationId = { in: locationIds };
+        whereSalesLedger.locationId = { in: locationIds };
       }
-    }
-
-    if (search && search.trim() !== '') {
-      const q = search.trim();
-      whereSales.items = {
-        some: {
-          item: {
-            OR: [
-              { sku: { contains: q, mode: 'insensitive' } },
-              { description: { contains: q, mode: 'insensitive' } },
-              { barCode: { contains: q, mode: 'insensitive' } },
-              { brand: { name: { contains: q, mode: 'insensitive' } } },
-              { division: { name: { contains: q, mode: 'insensitive' } } },
-              { category: { name: { contains: q, mode: 'insensitive' } } },
-            ],
-          },
-        },
-      };
     }
 
     const whereReturns: any = {
@@ -443,38 +425,67 @@ export class CostOfSalesExportService {
       }
     }
 
-    await onProgress?.(30, 'Fetching sales orders, returns & store details...');
+    const whereDeliveryChallans: any = {
+      referenceType: 'DELIVERY_CHALLAN',
+      createdAt: { gte: startDate, lte: endDate },
+    };
 
-    const [orders, returnLedgerEntries, locations] = await Promise.all([
-      prisma.salesOrder.findMany({
-        where: whereSales,
+    if (locationId && locationId.trim() !== '' && locationId !== 'all') {
+      const locationIds = locationId
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (locationIds.length > 0) {
+        whereDeliveryChallans.locationId = { in: locationIds };
+      }
+    }
+
+    if (search && search.trim() !== '') {
+      const q = search.trim();
+      const searchFilter = {
+        OR: [
+          { sku: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { barCode: { contains: q, mode: 'insensitive' } },
+          { brand: { name: { contains: q, mode: 'insensitive' } } },
+          { division: { name: { contains: q, mode: 'insensitive' } } },
+          { category: { name: { contains: q, mode: 'insensitive' } } },
+        ],
+      };
+      whereSalesLedger.item = searchFilter;
+      whereReturns.item = searchFilter;
+      whereDeliveryChallans.item = searchFilter;
+    }
+
+    await onProgress?.(30, 'Fetching stock sales, wholesale dispatches, returns & valuation costs...');
+
+    const [posSalesLedgerEntries, returnLedgerEntries, dcLedgerEntries, valuationLedgers, locations] = await Promise.all([
+      (prisma as any).stockLedger.findMany({
+        where: whereSalesLedger,
         select: {
           id: true,
-          orderNumber: true,
-          createdAt: true,
+          itemId: true,
+          qty: true,
+          rate: true,
+          unitCost: true,
+          referenceId: true,
           locationId: true,
-          items: {
+          createdAt: true,
+          item: {
             select: {
               id: true,
-              quantity: true,
+              sku: true,
+              barCode: true,
+              description: true,
+              unitCost: true,
               unitPrice: true,
-              lineTotal: true,
-              item: {
-                select: {
-                  id: true,
-                  sku: true,
-                  barCode: true,
-                  description: true,
-                  unitCost: true,
-                  division: { select: { id: true, name: true } },
-                  brand: { select: { id: true, name: true } },
-                  gender: { select: { id: true, name: true } },
-                  category: { select: { id: true, name: true } },
-                  silhouette: { select: { id: true, name: true } },
-                  size: { select: { name: true } },
-                  color: { select: { name: true } },
-                },
-              },
+              division: { select: { id: true, name: true } },
+              brand: { select: { id: true, name: true } },
+              gender: { select: { id: true, name: true } },
+              category: { select: { id: true, name: true } },
+              silhouette: { select: { id: true, name: true } },
+              size: { select: { name: true } },
+              color: { select: { name: true } },
             },
           },
         },
@@ -484,6 +495,8 @@ export class CostOfSalesExportService {
         select: {
           id: true,
           qty: true,
+          rate: true,
+          unitCost: true,
           referenceId: true,
           locationId: true,
           item: {
@@ -505,8 +518,153 @@ export class CostOfSalesExportService {
           },
         },
       }),
+      (prisma as any).stockLedger.findMany({
+        where: whereDeliveryChallans,
+        select: {
+          id: true,
+          qty: true,
+          rate: true,
+          unitCost: true,
+          referenceId: true,
+          locationId: true,
+          createdAt: true,
+          item: {
+            select: {
+              id: true,
+              sku: true,
+              barCode: true,
+              description: true,
+              unitCost: true,
+              unitPrice: true,
+              division: { select: { id: true, name: true } },
+              brand: { select: { id: true, name: true } },
+              gender: { select: { id: true, name: true } },
+              category: { select: { id: true, name: true } },
+              silhouette: { select: { id: true, name: true } },
+              size: { select: { name: true } },
+              color: { select: { name: true } },
+            },
+          },
+        },
+      }),
+      (prisma as any).stockLedger.findMany({
+        where: {
+          ...(locationId && locationId.trim() !== '' && locationId !== 'all'
+            ? { locationId: { in: locationId.split(',').map((s: string) => s.trim()).filter(Boolean) } }
+            : {}),
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        select: {
+          itemId: true,
+          qty: true,
+          unitCost: true,
+          rate: true,
+          movementType: true,
+          referenceType: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
       prisma.location.findMany({ select: { id: true, name: true } }),
     ]);
+
+    // ── Build Live Weighted Average Cost / Closing Valuation Cost Map per Item ──
+    const itemValuationMap = new Map<string, any[]>();
+    for (const entry of valuationLedgers) {
+      let list = itemValuationMap.get(entry.itemId);
+      if (!list) {
+        list = [];
+        itemValuationMap.set(entry.itemId, list);
+      }
+      list.push(entry);
+    }
+
+    const itemCostMap = new Map<string, number>();
+
+    for (const [itemId, entries] of itemValuationMap.entries()) {
+      let qtyBalance = 0;
+      let runningWac = 0;
+      let periodOpeningQty = 0;
+      let periodOpeningVal = 0;
+      let purchaseQty = 0;
+      let purchaseVal = 0;
+      let purchaseRetQty = 0;
+      let purchaseRetVal = 0;
+
+      for (const entry of entries) {
+        const entryQty = Number(entry.qty);
+        let entryCost = Number(entry.unitCost ?? entry.rate ?? 0);
+        const ref = entry.referenceType || '';
+
+        const isInboundPurchase =
+          entry.movementType === 'INBOUND' &&
+          (ref === 'LANDED_COST' || ref === 'GRN' || ref === 'PURCHASE' || ref.startsWith('GRN') || ref.startsWith('PURCHASE'));
+
+        if (entryCost === 0 && !isInboundPurchase) {
+          entryCost = runningWac;
+        }
+
+        const isOpening =
+          entry.movementType === 'OPENING_BALANCE' ||
+          ref === 'OPENING_BALANCE' ||
+          ref === 'BULK_STOCK_UPLOAD' ||
+          ref === 'FISCAL_YEAR_OPENING';
+
+        const isAdjustment =
+          entry.movementType === 'ADJUSTMENT' ||
+          ref === 'ADJUSTMENT' ||
+          ref === 'STOCK_ADJUSTMENT' ||
+          ref === 'SADJ' ||
+          ref === 'CLOSING_BALANCE' ||
+          ref === 'MANUAL_ZERO_STOCK';
+
+        const isTransfer =
+          entry.movementType === 'TRANSFER' ||
+          ref.includes('TRANSFER') ||
+          ref === 'STN';
+
+        const isPosSalesReturn =
+          !isTransfer &&
+          (['POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALES_RETURN'].includes(ref) ||
+            ref.startsWith('POS_RETURN') ||
+            ref.startsWith('SALES_RETURN'));
+
+        const isPurchaseReturn =
+          ['PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_INV', 'PRN'].includes(ref);
+
+        if (isOpening) {
+          periodOpeningQty += entryQty;
+          periodOpeningVal += entryQty * entryCost;
+          qtyBalance += entryQty;
+          if (qtyBalance > 0) runningWac = periodOpeningVal / periodOpeningQty;
+        } else if (isInboundPurchase || (entry.movementType === 'INBOUND' && !isTransfer && !isPosSalesReturn)) {
+          purchaseQty += entryQty;
+          purchaseVal += entryQty * entryCost;
+          const newQty = qtyBalance + entryQty;
+          if (newQty > 0) runningWac = ((qtyBalance * runningWac) + (entryQty * entryCost)) / newQty;
+          qtyBalance += entryQty;
+        } else if (isPurchaseReturn) {
+          const absQty = Math.abs(entryQty);
+          purchaseRetQty += absQty;
+          purchaseRetVal += absQty * entryCost;
+          qtyBalance += entryQty;
+        } else {
+          qtyBalance += entryQty;
+        }
+      }
+
+      const finalOpeningQty = periodOpeningQty;
+      const finalOpeningVal = periodOpeningVal;
+      const finalOpeningWac = finalOpeningQty > 0 ? finalOpeningVal / finalOpeningQty : 0;
+
+      const availableQty = finalOpeningQty + purchaseQty - purchaseRetQty;
+      const availableVal = finalOpeningVal + purchaseVal - purchaseRetVal;
+      const availableCost = availableQty > 0 ? availableVal / availableQty : finalOpeningWac;
+
+      if (availableCost > 0) {
+        itemCostMap.set(itemId, availableCost);
+      }
+    }
 
     const returnRefIds = [...new Set(returnLedgerEntries.map((e: any) => e.referenceId).filter(Boolean))] as string[];
     const [returnVouchers, returnPosReturns] = await Promise.all([
@@ -574,179 +732,340 @@ export class CostOfSalesExportService {
       tot.profitMargin = tot.totalRevenue !== 0 ? Math.round((tot.grossProfit / tot.totalRevenue) * 10000) / 100 : 0;
     };
 
-    // 1. Process Sales Orders (Gross Sales)
-    for (const order of orders) {
-      const locName = (order.locationId && locationMap.get(order.locationId)) || 'Main Location';
-      locationsSet.add(order.locationId || 'default');
+    // 1. Process POS Sales Movements from StockLedger (Gross POS Sales)
+    for (const sle of posSalesLedgerEntries) {
+      if (!sle.item) continue;
+      const locName = (sle.locationId && locationMap.get(sle.locationId)) || 'Main Location';
+      locationsSet.add(sle.locationId || 'default');
 
-      for (const soi of order.items) {
-        if (!soi.item) continue;
-        const qty = soi.quantity || 1;
-        const unitCost = Number(soi.item.unitCost || 0);
-        const totalCost = Math.round(qty * unitCost * 100) / 100;
-        const unitPrice = Number(soi.unitPrice || 0);
+      const qty = Math.abs(Number(sle.qty || 1));
+      const unitCost = itemCostMap.get(sle.item.id) ?? Number(sle.item.unitCost || 0);
+      const totalCost = Math.round(qty * unitCost * 100) / 100;
 
-        const taxPercent = Number((soi as any).taxPercent || (soi as any).taxRate || 0);
-        const calculatedTaxPct = taxPercent > 0 ? taxPercent : 18;
-        const taxDivisor = 1 + calculatedTaxPct / 100;
-        const wostPerUnit = unitPrice / taxDivisor;
-        const totalRevenue = Math.round(wostPerUnit * qty * 100) / 100;
+      const rawRate = Number(sle.rate || 0);
+      const unitPrice = rawRate > 0 ? rawRate : Number(sle.item.unitPrice || 0);
+      const taxPercent = 18;
+      const taxDivisor = 1 + taxPercent / 100;
+      const wostPerUnit = rawRate > 0 ? rawRate : (unitPrice / taxDivisor);
+      const totalRevenue = Math.round(wostPerUnit * qty * 100) / 100;
 
-        const grossProfit = Math.round((totalRevenue - totalCost) * 100) / 100;
-        const profitMargin = totalRevenue !== 0 ? Math.round((grossProfit / totalRevenue) * 10000) / 100 : 0;
+      const grossProfit = Math.round((totalRevenue - totalCost) * 100) / 100;
+      const profitMargin = totalRevenue !== 0 ? Math.round((grossProfit / totalRevenue) * 10000) / 100 : 0;
 
-        const brandName = soi.item.brand?.name || 'Unassigned Brand';
-        const brandId = soi.item.brand?.id || 'brand-unassigned';
+      const brandName = sle.item.brand?.name || 'Unassigned Brand';
+      const brandId = sle.item.brand?.id || 'brand-unassigned';
 
-        const divName = soi.item.division?.name || 'Unassigned Division';
-        const divId = soi.item.division?.id || 'div-unassigned';
+      const divName = sle.item.division?.name || 'Unassigned Division';
+      const divId = sle.item.division?.id || 'div-unassigned';
 
-        const genderName = soi.item.gender?.name || 'Unassigned Gender';
-        const genderId = soi.item.gender?.id || 'gender-unassigned';
+      const genderName = sle.item.gender?.name || 'Unassigned Gender';
+      const genderId = sle.item.gender?.id || 'gender-unassigned';
 
-        const catName = soi.item.category?.name || 'Unassigned Category';
-        const catId = soi.item.category?.id || 'cat-unassigned';
+      const catName = sle.item.category?.name || 'Unassigned Category';
+      const catId = sle.item.category?.id || 'cat-unassigned';
 
-        const silName = soi.item.silhouette?.name || 'Unassigned Silhouette';
+      const silName = sle.item.silhouette?.name || 'Unassigned Silhouette';
 
-        const sku = soi.item.sku || 'UNKNOWN-SKU';
-        const desc = soi.item.description || 'No Description';
-        const sizeName = soi.item.size?.name || 'N/A';
-        const colorName = soi.item.color?.name || 'N/A';
-        const barCode = soi.item.barCode || '';
+      const sku = sle.item.sku || 'UNKNOWN-SKU';
+      const desc = sle.item.description || 'No Description';
+      const sizeName = sle.item.size?.name || 'N/A';
+      const colorName = sle.item.color?.name || 'N/A';
+      const barCode = sle.item.barCode || '';
 
-        // Add to flat items dataset
-        flatItemsList.push({
-          id: soi.id,
-          brand: brandName,
-          division: divName,
-          category: catName,
-          gender: genderName,
-          silhouette: silName,
-          sku,
-          articleName: desc,
-          color: colorName,
-          size: sizeName,
-          barCode,
-          locationName: locName,
-          quantity: qty,
-          unitCost,
-          totalCost,
-          unitPrice,
-          totalRevenue,
-          grossProfit,
-          profitMargin,
-        });
+      // Add to flat items dataset
+      flatItemsList.push({
+        id: `pos-${sle.id}`,
+        brand: brandName,
+        division: divName,
+        category: catName,
+        gender: genderName,
+        silhouette: silName,
+        sku,
+        articleName: desc,
+        color: colorName,
+        size: sizeName,
+        barCode,
+        locationName: locName,
+        quantity: qty,
+        unitCost,
+        totalCost,
+        unitPrice,
+        totalRevenue,
+        grossProfit,
+        profitMargin,
+      });
 
-        // 1. Brand Level
-        let brandNode = brandsList.find((b) => b.brandId === brandId);
-        if (!brandNode) {
-          brandNode = {
-            brandId,
-            brandName,
-            divisions: [],
-            totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
-          };
-          brandsList.push(brandNode);
-        }
-
-        // 2. Division Level
-        let divNode = brandNode.divisions.find((d) => d.divisionId === divId);
-        if (!divNode) {
-          divNode = {
-            divisionId: divId,
-            divisionName: divName,
-            genders: [],
-            totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
-          };
-          brandNode.divisions.push(divNode);
-        }
-
-        // 3. Gender Level
-        let genderNode = divNode.genders.find((g) => g.genderId === genderId);
-        if (!genderNode) {
-          genderNode = {
-            genderId,
-            genderName,
-            categories: [],
-            totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
-          };
-          divNode.genders.push(genderNode);
-        }
-
-        // 4. Category Level
-        let catNode = genderNode.categories.find((c) => c.categoryId === catId);
-        if (!catNode) {
-          catNode = {
-            categoryId: catId,
-            categoryName: catName,
-            products: [],
-            totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
-          };
-          genderNode.categories.push(catNode);
-        }
-
-        // 5. Product Level
-        let prodNode = catNode.products.find((p) => p.sku === sku);
-        if (!prodNode) {
-          prodNode = {
-            sku,
-            description: desc,
-            productLabel: desc,
-            sizes: [],
-            totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
-          };
-          catNode.products.push(prodNode);
-        }
-
-        // 6. Variant Level
-        let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
-        if (!sizeItem) {
-          sizeItem = {
-            id: soi.id,
-            size: sizeName,
-            color: colorName,
-            barCode,
-            quantity: 0,
-            costPrice: unitCost,
-            totalCost: 0,
-            unitPrice,
-            totalRevenue: 0,
-            grossProfit: 0,
-            profitMargin: 0,
-          };
-          prodNode.sizes.push(sizeItem);
-        }
-
-        sizeItem.quantity += qty;
-        sizeItem.totalCost = Math.round((sizeItem.totalCost + totalCost) * 100) / 100;
-        sizeItem.totalRevenue = Math.round((sizeItem.totalRevenue + totalRevenue) * 100) / 100;
-        sizeItem.grossProfit = Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
-        sizeItem.profitMargin = sizeItem.totalRevenue !== 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
-
-        prodNode.totals.quantity += qty;
-        prodNode.totals.totalCost = Math.round((prodNode.totals.totalCost + totalCost) * 100) / 100;
-        prodNode.totals.totalRevenue = Math.round((prodNode.totals.totalRevenue + totalRevenue) * 100) / 100;
-
-        catNode.totals.quantity += qty;
-        catNode.totals.totalCost = Math.round((catNode.totals.totalCost + totalCost) * 100) / 100;
-        catNode.totals.totalRevenue = Math.round((catNode.totals.totalRevenue + totalRevenue) * 100) / 100;
-
-        genderNode.totals.quantity += qty;
-        genderNode.totals.totalCost = Math.round((genderNode.totals.totalCost + totalCost) * 100) / 100;
-        genderNode.totals.totalRevenue = Math.round((genderNode.totals.totalRevenue + totalRevenue) * 100) / 100;
-
-        divNode.totals.quantity += qty;
-        divNode.totals.totalCost = Math.round((divNode.totals.totalCost + totalCost) * 100) / 100;
-        divNode.totals.totalRevenue = Math.round((divNode.totals.totalRevenue + totalRevenue) * 100) / 100;
-
-        brandNode.totals.quantity += qty;
-        brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
-        brandNode.totals.totalRevenue = Math.round((brandNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      // 1. Brand Level
+      let brandNode = brandsList.find((b) => b.brandId === brandId);
+      if (!brandNode) {
+        brandNode = {
+          brandId,
+          brandName,
+          divisions: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        brandsList.push(brandNode);
       }
+
+      // 2. Division Level
+      let divNode = brandNode.divisions.find((d) => d.divisionId === divId);
+      if (!divNode) {
+        divNode = {
+          divisionId: divId,
+          divisionName: divName,
+          genders: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        brandNode.divisions.push(divNode);
+      }
+
+      // 3. Gender Level
+      let genderNode = divNode.genders.find((g) => g.genderId === genderId);
+      if (!genderNode) {
+        genderNode = {
+          genderId,
+          genderName,
+          categories: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        divNode.genders.push(genderNode);
+      }
+
+      // 4. Category Level
+      let catNode = genderNode.categories.find((c) => c.categoryId === catId);
+      if (!catNode) {
+        catNode = {
+          categoryId: catId,
+          categoryName: catName,
+          products: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        genderNode.categories.push(catNode);
+      }
+
+      // 5. Product Level
+      let prodNode = catNode.products.find((p) => p.sku === sku);
+      if (!prodNode) {
+        prodNode = {
+          sku,
+          description: desc,
+          productLabel: desc,
+          sizes: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        catNode.products.push(prodNode);
+      }
+
+      // 6. Variant Level
+      let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
+      if (!sizeItem) {
+        sizeItem = {
+          id: `pos-${sle.id}`,
+          size: sizeName,
+          color: colorName,
+          barCode,
+          quantity: 0,
+          costPrice: unitCost,
+          totalCost: 0,
+          unitPrice,
+          totalRevenue: 0,
+          grossProfit: 0,
+          profitMargin: 0,
+        };
+        prodNode.sizes.push(sizeItem);
+      }
+
+      sizeItem.quantity += qty;
+      sizeItem.totalCost = Math.round((sizeItem.totalCost + totalCost) * 100) / 100;
+      sizeItem.totalRevenue = Math.round((sizeItem.totalRevenue + totalRevenue) * 100) / 100;
+      sizeItem.grossProfit = Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
+      sizeItem.profitMargin = sizeItem.totalRevenue !== 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
+
+      prodNode.totals.quantity += qty;
+      prodNode.totals.totalCost = Math.round((prodNode.totals.totalCost + totalCost) * 100) / 100;
+      prodNode.totals.totalRevenue = Math.round((prodNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+
+      catNode.totals.quantity += qty;
+      catNode.totals.totalCost = Math.round((catNode.totals.totalCost + totalCost) * 100) / 100;
+      catNode.totals.totalRevenue = Math.round((catNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+
+      genderNode.totals.quantity += qty;
+      genderNode.totals.totalCost = Math.round((genderNode.totals.totalCost + totalCost) * 100) / 100;
+      genderNode.totals.totalRevenue = Math.round((genderNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+
+      divNode.totals.quantity += qty;
+      divNode.totals.totalCost = Math.round((divNode.totals.totalCost + totalCost) * 100) / 100;
+      divNode.totals.totalRevenue = Math.round((divNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+
+      brandNode.totals.quantity += qty;
+      brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
+      brandNode.totals.totalRevenue = Math.round((brandNode.totals.totalRevenue + totalRevenue) * 100) / 100;
     }
 
-    // 2. Deduct Sales Returns from StockLedger (Sales Returns)
+    // 2. Process Delivery Challans (Wholesale Sales)
+    for (const dc of dcLedgerEntries) {
+      if (!dc.item) continue;
+      const locName = (dc.locationId && locationMap.get(dc.locationId)) || 'Main Location';
+      locationsSet.add(dc.locationId || 'default');
+
+      const qty = Math.abs(Number(dc.qty || 1));
+      const unitCost = itemCostMap.get(dc.item.id) ?? Number(dc.item.unitCost || 0);
+      const totalCost = Math.round(qty * unitCost * 100) / 100;
+      const unitPrice = Number(dc.rate || dc.item.unitPrice || 0);
+
+      const taxPercent = 18;
+      const taxDivisor = 1 + taxPercent / 100;
+      const wostPerUnit = unitPrice / taxDivisor;
+      const totalRevenue = Math.round(wostPerUnit * qty * 100) / 100;
+
+      const grossProfit = Math.round((totalRevenue - totalCost) * 100) / 100;
+      const profitMargin = totalRevenue !== 0 ? Math.round((grossProfit / totalRevenue) * 10000) / 100 : 0;
+
+      const brandName = dc.item.brand?.name || 'Unassigned Brand';
+      const brandId = dc.item.brand?.id || 'brand-unassigned';
+      const divName = dc.item.division?.name || 'Unassigned Division';
+      const divId = dc.item.division?.id || 'div-unassigned';
+      const genderName = dc.item.gender?.name || 'Unassigned Gender';
+      const genderId = dc.item.gender?.id || 'gender-unassigned';
+      const catName = dc.item.category?.name || 'Unassigned Category';
+      const catId = dc.item.category?.id || 'cat-unassigned';
+      const silName = dc.item.silhouette?.name || 'Unassigned Silhouette';
+      const sku = dc.item.sku || 'UNKNOWN-SKU';
+      const desc = dc.item.description || 'No Description';
+      const sizeName = dc.item.size?.name || 'N/A';
+      const colorName = dc.item.color?.name || 'N/A';
+      const barCode = dc.item.barCode || '';
+
+      flatItemsList.push({
+        id: `dc-${dc.id}`,
+        brand: brandName,
+        division: divName,
+        category: catName,
+        gender: genderName,
+        silhouette: silName,
+        sku,
+        articleName: desc,
+        color: colorName,
+        size: sizeName,
+        barCode,
+        locationName: locName,
+        quantity: qty,
+        unitCost,
+        totalCost,
+        unitPrice,
+        totalRevenue,
+        grossProfit,
+        profitMargin,
+      });
+
+      // 1. Brand Level
+      let brandNode = brandsList.find((b) => b.brandId === brandId);
+      if (!brandNode) {
+        brandNode = {
+          brandId,
+          brandName,
+          divisions: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        brandsList.push(brandNode);
+      }
+
+      // 2. Division Level
+      let divNode = brandNode.divisions.find((d) => d.divisionId === divId);
+      if (!divNode) {
+        divNode = {
+          divisionId: divId,
+          divisionName: divName,
+          genders: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        brandNode.divisions.push(divNode);
+      }
+
+      // 3. Gender Level
+      let genderNode = divNode.genders.find((g) => g.genderId === genderId);
+      if (!genderNode) {
+        genderNode = {
+          genderId,
+          genderName,
+          categories: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        divNode.genders.push(genderNode);
+      }
+
+      // 4. Category Level
+      let catNode = genderNode.categories.find((c) => c.categoryId === catId);
+      if (!catNode) {
+        catNode = {
+          categoryId: catId,
+          categoryName: catName,
+          products: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        genderNode.categories.push(catNode);
+      }
+
+      // 5. Product Level
+      let prodNode = catNode.products.find((p) => p.sku === sku);
+      if (!prodNode) {
+        prodNode = {
+          sku,
+          description: desc,
+          productLabel: desc,
+          sizes: [],
+          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+        };
+        catNode.products.push(prodNode);
+      }
+
+      // 6. Variant Level
+      let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
+      if (!sizeItem) {
+        sizeItem = {
+          id: `dc-${dc.id}`,
+          size: sizeName,
+          color: colorName,
+          barCode,
+          quantity: 0,
+          costPrice: unitCost,
+          totalCost: 0,
+          unitPrice,
+          totalRevenue: 0,
+          grossProfit: 0,
+          profitMargin: 0,
+        };
+        prodNode.sizes.push(sizeItem);
+      }
+
+      sizeItem.quantity += qty;
+      sizeItem.totalCost = Math.round((sizeItem.totalCost + totalCost) * 100) / 100;
+      sizeItem.totalRevenue = Math.round((sizeItem.totalRevenue + totalRevenue) * 100) / 100;
+      sizeItem.grossProfit = Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
+      sizeItem.profitMargin = sizeItem.totalRevenue !== 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
+
+      prodNode.totals.quantity += qty;
+      prodNode.totals.totalCost = Math.round((prodNode.totals.totalCost + totalCost) * 100) / 100;
+      prodNode.totals.totalRevenue = Math.round((prodNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+
+      catNode.totals.quantity += qty;
+      catNode.totals.totalCost = Math.round((catNode.totals.totalCost + totalCost) * 100) / 100;
+      catNode.totals.totalRevenue = Math.round((catNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+
+      genderNode.totals.quantity += qty;
+      genderNode.totals.totalCost = Math.round((genderNode.totals.totalCost + totalCost) * 100) / 100;
+      genderNode.totals.totalRevenue = Math.round((genderNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+
+      divNode.totals.quantity += qty;
+      divNode.totals.totalCost = Math.round((divNode.totals.totalCost + totalCost) * 100) / 100;
+      divNode.totals.totalRevenue = Math.round((divNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+
+      brandNode.totals.quantity += qty;
+      brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
+      brandNode.totals.totalRevenue = Math.round((brandNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+    }
+
+    // 3. Deduct Sales Returns from StockLedger (Sales Returns)
     for (const entry of returnLedgerEntries) {
       if (!entry.item) continue;
       const locName = (entry.locationId && locationMap.get(entry.locationId)) || 'Main Location';
@@ -758,7 +1077,7 @@ export class CostOfSalesExportService {
 
       const retQty = Math.abs(Number(entry.qty || 1));
       const netQty = -retQty;
-      const unitCost = Number(entry.item.unitCost || 0);
+      const unitCost = itemCostMap.get(entry.item.id) ?? Number(entry.item.unitCost || 0);
       const netCost = -Math.round(retQty * unitCost * 100) / 100;
 
       const unitPrice = originalOi ? Number(originalOi.unitPrice || 0) : Number(entry.item.unitPrice || 0);

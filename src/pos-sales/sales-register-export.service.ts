@@ -340,10 +340,10 @@ export class SalesRegisterExportService {
     }
     if (!locationNames) locationNames = 'All Outlets (Stores)';
 
-    await onProgress?.(30, 'Querying POS sales register invoices from database...');
+    await onProgress?.(30, 'Querying POS sales register invoices & returns from database...');
 
     const where: any = {
-      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled'] },
+      status: { notIn: ['returned', 'hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED'] },
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -371,28 +371,69 @@ export class SalesRegisterExportService {
       ];
     }
 
-    const rawOrders = await prisma.salesOrder.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        customer: { select: { name: true, contactNo: true } },
-        items: {
-          include: {
-            item: {
-              select: {
-                description: true,
-                sku: true,
-                barCode: true,
-                category: { select: { name: true } },
-                brand: { select: { name: true } },
-                size: { select: { name: true } },
-                color: { select: { name: true } },
+    const returnWhere: any = {
+      referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'SALES_RETURN', 'SRN'] },
+      createdAt: { gte: startDate, lte: endDate },
+    };
+    if (locationWhere) returnWhere.locationId = locationWhere;
+
+    const [rawOrders, returnLedger, returnMovements] = await Promise.all([
+      prisma.salesOrder.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { name: true, contactNo: true } },
+          items: {
+            include: {
+              item: {
+                select: {
+                  description: true,
+                  sku: true,
+                  barCode: true,
+                  category: { select: { name: true } },
+                  brand: { select: { name: true } },
+                  size: { select: { name: true } },
+                  color: { select: { name: true } },
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+      prisma.stockLedger.findMany({
+        where: returnWhere,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          item: {
+            select: {
+              description: true,
+              sku: true,
+              barCode: true,
+              unitPrice: true,
+              category: { select: { name: true } },
+              brand: { select: { name: true } },
+              size: { select: { name: true } },
+              color: { select: { name: true } },
+            },
+          },
+        },
+      }),
+      prisma.stockMovement.findMany({
+        where: returnWhere,
+        select: {
+          referenceId: true,
+          movementNo: true,
+          notes: true,
+        },
+      }),
+    ]);
+
+    const movMap = new Map<string, { docNo: string; notes: string }>();
+    for (const m of returnMovements) {
+      if (m.referenceId) {
+        movMap.set(m.referenceId, { docNo: m.movementNo, notes: m.notes || '' });
+      }
+    }
 
     await onProgress?.(70, 'Building sales register hierarchy matrix...');
 
@@ -552,6 +593,159 @@ export class SalesRegisterExportService {
         }
         locNode.invoices.push(invNode);
         addTotals(locNode.totals, orderTotals);
+      }
+    }
+
+    // Process Return and Refund Ledger entries
+    const returnInvoiceMap = new Map<string, { invNode: SalesRegisterInvoiceNode; locKey: string; locName: string }>();
+    const searchLower = (search || '').toLowerCase().trim();
+
+    for (const r of returnLedger) {
+      const refKey = r.referenceId || `ret-${r.id}`;
+      const mov = movMap.get(refKey);
+      let docNumber = mov?.notes?.replace(/^POS Return:\s*/i, '')?.split(' ')[0] || `RET-${r.id.toString().slice(-8)}`;
+      if (docNumber.includes('(')) docNumber = docNumber.split('(')[0].trim();
+
+      const locId = r.locationId || undefined;
+      const locName = locId ? locationMap.get(locId) || 'Main Outlet' : 'Main Outlet';
+      const locKey = locId ? `loc:${locId}` : 'main-outlet';
+
+      const qty = Number(r.qty || 1);
+      const rawRate = Number(r.rate || 0);
+      const itemUnitPrice = Number(r.item?.unitPrice || Math.abs(rawRate) || 0);
+      const lineTotal = rawRate !== 0 ? -Math.abs(rawRate) : -(qty * itemUnitPrice);
+
+      const sku = r.item?.sku || r.item?.barCode || 'NO-SKU';
+      const barCode = r.item?.barCode || r.item?.sku || '-';
+      const description = r.item?.description || r.item?.sku || 'Returned Item';
+      const categoryName = r.item?.category?.name || 'Default';
+      const brandName = r.item?.brand?.name || 'Default';
+      const sizeName = r.item?.size?.name || 'Default';
+      const colorName = r.item?.color?.name || 'Default';
+
+      if (searchLower) {
+        const matchesDoc = docNumber.toLowerCase().includes(searchLower);
+        const matchesItem =
+          sku.toLowerCase().includes(searchLower) ||
+          barCode.toLowerCase().includes(searchLower) ||
+          description.toLowerCase().includes(searchLower) ||
+          categoryName.toLowerCase().includes(searchLower) ||
+          brandName.toLowerCase().includes(searchLower);
+        if (!matchesDoc && !matchesItem) continue;
+      }
+
+      let group = returnInvoiceMap.get(refKey);
+      if (!group) {
+        const returnTotals: SalesRegisterTotals = {
+          orderCount: 0,
+          totalItems: 0,
+          grossAmount: 0,
+          discountAmount: 0,
+          netAmount: 0,
+          taxAmount: 0,
+          paidAmount: 0,
+          cashAmount: 0,
+          cardAmount: 0,
+          walletAmount: 0,
+          creditAmount: 0,
+        };
+
+        const invNode: SalesRegisterInvoiceNode = {
+          id: `ret-${refKey}`,
+          orderNumber: docNumber,
+          createdAt: r.createdAt.toISOString(),
+          customerName: 'Return Customer',
+          customerPhone: '-',
+          cashierName: 'Cashier',
+          paymentMethod: 'RETURN',
+          fbrInvoiceNumber: '-',
+          fbrStatus: 'RETURN',
+          totals: returnTotals,
+          items: [],
+        };
+
+        group = { invNode, locKey, locName };
+        returnInvoiceMap.set(refKey, group);
+      }
+
+      group.invNode.totals.totalItems -= qty;
+      group.invNode.totals.grossAmount += lineTotal;
+      group.invNode.totals.netAmount += lineTotal;
+      group.invNode.totals.paidAmount += lineTotal;
+      group.invNode.totals.walletAmount += lineTotal;
+
+      const lineItem: SalesRegisterLineItem = {
+        id: `ret-item-${r.id}`,
+        orderNumber: docNumber,
+        sku,
+        barCode,
+        description,
+        categoryName,
+        brandName,
+        sizeName,
+        colorName,
+        quantity: -qty,
+        unitPrice: itemUnitPrice,
+        discountAmount: 0,
+        taxAmount: 0,
+        subTotal: lineTotal,
+      };
+
+      group.invNode.items.push(lineItem);
+
+      flatItems.push({
+        locationName: locName,
+        orderNumber: docNumber,
+        orderDate: r.createdAt.toISOString(),
+        cashierName: 'Cashier',
+        customerName: 'Return Customer',
+        customerPhone: '-',
+        paymentMethod: 'RETURN',
+        fbrInvoiceNumber: '-',
+        fbrStatus: 'RETURN',
+        sku,
+        barCode,
+        description,
+        categoryName,
+        brandName,
+        sizeName,
+        colorName,
+        quantity: -qty,
+        unitPrice: itemUnitPrice,
+        discountAmount: 0,
+        taxAmount: 0,
+        subTotal: lineTotal,
+        orderGrossAmount: lineTotal,
+        orderDiscountAmount: 0,
+        orderNetAmount: lineTotal,
+        orderTaxAmount: 0,
+      });
+
+      // Update grand totals
+      grandTotals.totalItems -= qty;
+      grandTotals.grossAmount += lineTotal;
+      grandTotals.netAmount += lineTotal;
+      grandTotals.paidAmount += lineTotal;
+      grandTotals.walletAmount += lineTotal;
+    }
+
+    for (const group of returnInvoiceMap.values()) {
+      invoiceNodes.push(group.invNode);
+
+      if (isSeparate) {
+        let locNode = locationNodesMap.get(group.locKey);
+        if (!locNode) {
+          locNode = {
+            locationKey: group.locKey,
+            locationId: group.invNode.id ? group.invNode.id.replace('ret-', '') : undefined,
+            locationName: group.locName,
+            invoices: [],
+            totals: createEmptyTotals(),
+          };
+          locationNodesMap.set(group.locKey, locNode);
+        }
+        locNode.invoices.push(group.invNode);
+        addTotals(locNode.totals, group.invNode.totals);
       }
     }
 
