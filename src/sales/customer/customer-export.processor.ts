@@ -41,6 +41,8 @@ const COLUMNS: {
 }[] = [
     // Identity
     { header: 'Customer Code', key: 'code', width: 14, group: 'Identity', align: 'center' },
+    { header: 'Trader ID', key: 'traderId', width: 14, group: 'Identity', align: 'center' },
+    { header: 'Sub Code', key: 'subCode', width: 14, group: 'Identity', align: 'center' },
     { header: 'Customer Name', key: 'name', width: 32, group: 'Identity' },
     { header: 'Customer Type', key: 'customerType', width: 14, group: 'Identity', align: 'center' },
     // Contact
