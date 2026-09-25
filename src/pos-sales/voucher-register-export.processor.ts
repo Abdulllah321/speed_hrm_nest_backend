@@ -20,6 +20,8 @@ export interface VoucherRegisterExportJobData {
   locationId?: string;
   startDate?: string;
   endDate?: string;
+  asOfDate?: string;
+  isOutstandingOnly?: boolean;
   format: 'xlsx' | 'pdf';
   search?: string;
 }
@@ -65,14 +67,29 @@ export class VoucherRegisterExportProcessor {
 
   @Process({ concurrency: 1 })
   async handleExport(job: Job<VoucherRegisterExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, voucherType, status, locationId, startDate, endDate, format, search } = job.data;
-    this.logger.log(`[VoucherRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`);
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      voucherType,
+      status,
+      locationId,
+      startDate,
+      endDate,
+      asOfDate,
+      isOutstandingOnly,
+      format,
+      search,
+    } = job.data;
+    this.logger.log(`[VoucherRegisterExport ${jobId}] Starting ${format.toUpperCase()} export (outstanding: ${isOutstandingOnly})`);
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
-    const fileName = `voucher-register-report-${new Date().toISOString().slice(0, 10)}.${ext}`;
+    const prefix = isOutstandingOnly ? 'voucher-outstanding-preview' : 'voucher-register-report';
+    const fileName = `${prefix}-${new Date().toISOString().slice(0, 10)}.${ext}`;
     const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
     try {
@@ -84,6 +101,8 @@ export class VoucherRegisterExportProcessor {
         locationId,
         startDate,
         endDate,
+        asOfDate,
+        isOutstandingOnly,
         search,
       });
 
@@ -257,7 +276,13 @@ export class VoucherRegisterExportProcessor {
   }
 
   private buildHtmlReport(reportData: any): string {
-    const dateRangeStr = `${reportData.startDate} - ${reportData.endDate}`;
+    const isOutstanding = Boolean(reportData.isOutstandingOnly);
+    const dateRangeStr = isOutstanding
+      ? `As-Of Date: ${reportData.asOfDate || reportData.endDate} (All Outstanding Vouchers Till Date)`
+      : `Period: ${reportData.startDate} to ${reportData.endDate}`;
+    const reportTitle = isOutstanding
+      ? 'Outstanding Vouchers Master Preview'
+      : 'Unified Voucher Register Report';
 
     let rowsHtml = '';
 
@@ -301,8 +326,8 @@ export class VoucherRegisterExportProcessor {
       </head>
       <body>
         <div class="report-header">
-          <h1 class="report-title">Unified Voucher Register Report</h1>
-          <div class="report-subtitle">Period: ${dateRangeStr}</div>
+          <h1 class="report-title">${reportTitle}</h1>
+          <div class="report-subtitle">${dateRangeStr}</div>
         </div>
         <table class="report-table">
           <thead>
@@ -331,7 +356,7 @@ export class VoucherRegisterExportProcessor {
               <td colspan="9">TOTALS (${reportData.kpis.totalVouchers} Vouchers)</td>
               <td style="text-align: right;">PKR ${reportData.kpis.totalDiscount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
               <td style="text-align: right; color: #4ade80;">PKR ${reportData.kpis.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-              <td colspan="3">Settled Total: PKR ${reportData.kpis.totalSettledAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+              <td colspan="3">${isOutstanding ? 'Outstanding Liability' : 'Settled Total'}: PKR ${(isOutstanding ? reportData.kpis.totalOutstandingAmount : reportData.kpis.totalSettledAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
             </tr>
           </tfoot>
         </table>

@@ -85,11 +85,46 @@ export function getFiscalYear(date: Date): string {
   }
 }
 
-export function parseCustomDate(dateStr: string): Date | null {
-  if (!dateStr || !dateStr.trim()) return null;
+export function excelSerialToDate(serial: number): Date {
+  const utcDays = Math.floor(serial - 25569);
+  const utcValue = utcDays * 86400;
+  const dateInfo = new Date(utcValue * 1000);
+  const fractionalDay = serial - Math.floor(serial) + 0.0000001;
+  let totalSeconds = Math.floor(86400 * fractionalDay);
+  const seconds = totalSeconds % 60;
+  totalSeconds = Math.floor(totalSeconds / 60);
+  const minutes = totalSeconds % 60;
+  const hours = Math.floor(totalSeconds / 60);
+  return new Date(
+    dateInfo.getFullYear(),
+    dateInfo.getMonth(),
+    dateInfo.getDate(),
+    hours,
+    minutes,
+    seconds,
+  );
+}
 
-  const trimmed = dateStr.trim();
-  const spaceParts = trimmed.split(/\s+/);
+export function parseCustomDate(val: any): Date | null {
+  if (val === null || val === undefined || val === '') return null;
+
+  if (typeof val === 'number') {
+    if (val > 30000 && val < 70000) {
+      return excelSerialToDate(val);
+    }
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const str = String(val).trim();
+  if (!str) return null;
+
+  const num = parseFloat(str);
+  if (!isNaN(num) && num > 30000 && num < 70000 && /^\d+(\.\d+)?$/.test(str)) {
+    return excelSerialToDate(num);
+  }
+
+  const spaceParts = str.split(/\s+/);
   const datePart = spaceParts[0];
   const timePart = spaceParts[1] || '0:0';
 
@@ -112,7 +147,7 @@ export function parseCustomDate(dateStr: string): Date | null {
     return isNaN(d.getTime()) ? null : d;
   }
 
-  const fallback = new Date(dateStr);
+  const fallback = new Date(str);
   return isNaN(fallback.getTime()) ? null : fallback;
 }
 
@@ -133,9 +168,18 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       rows = parsedJson;
     } else if (typeof parsedJson === 'object' && parsedJson !== null) {
       for (const key of Object.keys(parsedJson)) {
-        if (key !== 'Sheet1' && Array.isArray(parsedJson[key])) {
-          rows = parsedJson[key];
+        const val = parsedJson[key];
+        if (Array.isArray(val) && val.length > 0) {
+          rows = val;
           break;
+        } else if (typeof val === 'object' && val !== null) {
+          for (const innerKey of Object.keys(val)) {
+            if (Array.isArray(val[innerKey]) && val[innerKey].length > 0) {
+              rows = val[innerKey];
+              break;
+            }
+          }
+          if (rows.length > 0) break;
         }
       }
     }
@@ -147,7 +191,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       const stockOutLocationName = r['From'] || r['Stock TR Out Location'] || r['Stock Out Location'] || '';
       const codeTrOut = String(r['From Location Code'] || r['Stock TR Out Location Code'] || r['Code TR Out'] || '').trim();
       const documentNumber = String(r['DocumentNumber'] !== undefined && r['DocumentNumber'] !== null ? r['DocumentNumber'] : r['DocNo'] || '').trim();
-      const documentDateStr = String(r['DocumentDate'] || r['DocDate'] || '').trim();
+      const rawDocDate = r['DocumentDate'] !== undefined && r['DocumentDate'] !== null ? r['DocumentDate'] : r['DocDate'];
       const documentType = r['TextLine'] || r['DocumentType'] || 'Transfer Out';
       const stockInLocationName = r['To'] || r['Stock Deliver To Location'] || r['Stock In Location'] || '';
       const codeTrIn = String(r['To Location Code'] || r['Stock Deliver to Location Code'] || r['Code TR In'] || '').trim();
@@ -155,16 +199,16 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       const rawQty = r['Quantity'] !== undefined ? r['Quantity'] : r['Qty'] !== undefined ? r['Qty'] : 1;
       const quantity = parseFloat(rawQty) || 1;
       const receivingDocNo = r['ReceivingDocumentNo'] !== undefined && r['ReceivingDocumentNo'] !== null ? String(r['ReceivingDocumentNo']).trim() : '';
-      const receivingDocDateStr = String(r['ReceivingDocumentDate'] || '').trim();
+      const rawRecDate = r['ReceivingDocumentDate'] !== undefined && r['ReceivingDocumentDate'] !== null ? r['ReceivingDocumentDate'] : '';
       const remarks = String(r['Remarks'] || '').trim();
       const documentStatus = String(r['DocumentStatus'] || 'Approved / Closed').trim();
 
       if (!codeTrOut || !codeTrIn || !barCode) continue;
 
-      const documentDate = parseCustomDate(documentDateStr);
+      const documentDate = parseCustomDate(rawDocDate);
       if (!documentDate || isNaN(documentDate.getTime())) continue;
 
-      const receivingDocDate = parseCustomDate(receivingDocDateStr);
+      const receivingDocDate = parseCustomDate(rawRecDate);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
 
       rawParsed.push({
@@ -172,7 +216,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
         stockOutLocationName,
         codeTrOut,
         documentNumber,
-        documentDateStr,
+        documentDateStr: String(rawDocDate || ''),
         documentDate,
         documentType,
         stockInLocationName,
@@ -180,7 +224,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
         barCode,
         quantity,
         receivingDocNo,
-        receivingDocDateStr,
+        receivingDocDateStr: String(rawRecDate || ''),
         receivingDocDate: isReceived ? receivingDocDate : null,
         remarks,
         documentStatus,
@@ -387,7 +431,8 @@ async function bulkInsertStockMovements(pool: Pool, records: any[]) {
         id, "movementNo", "itemId", "fromLocationId", "toLocationId",
         quantity, type, "referenceType", "referenceId", "movementDate",
         "createdAt", "updatedAt", notes
-      ) VALUES ${valueStrings.join(', ')}`,
+      ) VALUES ${valueStrings.join(', ')}
+      ON CONFLICT ("movementNo") DO NOTHING`,
       params
     );
   }
@@ -507,6 +552,8 @@ async function processTransfersForTenant(
     const existingStns = existingStnsRes.rows;
 
     let defaultWh = await prisma.warehouse.findFirst({
+      where: { code: 'C40001', isDeleted: false },
+    }) || await prisma.warehouse.findFirst({
       where: { isDeleted: false },
     });
 
@@ -565,6 +612,8 @@ async function processTransfersForTenant(
   let defaultWarehouse: any = null;
   if (!isDryRun) {
     defaultWarehouse = await prisma.warehouse.findFirst({
+      where: { code: 'C40001', isDeleted: false },
+    }) || await prisma.warehouse.findFirst({
       where: { isDeleted: false },
     });
 
@@ -601,14 +650,11 @@ async function processTransfersForTenant(
 
   async function resolveEntity(code: string, name: string): Promise<EntityRef> {
     const upperCode = code.trim().toUpperCase();
-    if (warehouseMap.has(upperCode)) {
-      return warehouseMap.get(upperCode)!;
-    }
-    if (locationMap.has(upperCode)) {
-      return locationMap.get(upperCode)!;
-    }
 
     if (isWarehouseCode(upperCode)) {
+      if (warehouseMap.has(upperCode)) {
+        return warehouseMap.get(upperCode)!;
+      }
       if (!isDryRun) {
         let wh = await prisma.warehouse.findFirst({
           where: { code: upperCode, isDeleted: false },
@@ -633,6 +679,9 @@ async function processTransfersForTenant(
         return ref;
       }
     } else {
+      if (locationMap.has(upperCode)) {
+        return locationMap.get(upperCode)!;
+      }
       if (!isDryRun) {
         let loc = await prisma.location.findFirst({
           where: { code: upperCode, isDeleted: false },
@@ -710,7 +759,7 @@ async function processTransfersForTenant(
   // Group STN rows into single Transfer Requests
   const transferGroups = new Map<string, ParsedStnRow[]>();
   for (const row of rows) {
-    const groupKey = `${row.codeTrOut}_${row.codeTrIn}_${row.documentNumber}_${row.documentDateStr}`;
+    const groupKey = `${row.codeTrOut}_${row.codeTrIn}_${row.documentNumber}_${row.documentDate.toISOString().slice(0, 10)}`;
     if (!transferGroups.has(groupKey)) {
       transferGroups.set(groupKey, []);
     }
@@ -763,11 +812,22 @@ async function processTransfersForTenant(
     if (isReceived) completedCount++;
     else inTransitCount++;
 
+    const whLocationMap = new Map<string, string>();
+    for (const [code, loc] of locationMap.entries()) {
+      if (code.startsWith('WH-')) {
+        whLocationMap.set(code.replace('WH-', ''), loc.id);
+      }
+    }
+
     const fromWarehouseId = fromEntity.type === 'WAREHOUSE' ? fromEntity.id : null;
-    const fromLocationId = fromEntity.type === 'LOCATION' ? fromEntity.id : null;
+    const fromLocationId = fromEntity.type === 'LOCATION' 
+      ? fromEntity.id 
+      : (whLocationMap.get(fromEntity.code) || null);
 
     const toWarehouseId = toEntity.type === 'WAREHOUSE' ? toEntity.id : null;
-    const toLocationId = toEntity.type === 'LOCATION' ? toEntity.id : null;
+    const toLocationId = toEntity.type === 'LOCATION' 
+      ? toEntity.id 
+      : (whLocationMap.get(toEntity.code) || null);
 
     let transferType = 'OUTLET_TO_OUTLET';
     if (fromEntity.type === 'WAREHOUSE' && toEntity.type === 'LOCATION') {
@@ -934,7 +994,7 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'Stock Transfer IN Register_Format II_20260901_121104.json');
+  let filePath = path.join(__dirname, '..', 'data', 'stn.json');
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
@@ -954,8 +1014,8 @@ async function main() {
     console.log('\n🔍 First Chronological Transfer Row (#1):');
     console.log(`   - Out Location : ${rows[0].stockOutLocationName} (${rows[0].codeTrOut})`);
     console.log(`   - In Location  : ${rows[0].stockInLocationName} (${rows[0].codeTrIn})`);
-    console.log(`   - Doc Date     : ${rows[0].documentDateStr}`);
-    console.log(`   - Rec Date     : ${rows[0].receivingDocDateStr || '[IN TRANSIT]'}`);
+    console.log(`   - Doc Date     : ${rows[0].documentDate.toISOString()} (raw: ${rows[0].documentDateStr})`);
+    console.log(`   - Rec Date     : ${rows[0].receivingDocDate ? rows[0].receivingDocDate.toISOString() : '[IN TRANSIT]'}`);
     console.log(`   - Barcode      : ${rows[0].barCode}`);
     console.log(`   - Qty          : ${rows[0].quantity}`);
   }
@@ -985,13 +1045,17 @@ async function main() {
       for (const company of companies) {
         console.log(`\n👉 Processing Tenant: ${company.name} (${company.code})`);
         let connectionString = company.dbUrl;
-        if (company.dbPassword) {
+        if (!connectionString && company.dbPassword) {
           try {
             const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
             connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
           } catch (e) {
             console.warn(`  ⚠️ Decryption failed, using default connectionUrl`);
           }
+        }
+
+        if (!connectionString) {
+          connectionString = process.env.DATABASE_URL;
         }
 
         if (!connectionString) continue;
