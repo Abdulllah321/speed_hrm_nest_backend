@@ -99,6 +99,8 @@ export class EmployeeController {
     @Query('eobi') eobi?: string,
     @Query('status') status?: string,
     @Query('isActive') isActive?: string,
+    @Query('employmentStatusName') employmentStatusName?: string,
+    @Query('excludeEmploymentStatusName') excludeEmploymentStatusName?: string,
   ) {
     return this.service.listForDropdown({
       page,
@@ -111,6 +113,8 @@ export class EmployeeController {
       eobi,
       status,
       isActive,
+      employmentStatusName,
+      excludeEmploymentStatusName,
     });
   }
 
