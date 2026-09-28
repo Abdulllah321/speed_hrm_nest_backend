@@ -215,6 +215,8 @@ export class EmployeeService {
     eobi?: string;
     status?: string;
     isActive?: string;
+    employmentStatusName?: string;
+    excludeEmploymentStatusName?: string;
   }) {
     const search = query?.search || '';
 
@@ -275,6 +277,24 @@ export class EmployeeService {
         { employeeName: { contains: search, mode: 'insensitive' } },
         { employeeId: { contains: search, mode: 'insensitive' } },
         { officialEmail: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (query?.employmentStatusName) {
+      where.employmentStatus = {
+        status: { equals: query.employmentStatusName, mode: 'insensitive' }
+      };
+    }
+
+    if (query?.excludeEmploymentStatusName) {
+      where.AND = [
+        ...(where.AND as any || []),
+        {
+          OR: [
+            { employmentStatusId: null },
+            { employmentStatus: { status: { not: query.excludeEmploymentStatusName } } }
+          ]
+        }
       ];
     }
 
