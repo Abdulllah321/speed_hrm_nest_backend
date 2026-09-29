@@ -1558,6 +1558,8 @@ export class PosSalesController {
     @Query('locationId') locationId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('asOfDate') asOfDate?: string,
+    @Query('isOutstandingOnly') isOutstandingOnly?: string,
     @Query('search') search?: string,
   ) {
     const data = await this.voucherRegisterExportService.getReportData({
@@ -1566,6 +1568,8 @@ export class PosSalesController {
       locationId,
       startDate,
       endDate,
+      asOfDate,
+      isOutstandingOnly: isOutstandingOnly === 'true' || isOutstandingOnly === '1',
       search,
     });
     return { status: true, data };
@@ -1584,6 +1588,8 @@ export class PosSalesController {
       locationId: body.locationId,
       startDate: body.startDate,
       endDate: body.endDate,
+      asOfDate: body.asOfDate,
+      isOutstandingOnly: Boolean(body.isOutstandingOnly),
       format: body.format || 'xlsx',
       search: body.search,
     });

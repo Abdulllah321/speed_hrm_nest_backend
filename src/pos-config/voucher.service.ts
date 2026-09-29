@@ -56,17 +56,14 @@ export class VoucherService {
             const statusFilter = (filters?.status || 'ALL').toUpperCase();
             if (statusFilter === 'ACTIVE') {
                 where.isDeleted = false;
-                where.isActive = true;
                 where.isRedeemed = false;
                 where.OR = [{ expiresAt: null }, { expiresAt: { gte: now } }];
             } else if (statusFilter === 'REDEEMED') {
                 where.isRedeemed = true;
             } else if (statusFilter === 'VOIDED') {
-                where.OR = [{ isDeleted: true }, { isActive: false }];
-                where.isRedeemed = false;
+                where.isDeleted = true;
             } else if (statusFilter === 'EXPIRED') {
                 where.isDeleted = false;
-                where.isActive = true;
                 where.isRedeemed = false;
                 where.expiresAt = { lt: now };
             } else {

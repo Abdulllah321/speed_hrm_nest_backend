@@ -8,7 +8,7 @@
   "scripts": {
     "postinstall": "prisma generate --schema prisma/schema",
     "build": "nest build",
-    "redis:start": "\"C:\\Program Files\\Memurai\\memurai.exe\" --port 6379 --dir \"%TEMP%\"",
+    "redis:start": "\"C:\\Program Files\\Memurai\\memurai.exe\" --port 6379 --daemonize no",
     "start": "nest start",
     "start:dev": "nest start -b swc --watch",
     "start:debug": "nest start -b swc --debug --watch",
@@ -60,6 +60,8 @@
     "import:madison-returns:dry": "bun scripts/import-madison-returns.ts --dry-run",
     "import:returns": "bun scripts/import-madison-returns.ts",
     "import:returns:dry": "bun scripts/import-madison-returns.ts --dry-run",
+    "import:corporate-vouchers": "bun scripts/import-corporate-vouchers.ts",
+    "import:corporate-vouchers:dry": "bun scripts/import-corporate-vouchers.ts --dry-run",
     "update:pi-tax-dates": "bun scripts/update-pi-tax-invoice-dates.ts",
     "seed:location-center-ids": "bun scripts/seed-location-center-ids.ts",
     "import:tenant:backup": "bun scripts/import-tenant-backup.ts",
