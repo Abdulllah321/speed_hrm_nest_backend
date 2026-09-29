@@ -60,6 +60,13 @@ export interface VoucherRegisterItem {
 
 export interface VoucherRegisterReportResult {
   items: VoucherRegisterItem[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
   kpis: {
     totalVouchers: number;
     totalAmount: number;
@@ -80,6 +87,10 @@ export interface VoucherRegisterReportResult {
         discount: number;
         settledAmount: number;
         outstandingAmount: number;
+        redeemedCount: number;
+        outstandingCount: number;
+        activeCount: number;
+        expiredCount: number;
       }
     >;
     statusBreakdown: Record<string, number>;
@@ -109,6 +120,10 @@ export class VoucherRegisterExportService {
     asOfDate?: string;
     isOutstandingOnly?: boolean;
     search?: string;
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
   }): Promise<VoucherRegisterReportResult> {
     const {
       voucherType,
@@ -119,6 +134,10 @@ export class VoucherRegisterExportService {
       asOfDate: asOfDateStr,
       isOutstandingOnly,
       search,
+      page,
+      limit,
+      sortBy,
+      sortDirection,
     } = params;
 
     const now = new Date();
@@ -141,12 +160,17 @@ export class VoucherRegisterExportService {
         startDate = new Date(startStr);
       }
     } else {
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const startYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+      const endYear = startYear + 1;
+
       startDate = startStr
         ? new Date(startStr)
-        : new Date(now.getFullYear(), now.getMonth(), 1);
+        : new Date(startYear, 6, 1, 0, 0, 0, 0); // July 1st
       endDate = endStr
         ? new Date(endStr)
-        : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        : new Date(endYear, 5, 30, 23, 59, 59, 999); // June 30th
     }
 
     const baseWhere: any = {
@@ -214,12 +238,19 @@ export class VoucherRegisterExportService {
     }
 
     // Database aggregation: compute precise counts and face values per voucher type across the base scope
-    const dbTypeCounts = await this.prisma.voucher.groupBy({
-      by: ['voucherType'],
-      where: baseWhere,
-      _count: { _all: true },
-      _sum: { faceValue: true, discount: true },
-    });
+    const [dbTypeStatusGroups, dbExpiredTypeGroups] = await Promise.all([
+      this.prisma.voucher.groupBy({
+        by: ['voucherType', 'isRedeemed'],
+        where: baseWhere,
+        _count: { _all: true },
+        _sum: { faceValue: true, discount: true },
+      }),
+      this.prisma.voucher.groupBy({
+        by: ['voucherType'],
+        where: { ...baseWhere, isRedeemed: false, expiresAt: { lt: now } },
+        _count: { _all: true },
+      }),
+    ]);
 
     const typeBreakdown: Record<string, number> = {
       CORPORATE: 0,
@@ -238,25 +269,27 @@ export class VoucherRegisterExportService {
         discount: number;
         settledAmount: number;
         outstandingAmount: number;
+        redeemedCount: number;
+        outstandingCount: number;
+        activeCount: number;
+        expiredCount: number;
       }
     > = {
-      CORPORATE: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0 },
-      REFUND: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0 },
-      GIFT: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0 },
-      EXCHANGE: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0 },
-      CLAIM: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0 },
-      CREDIT: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0 },
+      CORPORATE: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
+      REFUND: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
+      GIFT: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
+      EXCHANGE: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
+      CLAIM: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
+      CREDIT: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
     };
 
-    let totalVouchersInBaseScope = 0;
-    for (const group of dbTypeCounts) {
+    for (const group of dbTypeStatusGroups) {
       const rawType = (group.voucherType || 'GIFT').toUpperCase();
       const mappedType = rawType === 'OUTLET_GIFT' ? 'GIFT' : rawType;
       const count = group._count?._all || 0;
       const faceVal = Number(group._sum?.faceValue || 0);
       const disc = Number(group._sum?.discount || 0);
 
-      totalVouchersInBaseScope += count;
       typeBreakdown[mappedType] = (typeBreakdown[mappedType] || 0) + count;
 
       if (!typeBreakdownDetails[mappedType]) {
@@ -266,11 +299,37 @@ export class VoucherRegisterExportService {
           discount: 0,
           settledAmount: 0,
           outstandingAmount: 0,
+          redeemedCount: 0,
+          outstandingCount: 0,
+          activeCount: 0,
+          expiredCount: 0,
         };
       }
       typeBreakdownDetails[mappedType].count += count;
       typeBreakdownDetails[mappedType].faceValue += faceVal;
       typeBreakdownDetails[mappedType].discount += disc;
+
+      if (group.isRedeemed) {
+        typeBreakdownDetails[mappedType].settledAmount += faceVal;
+        typeBreakdownDetails[mappedType].redeemedCount += count;
+      } else {
+        typeBreakdownDetails[mappedType].outstandingAmount += faceVal;
+        typeBreakdownDetails[mappedType].outstandingCount += count;
+      }
+    }
+
+    for (const expGroup of dbExpiredTypeGroups) {
+      const rawType = (expGroup.voucherType || 'GIFT').toUpperCase();
+      const mappedType = rawType === 'OUTLET_GIFT' ? 'GIFT' : rawType;
+      const expCount = expGroup._count?._all || 0;
+      if (typeBreakdownDetails[mappedType]) {
+        typeBreakdownDetails[mappedType].expiredCount = expCount;
+      }
+    }
+
+    for (const key of Object.keys(typeBreakdownDetails)) {
+      const detail = typeBreakdownDetails[key];
+      detail.activeCount = Math.max(0, detail.outstandingCount - (detail.expiredCount || 0));
     }
 
     // Build items query (filter by voucherType if specific type requested)
@@ -284,61 +343,158 @@ export class VoucherRegisterExportService {
       }
     }
 
-    const locations = await this.prisma.location.findMany({
-      select: { id: true, name: true, code: true },
-    });
-    const locationMap = new Map(locations.map((l) => [l.id, l.name]));
+    // Global KPIs computation across the filtered scope (itemsWhere)
+    const [
+      totalCount,
+      aggregateSummary,
+      redeemedSummary,
+      unredeemedSummary,
+      expiredCount,
+    ] = await Promise.all([
+      this.prisma.voucher.count({ where: itemsWhere }),
+      this.prisma.voucher.aggregate({
+        where: itemsWhere,
+        _sum: { faceValue: true, discount: true },
+      }),
+      this.prisma.voucher.aggregate({
+        where: { ...itemsWhere, isRedeemed: true },
+        _sum: { faceValue: true },
+        _count: { _all: true },
+      }),
+      this.prisma.voucher.aggregate({
+        where: { ...itemsWhere, isRedeemed: false },
+        _sum: { faceValue: true },
+        _count: { _all: true },
+      }),
+      this.prisma.voucher.count({
+        where: { ...itemsWhere, isRedeemed: false, expiresAt: { lt: now } },
+      }),
+    ]);
 
-    const vouchers = await this.prisma.voucher.findMany({
-      where: itemsWhere,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            contactNo: true,
-            cnicNo: true,
-            email: true,
+    const totalAmount = Number(aggregateSummary._sum?.faceValue || 0);
+    const totalDiscount = Number(aggregateSummary._sum?.discount || 0);
+    const totalNetValue = Math.max(0, totalAmount - totalDiscount);
+    const totalSettledAmount = Number(redeemedSummary._sum?.faceValue || 0);
+    const totalOutstandingAmount = Number(unredeemedSummary._sum?.faceValue || 0);
+    const totalRedeemedCount = redeemedSummary._count?._all || 0;
+    const totalOutstandingCount = unredeemedSummary._count?._all || 0;
+    const totalExpiredCount = expiredCount;
+    const totalActiveCount = Math.max(0, totalOutstandingCount - totalExpiredCount);
+
+    const statusBreakdown: Record<string, number> = {
+      ACTIVE: totalActiveCount,
+      REDEEMED: totalRedeemedCount,
+      EXPIRED: totalExpiredCount,
+    };
+
+    // Sorting definition
+    const sortDir: 'asc' | 'desc' = sortDirection === 'asc' ? 'asc' : 'desc';
+    let orderBy: any = { createdAt: 'desc' };
+
+    if (sortBy) {
+      switch (sortBy) {
+        case 'voucherNumber':
+        case 'code':
+          orderBy = { code: sortDir };
+          break;
+        case 'voucherType':
+          orderBy = { voucherType: sortDir };
+          break;
+        case 'faceValue':
+          orderBy = { faceValue: sortDir };
+          break;
+        case 'netValue':
+          orderBy = { faceValue: sortDir };
+          break;
+        case 'discountAmount':
+        case 'discount':
+          orderBy = { discount: sortDir };
+          break;
+        case 'companyName':
+          orderBy = { companyName: sortDir };
+          break;
+        case 'validTill':
+        case 'expiresAt':
+          orderBy = { expiresAt: sortDir };
+          break;
+        case 'status':
+          orderBy = [{ isRedeemed: sortDir }, { createdAt: 'desc' }];
+          break;
+        case 'dateTime':
+        case 'createdAt':
+        default:
+          orderBy = { createdAt: sortDir };
+          break;
+      }
+    }
+
+    // Pagination bounds
+    const pageNum = Math.max(1, page || 1);
+    const limitNum = limit !== undefined ? limit : 100;
+    const isFetchAll = limitNum <= 0;
+
+    const paginationTake = isFetchAll ? undefined : limitNum;
+    const paginationSkip = isFetchAll ? undefined : (pageNum - 1) * limitNum;
+
+    const [locations, vouchers] = await Promise.all([
+      this.prisma.location.findMany({
+        select: { id: true, name: true, code: true },
+      }),
+      this.prisma.voucher.findMany({
+        where: itemsWhere,
+        orderBy,
+        skip: paginationSkip,
+        take: paginationTake,
+        include: {
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              contactNo: true,
+              cnicNo: true,
+              email: true,
+            },
           },
-        },
-        merchant: {
-          select: {
-            id: true,
-            bankName: true,
-            description: true,
-            tagId: true,
+          merchant: {
+            select: {
+              id: true,
+              bankName: true,
+              description: true,
+              tagId: true,
+            },
           },
-        },
-        claims: {
-          select: {
-            id: true,
-            claimNumber: true,
+          claims: {
+            select: {
+              id: true,
+              claimNumber: true,
+            },
           },
-        },
-        redemptions: {
-          include: {
-            order: {
-              select: {
-                id: true,
-                orderNumber: true,
-                createdAt: true,
-                grandTotal: true,
+          redemptions: {
+            include: {
+              order: {
+                select: {
+                  id: true,
+                  orderNumber: true,
+                  createdAt: true,
+                  grandTotal: true,
+                },
               },
             },
           },
-        },
-        transactions: {
-          select: {
-            id: true,
-            amountUsed: true,
-            action: true,
-            notes: true,
-            createdAt: true,
+          transactions: {
+            select: {
+              id: true,
+              amountUsed: true,
+              action: true,
+              notes: true,
+              createdAt: true,
+            },
           },
         },
-      },
-    });
+      }),
+    ]);
+
+    const locationMap = new Map(locations.map((l) => [l.id, l.name]));
 
     const sourceOrderIds = vouchers
       .map((v) => v.sourceOrderId)
@@ -356,47 +512,14 @@ export class VoucherRegisterExportService {
 
     const items: VoucherRegisterItem[] = [];
 
-    const statusBreakdown: Record<string, number> = {
-      ACTIVE: 0,
-      REDEEMED: 0,
-      EXPIRED: 0,
-    };
-
-    let totalAmount = 0;
-    let totalDiscount = 0;
-    let totalNetValue = 0;
-    let totalSettledAmount = 0;
-    let totalOutstandingAmount = 0;
-    let totalOutstandingCount = 0;
-    let totalRedeemedCount = 0;
-    let totalActiveCount = 0;
-    let totalExpiredCount = 0;
-
     for (const v of vouchers) {
       const faceValue = Number(v.faceValue || 0);
       const discountVal = Number(v.discount || 0);
       const netVal = Math.max(0, faceValue - discountVal);
       const isRedeemed = Boolean(v.isRedeemed);
 
-      totalAmount += faceValue;
-      totalDiscount += discountVal;
-      totalNetValue += netVal;
-
       const rawVType = (v.voucherType || 'GIFT').toUpperCase();
       const vType = rawVType === 'OUTLET_GIFT' ? 'GIFT' : rawVType;
-
-      if (!typeBreakdownDetails[vType]) {
-        typeBreakdownDetails[vType] = {
-          count: 0,
-          faceValue: 0,
-          discount: 0,
-          settledAmount: 0,
-          outstandingAmount: 0,
-        };
-      }
-      typeBreakdownDetails[vType].count += 1;
-      typeBreakdownDetails[vType].faceValue += faceValue;
-      typeBreakdownDetails[vType].discount += discountVal;
 
       const compName = v.companyName || '-';
       const compGl = v.companyGlCode || '-';
@@ -505,22 +628,10 @@ export class VoucherRegisterExportService {
       let statusStr = 'ACTIVE';
       if (isRedeemed) {
         statusStr = 'REDEEMED';
-        totalRedeemedCount += 1;
-        totalSettledAmount += itemSettledAmount;
-        statusBreakdown.REDEEMED = (statusBreakdown.REDEEMED || 0) + 1;
-        typeBreakdownDetails[vType].settledAmount += itemSettledAmount;
+      } else if (isExpired) {
+        statusStr = 'EXPIRED';
       } else {
-        totalOutstandingCount += 1;
-        totalOutstandingAmount += itemOutstandingAmount;
-        typeBreakdownDetails[vType].outstandingAmount += itemOutstandingAmount;
-        if (isExpired) {
-          statusStr = 'EXPIRED';
-          totalExpiredCount += 1;
-          statusBreakdown.EXPIRED = (statusBreakdown.EXPIRED || 0) + 1;
-        } else {
-          totalActiveCount += 1;
-          statusBreakdown.ACTIVE = (statusBreakdown.ACTIVE || 0) + 1;
-        }
+        statusStr = 'ACTIVE';
       }
 
       items.push({
@@ -558,10 +669,20 @@ export class VoucherRegisterExportService {
       });
     }
 
+    const totalPages = isFetchAll ? 1 : Math.ceil(totalCount / (limitNum || 1));
+    const hasMore = !isFetchAll && pageNum < totalPages;
+
     return {
       items,
+      pagination: {
+        page: pageNum,
+        limit: isFetchAll ? totalCount : limitNum,
+        total: totalCount,
+        totalPages,
+        hasMore,
+      },
       kpis: {
-        totalVouchers: items.length,
+        totalVouchers: totalCount,
         totalAmount: Math.round(totalAmount * 100) / 100,
         totalDiscount: Math.round(totalDiscount * 100) / 100,
         totalNetValue: Math.round(totalNetValue * 100) / 100,

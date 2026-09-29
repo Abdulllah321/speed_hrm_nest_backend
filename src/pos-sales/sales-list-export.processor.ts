@@ -57,10 +57,13 @@ const FLAT_COLUMNS = [
   { header: 'Cashier', key: 'cashierName', width: 16, align: 'left' },
   { header: 'Customer', key: 'customerName', width: 18, align: 'left' },
   { header: 'Phone', key: 'customerPhone', width: 14, align: 'left' },
+  { header: 'CNIC', key: 'customerCnic', width: 16, align: 'left' },
+  { header: 'Customer Code', key: 'customerCode', width: 14, align: 'left' },
   { header: 'Payment Mode', key: 'paymentMethod', width: 14, align: 'center' },
   { header: 'Merchant', key: 'merchant', width: 16, align: 'left' },
   { header: 'FBR Inv #', key: 'fbrInvoiceNumber', width: 16, align: 'left' },
   { header: 'FBR Status', key: 'fbrStatus', width: 12, align: 'center' },
+  { header: 'Order Notes', key: 'orderNotes', width: 20, align: 'left' },
   { header: 'SKU', key: 'sku', width: 16, align: 'left' },
   { header: 'Barcode', key: 'barCode', width: 16, align: 'left' },
   { header: 'Description', key: 'description', width: 26, align: 'left' },
@@ -68,10 +71,14 @@ const FLAT_COLUMNS = [
   { header: 'Color', key: 'colorName', width: 12, align: 'center' },
   { header: 'Quantity', key: 'quantity', width: 10, align: 'right', numFmt: '#,##0' },
   { header: 'Unit Price', key: 'unitPrice', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Unit Price WOST', key: 'priceWost', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Value Excl.', key: 'valueExcl', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Discount %', key: 'discountPercent', width: 12, align: 'right', numFmt: '#,##0.00' },
   { header: 'Discount', key: 'discountAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'SubTotal', key: 'subTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Order Gross', key: 'orderGrossAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Order Net', key: 'orderNetAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Discount WOST', key: 'discountAmountWost', width: 13, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Sales Tax', key: 'taxAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Value Incl. (SubTotal)', key: 'subTotal', width: 18, align: 'right', numFmt: '#,##0.00' },
   { header: 'Cash Sale', key: 'cashSale', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Cash Return', key: 'cashReturn', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Card Sale', key: 'cardSale', width: 14, align: 'right', numFmt: '#,##0.00' },
@@ -83,33 +90,53 @@ const FLAT_COLUMNS = [
   { header: 'Corporate Voucher', key: 'giftVoucherCorporate', width: 16, align: 'right', numFmt: '#,##0.00' },
   { header: 'Credit Issued', key: 'creditVoucherIssuedAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Reward Voucher', key: 'rewardVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'On Credit', key: 'onCreditAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Override Note', key: 'overrideDiscountNote', width: 20, align: 'left' },
+  { header: 'Manual Disc Note', key: 'manualDiscountNote', width: 20, align: 'left' },
+  { header: 'Manual Disc Type', key: 'manualDiscountType', width: 16, align: 'left' },
+  { header: 'Alliance Partner', key: 'alliancePartner', width: 18, align: 'left' },
+  { header: 'Coupon / Promo', key: 'promoCoupon', width: 16, align: 'left' },
+  { header: 'Voucher Numbers', key: 'voucherCodes', width: 24, align: 'left' },
+  { header: 'Card Details', key: 'cardDetails', width: 22, align: 'left' },
 ];
 
 const COLUMNS = [
-  { header: 'Date & Time', key: 'date', width: 22, align: 'center' },
-  { header: 'Invoice #', key: 'invoiceNo', width: 14, align: 'left' },
+  { header: 'Invoice #', key: 'invoiceNo', width: 16, align: 'left' },
+  { header: 'Date & Time', key: 'date', width: 20, align: 'center' },
   { header: 'Location', key: 'location', width: 18, align: 'left' },
-  { header: 'Cashier', key: 'cashier', width: 14, align: 'left' },
-  { header: 'Customer', key: 'customer', width: 16, align: 'left' },
+  { header: 'Cashier', key: 'cashier', width: 16, align: 'left' },
+  { header: 'Customer', key: 'customer', width: 18, align: 'left' },
+  { header: 'Phone', key: 'phone', width: 14, align: 'left' },
+  { header: 'CNIC', key: 'cnic', width: 16, align: 'left' },
+  { header: 'Customer Code', key: 'customerCode', width: 14, align: 'left' },
+  { header: 'Payment Mode', key: 'paymentMethod', width: 14, align: 'center' },
   { header: 'Merchant', key: 'merchant', width: 16, align: 'left' },
-  { header: 'NetTotal', key: 'netTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Balance', key: 'balance', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash', key: 'tenderCash', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Card', key: 'tenderCard', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Reward Voucher', key: 'tenderRewardVoucher', width: 15, align: 'right', numFmt: '#,##0.00' },
-  { header: 'On Credit', key: 'tenderOnCredit', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'FBR Inv #', key: 'fbr', width: 16, align: 'left' },
+  { header: 'Order Notes', key: 'orderNotes', width: 20, align: 'left' },
+  { header: 'Discount Audit / Notes', key: 'discountNotes', width: 30, align: 'left' },
+  { header: 'Alliance Partner', key: 'alliancePartner', width: 18, align: 'left' },
+  { header: 'Promo / Coupon', key: 'promoCoupon', width: 16, align: 'left' },
+  { header: 'Vouchers Redeemed', key: 'vouchersList', width: 28, align: 'left' },
+  { header: 'Card Details', key: 'tenderCardDetails', width: 24, align: 'left' },
+  { header: 'Quantity', key: 'quantity', width: 10, align: 'right', numFmt: '#,##0' },
+  { header: 'Unit Price (Avg)', key: 'unitPriceAvg', width: 16, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Unit Price WOST (Avg)', key: 'unitPriceWost', width: 18, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Value Excl.', key: 'valueExcl', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Discount', key: 'discountTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Discount WOST', key: 'discountWost', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Sales Tax', key: 'salesTax', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Value Incl. (Net Revenue)', key: 'netTotal', width: 18, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Cash Sale', key: 'tenderCash', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Cash Return', key: 'returnAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Card Sale', key: 'tenderCard', width: 12, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Sale', key: 'tenderCreditSale', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Gift Voucher', key: 'tenderGiftVoucher', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Credit Voucher', key: 'tenderCreditVoucher', width: 14, align: 'right', numFmt: '#,##0.00' },
   { header: 'Exchange Voucher', key: 'tenderExchangeVoucher', width: 16, align: 'right', numFmt: '#,##0.00' },
   { header: 'Claim Voucher', key: 'tenderClaimVoucher', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Corporate Gift Voucher', key: 'tenderCorporateVoucher', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Issued Gift', key: 'issuedGiftVoucher', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Issued Credit', key: 'issuedCreditVoucher', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Return', key: 'returnAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'FBR', key: 'fbr', width: 10, align: 'center', numFmt: '#,##0' },
-  { header: 'Net Sale', key: 'netSale', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Tender Documents', key: 'tenderDocuments', width: 28, align: 'left' }
+  { header: 'Corporate Voucher', key: 'tenderCorporateVoucher', width: 18, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Credit Issued', key: 'creditVoucherIssued', width: 14, align: 'right', numFmt: '#,##0.00' },
+  { header: 'Reward Voucher', key: 'tenderRewardVoucher', width: 15, align: 'right', numFmt: '#,##0.00' },
 ];
 
 @Processor('sales-list-export')
@@ -317,6 +344,7 @@ export class SalesListExportProcessor {
         totalItems: 0,
         grossAmount: 0,
         discountAmount: 0,
+        taxAmount: 0,
         netAmount: 0,
         balance: 0,
         tenderCash: 0,
@@ -381,9 +409,11 @@ export class SalesListExportProcessor {
             skip,
             take: CHUNK,
             include: {
-              customer: { select: { name: true, contactNo: true } },
+              customer: { select: { name: true, contactNo: true, cnicNo: true, subCode: true, traderId: true } },
               alliance: true,
               merchant: true,
+              promo: true,
+              coupon: true,
               voucherRedemptions: {
                 include: {
                   voucher: true,
@@ -543,13 +573,43 @@ export class SalesListExportProcessor {
             const cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
             const customerName = order.customer?.name || 'Walk-in Customer';
             const customerPhone = order.customer?.contactNo || '-';
+            const customerCnic = (order.customer as any)?.cnicNo || '-';
+            const customerCode = (order.customer as any)?.subCode || (order.customer as any)?.traderId || '-';
             const orderGrandTotal = Number(order.grandTotal || 0);
             const orderSubtotal = Number(order.subtotal || 0);
             const orderDisc = Number(order.discountAmount || 0);
+            const orderTax = Number(order.taxAmount || 0);
+
+            // Audit & Discount extraction
+            const cardLast4Match = notesStr.match(/Card:\s*\*\*\*\*(\d{4})/i);
+            const cardSlipMatch = notesStr.match(/Slip:\s*(\w+)/i);
+            const cardDetailsStr = (cardLast4Match || cardSlipMatch)
+              ? `**** ${cardLast4Match ? cardLast4Match[1] : ''} ${cardSlipMatch ? `(Slip: ${cardSlipMatch[1]})` : ''}`.trim()
+              : (card > 0 ? `${merchantName} (Rs. ${card.toLocaleString()})` : '-');
+
+            const allVoucherCodes = (order.voucherRedemptions || [])
+              .map((r: any) => `${r.voucher?.code || 'VOUCHER'} (Rs. ${Number(r.amountUsed || 0).toLocaleString()})`)
+              .join(', ');
+
+            const discNotesArr: string[] = [];
+            if ((order as any).manualDiscountNote) {
+              discNotesArr.push(`Manual: ${(order as any).manualDiscountNote}`);
+            }
+            if (order.alliance?.partnerName) {
+              discNotesArr.push(`Alliance: ${order.alliance.partnerName} (${order.alliance.discountPercent}%)`);
+            }
+            if ((order as any).promo?.name) {
+              discNotesArr.push(`Promo: ${(order as any).promo.name}`);
+            }
+            if ((order as any).coupon?.code) {
+              discNotesArr.push(`Coupon: ${(order as any).coupon.code}`);
+            }
+            const discountNotesStr = discNotesArr.join(' | ') || (orderDisc > 0 ? 'Line Discounts' : '-');
 
             grandTotals.orderCount += 1;
             grandTotals.grossAmount += orderSubtotal;
             grandTotals.discountAmount += orderDisc;
+            grandTotals.taxAmount += orderTax;
             grandTotals.netAmount += orderGrandTotal;
             grandTotals.balance += balance;
             grandTotals.tenderCash += cash;
@@ -567,11 +627,27 @@ export class SalesListExportProcessor {
             grandTotals.netSale += netSale;
 
             if (isFlat) {
-              for (const item of (order.items || [])) {
+              const orderItems = (order.items && order.items.length > 0)
+                ? order.items
+                : [{
+                    quantity: 1,
+                    unitPrice: orderSubtotal * 1.18,
+                    discountAmount: orderDisc * 1.18,
+                    taxAmount: orderTax,
+                    lineTotal: orderGrandTotal,
+                    item: { sku: '-', barCode: '-', description: 'Invoice Summary', size: { name: '-' }, color: { name: '-' } }
+                  }];
+
+              for (const item of orderItems) {
                 const itemQty = Number(item.quantity || 0);
                 const itemPrice = Number(item.unitPrice || 0);
+                const unitPriceWost = Number((itemPrice / 1.18).toFixed(2));
+                const itemValExcl = Number((itemQty * unitPriceWost).toFixed(2));
                 const itemDisc = Number(item.discountAmount || 0);
-                const itemSub = Number(item.lineTotal || 0);
+                const itemDiscWost = Number((itemDisc / 1.18).toFixed(2));
+                const itemAmtAfterDisc = Number(Math.max(0, itemValExcl - itemDiscWost).toFixed(2));
+                const itemTax = Number(item.taxAmount || 0);
+                const itemSub = Number(item.lineTotal || (itemPrice * itemQty - itemDisc + itemTax));
                 const ratio = orderGrandTotal > 0 ? (itemSub / orderGrandTotal) : 0;
 
                 grandTotals.totalItems += itemQty;
@@ -579,14 +655,17 @@ export class SalesListExportProcessor {
                 const flatRowData: any = {
                   locationName: locName,
                   orderNumber: order.orderNumber,
-                  orderDate: new Date(order.createdAt).toLocaleString(),
+                  orderDate: new Date(order.createdAt).toISOString().replace('T', ' ').slice(0, 19),
                   cashierName,
                   customerName,
                   customerPhone,
+                  customerCnic,
+                  customerCode,
                   paymentMethod: (order.paymentMethod || 'CASH').toUpperCase(),
                   merchant: merchantName,
                   fbrInvoiceNumber: order.fbrInvoiceNumber || '-',
                   fbrStatus: order.fbrStatus || 'NONE',
+                  orderNotes: notesStr || '-',
                   sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
                   barCode: item.item?.barCode || item.item?.sku || '-',
                   description: item.item?.description || item.item?.sku || 'Article',
@@ -594,10 +673,14 @@ export class SalesListExportProcessor {
                   colorName: item.item?.color?.name || 'Default',
                   quantity: itemQty,
                   unitPrice: itemPrice,
+                  priceWost: unitPriceWost,
+                  valueExcl: itemValExcl,
+                  discountPercent: (item as any).discountPercent || 0,
                   discountAmount: itemDisc,
+                  discountAmountWost: itemDiscWost,
+                  amountAfterDiscount: itemAmtAfterDisc,
+                  taxAmount: itemTax,
                   subTotal: itemSub,
-                  orderGrossAmount: orderSubtotal,
-                  orderNetAmount: orderGrandTotal,
                   cashSale: cash * ratio,
                   cashReturn: cashReturn * ratio,
                   cardSale: card * ratio,
@@ -609,7 +692,13 @@ export class SalesListExportProcessor {
                   giftVoucherCorporate: corporateVoucher * ratio,
                   creditVoucherIssuedAmount: issuedCredit * ratio,
                   rewardVoucherAmount: rewardVoucher * ratio,
-                  onCreditAmount: onCredit * ratio,
+                  overrideDiscountNote: (item as any).overrideDiscountNote || ((item as any).overrideDiscountPercent ? `${(item as any).overrideDiscountPercent}% Override` : '-'),
+                  manualDiscountNote: (order as any).manualDiscountNote || '-',
+                  manualDiscountType: (order as any).manualDiscountType || '-',
+                  alliancePartner: order.alliance ? `${order.alliance.partnerName} (${order.alliance.discountPercent}%)` : '-',
+                  promoCoupon: (order as any).coupon?.code || (order as any).promo?.code || '-',
+                  voucherCodes: allVoucherCodes || '-',
+                  cardDetails: cardDetailsStr,
                 };
 
                 const row = ws.addRow(flatRowData);
@@ -620,30 +709,52 @@ export class SalesListExportProcessor {
               const orderItemsCount = (order.items || []).reduce((acc: number, i: any) => acc + Number(i.quantity || 0), 0);
               grandTotals.totalItems += orderItemsCount;
 
+              const invValExcl = orderSubtotal > 0 ? orderSubtotal : Number((orderGrandTotal / 1.18).toFixed(2));
+              const invUnitPriceWost = orderItemsCount > 0 ? Number((invValExcl / orderItemsCount).toFixed(2)) : 0;
+              const invDiscWost = orderDisc;
+              const invGrossRetail = (order.items || []).reduce((acc: number, i: any) => acc + (Number(i.unitPrice || 0) * Number(i.quantity || 1)), 0) || Number((invValExcl * 1.18).toFixed(2));
+              const invUnitPriceAvg = orderItemsCount > 0 ? Number((invGrossRetail / orderItemsCount).toFixed(2)) : 0;
+              const invDiscRetail = orderDisc;
+              const invAmtAfterDisc = Math.max(0, invGrossRetail - invDiscRetail);
+
               const matrixRowData: any = {
-                date: new Date(order.createdAt).toLocaleString(),
                 invoiceNo: order.orderNumber,
+                date: new Date(order.createdAt).toISOString().replace('T', ' ').slice(0, 19),
                 location: locName,
                 cashier: cashierName,
                 customer: customerName,
+                phone: customerPhone,
+                cnic: customerCnic,
+                customerCode: customerCode,
+                paymentMethod: (order.paymentMethod || 'CASH').toUpperCase(),
                 merchant: merchantName,
+                fbr: order.fbrInvoiceNumber || '-',
+                orderNotes: notesStr || '-',
+                discountNotes: discountNotesStr,
+                alliancePartner: order.alliance ? `${order.alliance.partnerName} (${order.alliance.discountPercent}%)` : '-',
+                promoCoupon: (order as any).coupon?.code || (order as any).promo?.code || '-',
+                vouchersList: allVoucherCodes || '-',
+                tenderCardDetails: cardDetailsStr,
+                quantity: orderItemsCount,
+                unitPriceAvg: invUnitPriceAvg,
+                unitPriceWost: invUnitPriceWost,
+                valueExcl: invValExcl,
+                discountTotal: invDiscRetail,
+                discountWost: invDiscWost,
+                amountAfterDiscount: invAmtAfterDisc,
+                salesTax: orderTax,
                 netTotal: orderGrandTotal,
-                balance,
                 tenderCash: cash,
+                returnAmount: cashReturn,
                 tenderCard: card,
-                tenderRewardVoucher: rewardVoucher,
-                tenderOnCredit: onCredit,
+                tenderCreditSale: (balance > 0 ? balance : onCredit),
                 tenderGiftVoucher: giftVoucher,
                 tenderCreditVoucher: creditVoucher,
                 tenderExchangeVoucher: exchangeVoucher,
                 tenderClaimVoucher: claimVoucher,
                 tenderCorporateVoucher: corporateVoucher,
-                issuedGiftVoucher: issuedGift,
-                issuedCreditVoucher: issuedCredit,
-                returnAmount: cashReturn,
-                fbr,
-                netSale,
-                tenderDocuments: tenderDocs,
+                creditVoucherIssued: issuedCredit,
+                tenderRewardVoucher: rewardVoucher,
               };
 
               const row = ws.addRow(matrixRowData);
@@ -665,10 +776,15 @@ export class SalesListExportProcessor {
           ? {
               locationName: 'GRAND TOTAL',
               quantity: grandTotals.totalItems,
-              discountAmount: grandTotals.discountAmount,
+              unitPrice: '',
+              priceWost: '',
+              valueExcl: Number(grandTotals.grossAmount.toFixed(2)),
+              discountPercent: '',
+              discountAmount: Number((grandTotals.discountAmount * 1.18).toFixed(2)),
+              discountAmountWost: Number(grandTotals.discountAmount.toFixed(2)),
+              amountAfterDiscount: Number(Math.max(0, grandTotals.grossAmount - grandTotals.discountAmount).toFixed(2)),
+              taxAmount: grandTotals.taxAmount || (grandTotals.netAmount - (grandTotals.grossAmount - grandTotals.discountAmount)),
               subTotal: grandTotals.netAmount,
-              orderGrossAmount: grandTotals.grossAmount,
-              orderNetAmount: grandTotals.netAmount,
               cashSale: grandTotals.tenderCash,
               cashReturn: grandTotals.returnAmount,
               cardSale: grandTotals.tenderCard,
@@ -680,36 +796,50 @@ export class SalesListExportProcessor {
               giftVoucherCorporate: grandTotals.tenderCorporateVoucher,
               creditVoucherIssuedAmount: grandTotals.issuedCreditVoucher,
               rewardVoucherAmount: grandTotals.tenderRewardVoucher,
-              onCreditAmount: grandTotals.tenderOnCredit,
             }
           : {
-              date: 'GRAND TOTAL',
-              invoiceNo: `${grandTotals.orderCount.toLocaleString()} Orders`,
+              invoiceNo: 'GRAND TOTAL',
+              date: `${grandTotals.orderCount.toLocaleString()} Orders`,
               location: '',
               cashier: '',
               customer: `${grandTotals.totalItems.toLocaleString()} Items`,
+              phone: '',
+              cnic: '',
+              customerCode: '',
+              paymentMethod: '',
               merchant: '',
+              fbr: '',
+              orderNotes: '',
+              discountNotes: '',
+              alliancePartner: '',
+              promoCoupon: '',
+              vouchersList: '',
+              tenderCardDetails: '',
+              quantity: grandTotals.totalItems,
+              unitPriceAvg: grandTotals.totalItems > 0 ? Number(((grandTotals.grossAmount * 1.18) / grandTotals.totalItems).toFixed(2)) : 0,
+              unitPriceWost: grandTotals.totalItems > 0 ? Number((grandTotals.grossAmount / grandTotals.totalItems).toFixed(2)) : 0,
+              valueExcl: Number(grandTotals.grossAmount.toFixed(2)),
+              discountTotal: Number((grandTotals.discountAmount * 1.18).toFixed(2)),
+              discountWost: Number(grandTotals.discountAmount.toFixed(2)),
+              amountAfterDiscount: Number(Math.max(0, grandTotals.grossAmount - grandTotals.discountAmount).toFixed(2)),
+              salesTax: grandTotals.taxAmount || (grandTotals.netAmount - (grandTotals.grossAmount - grandTotals.discountAmount)),
               netTotal: grandTotals.netAmount,
-              balance: grandTotals.balance,
               tenderCash: grandTotals.tenderCash,
+              returnAmount: grandTotals.returnAmount,
               tenderCard: grandTotals.tenderCard,
-              tenderRewardVoucher: grandTotals.tenderRewardVoucher,
-              tenderOnCredit: grandTotals.tenderOnCredit,
+              tenderCreditSale: grandTotals.balance,
               tenderGiftVoucher: grandTotals.tenderGiftVoucher,
               tenderCreditVoucher: grandTotals.tenderCreditVoucher,
               exchangeVoucher: grandTotals.tenderExchangeVoucher,
               claimVoucher: grandTotals.tenderClaimVoucher,
               tenderCorporateVoucher: grandTotals.tenderCorporateVoucher,
-              issuedGiftVoucher: grandTotals.issuedGiftVoucher,
-              issuedCreditVoucher: grandTotals.issuedCreditVoucher,
-              returnAmount: grandTotals.returnAmount,
-              fbr: grandTotals.fbr,
-              netSale: grandTotals.netSale,
-              tenderDocuments: '',
+              creditVoucherIssued: grandTotals.issuedCreditVoucher,
+              tenderRewardVoucher: grandTotals.tenderRewardVoucher,
             };
 
         const totalRow = ws.addRow(totalRowData);
         totalRow.height = 24;
+        totalRow.font = { bold: true };
         totalRow.commit();
 
         await workbook.commit();

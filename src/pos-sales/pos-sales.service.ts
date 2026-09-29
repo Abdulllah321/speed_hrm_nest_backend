@@ -7235,7 +7235,7 @@ export class PosSalesService implements OnModuleInit {
       let cashSale = Number(order.cashAmount || 0);
       let cardSale = Number(order.cardAmount || 0);
       let onCreditAmount = balance;
-      let creditSale = (balance > 0 || order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0;
+      let creditSale = balance;
       let cashReturn = 0;
 
       if (cashSale === 0) {
@@ -7575,7 +7575,7 @@ export class PosSalesService implements OnModuleInit {
       // Balance outstanding for Credit Sale
       let balance = 0;
       const balanceMatch = notesStr.match(
-        /\[Credit Sale\] Balance:\s*([\d.]+)/i,
+        /\[Credit Sale\] Balance:\s*(-?[\d.]+)/i,
       );
       if (balanceMatch) {
         balance = Number(balanceMatch[1]);
@@ -7589,14 +7589,18 @@ export class PosSalesService implements OnModuleInit {
       // Tenders Breakdown
       let cash = Number(order.cashAmount || 0);
       let card = Number(order.cardAmount || 0);
+      let cashReturn = 0;
       let onCredit = balance;
 
+      const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+      if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
+
       if (cash === 0) {
-        const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+        const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
         if (cashMatch) cash = Number(cashMatch[1]);
       }
       if (card === 0) {
-        const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+        const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
         if (cardMatch) card = Number(cardMatch[1]);
       }
 
@@ -7607,9 +7611,7 @@ export class PosSalesService implements OnModuleInit {
       ) {
         rewardVoucher = Number(order.grandTotal);
       } else if (notesStr.includes('[Reward Voucher]')) {
-        const amtMatch = notesStr.match(
-          /\[Reward Voucher\].*?Amount:\s*([\d.]+)/i,
-        );
+        const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i);
         if (amtMatch) {
           rewardVoucher = Number(amtMatch[1]);
         }
@@ -7677,6 +7679,13 @@ export class PosSalesService implements OnModuleInit {
       let issuedGift = 0;
       let issuedCredit = 0;
 
+      if (notesStr) {
+        const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+        if (issuedMatch) {
+          issuedCredit += Number(issuedMatch[1]);
+        }
+      }
+
       const orderIssued = issuedVoucherMap.get(order.id) || [];
       for (const iv of orderIssued) {
         const type = iv.voucherType;
@@ -7694,7 +7703,7 @@ export class PosSalesService implements OnModuleInit {
 
       const tenderDocs = parseTenderDocs(notesStr, order.alliance);
 
-      const creditSale = (balance > 0 || order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0;
+      const creditSale = balance;
 
       rows.push({
         id: order.id,
@@ -7718,7 +7727,7 @@ export class PosSalesService implements OnModuleInit {
         netSale,
         tenderDocuments: tenderDocs,
         cashSale: cash,
-        cashReturn: 0,
+        cashReturn,
         cardSale: card,
         creditSale,
         giftVoucherAmount: giftVoucher,

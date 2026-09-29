@@ -253,15 +253,15 @@ export class AllianceRegisterExportProcessor {
         let cashSale = Number(order.cashAmount || 0);
         let cardSale = Number(order.cardAmount || 0);
         let onCreditAmount = balance;
-        let creditSale = (balance > 0 || order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') ? Number(order.grandTotal) : 0;
+        let creditSale = balance;
         let cashReturn = 0;
 
         if (cashSale === 0) {
-          const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+          const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
           if (cashMatch) cashSale = Number(cashMatch[1]);
         }
         if (cardSale === 0) {
-          const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+          const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
           if (cardMatch) cardSale = Number(cardMatch[1]);
         }
 

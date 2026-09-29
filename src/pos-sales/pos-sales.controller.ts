@@ -14,12 +14,15 @@ import {
   Sse,
   MessageEvent,
   Logger,
+  HttpStatus,
 } from '@nestjs/common';
 import { Observable, interval, map, switchMap, takeWhile } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { NetSalesSummaryExportService } from './net-sales-summary-export.service';
 import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesListExportService } from './sales-list-export.service';
+import { SalesReturnListExportService } from './sales-return-list-export.service';
+import { NetSalesListExportService } from './net-sales-list-export.service';
 import { GrossSalesExportService } from './gross-sales-export.service';
 import { AllianceRegisterExportService } from './alliance-register-export.service';
 import { CostOfSalesExportService } from './cost-of-sales-export.service';
@@ -57,6 +60,8 @@ export class PosSalesController {
     private readonly netSalesSummaryExportService: NetSalesSummaryExportService,
     private readonly salesRegisterExportService: SalesRegisterExportService,
     private readonly salesListExportService: SalesListExportService,
+    private readonly salesReturnListExportService: SalesReturnListExportService,
+    private readonly netSalesListExportService: NetSalesListExportService,
     private readonly grossSalesExportService: GrossSalesExportService,
     private readonly allianceRegisterExportService: AllianceRegisterExportService,
     private readonly costOfSalesExportService: CostOfSalesExportService,
@@ -1548,6 +1553,10 @@ export class PosSalesController {
     @Query('asOfDate') asOfDate?: string,
     @Query('isOutstandingOnly') isOutstandingOnly?: string,
     @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDirection') sortDirection?: 'asc' | 'desc',
   ) {
     const data = await this.voucherRegisterExportService.getReportData({
       voucherType,
@@ -1558,6 +1567,10 @@ export class PosSalesController {
       asOfDate,
       isOutstandingOnly: isOutstandingOnly === 'true' || isOutstandingOnly === '1',
       search,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit !== undefined ? parseInt(limit, 10) : undefined,
+      sortBy,
+      sortDirection,
     });
     return { status: true, data };
   }
@@ -1731,6 +1744,330 @@ export class PosSalesController {
     const userId = req.user?.id || req.user?.userId;
     const result =
       await this.salesListExportService.registerClientGeneratedExport(
+        this.prisma,
+        userId,
+        body,
+      );
+    return { status: true, data: result };
+  }
+
+  // ─── Sales Return List PRO ERP Preview & SSE Endpoints ──────────────────
+  @Post('reports/sales-return-list/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueSalesReturnListPreview(
+    @Req() req: any,
+    @Body()
+    body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      subType?: any;
+      refundMode?: string;
+      fiscalYear?: string;
+      year?: number | string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.salesReturnListExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/sales-return-list/stream/:jobId')
+  streamSalesReturnListStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus =
+          await this.salesReturnListExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' =
+          'queued';
+        if (
+          queueStatus.status === 'completed' ||
+          queueStatus.progress === 100
+        ) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (
+          queueStatus.status === 'active' ||
+          queueStatus.progress > 0
+        ) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progressPercent: queueStatus.progress,
+            message:
+              queueStatus.message ||
+              `Processing sales return calculation (${queueStatus.progress}%)`,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            error: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        const parsed = JSON.parse(event.data as string);
+        return parsed.status !== 'completed' && parsed.status !== 'failed';
+      }, true),
+    );
+  }
+
+  @Get('reports/sales-return-list/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getSalesReturnListResult(@Param('jobId') jobId: string) {
+    const data = await this.salesReturnListExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return {
+        status: false,
+        message: 'Sales return list preview result not found or expired',
+      };
+    }
+    return { status: true, data };
+  }
+
+  @Get(['reports/sales-return-list/stream-preview-excel/:jobId', 'reports/sales-return-list/stream-preview-excel/:jobId/:fileName'])
+  @ApiOperation({ summary: 'Stream filtered preview Excel for Sales Return List' })
+  async streamSalesReturnListPreviewExcel(
+    @Param('jobId') jobId: string,
+    @Query('exportType') exportType: 'flat' | 'hierarchical',
+    @Query('search') search: string,
+    @Query('subType') subType: any,
+    @Query('refundMode') refundMode: string,
+    @Query('locationId') locationId: string,
+    @Query('cashierId') cashierId: string,
+    @Res() res: any,
+  ) {
+    try {
+      await this.salesReturnListExportService.streamFilteredPreviewExcel(
+        jobId,
+        {
+          exportType,
+          search,
+          subType,
+          refundMode,
+          locationId,
+          cashierId,
+        },
+        res,
+      );
+    } catch (err: any) {
+      const status = err?.status ?? 404;
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Preview export failed or expired',
+      });
+    }
+  }
+
+  @Post('reports/sales-return-list/export/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueSalesReturnListExport(
+    @Req() req: any,
+    @Body()
+    body: {
+      locationId?: string;
+      locationIds?: string[];
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      format?: 'xlsx' | 'pdf';
+      search?: string;
+      subType?: any;
+      refundMode?: string;
+      exportType?: 'flat' | 'hierarchical';
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.salesReturnListExportService.queueExport({
+      userId,
+      format: body.format || 'xlsx',
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('reports/sales-return-list/export/:jobId/status')
+  @UseGuards(JwtAuthGuard)
+  async getSalesReturnListExportStatus(@Param('jobId') jobId: string) {
+    const status = await this.salesReturnListExportService.getJobStatus(jobId);
+    return { status: true, data: status };
+  }
+
+  @Get(['reports/sales-return-list/export/:jobId/download', 'reports/sales-return-list/export/:jobId/download/:fileName'])
+  async downloadSalesReturnListExport(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
+    return this.salesReturnListExportService.streamExportFile(jobId, res);
+  }
+
+  @Post('reports/sales-return-list/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerSalesReturnListClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result =
+      await this.salesReturnListExportService.registerClientGeneratedExport(
+        this.prisma,
+        userId,
+        body,
+      );
+    return { status: true, data: result };
+  }
+
+  // ─── Net Sales List PRO ERP Preview & SSE Endpoints ─────────────────────
+  @Post('reports/net-sales-list/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueNetSalesListPreview(
+    @Req() req: any,
+    @Body()
+    body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      docTypeFilter?: any;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      paymentModeGroup?: string;
+      minAmount?: number;
+      maxAmount?: number;
+      fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: number | string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.netSalesListExportService.queueReportPreview({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/net-sales-list/stream/:jobId')
+  streamNetSalesListStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
+    return interval(1500).pipe(
+      switchMap(async () => {
+        const queueStatus =
+          await this.netSalesListExportService.getJobQueueStatus(jobId);
+
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' =
+          'queued';
+        if (
+          queueStatus.status === 'completed' ||
+          queueStatus.progress === 100
+        ) {
+          sseStatus = 'completed';
+        } else if (queueStatus.status === 'failed') {
+          sseStatus = 'failed';
+        } else if (
+          queueStatus.status === 'active' ||
+          queueStatus.progress > 0
+        ) {
+          sseStatus = 'processing';
+        }
+
+        return {
+          data: JSON.stringify({
+            status: sseStatus,
+            progress: queueStatus.progress,
+            message: queueStatus.message,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            failedReason: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+      takeWhile((event) => {
+        try {
+          const parsed = JSON.parse(event.data as string);
+          return parsed.status !== 'completed' && parsed.status !== 'failed';
+        } catch {
+          return true;
+        }
+      }, true),
+    );
+  }
+
+  @Get('reports/net-sales-list/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getNetSalesListResult(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
+    const filePath = this.netSalesListExportService.getPreviewFilePath(jobId);
+    if (!fs.existsSync(filePath)) {
+      return res.status(HttpStatus.NOT_FOUND).json({
+        statusCode: HttpStatus.NOT_FOUND,
+        message: 'Preview result not found or expired',
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Encoding', 'gzip');
+    const readStream = fs.createReadStream(filePath);
+    return readStream.pipe(res);
+  }
+
+  @Post('reports/net-sales-list/export/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueNetSalesListExport(
+    @Req() req: any,
+    @Body()
+    body: {
+      locationId?: string;
+      startDate?: string;
+      endDate?: string;
+      cashierUserId?: string;
+      docTypeFilter?: any;
+      reportType?: 'merged' | 'separate';
+      search?: string;
+      format: 'xlsx' | 'pdf';
+      exportType?: 'flat' | 'hierarchical';
+      fiscalYear?: string;
+      year?: number | string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await this.netSalesListExportService.queueReportExport({
+      userId,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Get('reports/net-sales-list/export/:jobId/status')
+  @UseGuards(JwtAuthGuard)
+  async getNetSalesListExportStatus(@Param('jobId') jobId: string) {
+    const status = await this.netSalesListExportService.getExportJobStatus(jobId);
+    return { status: true, data: status };
+  }
+
+  @Post('reports/net-sales-list/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerNetSalesListClientExport(
+    @Req() req: any,
+    @Body() body: { fileName: string; fileBase64: string; mimeType: string; exportFormat: 'xlsx' | 'pdf' },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result =
+      await this.netSalesListExportService.registerClientGeneratedExport(
         this.prisma,
         userId,
         body,

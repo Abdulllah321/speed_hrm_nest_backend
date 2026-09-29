@@ -623,6 +623,7 @@ export class StockLedgerService {
       referenceId: string;
       locationId?: string | null;
       rate?: number | Prisma.Decimal;
+      createdAt?: Date;
     },
     tx?: Prisma.TransactionClient,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
@@ -713,6 +714,7 @@ export class StockLedgerService {
             locationId,
             rate: resolvedRate ? new Prisma.Decimal(resolvedRate) : null,
             unitCost: resolvedRate ? new Prisma.Decimal(resolvedRate) : null,
+            ...(data.createdAt && { createdAt: data.createdAt }),
           },
         });
 

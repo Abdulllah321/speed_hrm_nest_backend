@@ -173,12 +173,16 @@ export interface GrossSalesSummaryLocationNode {
 
 export interface GrossSalesSummaryFlatRecord {
   locationId?: string;
+  cashierUserId?: string;
+  createdAt?: string | Date;
+  orderNumber?: string;
+  fbrInvoiceNumber?: string;
   locationName: string;
   categoryName: string;
   brandName: string;
-  divisionName: string;
-  genderName: string;
-  silhouetteName: string;
+  divisionName?: string;
+  genderName?: string;
+  silhouetteName?: string;
   sku: string;
   barCode: string;
   description: string;
@@ -1504,7 +1508,7 @@ export class GrossSalesExportService {
           const variantKey = `${order.id}|${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}`;
           let existingRecord = flatItemsMap.get(variantKey);
           if (!existingRecord) {
-            existingRecord = {
+            const newRecord: GrossSalesSummaryFlatRecord = {
               locationId: order.locationId || undefined,
               locationName: locName,
               categoryName: catName,
@@ -1527,7 +1531,8 @@ export class GrossSalesExportService {
               taxAmount: 0,
               subTotal: 0,
             };
-            flatItemsMap.set(variantKey, existingRecord);
+            flatItemsMap.set(variantKey, newRecord);
+            existingRecord = newRecord;
           }
 
           existingRecord.quantity += qty;

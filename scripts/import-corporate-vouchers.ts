@@ -122,20 +122,24 @@ export function readAndParseCorporateVouchers(filePath: string, limit?: number):
 
   const colIdx = {
     costCentre: rawHeaders.findIndex((h) => h.toLowerCase().includes('costcentre')),
-    locationCode: rawHeaders.findIndex((h) => h.toLowerCase().includes('location code')),
+    locationCode: rawHeaders.findIndex((h) => h.toLowerCase().includes('location')),
     companyName: rawHeaders.findIndex((h) => h.toLowerCase().includes('companyname')),
     companyAddress: rawHeaders.findIndex((h) => h.toLowerCase().includes('companyaddress')),
-    documentNumber: rawHeaders.findIndex((h) => h.toLowerCase() === 'documentnumber'),
-    documentDate: rawHeaders.findIndex((h) => h.toLowerCase() === 'documentdate'),
-    voucherNumber: rawHeaders.findIndex((h) => h.toLowerCase() === 'vouchernumber'),
-    voucherValue: rawHeaders.findIndex((h) => h.toLowerCase() === 'vouchervalue'),
-    dateValid: rawHeaders.findIndex((h) => h.toLowerCase() === 'date_valid'),
-    documentNumberSettled: rawHeaders.findIndex((h) => h.toLowerCase() === 'documentnumber_setteled'),
-    dateSettled: rawHeaders.findIndex((h) => h.toLowerCase() === 'date_setteled'),
-    traderName: rawHeaders.findIndex((h) => h.toLowerCase() === 'tradername'),
-    abbr: rawHeaders.findIndex((h) => h.toLowerCase() === 'abbr'),
-    description: rawHeaders.findIndex((h) => h.toLowerCase() === 'description'),
-    remarks: rawHeaders.findIndex((h) => h.toLowerCase() === 'remarks'),
+    documentNumber: rawHeaders.findIndex((h) => h.toLowerCase().includes('documentnumber') && !h.toLowerCase().includes('setteled')),
+    documentDate: rawHeaders.findIndex((h) => h.toLowerCase().includes('documentdate')),
+    voucherNumber: rawHeaders.findIndex((h) => h.toLowerCase().includes('vouchernumber')),
+    voucherValue: rawHeaders.findIndex((h) => h.toLowerCase().includes('vouchervalue')),
+    dateValid: rawHeaders.findIndex((h) => h.toLowerCase().includes('date_valid') || h.toLowerCase().includes('valid')),
+    documentNumberSettled: rawHeaders.findIndex(
+      (h) =>
+        (h.toLowerCase().includes('setteled') && (h.toLowerCase().includes('document') || h.toLowerCase().includes('doc') || h.toLowerCase().includes('fk'))) ||
+        h.toLowerCase().includes('documentnumber_setteled')
+    ),
+    dateSettled: rawHeaders.findIndex((h) => h.toLowerCase().includes('date_setteled') || h.toLowerCase().includes('datesetteled') || h.toLowerCase().includes('date_settled')),
+    traderName: rawHeaders.findIndex((h) => h.toLowerCase().includes('tradername')),
+    abbr: rawHeaders.findIndex((h) => h.toLowerCase().includes('abbr')),
+    description: rawHeaders.findIndex((h) => h.toLowerCase().includes('description')),
+    remarks: rawHeaders.findIndex((h) => h.toLowerCase().includes('remarks')),
   };
 
   const parsedRows: ParsedCorporateVoucherRow[] = [];
@@ -154,22 +158,25 @@ export function readAndParseCorporateVouchers(filePath: string, limit?: number):
 
     if (cols.length < 8) continue;
 
-    const vNumRaw = cols[colIdx.voucherNumber] || '';
+    const vNumRaw = (colIdx.voucherNumber !== -1 ? cols[colIdx.voucherNumber] : '') || '';
     const vNum = parseInt(vNumRaw, 10);
     if (isNaN(vNum)) continue;
 
-    const vVal = parseFloat(cols[colIdx.voucherValue] || '0') || 0;
-    const docDateStr = cols[colIdx.documentDate] || '';
+    const vVal = parseFloat((colIdx.voucherValue !== -1 ? cols[colIdx.voucherValue] : '0') || '0') || 0;
+    const docDateStr = (colIdx.documentDate !== -1 ? cols[colIdx.documentDate] : '') || '';
     const docDate = parseFlexibleDate(docDateStr) || new Date('2026-07-01');
 
-    const validTillStr = cols[colIdx.dateValid] || '';
+    const validTillStr = (colIdx.dateValid !== -1 ? cols[colIdx.dateValid] : '') || '';
     const dateValid = parseFlexibleDate(validTillStr);
 
-    const docSettled = (cols[colIdx.documentNumberSettled] || '').trim();
-    const isSettled = Boolean(docSettled && docSettled !== '' && docSettled !== 'null' && docSettled !== '-');
-
-    const dateSettledStr = cols[colIdx.dateSettled] || '';
+    const docSettled = (colIdx.documentNumberSettled !== -1 ? cols[colIdx.documentNumberSettled] : '').trim();
+    const dateSettledStr = (colIdx.dateSettled !== -1 ? cols[colIdx.dateSettled] : '') || '';
     const dateSettled = parseFlexibleDate(dateSettledStr);
+
+    const isSettled = Boolean(
+      (docSettled && docSettled !== '' && docSettled !== '0' && docSettled !== 'null' && docSettled !== '-') ||
+      (dateSettled && !isNaN(dateSettled.getTime()))
+    );
 
     // Standardized unique corporate voucher code format: CRP-00001 ... CRP-10009
     const voucherCode = `CRP-${String(vNum).padStart(5, '0')}`;
@@ -250,6 +257,9 @@ export async function cleanExistingCorporateVouchers(prisma: PrismaClient) {
     where: { voucherType: 'CORPORATE' },
   });
 
+  console.log(`   - Deleted ${deletedVouchers.count} vouchers, ${deletedRedemptions.count} redemptions, ${deletedTransactions.count} transactions.`);
+}
+
 /**
  * Synchronizes and verifies SalesOrder tender amounts and notes for all redeemed vouchers.
  */
@@ -316,7 +326,7 @@ export async function syncOrderTendersWithRedemptions(prisma: PrismaClient) {
 
   for (const [orderId, { order, totalRedeemed, vouchers }] of orderMap.entries()) {
     const grandTotal = Number(order.grandTotal || 0);
-    const voucherAmount = totalRedeemed;
+    let voucherAmount = totalRedeemed;
     const remainingToPay = Math.max(0, grandTotal - voucherAmount);
 
     let cashAmount = Number(order.cashAmount || 0);
@@ -324,28 +334,34 @@ export async function syncOrderTendersWithRedemptions(prisma: PrismaClient) {
     let tenderType = order.tenderType || 'CASH';
     let paymentMethod = order.paymentMethod || 'cash';
 
-    if (remainingToPay === 0) {
-      cashAmount = 0;
-      cardAmount = 0;
-      tenderType = 'VOUCHER';
-      paymentMethod = 'voucher';
+    // If order already has payment recorded (e.g. from POS), keep existing amounts if valid
+    const existingTotal = cashAmount + cardAmount + Number(order.voucherAmount || 0);
+    if (Math.abs(existingTotal - grandTotal) <= 2 && Number(order.voucherAmount || 0) > 0) {
+      voucherAmount = Math.max(Number(order.voucherAmount), totalRedeemed);
     } else {
-      paymentMethod = 'split';
-      if (cardAmount > 0) {
-        cardAmount = remainingToPay;
+      if (remainingToPay === 0) {
         cashAmount = 0;
-        if (!tenderType.includes('VOUCHER')) {
-          tenderType = `${tenderType} + VOUCHER`;
-        }
-      } else if (cashAmount > 0) {
-        cashAmount = remainingToPay;
         cardAmount = 0;
-        if (!tenderType.includes('VOUCHER')) {
+        tenderType = 'VOUCHER';
+        paymentMethod = 'voucher';
+      } else {
+        paymentMethod = 'split';
+        if (cardAmount > 0) {
+          cardAmount = remainingToPay;
+          cashAmount = 0;
+          if (!tenderType.includes('VOUCHER')) {
+            tenderType = `${tenderType} + VOUCHER`;
+          }
+        } else if (cashAmount > 0) {
+          cashAmount = remainingToPay;
+          cardAmount = 0;
+          if (!tenderType.includes('VOUCHER')) {
+            tenderType = 'CASH + VOUCHER';
+          }
+        } else {
+          cashAmount = remainingToPay;
           tenderType = 'CASH + VOUCHER';
         }
-      } else {
-        cashAmount = remainingToPay;
-        tenderType = 'CASH + VOUCHER';
       }
     }
 
@@ -481,11 +497,15 @@ async function processTenantCorporateVouchers(
   console.log(`🧾 Indexed ${orders.length} SalesOrders from DB.`);
 
   // Lookup maps:
-  // 1) "locationId:originalDocNo" -> SalesOrder
-  // 2) "originalDocNo" -> SalesOrder[] (fallback if unique)
-  // 3) "orderNumber" -> SalesOrder
+  // 1) By Voucher Number mentioned in Remarks (e.g. "Remarks: ...;10160;...")
+  const orderByVoucherNumberInRemarks = new Map<number, typeof orders[0]>();
+  // 2) "locationId:originalDocNo:YYYY-MM-DD" -> SalesOrder
+  const orderByLocDocAndDate = new Map<string, typeof orders[0]>();
+  // 3) "locationId:originalDocNo" -> SalesOrder
   const orderByLocAndOrigDoc = new Map<string, typeof orders[0]>();
+  // 4) "originalDocNo" -> SalesOrder[] (fallback if unique)
   const orderByOrigDocOnly = new Map<string, typeof orders[0][]>();
+  // 5) "orderNumber" -> SalesOrder
   const orderByOrderNumber = new Map<string, typeof orders[0]>();
 
   for (const o of orders) {
@@ -498,9 +518,26 @@ async function processTenantCorporateVouchers(
         const key = `${o.locationId}:${origDoc}`;
         orderByLocAndOrigDoc.set(key, o);
 
+        if (o.createdAt) {
+          const dateKey = o.createdAt.toISOString().slice(0, 10);
+          orderByLocDocAndDate.set(`${o.locationId}:${origDoc}:${dateKey}`, o);
+        }
+
         const list = orderByOrigDocOnly.get(origDoc) || [];
         list.push(o);
         orderByOrigDocOnly.set(origDoc, list);
+      }
+
+      // Index voucher numbers from order Remarks (e.g. "Remarks: 10160;2381;" or ";10179;")
+      const matchRemarks = o.notes.match(/Remarks:\s*([^\|]+)/i);
+      if (matchRemarks && matchRemarks[1]) {
+        const nums = matchRemarks[1]
+          .split(/[;,\s]+/)
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n) && n > 0);
+        for (const n of nums) {
+          orderByVoucherNumberInRemarks.set(n, o);
+        }
       }
     }
   }
@@ -537,9 +574,20 @@ async function processTenantCorporateVouchers(
       settledCount++;
       settledValue += row.voucherValue;
 
-      if (loc) {
+      // Tier 1: Exact match by voucherNumber present in POS Order Remarks
+      if (orderByVoucherNumberInRemarks.has(row.voucherNumber)) {
+        matchedOrder = orderByVoucherNumberInRemarks.get(row.voucherNumber)!;
+      }
+      // Tier 2: Match by Location + FKDocumentNumber_Setteled + Date_Setteled
+      else if (loc && row.dateSettled) {
+        const dateKey = row.dateSettled.toISOString().slice(0, 10);
+        matchedOrder = orderByLocDocAndDate.get(`${loc.id}:${row.documentNumberSettled}:${dateKey}`) || null;
+      }
+      // Tier 3: Match by Location + FKDocumentNumber_Setteled
+      if (!matchedOrder && loc) {
         matchedOrder = orderByLocAndOrigDoc.get(`${loc.id}:${row.documentNumberSettled}`) || null;
       }
+      // Tier 4: Fallback to unique doc number or direct orderNumber match
       if (!matchedOrder) {
         const list = orderByOrigDocOnly.get(row.documentNumberSettled);
         if (list && list.length === 1) {
@@ -698,7 +746,10 @@ async function main() {
 
   const tenantFilter = process.argv.find((arg) => arg.startsWith('--tenant='))?.split('=')[1];
 
-  let filePath = path.join(__dirname, '..', 'data', 'corportate_vouchers.md');
+  let filePath = path.join(__dirname, '..', 'data', 'courporate_voucher.md');
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(__dirname, '..', 'data', 'corportate_vouchers.md');
+  }
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
@@ -801,8 +852,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('❌ Fatal error in corporate vouchers script:', err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('import-corporate-vouchers.ts') || process.argv[1]?.endsWith('import-corporate-vouchers.js')) {
+  main().catch((err) => {
+    console.error('❌ Fatal error in corporate vouchers script:', err);
+    process.exit(1);
+  });
+}
 

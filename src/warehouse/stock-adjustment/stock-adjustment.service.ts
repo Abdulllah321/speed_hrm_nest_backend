@@ -696,6 +696,7 @@ export class StockAdjustmentService {
             referenceType: 'STOCK_ADJUSTMENT',
             referenceId: adj.id,
             rate: line.rate,
+            createdAt: adj.adjustmentDate || new Date(),
           },
           tx,
         );
@@ -707,7 +708,7 @@ export class StockAdjustmentService {
         data: {
           status: 'SUBMITTED',
           approvedById: ctx?.userId,
-          adjustmentDate: new Date(),
+          adjustmentDate: adj.adjustmentDate || new Date(),
         },
       });
 
