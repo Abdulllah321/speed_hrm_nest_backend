@@ -151,6 +151,19 @@ export class PosSalesController {
     return this.posSalesService.lookupItem(query, locationId);
   }
 
+  @Get('test-mapping')
+  async testMapping(@Query('sku') sku: string, @Query('locationId') locId: string) {
+    const item = await this.posSalesService['prisma'].item.findFirst({
+        where: { sku: { equals: 'JC5943', mode: 'insensitive' } }
+    });
+    if (!item) return { found: false };
+    const stock = await this.posSalesService['prisma'].stockLedger.aggregate({
+        where: { itemId: item.id, locationId: locId },
+        _sum: { qty: true }
+    });
+    return { item, stock: stock._sum.qty, locId };
+  }
+
   // ─── Barcode scan — exact match, single item ──────────────────────
   @Get('scan')
   @ApiOperation({ summary: 'Scan barcode — exact match single item' })

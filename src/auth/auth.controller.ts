@@ -667,6 +667,7 @@ export class AuthController {
                   fbrNtn: terminalRaw.location.fbrNtn || '',
                   fbrSellerName: terminalRaw.location.fbrSellerName || '',
                   fbrEnabled: terminalRaw.location.fbrEnabled ?? false,
+                  isOnline: terminalRaw.location.isOnline ?? false,
                 } : null
               };
             }

@@ -117,9 +117,7 @@ export class SalesInvoiceExportService {
 
     const formatExcelDate = (date: Date) => {
       if (!date) return '';
-      const epoch = new Date(1899, 11, 30);
-      const diff = date.getTime() - epoch.getTime();
-      return Math.floor(diff / (1000 * 60 * 60 * 24));
+      return new Date(date).toLocaleDateString('en-GB');
     };
 
     let hasMore = true;

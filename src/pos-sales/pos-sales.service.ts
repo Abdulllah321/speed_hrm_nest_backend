@@ -5212,7 +5212,7 @@ export class PosSalesService implements OnModuleInit {
   }
 
   // ─── Enrich items with master data + stock for POS display ────────
-  private async enrichForPos(items: any[], locationId: string) {
+  public async enrichForPos(items: any[], locationId: string) {
     if (!items.length) return [];
 
     const itemIds = items.map((i) => i.id);
