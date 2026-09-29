@@ -8,15 +8,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 function decrypt(encryptedText: string, masterKeyString: string): string {
-  if (!masterKeyString || masterKeyString.length < 32) {
-    throw new Error('MASTER_ENCRYPTION_KEY must be at least 32 characters');
+  if (!encryptedText || !masterKeyString || masterKeyString.length < 32) {
+    return '';
   }
   const masterKey = Buffer.from(masterKeyString.slice(0, 32), 'utf-8');
   const algorithm = 'aes-256-gcm';
 
   const parts = encryptedText.split(':');
   if (parts.length !== 3) {
-    throw new Error('Invalid encrypted text format');
+    return '';
   }
 
   const iv = Buffer.from(parts[0], 'hex');
@@ -49,7 +49,6 @@ export interface ParsedSalesRow {
   valueInclSalesTax: number;
   cashSale: number;
   cashReturn: number;
-  cardSale: number;
   creditSale: number;
   giftVoucherAmount: number;
   creditVoucherAmount: number;
@@ -59,13 +58,21 @@ export interface ParsedSalesRow {
   creditVoucherIssuedAmount: number;
   rewardVoucherAmount: number;
   onCreditAmount: number;
+  cardSale: number;
+  hbl: number;
+  alliedBank: number;
+  meezanBank: number;
+  alfalahAmex: number;
+  keenu: number;
+  ubl: number;
+  mcb: number;
+  alfalah: number;
   costCentre: string;
   locationCode: string;
   posId: string;
   fbrInvoiceNumber: string;
   fkExchangeVoucherNumber: string;
   discountRateGiven: number;
-  discountRateDefault: number;
   remarks: string;
   isAllianceDiscount: boolean;
   salesPerson: string;
@@ -81,32 +88,66 @@ export function getFySuffix(date: Date): string {
   return String(fyEndYear).slice(-2);
 }
 
-export function parseCustomDate(dateStr: string): Date | null {
-  if (!dateStr || !dateStr.trim()) return null;
+export function parseCustomDate(dateVal: any): Date | null {
+  if (!dateVal) return null;
 
-  const trimmed = dateStr.trim();
-  const spaceParts = trimmed.split(/\s+/);
-  const datePart = spaceParts[0];
-  const timePart = spaceParts[1] || '0:0';
-
-  const dParts = datePart.split('/');
-  if (dParts.length !== 3) return null;
-
-  const month = parseInt(dParts[0], 10);
-  const day = parseInt(dParts[1], 10);
-  let year = parseInt(dParts[2], 10);
-
-  if (year < 100) {
-    year += 2000;
+  // Handle Excel date serial numbers like 46204 (7/1/2026)
+  if (typeof dateVal === 'number' || (!isNaN(Number(dateVal)) && !String(dateVal).includes('/') && !String(dateVal).includes('-'))) {
+    const num = Number(dateVal);
+    if (num > 30000 && num < 70000) {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      return new Date(excelEpoch.getTime() + num * 86400000);
+    }
   }
 
-  const tParts = timePart.split(':');
-  const hours = parseInt(tParts[0] || '0', 10);
-  const minutes = parseInt(tParts[1] || '0', 10);
-  const seconds = parseInt(tParts[2] || '0', 10);
+  const trimmed = String(dateVal).trim();
+  if (!trimmed) return null;
 
-  
-  return new Date(year, month - 1, day, hours, minutes, seconds);
+  const spaceParts = trimmed.split(/\s+/);
+  const datePart = spaceParts[0];
+  const timePart = spaceParts[1] || '0:0:0';
+
+  const dParts = datePart.split(/[/.\-]/);
+  if (dParts.length === 3) {
+    let p1 = parseInt(dParts[0], 10);
+    let p2 = parseInt(dParts[1], 10);
+    let p3 = parseInt(dParts[2], 10);
+
+    const tParts = timePart.split(':');
+    const hours = parseInt(tParts[0] || '0', 10);
+    const minutes = parseInt(tParts[1] || '0', 10);
+    const seconds = parseInt(tParts[2] || '0', 10);
+
+    if (p3 < 100) p3 += 2000;
+
+    // YYYY-MM-DD
+    if (p1 > 1900 && p1 < 2100) {
+      return new Date(p1, p2 - 1, p3, hours, minutes, seconds);
+    }
+
+    // M/D/YYYY (standard US / Excel POS export format)
+    if (p3 > 1900 && p3 < 2100) {
+      return new Date(p3, p1 - 1, p2, hours, minutes, seconds);
+    }
+  }
+
+  const fallback = new Date(trimmed);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+function parseMarkdownLine(line: string, isTabSep: boolean, isPipeSep: boolean): string[] {
+  if (isTabSep) {
+    return line.split('\t').map((p) => p.trim());
+  }
+  if (isPipeSep) {
+    // Protect escaped pipes \|
+    const sanitized = line.replace(/\\\\\|/g, '__ESCAPED_PIPE__').replace(/\\\|/g, '__ESCAPED_PIPE__').trim();
+    let stripped = sanitized;
+    if (stripped.startsWith('|')) stripped = stripped.substring(1);
+    if (stripped.endsWith('|')) stripped = stripped.substring(0, stripped.length - 1);
+    return stripped.split('|').map((p) => p.replace(/__ESCAPED_PIPE__/g, '|').trim());
+  }
+  return line.split(',').map((p) => p.trim());
 }
 
 export function readAndParseSalesData(filePath: string, maxRows?: number): ParsedSalesRow[] {
@@ -115,7 +156,10 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
   }
 
   const content = fs.readFileSync(filePath, 'utf-8');
-  const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '' && !l.trim().startsWith('---'));
+  const lines = content.split(/\r?\n/).filter((l) => {
+    const trimmed = l.trim();
+    return trimmed !== '' && !trimmed.startsWith('#') && !trimmed.startsWith('|-') && !trimmed.startsWith('| ---');
+  });
 
   if (lines.length < 2) {
     console.warn(`⚠️ File ${filePath} contains no data rows.`);
@@ -126,11 +170,7 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
   const isTabSep = headerLine.includes('\t');
   const isPipeSep = headerLine.includes('|');
 
-  const headers = isTabSep
-    ? headerLine.split('\t').map((h) => h.trim().toLowerCase())
-    : isPipeSep
-    ? headerLine.split('|').map((h) => h.trim().toLowerCase()).filter(Boolean)
-    : headerLine.split(',').map((h) => h.trim().toLowerCase());
+  const headers = parseMarkdownLine(headerLine, isTabSep, isPipeSep).map((h) => h.toLowerCase());
 
   const findColIndex = (keywords: string[], defaultIdx: number): number => {
     const exactIdx = headers.findIndex((h) => keywords.some((k) => h === k));
@@ -139,40 +179,48 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     return partialIdx !== -1 ? partialIdx : defaultIdx;
   };
 
-  const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 0);
-  const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 1);
-  const colBarcode = findColIndex(['barcode', 'sku', 'item'], 2);
-  const colQty = findColIndex(['quantity', 'qty'], 3);
-  const colUnitPrice = findColIndex(['unitprice', 'price'], 4);
-  const colPriceWOT = findColIndex(['price_w_o_t', 'pricewot'], 5);
-  const colTotalPriceWOT = findColIndex(['total_price_w_o_t', 'totalpricewot'], 6);
-  const colDiscountAmount = findColIndex(['discountamount', 'discount_amount'], 7);
-  const colValueExSalesTax = findColIndex(['value ex sales tax', 'valueexsalestax'], 8);
-  const colSalesTax = findColIndex(['sales tax', 'salestax'], 9);
-  const colTotalSalesTax = findColIndex(['total sales tax', 'totalsalestax'], 11);
-  const colValueInclSalesTax = findColIndex(['value incl sales tax', 'valueinclsalestax', 'grandtotal'], 12);
-  const colCashSale = findColIndex(['cashsale', 'cash'], 13);
-  const colCashReturn = findColIndex(['cashretrun', 'cashreturn'], 14);
-  const colCardSale = findColIndex(['cardsale', 'card'], 15);
-  const colCreditSale = findColIndex(['creditsale'], 16);
-  const colGiftVoucher = findColIndex(['giftvoucheramount'], 17);
-  const colCreditVoucher = findColIndex(['creditvoucheramount'], 18);
-  const colExchangeVoucher = findColIndex(['exchangevoucheramount'], 19);
-  const colClaimVoucher = findColIndex(['claimvoucheramount'], 20);
-  const colGiftVoucherCorp = findColIndex(['giftvoucheramount_corporate'], 21);
-  const colCreditVoucherIssued = findColIndex(['creditvoucherissuedamount'], 22);
-  const colRewardVoucher = findColIndex(['rewardvoucheramount'], 23);
-  const colOnCredit = findColIndex(['oncreditamount'], 24);
-  const colCostCentre = findColIndex(['costcentre', 'store', 'location name'], 25);
-  const colLocCode = findColIndex(['location code', 'locationcode', 'loc code'], 26);
-  const colPosId = findColIndex(['pos id', 'posid'], 27);
-  const colFbrInvoice = findColIndex(['fbr invoice#', 'fbrinvoice', 'fbr'], 28);
-  const colExchangeVoucherNo = findColIndex(['fkexchangevouchernumber'], 29);
-  const colDiscRateGiven = findColIndex(['discountrate_given'], 30);
-  const colDiscRateDefault = findColIndex(['discountrate_default_current'], 31);
-  const colRemarks = findColIndex(['remarks'], 32);
-  const colIsAlliance = findColIndex(['is alliance discount'], 33);
-  const colSalesPerson = findColIndex(['salesperson', 'cashier'], 34);
+  const colCostCentre = findColIndex(['costcentre', 'location name', 'store'], 0);
+  const colLocCode = findColIndex(['location id', 'location code', 'locationcode', 'loc code'], 1);
+  const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 2);
+  const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 3);
+  const colBarcode = findColIndex(['barcode', 'sku', 'item'], 4);
+  const colQty = findColIndex(['quantity', 'qty'], 5);
+  const colUnitPrice = findColIndex(['unitprice', 'price'], 6);
+  const colPriceWOT = findColIndex(['price_w_o_t', 'pricewot', 'price w/o tax'], 7);
+  const colTotalPriceWOT = findColIndex(['total_price_w_o_t', 'totalpricewot'], 8);
+  const colDiscountAmount = findColIndex(['discountamount', 'discount_amount', 'discount amount'], 9);
+  const colValueExSalesTax = findColIndex(['value ex sales tax', 'valueexsalestax'], 10);
+  const colSalesTax = findColIndex(['sales tax', 'salestax'], 11);
+  const colAdditionalTax = findColIndex(['additional sales tax', 'additionalsalestax'], 12);
+  const colTotalSalesTax = findColIndex(['total sales tax', 'totalsalestax'], 13);
+  const colValueInclSalesTax = findColIndex(['value incl sales tax', 'valueinclsalestax', 'grandtotal'], 14);
+  const colCashSale = findColIndex(['cashsale', 'cash'], 15);
+  const colExchangeVoucher = findColIndex(['exchangevoucheramount', 'exchange voucher'], 16);
+  const colCreditVoucher = findColIndex(['creditvoucheramount', 'credit voucher'], 17);
+  const colGiftVoucher = findColIndex(['giftvoucheramount', 'gift voucher'], -1);
+  const colClaimVoucher = findColIndex(['claimvoucheramount', 'claim voucher'], -1);
+  const colGiftVoucherCorp = findColIndex(['corporate voucher', 'corporatevoucher', 'giftvoucheramount_corporate', 'gift voucher corporate'], -1);
+  const colOnCredit = findColIndex(['on credit', 'oncreditamount', 'oncredit'], -1);
+  const colRewardVoucher = findColIndex(['reward voucher', 'rewardvoucheramount', 'rewardvoucher'], -1);
+  const colCreditVoucherIssued = findColIndex(['creditvoucherissuedamount', 'credit voucher issued', 'creditvoucherissued'], -1);
+  const colCardSale = findColIndex(['cardsale', 'card sale', 'card'], -1);
+  const colHbl = findColIndex(['hbl'], -1);
+  const colAllied = findColIndex(['allied bank', 'allied'], -1);
+  const colMeezan = findColIndex(['meezan bank', 'meezan'], -1);
+  const colAlfalahAmex = findColIndex(['al-falah | amex', 'alfalah | amex', 'amex'], -1);
+  const colKeenu = findColIndex(['keenu'], -1);
+  const colAlfalah = findColIndex(['al-falah', 'alfalah'], -1);
+  const colUbl = findColIndex(['ubl'], -1);
+  const colMcb = findColIndex(['mcb'], -1);
+  const colPosId = findColIndex(['pos id', 'posid'], 31);
+  const colFbrInvoice = findColIndex(['fbr invoice#', 'fbr invoice', 'fbrinvoice', 'fbr'], 32);
+  const colExchangeVoucherNo = findColIndex(['fkexchangevouchernumber', 'exchange voucher no'], 33);
+  const colDiscRateGiven = findColIndex(['discountrate_given', 'discount rate'], 34);
+  const colRemarks = findColIndex(['remarks'], 35);
+  const colIsAlliance = findColIndex(['is alliance discount', 'is alliance'], 36);
+  const colSalesPerson = findColIndex(['salesperson', 'cashier', 'fksalespersonid'], 37);
+  const colCashReturn = findColIndex(['cashretrun', 'cashreturn', 'cash return'], -1);
+  const colCreditSale = colOnCredit;
 
   const rawParsed: ParsedSalesRow[] = [];
 
@@ -180,12 +228,7 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     const rawLine = lines[i].trim();
     if (!rawLine || rawLine.startsWith('---')) continue;
 
-    let parts = isTabSep
-      ? rawLine.split('\t').map((p) => p.trim())
-      : isPipeSep
-      ? rawLine.split('|').map((p) => p.trim()).filter(Boolean)
-      : rawLine.split(',').map((p) => p.trim());
-
+    const parts = parseMarkdownLine(rawLine, isTabSep, isPipeSep);
     if (parts.length < 5) continue;
 
     const docNo = parts[colDocNo] || '';
@@ -201,19 +244,26 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     const rawTotalSalesTax = parseFloat(parts[colTotalSalesTax] || '0') || rawSalesTax;
     const rawValueInclSalesTax = parseFloat(parts[colValueInclSalesTax] || '0') || 0;
     const discountRateGiven = parseFloat(parts[colDiscRateGiven] || '0') || 0;
-    const discountRateDefault = parseFloat(parts[colDiscRateDefault] || '0') || 0;
     const cashSale = parseFloat(parts[colCashSale] || '0') || 0;
-    const cashReturn = parseFloat(parts[colCashReturn] || '0') || 0;
-    const cardSale = parseFloat(parts[colCardSale] || '0') || 0;
-    const creditSale = parseFloat(parts[colCreditSale] || '0') || 0;
-    const giftVoucherAmount = parseFloat(parts[colGiftVoucher] || '0') || 0;
-    const creditVoucherAmount = parseFloat(parts[colCreditVoucher] || '0') || 0;
+    const cashReturn = colCashReturn >= 0 ? parseFloat(parts[colCashReturn] || '0') || 0 : 0;
     const exchangeVoucherAmount = parseFloat(parts[colExchangeVoucher] || '0') || 0;
+    const creditVoucherAmount = parseFloat(parts[colCreditVoucher] || '0') || 0;
+    const giftVoucherAmount = parseFloat(parts[colGiftVoucher] || '0') || 0;
     const claimVoucherAmount = parseFloat(parts[colClaimVoucher] || '0') || 0;
     const giftVoucherCorporate = parseFloat(parts[colGiftVoucherCorp] || '0') || 0;
     const creditVoucherIssuedAmount = parseFloat(parts[colCreditVoucherIssued] || '0') || 0;
     const rewardVoucherAmount = parseFloat(parts[colRewardVoucher] || '0') || 0;
     const onCreditAmount = parseFloat(parts[colOnCredit] || '0') || 0;
+    const creditSale = onCreditAmount;
+    const cardSale = parseFloat(parts[colCardSale] || '0') || 0;
+    const hbl = colHbl >= 0 ? parseFloat(parts[colHbl] || '0') || 0 : 0;
+    const alliedBank = colAllied >= 0 ? parseFloat(parts[colAllied] || '0') || 0 : 0;
+    const meezanBank = colMeezan >= 0 ? parseFloat(parts[colMeezan] || '0') || 0 : 0;
+    const alfalahAmex = colAlfalahAmex >= 0 ? parseFloat(parts[colAlfalahAmex] || '0') || 0 : 0;
+    const keenu = colKeenu >= 0 ? parseFloat(parts[colKeenu] || '0') || 0 : 0;
+    const ubl = colUbl >= 0 ? parseFloat(parts[colUbl] || '0') || 0 : 0;
+    const mcb = colMcb >= 0 ? parseFloat(parts[colMcb] || '0') || 0 : 0;
+    const alfalah = colAlfalah >= 0 ? parseFloat(parts[colAlfalah] || '0') || 0 : 0;
     const costCentre = parts[colCostCentre] || '';
     const locationCode = parts[colLocCode] || '';
     const posId = parts[colPosId] || '';
@@ -228,8 +278,7 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
     const docDate = parseCustomDate(docDateStr);
     if (!docDate || isNaN(docDate.getTime())) continue;
 
-    // ── Calculate WOST, Discount, Tax according to POS Sales Creation Formula ──
-    // 1. Determine tax percent
+    // Calculate WOST, Discount, Tax according to POS Sales Formula
     let taxPercent = 0;
     if (rawTotalSalesTax > 0 && rawValueExSalesTax > 0) {
       taxPercent = Math.round((rawTotalSalesTax / rawValueExSalesTax) * 100 * 100) / 100;
@@ -242,37 +291,31 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
 
     const taxDivisor = 1 + taxPercent / 100;
 
-    // 2. WOST per unit (Price W/O Tax)
     let priceWOT = rawPriceWOT;
     if (priceWOT <= 0 && unitPrice > 0) {
       priceWOT = Math.round((unitPrice / taxDivisor) * 100) / 100;
     }
 
-    // 3. Total Price W/O Tax
     let totalPriceWOT = rawTotalPriceWOT;
     if (totalPriceWOT <= 0) {
       totalPriceWOT = Math.round(priceWOT * quantity * 100) / 100;
     }
 
-    // 4. Discount amount (applied on WOST)
     let discountAmount = rawDiscountAmount;
     if (discountAmount <= 0 && discountRateGiven > 0) {
       discountAmount = Math.round(totalPriceWOT * (discountRateGiven / 100) * 100) / 100;
     }
 
-    // 5. Value Excluding Sales Tax (Amount after discount)
     let valueExSalesTax = rawValueExSalesTax;
     if (valueExSalesTax <= 0) {
       valueExSalesTax = Math.round((totalPriceWOT - discountAmount) * 100) / 100;
     }
 
-    // 6. Total Sales Tax (Tax on value excluding sales tax)
     let totalSalesTax = rawTotalSalesTax;
     if (totalSalesTax <= 0 && valueExSalesTax > 0 && taxPercent > 0) {
       totalSalesTax = Math.round((valueExSalesTax * (taxPercent / 100)) * 100) / 100;
     }
 
-    // 7. Value Including Sales Tax (Line Total)
     let valueInclSalesTax = rawValueInclSalesTax;
     if (valueInclSalesTax <= 0) {
       valueInclSalesTax = Math.round((valueExSalesTax + totalSalesTax) * 100) / 100;
@@ -295,7 +338,6 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
       valueInclSalesTax,
       cashSale,
       cashReturn,
-      cardSale,
       creditSale,
       giftVoucherAmount,
       creditVoucherAmount,
@@ -305,13 +347,21 @@ export function readAndParseSalesData(filePath: string, maxRows?: number): Parse
       creditVoucherIssuedAmount,
       rewardVoucherAmount,
       onCreditAmount,
+      cardSale,
+      hbl,
+      alliedBank,
+      meezanBank,
+      alfalahAmex,
+      keenu,
+      ubl,
+      mcb,
+      alfalah,
       costCentre,
       locationCode,
       posId,
       fbrInvoiceNumber,
       fkExchangeVoucherNumber,
       discountRateGiven,
-      discountRateDefault,
       remarks,
       isAllianceDiscount,
       salesPerson,
@@ -336,82 +386,70 @@ async function processSalesForTenant(
   console.log(`📦 ${isDryRun ? '[DRY RUN MODE]' : '[LIVE COMMIT MODE]'} Processing ${rows.length} sales rows...`);
   console.log(`==================================================\n`);
 
+  const isWipeAll = process.argv.includes('--wipe-all');
+
+  const minDocDate = new Date(Math.min(...rows.map((r) => r.docDate.getTime())));
+  const maxDocDate = new Date(Math.max(...rows.map((r) => r.docDate.getTime())));
+  // End of max day
+  const maxDocDateEnd = new Date(maxDocDate);
+  maxDocDateEnd.setHours(23, 59, 59, 999);
+
+  console.log(`📅 Incoming Sales Batch Date Range: ${minDocDate.toISOString().slice(0, 10)} to ${maxDocDate.toISOString().slice(0, 10)}`);
+
   if (!isDryRun) {
-    console.log(`🧹 Cleaning up previously imported Sales Order records & Return Vouchers...`);
-
-    // Clean up return vouchers
-    const existingVouchers = await prisma.voucher.findMany({
-      where: {
-        OR: [
-          { code: { startsWith: 'EXC-' } },
-          { code: { startsWith: 'CLM-' } },
-          { code: { startsWith: 'REF-' } },
-        ],
-      },
-      select: { id: true },
-    });
-
-    if (existingVouchers.length > 0) {
-      const voucherIds = existingVouchers.map((v) => v.id);
-      await prisma.stockMovement.deleteMany({
+    if (isWipeAll) {
+      console.log(`⚠️ WIPE ALL FLAG DETECTED: Cleaning up ALL previously imported Sales Order records & Redemptions...`);
+      await prisma.voucherRedemption.deleteMany({});
+      const existingOrders = await prisma.salesOrder.findMany({
         where: {
           OR: [
-            { referenceId: { in: voucherIds } },
-            { notes: { contains: 'POS Return' } },
+            { orderNumber: { startsWith: 'SI-' } },
+            { notes: { contains: 'Original DocNo:' } },
           ],
         },
+        select: { id: true },
       });
-      await prisma.stockLedger.deleteMany({
+      if (existingOrders.length > 0) {
+        const orderIds = existingOrders.map((o) => o.id);
+        console.log(`  Found ${orderIds.length} existing Sales Orders to clean up.`);
+        await prisma.salesOrderItem.deleteMany({ where: { salesOrderId: { in: orderIds } } });
+        await prisma.stockMovement.deleteMany({
+          where: { OR: [{ referenceId: { in: orderIds } }, { notes: { contains: 'POS Sale' } }] },
+        });
+        await prisma.stockLedger.deleteMany({ where: { referenceId: { in: orderIds } } });
+        await prisma.salesOrder.deleteMany({ where: { id: { in: orderIds } } });
+        console.log(`  ✅ Successfully wiped ${orderIds.length} old Sales Order records.`);
+      }
+    } else {
+      console.log(`🧹 Checking for existing records in incoming date range (${minDocDate.toISOString().slice(0, 10)} to ${maxDocDate.toISOString().slice(0, 10)})...`);
+      const existingRangeOrders = await prisma.salesOrder.findMany({
         where: {
+          createdAt: {
+            gte: minDocDate,
+            lte: maxDocDateEnd,
+          },
           OR: [
-            { referenceId: { in: voucherIds } },
-            { referenceType: 'POS_RETURN' },
+            { orderNumber: { startsWith: 'SI-' } },
+            { notes: { contains: 'Original DocNo:' } },
           ],
         },
-      });
-      await prisma.voucher.deleteMany({
-        where: { id: { in: voucherIds } },
-      });
-      console.log(`  ✅ Successfully wiped ${existingVouchers.length} old Return Vouchers.`);
-    }
-
-    // Clean up sales orders
-    const existingOrders = await prisma.salesOrder.findMany({
-      where: {
-        OR: [
-          { orderNumber: { startsWith: 'SI-' } },
-          { notes: { contains: 'Original DocNo:' } },
-        ],
-      },
-      select: { id: true },
-    });
-
-    if (existingOrders.length > 0) {
-      const orderIds = existingOrders.map((o) => o.id);
-      console.log(`  Found ${orderIds.length} existing Sales Orders to clean up.`);
-
-      await prisma.salesOrderItem.deleteMany({
-        where: { salesOrderId: { in: orderIds } },
+        select: { id: true },
       });
 
-      await prisma.stockMovement.deleteMany({
-        where: {
-          OR: [
-            { referenceId: { in: orderIds } },
-            { notes: { contains: 'POS Sale' } },
-          ],
-        },
-      });
-
-      await prisma.stockLedger.deleteMany({
-        where: { referenceId: { in: orderIds } },
-      });
-
-      await prisma.salesOrder.deleteMany({
-        where: { id: { in: orderIds } },
-      });
-
-      console.log(`  ✅ Successfully wiped ${orderIds.length} old Sales Order records.`);
+      if (existingRangeOrders.length > 0) {
+        const orderIds = existingRangeOrders.map((o) => o.id);
+        console.log(`  Found ${orderIds.length} existing Sales Orders in date range to replace.`);
+        await prisma.voucherRedemption.deleteMany({ where: { orderId: { in: orderIds } } });
+        await prisma.salesOrderItem.deleteMany({ where: { salesOrderId: { in: orderIds } } });
+        await prisma.stockMovement.deleteMany({
+          where: { referenceId: { in: orderIds } },
+        });
+        await prisma.stockLedger.deleteMany({ where: { referenceId: { in: orderIds } } });
+        await prisma.salesOrder.deleteMany({ where: { id: { in: orderIds } } });
+        console.log(`  ✅ Successfully cleaned up ${orderIds.length} existing range Sales Orders.`);
+      } else {
+        console.log(`  ✨ No overlapping sales orders found in target date range. Appending cleanly.`);
+      }
     }
   }
 
@@ -438,10 +476,27 @@ async function processSalesForTenant(
 
   const locationCache = new Map<string, any>();
   const itemCache = new Map<string, any>();
+  const merchantCache = new Map<string, any>();
+
+  // Pre-cache all locations in single query
+  if (!isDryRun) {
+    const allLocations = await prisma.location.findMany({
+      where: { isDeleted: false },
+      select: { id: true, code: true, shortCode: true, name: true, warehouseId: true },
+    });
+    for (const loc of allLocations) {
+      if (loc.code) locationCache.set(loc.code, loc);
+      if (loc.shortCode) locationCache.set(loc.shortCode, loc);
+      if (loc.name) locationCache.set(loc.name, loc);
+    }
+  }
 
   async function resolveLocation(code: string, name: string): Promise<any> {
     if (locationCache.has(code)) {
       return locationCache.get(code)!;
+    }
+    if (locationCache.has(name)) {
+      return locationCache.get(name)!;
     }
 
     if (!isDryRun) {
@@ -471,44 +526,101 @@ async function processSalesForTenant(
         });
       }
       locationCache.set(code, loc);
+      if (name) locationCache.set(name, loc);
       return loc;
     } else {
-      const loc = { id: `loc-${code}`, code, shortCode: code, name: name || 'Location' };
+      const loc = { id: `loc-${code}`, code, shortCode: code, name: name || 'Location', warehouseId: 'wh-default' };
       locationCache.set(code, loc);
+      if (name) locationCache.set(name, loc);
       return loc;
+    }
+  }
+
+  // Pre-cache merchants
+  if (!isDryRun) {
+    const merchants = await prisma.merchantConfig.findMany();
+    for (const m of merchants) {
+      const nameKey = (m.bankName || m.description || '').toLowerCase();
+      if (nameKey) merchantCache.set(nameKey, m);
     }
   }
 
   console.log(`⚙️ Pre-caching Locations and Item Barcodes...`);
 
+  // Fast Bulk Resolution of Locations
+  const uniqueLocMap = new Map<string, string>();
   for (const row of rows) {
-    await resolveLocation(row.locationCode, row.costCentre);
-
-    if (!itemCache.has(row.barCode)) {
-      if (!isDryRun) {
-        let item = await prisma.item.findFirst({
-          where: { barCode: row.barCode },
-        });
-        if (!item) {
-          item = await prisma.item.create({
-            data: {
-              itemId: `ITEM-${row.barCode}`,
-              sku: row.barCode,
-              barCode: row.barCode,
-              description: `POS Item (${row.barCode})`,
-              unitPrice: row.unitPrice,
-              unitCost: 0,
-              status: 'active',
-              isActive: true,
-            },
-          });
-        }
-        itemCache.set(row.barCode, item);
-      } else {
-        itemCache.set(row.barCode, { id: `item-${row.barCode}`, barCode: row.barCode, unitPrice: row.unitPrice });
-      }
+    if (!uniqueLocMap.has(row.locationCode)) {
+      uniqueLocMap.set(row.locationCode, row.costCentre);
     }
   }
+  for (const [code, name] of uniqueLocMap.entries()) {
+    await resolveLocation(code, name);
+  }
+
+  // Fast Bulk Resolution of Items (1-query read + bulk create missing)
+  const uniqueBarcodes = Array.from(new Set(rows.map((r) => r.barCode)));
+  console.log(`  Found ${uniqueBarcodes.length.toLocaleString()} unique barcodes in sales data.`);
+
+  if (!isDryRun) {
+    const CHUNK_SIZE = 5000;
+    for (let i = 0; i < uniqueBarcodes.length; i += CHUNK_SIZE) {
+      const batchCodes = uniqueBarcodes.slice(i, i + CHUNK_SIZE);
+      const existingItems = await prisma.item.findMany({
+        where: { barCode: { in: batchCodes } },
+        select: { id: true, barCode: true, sku: true, unitPrice: true },
+      });
+      for (const it of existingItems) {
+        if (it.barCode) itemCache.set(it.barCode, it);
+      }
+    }
+
+    const missingBarcodes: { barCode: string; unitPrice: number }[] = [];
+    const seenMissing = new Set<string>();
+    for (const row of rows) {
+      if (!itemCache.has(row.barCode) && !seenMissing.has(row.barCode)) {
+        seenMissing.add(row.barCode);
+        missingBarcodes.push({ barCode: row.barCode, unitPrice: row.unitPrice });
+      }
+    }
+
+    if (missingBarcodes.length > 0) {
+      console.log(`  📦 Creating ${missingBarcodes.length.toLocaleString()} missing items in bulk...`);
+      for (let i = 0; i < missingBarcodes.length; i += CHUNK_SIZE) {
+        const batch = missingBarcodes.slice(i, i + CHUNK_SIZE);
+        await prisma.item.createMany({
+          data: batch.map((b) => ({
+            itemId: `ITEM-${b.barCode}`,
+            sku: b.barCode,
+            barCode: b.barCode,
+            description: `POS Item (${b.barCode})`,
+            unitPrice: b.unitPrice,
+            unitCost: 0,
+            status: 'active',
+            isActive: true,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      for (let i = 0; i < missingBarcodes.length; i += CHUNK_SIZE) {
+        const batchCodes = missingBarcodes.slice(i, i + CHUNK_SIZE).map((b) => b.barCode);
+        const createdItems = await prisma.item.findMany({
+          where: { barCode: { in: batchCodes } },
+          select: { id: true, barCode: true, sku: true, unitPrice: true },
+        });
+        for (const it of createdItems) {
+          if (it.barCode) itemCache.set(it.barCode, it);
+        }
+      }
+    }
+  } else {
+    for (const code of uniqueBarcodes) {
+      itemCache.set(code, { id: `item-${code}`, barCode: code, unitPrice: 0 });
+    }
+  }
+
+  console.log(`  ✅ Successfully cached ${itemCache.size.toLocaleString()} items.`);
 
   const salesGroups = new Map<string, ParsedSalesRow[]>();
   for (const row of rows) {
@@ -519,12 +631,76 @@ async function processSalesForTenant(
     salesGroups.get(groupKey)!.push(row);
   }
 
-  console.log(`📋 Grouped ${rows.length} total rows into ${salesGroups.size} Cash Memo Sales Orders.`);
+  console.log(`📋 Grouped ${rows.length.toLocaleString()} total rows into ${salesGroups.size.toLocaleString()} Cash Memo Sales Orders.`);
 
   const locSeqMap = new Map<string, number>();
 
+  if (!isDryRun) {
+    const existingOrders = await prisma.salesOrder.findMany({
+      select: { orderNumber: true },
+    });
+    for (const ord of existingOrders) {
+      if (!ord.orderNumber) continue;
+      // Match SI-{CODE}{FY}-{SEQ}, e.g. SI-ADILOM27-00866 or SI-A1000227-00001
+      const m = ord.orderNumber.match(/^SI-([A-Za-z0-9]+?)(2\d)-(\d+)$/);
+      if (m) {
+        const code = m[1].toUpperCase();
+        const fy = m[2];
+        const seq = parseInt(m[3], 10);
+        const seqKey = `${code}_${fy}`;
+        const currentMax = locSeqMap.get(seqKey) || 0;
+        if (seq > currentMax) {
+          locSeqMap.set(seqKey, seq);
+        }
+      } else {
+        const m2 = ord.orderNumber.match(/^SI-([A-Za-z0-9]+)-(\d+)$/);
+        if (m2) {
+          const key = m2[1].toUpperCase();
+          const seq = parseInt(m2[2], 10);
+          const currentMax = locSeqMap.get(key) || 0;
+          if (seq > currentMax) {
+            locSeqMap.set(key, seq);
+          }
+        }
+      }
+    }
+    console.log(`  🔢 Initialized sequence counters from ${existingOrders.length.toLocaleString()} existing database orders across ${locSeqMap.size} location counters.`);
+  }
+
   let processedLines = 0;
   let totalRevenue = 0;
+  let linkedVouchersCount = 0;
+
+  // Batch accumulation buffers for 100x bulk throughput
+  const BATCH_FLUSH_SIZE = 1000;
+  let salesOrdersBatch: any[] = [];
+  let salesOrderItemsBatch: any[] = [];
+  let stockLedgerBatch: any[] = [];
+  let stockMovementBatch: any[] = [];
+  let voucherRedemptionsBatch: any[] = [];
+
+  let ordersCount = 0;
+
+  const flushBatches = async () => {
+    if (salesOrdersBatch.length === 0) return;
+
+    await prisma.salesOrder.createMany({ data: salesOrdersBatch });
+    await prisma.salesOrderItem.createMany({ data: salesOrderItemsBatch });
+    await prisma.stockLedger.createMany({ data: stockLedgerBatch });
+    await prisma.stockMovement.createMany({ data: stockMovementBatch });
+    if (voucherRedemptionsBatch.length > 0) {
+      await prisma.voucherRedemption.createMany({
+        data: voucherRedemptionsBatch,
+        skipDuplicates: true,
+      });
+    }
+
+    salesOrdersBatch = [];
+    salesOrderItemsBatch = [];
+    stockLedgerBatch = [];
+    stockMovementBatch = [];
+    voucherRedemptionsBatch = [];
+  };
 
   for (const [groupKey, groupRows] of salesGroups.entries()) {
     const sample = groupRows[0];
@@ -539,6 +715,7 @@ async function processSalesForTenant(
     locSeqMap.set(seqKey, seq);
 
     const orderNumber = `SI-${cleanCode}${fySuffix}-${String(seq).padStart(5, '0')}`;
+    const orderId = crypto.randomUUID();
 
     const subtotal = groupRows.reduce((acc, r) => acc + (r.totalPriceWOT || (r.priceWOT * r.quantity)), 0);
     const discountAmount = groupRows.reduce((acc, r) => acc + r.discountAmount, 0);
@@ -547,138 +724,216 @@ async function processSalesForTenant(
 
     totalRevenue += grandTotal;
 
-    const cashAmount = sample.cashSale || 0;
-    const cardAmount = sample.cardSale || 0;
-    const voucherAmount = (sample.giftVoucherAmount || 0) + (sample.creditVoucherAmount || 0) +
-                          (sample.exchangeVoucherAmount || 0) + (sample.claimVoucherAmount || 0) +
-                          (sample.giftVoucherCorporate || 0) + (sample.rewardVoucherAmount || 0);
+    // Full row-by-row aggregation of all tender channels across group
+    const cashSale = groupRows.reduce((acc, r) => acc + r.cashSale, 0);
+    const cashReturn = groupRows.reduce((acc, r) => acc + r.cashReturn, 0);
+    const cardSale = groupRows.reduce((acc, r) => acc + r.cardSale, 0);
+    const creditSale = groupRows.reduce((acc, r) => acc + r.creditSale, 0);
+    const giftVoucherAmount = groupRows.reduce((acc, r) => acc + r.giftVoucherAmount, 0);
+    const creditVoucherAmount = groupRows.reduce((acc, r) => acc + r.creditVoucherAmount, 0);
+    const exchangeVoucherAmount = groupRows.reduce((acc, r) => acc + r.exchangeVoucherAmount, 0);
+    const claimVoucherAmount = groupRows.reduce((acc, r) => acc + r.claimVoucherAmount, 0);
+    const giftVoucherCorporate = groupRows.reduce((acc, r) => acc + r.giftVoucherCorporate, 0);
+    const creditVoucherIssuedAmount = groupRows.reduce((acc, r) => acc + r.creditVoucherIssuedAmount, 0);
+    const rewardVoucherAmount = groupRows.reduce((acc, r) => acc + r.rewardVoucherAmount, 0);
+    const onCreditAmount = groupRows.reduce((acc, r) => acc + r.onCreditAmount, 0);
+
+    // Bank card breakdown sums
+    const totalHbl = groupRows.reduce((acc, r) => acc + r.hbl, 0);
+    const totalAllied = groupRows.reduce((acc, r) => acc + r.alliedBank, 0);
+    const totalMeezan = groupRows.reduce((acc, r) => acc + r.meezanBank, 0);
+    const totalAlfalahAmex = groupRows.reduce((acc, r) => acc + r.alfalahAmex, 0);
+    const totalKeenu = groupRows.reduce((acc, r) => acc + r.keenu, 0);
+    const totalUbl = groupRows.reduce((acc, r) => acc + r.ubl, 0);
+    const totalMcb = groupRows.reduce((acc, r) => acc + r.mcb, 0);
+    const totalAlfalah = groupRows.reduce((acc, r) => acc + r.alfalah, 0);
+
+    let cardBankName = '';
+    if (totalMeezan > 0) cardBankName = 'Meezan Bank';
+    else if (totalAllied > 0) cardBankName = 'Allied Bank';
+    else if (totalHbl > 0) cardBankName = 'HBL';
+    else if (totalAlfalahAmex > 0) cardBankName = 'AL-Falah | AMEX';
+    else if (totalAlfalah > 0) cardBankName = 'AL-Falah';
+    else if (totalKeenu > 0) cardBankName = 'KEENU';
+    else if (totalUbl > 0) cardBankName = 'UBL';
+    else if (totalMcb > 0) cardBankName = 'MCB';
+
+    const voucherAmount = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount +
+                          claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
+
+    const activeTendersCount = [cashSale > 0, cardSale > 0, voucherAmount > 0, creditSale > 0].filter(Boolean).length;
 
     let paymentMethod = 'cash';
-    if ((cardAmount > 0 && cashAmount > 0) || (cardAmount > 0 && voucherAmount > 0) || (cashAmount > 0 && voucherAmount > 0)) {
+    if (activeTendersCount > 1) {
       paymentMethod = 'split';
-    } else if (cardAmount > 0) {
+    } else if (cardSale > 0) {
       paymentMethod = 'card';
     } else if (voucherAmount > 0) {
       paymentMethod = 'voucher';
+    } else if (creditSale > 0) {
+      paymentMethod = 'credit_account';
     }
 
-    const orderNotes = `Original DocNo: ${sample.docNo} | SalesPerson: ${sample.salesPerson || 'N/A'} | Remarks: ${sample.remarks || 'N/A'}`;
+    const fkExchangeRef = groupRows.map((r) => r.fkExchangeVoucherNumber).find((v) => Boolean(v && v.trim())) || '';
+
+    // Build structured notes
+    const notesParts: string[] = [
+      `Original DocNo: ${sample.docNo}`,
+      `POS ID: ${sample.posId || 'N/A'}`,
+    ];
+
+    if (sample.salesPerson && sample.salesPerson.trim()) {
+      notesParts.push(`SalesPerson: ${sample.salesPerson.trim()}`);
+    }
+    if (sample.remarks && sample.remarks.trim() && sample.remarks.trim() !== ';') {
+      notesParts.push(`Remarks: ${sample.remarks.trim()}`);
+    }
+    if (fkExchangeRef) {
+      notesParts.push(`ExVoucherRef: ${fkExchangeRef}`);
+    }
+    if (cardBankName) {
+      notesParts.push(`Bank: ${cardBankName}`);
+    }
+
+    // Standardized structured tags for 100% exact parsing across all services
+    if (cashSale > 0) notesParts.push(`[Cash Sale] Amount: ${cashSale.toFixed(2)}`);
+    if (cardSale > 0) {
+      if (cardBankName) {
+        notesParts.push(`[Card Sale] Bank: ${cardBankName} (PKR ${cardSale.toFixed(2)})`);
+      }
+      notesParts.push(`[Card Sale] Amount: ${cardSale.toFixed(2)}`);
+    }
+    if (exchangeVoucherAmount > 0) notesParts.push(`[Exchange Voucher] Amount: ${exchangeVoucherAmount.toFixed(2)}`);
+    if (claimVoucherAmount > 0) notesParts.push(`[Claim Voucher] Amount: ${claimVoucherAmount.toFixed(2)}`);
+    if (giftVoucherCorporate > 0) notesParts.push(`[Corporate Voucher] Amount: ${giftVoucherCorporate.toFixed(2)}`);
+    if (giftVoucherAmount > 0) notesParts.push(`[Gift Voucher] Amount: ${giftVoucherAmount.toFixed(2)}`);
+    if (creditVoucherAmount > 0) notesParts.push(`[Credit Voucher] Amount: ${creditVoucherAmount.toFixed(2)}`);
+    if (rewardVoucherAmount > 0) notesParts.push(`[Reward Voucher] Amount: ${rewardVoucherAmount.toFixed(2)}`);
+    if (creditSale > 0) notesParts.push(`[Credit Sale] Balance: ${creditSale.toFixed(2)}`);
+    if (creditVoucherIssuedAmount > 0) notesParts.push(`[Credit Voucher Issued] Amount: ${creditVoucherIssuedAmount.toFixed(2)}`);
+    if (cashReturn > 0) notesParts.push(`[Cash Return] Amount: ${cashReturn.toFixed(2)}`);
+
+    const orderNotes = notesParts.join(' | ');
 
     if (isDryRun) {
-      if (seq <= 10 || seq % 20 === 0 || seq === 100) {
-        console.log(`🔍 [DRY-RUN #${orderNumber}] Date:${sample.docDateStr} | Store:${location.name} | GrandTotal: PKR ${grandTotal.toLocaleString()} | Items:${groupRows.length} | FBR:${sample.fbrInvoiceNumber || 'N/A'}`);
+      if (seq <= 5 || seq % 1000 === 0) {
+        console.log(`🔍 [DRY-RUN #${orderNumber}] Date:${sample.docDate.toISOString().slice(0, 10)} | Store:${location.name} | Total: PKR ${grandTotal.toLocaleString()} | Cash:${cashSale} Card:${cardSale} Exch:${exchangeVoucherAmount} Credit:${creditSale} Bank:${cardBankName || 'N/A'}`);
       }
       processedLines += groupRows.length;
       continue;
     }
 
-    const salesOrder = await prisma.salesOrder.create({
-      data: {
-        orderNumber,
-        posId: sample.posId || null,
-        terminalId: sample.posId || null,
-        locationId: location.id,
-        subtotal: subtotal,
-        discountAmount: discountAmount,
-        taxAmount: taxAmount,
-        grandTotal: grandTotal,
-        paymentMethod: paymentMethod,
-        paymentStatus: 'paid',
-        status: 'completed',
-        notes: orderNotes,
-        fbrInvoiceNumber: sample.fbrInvoiceNumber || null,
-        fbrStatus: sample.fbrInvoiceNumber ? 'COMPLETED' : 'PENDING',
-        cashAmount: cashAmount || null,
-        cardAmount: cardAmount || null,
-        voucherAmount: voucherAmount || null,
-        createdAt: sample.docDate,
-        updatedAt: sample.docDate,
-      },
+    // Resolve merchant ID if applicable
+    let merchantId: string | null = null;
+    if (cardBankName) {
+      const bankLower = cardBankName.toLowerCase();
+      for (const [k, m] of merchantCache.entries()) {
+        if (k.includes(bankLower) || bankLower.includes(k)) {
+          merchantId = m.id;
+          break;
+        }
+      }
+    }
+
+    salesOrdersBatch.push({
+      id: orderId,
+      orderNumber,
+      posId: sample.posId || null,
+      terminalId: sample.posId || null,
+      locationId: location.id,
+      merchantId: merchantId || null,
+      subtotal: subtotal,
+      discountAmount: discountAmount,
+      taxAmount: taxAmount,
+      grandTotal: grandTotal,
+      paymentMethod: paymentMethod,
+      tenderType: activeTendersCount > 1 ? 'split' : paymentMethod,
+      paymentStatus: 'paid',
+      status: 'completed',
+      notes: orderNotes,
+      fbrInvoiceNumber: sample.fbrInvoiceNumber || null,
+      fbrStatus: sample.fbrInvoiceNumber ? 'COMPLETED' : 'PENDING',
+      cashAmount: cashSale > 0 ? cashSale : null,
+      cardAmount: cardSale > 0 ? cardSale : null,
+      voucherAmount: voucherAmount > 0 ? voucherAmount : null,
+      createdAt: sample.docDate,
+      updatedAt: sample.docDate,
     });
 
     for (const row of groupRows) {
-      const item = itemCache.get(row.barCode);
+      const item = itemCache.get(row.barCode) || { id: 'item-fallback' };
       const qty = row.quantity;
 
       const lineTaxPercent = row.valueExSalesTax > 0
         ? Math.round((row.totalSalesTax / row.valueExSalesTax) * 100 * 100) / 100
         : 0;
 
-      await prisma.salesOrderItem.create({
-        data: {
-          salesOrderId: salesOrder.id,
-          itemId: item.id,
-          quantity: qty,
-          unitPrice: row.unitPrice,
-          discountPercent: row.discountRateGiven,
-          discountAmount: row.discountAmount,
-          taxPercent: lineTaxPercent,
-          taxAmount: row.totalSalesTax,
-          lineTotal: row.valueInclSalesTax,
-          createdAt: sample.docDate,
-        },
+      const itemId = item.id;
+      const salesOrderItemId = crypto.randomUUID();
+
+      salesOrderItemsBatch.push({
+        id: salesOrderItemId,
+        salesOrderId: orderId,
+        itemId: itemId,
+        quantity: qty,
+        unitPrice: row.unitPrice,
+        discountPercent: row.discountRateGiven,
+        discountAmount: row.discountAmount,
+        taxPercent: lineTaxPercent,
+        taxAmount: row.totalSalesTax,
+        lineTotal: row.valueInclSalesTax,
+        createdAt: sample.docDate,
       });
 
-      const outletInv = await prisma.inventoryItem.findFirst({
-        where: { locationId: location.id, itemId: item.id },
-      });
-
-      if (outletInv) {
-        await prisma.inventoryItem.update({
-          where: { id: outletInv.id },
-          data: { quantity: { decrement: qty } },
-        });
-      } else {
-        await prisma.inventoryItem.create({
-          data: {
-            warehouseId: defaultWarehouse.id,
-            locationId: location.id,
-            itemId: item.id,
-            quantity: -qty,
-            status: 'AVAILABLE',
-          },
-        });
-      }
-
-      await prisma.stockLedger.create({
-        data: {
-          itemId: item.id,
-          warehouseId: location.warehouseId || defaultWarehouse.id,
-          locationId: location.id,
-          qty: -qty,
-          referenceType: 'POS_SALE',
-          referenceId: salesOrder.id,
-          movementType: 'OUTBOUND',
-          createdAt: sample.docDate,
-        },
+      stockLedgerBatch.push({
+        itemId: itemId,
+        warehouseId: location.warehouseId || defaultWarehouse.id,
+        locationId: location.id,
+        qty: -qty,
+        referenceType: 'POS_SALE',
+        referenceId: orderId,
+        movementType: 'OUTBOUND',
+        createdAt: sample.docDate,
       });
 
       const movNo = `MV-SALE-${orderNumber}-${row.barCode}-${row.rowNum}`;
-      await prisma.stockMovement.create({
-        data: {
-          movementNo: movNo,
-          itemId: item.id,
-          fromLocationId: location.id,
-          toLocationId: null,
-          quantity: qty,
-          type: 'POS_SALE',
-          referenceType: 'POS_SALE',
-          referenceId: salesOrder.id,
-          movementDate: sample.docDate,
-          createdAt: sample.docDate,
-          notes: `POS Sale: ${orderNumber} (Doc #${row.docNo})`,
-        },
+      stockMovementBatch.push({
+        id: crypto.randomUUID(),
+        movementNo: movNo,
+        itemId: itemId,
+        fromLocationId: location.id,
+        toLocationId: null,
+        quantity: qty,
+        type: 'POS_SALE',
+        referenceType: 'POS_SALE',
+        referenceId: orderId,
+        movementDate: sample.docDate,
+        createdAt: sample.docDate,
+        notes: `POS Sale: ${orderNumber} (Doc #${row.docNo})`,
       });
 
       processedLines++;
     }
+
+    ordersCount++;
+    if (salesOrdersBatch.length >= BATCH_FLUSH_SIZE) {
+      await flushBatches();
+      console.log(`  💾 Committed ${ordersCount.toLocaleString()} / ${salesGroups.size.toLocaleString()} orders (${processedLines.toLocaleString()} item lines)...`);
+    }
+  }
+
+  // Flush remaining records
+  if (!isDryRun && salesOrdersBatch.length > 0) {
+    await flushBatches();
+    console.log(`  💾 Final flush: committed all ${ordersCount.toLocaleString()} orders (${processedLines.toLocaleString()} item lines).`);
   }
 
   console.log(`\n==================================================`);
   console.log(`✨ ${isDryRun ? '[DRY RUN SUMMARY]' : '[IMPORT SUMMARY]'}`);
-  console.log(`   - Total Cash Memos Processed: ${salesGroups.size}`);
-  console.log(`   - Total Item Lines           : ${processedLines}`);
+  console.log(`   - Total Cash Memos Processed: ${salesGroups.size.toLocaleString()}`);
+  console.log(`   - Total Item Lines           : ${processedLines.toLocaleString()}`);
   console.log(`   - Total Revenue (PKR)        : ${totalRevenue.toLocaleString()}`);
+  console.log(`   - Linked Voucher Redemptions : ${linkedVouchersCount.toLocaleString()}`);
   console.log(`   - Order Number Format        : SI-{cleanCode}{fySuffix}-{seq}`);
   console.log(`==================================================\n`);
 }
@@ -692,11 +947,13 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'A-madison-sales.md');
+  let filePath = path.join(__dirname, '..', 'data', 'sales_1_24_sep.md');
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
     filePath = path.isAbsolute(customPath) ? customPath : path.join(process.cwd(), customPath);
+  } else if (!fs.existsSync(filePath)) {
+    filePath = path.join(__dirname, '..', 'data', 'sales-july-&-aug.md');
   }
 
   console.log(`🚀 Starting POS Sales Import Script...`);
@@ -711,12 +968,14 @@ async function main() {
   if (rows.length > 0) {
     console.log('\n🔍 First Chronological Sales Row (#1):');
     console.log(`   - Doc No    : ${rows[0].docNo}`);
-    console.log(`   - Doc Date  : ${rows[0].docDateStr}`);
+    console.log(`   - Doc Date  : ${rows[0].docDate.toISOString().slice(0, 10)}`);
     console.log(`   - Location  : ${rows[0].costCentre} (${rows[0].locationCode})`);
     console.log(`   - Barcode   : ${rows[0].barCode}`);
     console.log(`   - Qty       : ${rows[0].quantity}`);
     console.log(`   - Price     : PKR ${rows[0].unitPrice}`);
     console.log(`   - Total Incl Tax: PKR ${rows[0].valueInclSalesTax}`);
+    console.log(`   - Card Sale : PKR ${rows[0].cardSale}`);
+    console.log(`   - Cash Sale : PKR ${rows[0].cashSale}`);
     console.log(`   - FBR Inv#  : ${rows[0].fbrInvoiceNumber || 'N/A'}`);
   }
 
@@ -790,7 +1049,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('❌ Error executing script:', err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('import-madison-sales.ts') || process.argv[1]?.endsWith('import-madison-sales.js')) {
+  main().catch((err) => {
+    console.error('❌ Error executing script:', err);
+    process.exit(1);
+  });
+}

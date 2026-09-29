@@ -3,20 +3,18 @@
  *
  * Imports stock adjustments from data/stock-adjustment.json into the system,
  * following the exact same flow as StockAdjustmentService.submit():
- *   1. Create StockAdjustment header (SUBMITTED)
- *   2. Create StockAdjustmentItem rows (with currentQty, physicalQty, adjustedQty, rate)
- *   3. Update InventoryItem quantities
- *   4. Create StockLedger entries
+ *   1. Cleanly resets / reverses any previous imported stock adjustments (InventoryItem, StockLedger, StockAdjustment)
+ *   2. Identifies warehouse-specific adjustments (Location ID starting with WH-) vs retail store adjustments
+ *   3. Sets currentQty = 0, adjustedQty = delta, physicalQty = delta
+ *   4. Creates StockAdjustment header (SUBMITTED) & StockAdjustmentItem rows
+ *   5. Updates InventoryItem quantities
+ *   6. Creates StockLedger entries
  *
  * Grouping key: (Location ID, DocumentNumber, DocumentDate, Remarks)
  * -> one StockAdjustment per unique group
  *
- * The JSON "Quantity" field is a DELTA (already the adjustment amount).
- *   Positive  -> stock increase
- *   Negative  -> stock decrease
- *
  * Usage:
- *   npx ts-node -r tsconfig-paths/register scripts/import-stock-adjustments.ts [--dry-run] [--tenant=code]
+ *   bun run scripts/import-stock-adjustments.ts [--dry-run] [--tenant=code]
  */
 
 import 'dotenv/config';
@@ -34,25 +32,26 @@ const isDryRun = args.includes('--dry-run');
 const tenantArg = args.find((a) => a.startsWith('--tenant='));
 const targetTenant = tenantArg ? tenantArg.split('=')[1] : null;
 
-if (isDryRun) console.log('DRY-RUN mode - no database writes will occur.');
+if (isDryRun) console.log('🔍 DRY-RUN mode - no database writes will occur.');
 
 // Raw JSON shape
 interface RawAdjRow {
-  CostCentre: string;
-  'Location ID': string;
-  DocumentNumber: string;
-  DocumentDate: string;
-  SKU: string;
-  Color: string;
-  Size: string;
+  CostCentre?: string;
+  'Location ID'?: string;
+  Concept?: string;
+  DocumentNumber?: string | number;
+  DocumentDate?: string;
+  SKU?: string;
+  Color?: string;
+  Size?: string;
   Barcode: string;
-  UnitPrice: string;
-  Quantity: string;
-  Remarks: string;
+  UnitPrice?: string | number;
+  Quantity: string | number;
+  Remarks?: string;
 }
 
 function decrypt(encryptedText: string, masterKeyString: string): string {
-  if (!masterKeyString || masterKeyString.length < 32) {
+  if (!encryptedText || !masterKeyString || masterKeyString.length < 32) {
     throw new Error('MASTER_ENCRYPTION_KEY must be at least 32 characters');
   }
   const masterKey = Buffer.from(masterKeyString.slice(0, 32), 'utf-8');
@@ -79,7 +78,7 @@ function parseDate(s: string): Date {
   const day = parseInt(parts[1], 10);
   let year = parseInt(parts[2], 10);
   if (year < 100) year += 2000;
-  return new Date(Date.UTC(year, month, day));
+  return new Date(Date.UTC(year, month, day, 12, 0, 0));
 }
 
 /**
@@ -95,7 +94,11 @@ function buildAdjNo(date: Date, seq: number): string {
 }
 
 function groupKey(row: RawAdjRow): string {
-  return `${row['Location ID']}||${row.DocumentNumber}||${row.DocumentDate}||${row.Remarks}`;
+  const locId = (row['Location ID'] || row.Concept || '').trim();
+  const docNo = String(row.DocumentNumber || '').trim();
+  const docDate = String(row.DocumentDate || '').trim();
+  const remarks = String(row.Remarks || '').trim();
+  return `${locId}||${docNo}||${docDate}||${remarks}`;
 }
 
 async function run() {
@@ -105,7 +108,7 @@ async function run() {
     process.exit(1);
   }
   const rawRows: RawAdjRow[] = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-  console.log(`Loaded ${rawRows.length} rows from stock-adjustment.json`);
+  console.log(`📦 Loaded ${rawRows.length} rows from stock-adjustment.json`);
 
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
@@ -162,7 +165,7 @@ async function run() {
           await tenantPool.end();
         }
       }
-      console.log('\nDone.');
+      console.log('\n🎉 Finished processing all tenants.');
       return;
     }
   }
@@ -186,7 +189,7 @@ async function run() {
     await pool.end();
   }
 
-  console.log('\nDone.');
+  console.log('\n🎉 Done.');
 }
 
 async function processTenant(
@@ -194,70 +197,124 @@ async function processTenant(
   rawRows: RawAdjRow[],
   dryRun: boolean,
 ) {
-  const warehouse = await prisma.warehouse.findFirst({
-    where: { isActive: true },
-    select: { id: true, name: true, code: true },
+  // 1. Fetch Warehouses and Locations
+  const allWarehouses = await prisma.warehouse.findMany();
+  const allLocations = await prisma.location.findMany();
+  const allItems = await prisma.item.findMany({
+    select: { id: true, barCode: true, sku: true, unitPrice: true },
   });
-  if (!warehouse) {
-    console.error('  No active warehouse found - aborting.');
+
+  const defaultWarehouse = allWarehouses.find((w) => w.isActive) || allWarehouses[0];
+  if (!defaultWarehouse) {
+    console.error('  ❌ No warehouse found - aborting.');
     return;
   }
-  console.log(`  Warehouse: ${warehouse.name} (${warehouse.id})`);
+  console.log(`  🏢 Default Warehouse: ${defaultWarehouse.name} (${defaultWarehouse.code})`);
 
-  // Build location cache: code -> { id, name }
-  const allLocations = await prisma.location.findMany({
-    select: { id: true, code: true, name: true },
-  });
-  const locationByCode = new Map<string, { id: string; name: string }>();
-  for (const loc of allLocations) {
-    if (loc.code) locationByCode.set(loc.code.trim().toUpperCase(), loc);
+  // Build item cache by barcode
+  const itemCache = new Map<string, { id: string; unitPrice: any }>();
+  for (const item of allItems) {
+    if (item.barCode) itemCache.set(item.barCode.trim(), item);
   }
-  console.log(`  Loaded ${locationByCode.size} locations`);
 
-  // Group rows by (locationCode, docNo, docDate, remarks)
+  // 2. Clean Reset: Revert and delete all previous stock adjustments
+  if (!dryRun) {
+    console.log(`\n🧹 Resetting previously imported stock adjustments...`);
+    const existingAdjs = await prisma.stockAdjustment.findMany({
+      include: { items: true },
+    });
+
+    if (existingAdjs.length > 0) {
+      console.log(`  Reverting inventory quantities for ${existingAdjs.length} existing adjustments...`);
+      for (const adj of existingAdjs) {
+        for (const item of adj.items) {
+          const adjQtyNum = Number(item.adjustedQty);
+          if (adjQtyNum !== 0) {
+            const inv = await prisma.inventoryItem.findFirst({
+              where: {
+                warehouseId: adj.warehouseId,
+                locationId: item.locationId,
+                itemId: item.itemId,
+                status: 'AVAILABLE',
+              },
+            });
+            if (inv) {
+              await prisma.inventoryItem.update({
+                where: { id: inv.id },
+                data: { quantity: { decrement: new Prisma.Decimal(adjQtyNum) } },
+              });
+            }
+          }
+        }
+      }
+
+      await prisma.stockLedger.deleteMany({
+        where: { referenceType: 'STOCK_ADJUSTMENT' },
+      });
+      await prisma.stockAdjustment.deleteMany();
+      console.log(`  ✅ Successfully purged ${existingAdjs.length} previous adjustments and reverted stock.`);
+    } else {
+      console.log(`  ✨ No existing stock adjustments found to purge.`);
+    }
+  }
+
+  // 3. Group rows by (Location ID, DocumentNumber, DocumentDate, Remarks)
   const groups = new Map<string, RawAdjRow[]>();
   for (const row of rawRows) {
     const key = groupKey(row);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(row);
   }
-  console.log(`  ${groups.size} adjustment groups to process`);
+  console.log(`\n📂 ${groups.size} adjustment groups to process from stock-adjustment.json.`);
 
-  let seqCounter = await getNextSeq(prisma);
+  let seqCounter = 1;
   let created = 0;
   let skipped = 0;
   let errors = 0;
 
   for (const [_key, rows] of groups) {
     const firstRow = rows[0];
-    const locationCode = firstRow['Location ID'].trim().toUpperCase();
-    const docDate = parseDate(firstRow.DocumentDate);
-    const remarks = firstRow.Remarks;
-    const docNo = firstRow.DocumentNumber;
+    const rawLocId = (firstRow['Location ID'] || firstRow.Concept || '').trim();
+    const costCentre = (firstRow.CostCentre || '').trim();
+    const docDate = parseDate(String(firstRow.DocumentDate || ''));
+    const remarks = firstRow.Remarks || '';
+    const docNo = String(firstRow.DocumentNumber || '');
 
-    const location = locationByCode.get(locationCode);
-    if (!location) {
-      console.warn(`  Unknown location code "${locationCode}" - skipping group`);
+    // Check if adjustment is into a Warehouse (WH- prefix)
+    const isWarehouse = rawLocId.toUpperCase().startsWith('WH-');
+    const whCode = isWarehouse ? rawLocId.replace(/^WH-/i, '').trim() : null;
+
+    // Determine target warehouse
+    let targetWarehouse = isWarehouse
+      ? allWarehouses.find(
+          (w) =>
+            w.code.toUpperCase() === whCode?.toUpperCase() ||
+            w.name.toUpperCase().includes(costCentre.toUpperCase()) ||
+            costCentre.toUpperCase().includes(w.name.toUpperCase()),
+        )
+      : null;
+
+    if (!targetWarehouse) {
+      targetWarehouse = defaultWarehouse;
+    }
+
+    // Determine target location
+    let targetLocation = allLocations.find(
+      (l) =>
+        l.code?.toUpperCase() === rawLocId.toUpperCase() ||
+        l.shortCode?.toUpperCase() === rawLocId.toUpperCase() ||
+        (isWarehouse && whCode && (l.code?.toUpperCase() === whCode.toUpperCase() || l.shortCode?.toUpperCase() === whCode.toUpperCase())) ||
+        l.name.toUpperCase() === costCentre.toUpperCase() ||
+        (isWarehouse && l.warehouseId === targetWarehouse?.id),
+    );
+
+    if (!targetLocation) {
+      console.warn(`  ⚠️ Unknown location code "${rawLocId}" ("${costCentre}") - skipping group`);
       skipped++;
       continue;
     }
 
     const adjNo = buildAdjNo(docDate, seqCounter);
-
-    // Idempotency: skip if this number already exists
-    const existing = await prisma.stockAdjustment.findFirst({
-      where: { adjustmentNo: adjNo },
-    });
-    if (existing) {
-      console.log(`  ${adjNo} already exists - skipping`);
-      skipped++;
-      seqCounter++;
-      continue;
-    }
-
-    console.log(
-      `  ${adjNo} | ${locationCode} | Doc#${docNo} | ${firstRow.DocumentDate} | ${remarks.substring(0, 60)}`,
-    );
 
     type ResolvedItem = {
       itemId: string;
@@ -272,44 +329,28 @@ async function processTenant(
     let failedCount = 0;
 
     for (const row of rows) {
-      const barcode = row.Barcode.trim();
-      const delta = parseFloat(row.Quantity);
-      const unitPrice = parseFloat(row.UnitPrice) || 0;
+      const barcode = String(row.Barcode || '').trim();
+      const delta = typeof row.Quantity === 'number' ? row.Quantity : parseFloat(String(row.Quantity || '0'));
+      const unitPrice = typeof row.UnitPrice === 'number' ? row.UnitPrice : (parseFloat(String(row.UnitPrice || '0')) || 0);
 
       if (isNaN(delta) || delta === 0) continue;
 
-      // NOTE: Item model uses barCode (camelCase) as the field name
-      const itemRecord = await prisma.item.findFirst({
-        where: { barCode: barcode },
-        select: { id: true, unitPrice: true },
-      });
-
+      const itemRecord = itemCache.get(barcode);
       if (!itemRecord) {
-        console.warn(`    Barcode not found: ${barcode} (SKU: ${row.SKU})`);
+        console.warn(`    Barcode not found in Item catalog: ${barcode} (SKU: ${row.SKU || 'N/A'})`);
         failedCount++;
         continue;
       }
 
-      // Current stock at this location+warehouse
-      const stockAgg = await prisma.inventoryItem.aggregate({
-        where: {
-          warehouseId: warehouse.id,
-          locationId: location.id,
-          itemId: itemRecord.id,
-          status: 'AVAILABLE',
-        },
-        _sum: { quantity: true },
-      });
-      const currentQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
-
-      // physicalQty = currentQty + delta  (adjustedQty = physicalQty - currentQty = delta)
-      const physicalQty = currentQty + delta;
+      // Requirement: currentQty = 0, adjustedQty = delta, physicalQty = delta
+      const currentQty = 0;
       const adjustedQty = delta;
+      const physicalQty = delta;
       const rate = unitPrice || (itemRecord.unitPrice ? Number(itemRecord.unitPrice) : 0);
 
       resolvedItems.push({
         itemId: itemRecord.id,
-        locationId: location.id,
+        locationId: targetLocation.id,
         currentQty: new Prisma.Decimal(currentQty),
         physicalQty: new Prisma.Decimal(physicalQty),
         adjustedQty: new Prisma.Decimal(adjustedQty),
@@ -318,7 +359,7 @@ async function processTenant(
     }
 
     if (resolvedItems.length === 0) {
-      console.warn(`    No valid items resolved - skipping group`);
+      console.warn(`    No valid items resolved for ${adjNo} - skipping group`);
       skipped++;
       seqCounter++;
       continue;
@@ -326,7 +367,7 @@ async function processTenant(
 
     if (dryRun) {
       console.log(
-        `    [DRY-RUN] Would create ${adjNo} with ${resolvedItems.length} items (${failedCount} failed barcodes)`,
+        `    [DRY-RUN] ${adjNo} | Wh: [${targetWarehouse.code}] "${targetWarehouse.name}" | Loc: [${targetLocation.code}] "${targetLocation.name}" | ${resolvedItems.length} items (${failedCount} failed)`,
       );
       created++;
       seqCounter++;
@@ -340,12 +381,14 @@ async function processTenant(
           const adj = await tx.stockAdjustment.create({
             data: {
               adjustmentNo: adjNo,
-              warehouseId: warehouse.id,
+              warehouseId: targetWarehouse!.id,
               reason: remarks,
-              notes: `Imported | Doc#${docNo} | Location: ${locationCode} | ${firstRow.CostCentre}`,
+              notes: `Imported | Doc#${docNo} | Location: ${rawLocId} | ${costCentre}`,
               status: 'SUBMITTED',
               adjustmentType: 'STANDARD',
               adjustmentDate: docDate,
+              createdAt: docDate,
+              updatedAt: docDate,
               items: {
                 create: resolvedItems.map((ri) => ({
                   itemId: ri.itemId,
@@ -367,7 +410,7 @@ async function processTenant(
 
             const existingStock = await tx.inventoryItem.findFirst({
               where: {
-                warehouseId: warehouse.id,
+                warehouseId: targetWarehouse!.id,
                 locationId: ri.locationId,
                 itemId: ri.itemId,
                 status: 'AVAILABLE',
@@ -384,7 +427,7 @@ async function processTenant(
               } else {
                 await tx.inventoryItem.create({
                   data: {
-                    warehouseId: warehouse.id,
+                    warehouseId: targetWarehouse!.id,
                     locationId: ri.locationId,
                     itemId: ri.itemId,
                     quantity: new Prisma.Decimal(adjustedQtyNum),
@@ -403,7 +446,7 @@ async function processTenant(
               } else {
                 await tx.inventoryItem.create({
                   data: {
-                    warehouseId: warehouse.id,
+                    warehouseId: targetWarehouse!.id,
                     locationId: ri.locationId,
                     itemId: ri.itemId,
                     quantity: new Prisma.Decimal(-absQty),
@@ -413,17 +456,18 @@ async function processTenant(
               }
             }
 
-            // 3. Stock Ledger entry (no 'date' field - createdAt is auto-set)
+            // 3. Stock Ledger entry
             await tx.stockLedger.create({
               data: {
                 itemId: ri.itemId,
-                warehouseId: warehouse.id,
+                warehouseId: targetWarehouse!.id,
                 locationId: ri.locationId,
                 qty: new Prisma.Decimal(adjustedQtyNum),
                 movementType: MovementType.ADJUSTMENT,
                 referenceType: 'STOCK_ADJUSTMENT',
                 referenceId: adj.id,
                 rate: ri.rate,
+                createdAt: docDate,
               },
             });
           }
@@ -432,49 +476,21 @@ async function processTenant(
       );
 
       console.log(
-        `    Created ${adjNo} with ${resolvedItems.length} items (${failedCount} unresolved barcodes)`,
+        `  ✔ Created ${adjNo} | Wh: [${targetWarehouse.code}] "${targetWarehouse.name}" | Loc: [${targetLocation.code}] "${targetLocation.name}" | ${resolvedItems.length} items (${remarks.slice(0, 45)})`,
       );
       created++;
     } catch (err: any) {
-      console.error(`    Failed to create ${adjNo}: ${err.message}`);
+      console.error(`  ❌ Failed to create ${adjNo}: ${err.message}`);
       errors++;
     }
 
     seqCounter++;
   }
 
-  console.log(`\n  Summary:`);
-  console.log(`     Created : ${created}`);
-  console.log(`     Skipped : ${skipped}`);
-  console.log(`     Errors  : ${errors}`);
-}
-
-/**
- * Get next available sequence number continuing from the last SADJ in this fiscal year.
- */
-async function getNextSeq(prisma: PrismaClient): Promise<number> {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const startYear = month >= 6 ? year : year - 1;
-  const endYear = startYear + 1;
-  const fy = `${String(startYear % 100).padStart(2, '0')}-${String(endYear % 100).padStart(2, '0')}`;
-  const prefix = `SADJ-${fy}-`;
-  const fiscalYearStartDate = new Date(Date.UTC(startYear, 6, 1));
-
-  const lastAdj = await prisma.stockAdjustment.findFirst({
-    where: {
-      adjustmentNo: { startsWith: prefix },
-      createdAt: { gte: fiscalYearStartDate },
-    },
-    orderBy: { createdAt: 'desc' },
-    select: { adjustmentNo: true },
-  });
-
-  if (!lastAdj?.adjustmentNo) return 1;
-  const parts = lastAdj.adjustmentNo.split('-');
-  const lastSeq = parseInt(parts[parts.length - 1], 10);
-  return isNaN(lastSeq) ? 1 : lastSeq + 1;
+  console.log(`\n📊 Import Summary:`);
+  console.log(`   ✔ Created : ${created} adjustments`);
+  console.log(`   ⏩ Skipped : ${skipped}`);
+  console.log(`   ❌ Errors  : ${errors}`);
 }
 
 run().catch((err) => {

@@ -234,7 +234,10 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
   } else {
     // Delimited text/csv/markdown parsing
     const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '' && !l.trim().startsWith('---'));
+    const lines = content.split(/\r?\n/).filter((l) => {
+      const t = l.trim();
+      return t !== '' && !t.startsWith('#') && !t.startsWith('|-') && !t.startsWith('| ---');
+    });
 
     if (lines.length < 2) {
       console.warn(`⚠️ File ${filePath} contains no data rows.`);
@@ -245,24 +248,32 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
     const isTabSep = headerLine.includes('\t');
     const isPipeSep = headerLine.includes('|');
 
-    const headers = isTabSep
-      ? headerLine.split('\t').map((h) => h.trim().toLowerCase())
-      : isPipeSep
-      ? headerLine.split('|').map((h) => h.trim().toLowerCase()).filter(Boolean)
-      : headerLine.split(',').map((h) => h.trim().toLowerCase());
+    const parseLine = (line: string): string[] => {
+      if (isTabSep) return line.split('\t').map((p) => p.trim());
+      if (isPipeSep) {
+        const sanitized = line.replace(/\\\\\|/g, '__ESCAPED_PIPE__').replace(/\\\|/g, '__ESCAPED_PIPE__').trim();
+        let stripped = sanitized;
+        if (stripped.startsWith('|')) stripped = stripped.substring(1);
+        if (stripped.endsWith('|')) stripped = stripped.substring(0, stripped.length - 1);
+        return stripped.split('|').map((p) => p.replace(/__ESCAPED_PIPE__/g, '|').trim());
+      }
+      return line.split(',').map((p) => p.trim());
+    };
+
+    const headers = parseLine(headerLine).map((h) => h.toLowerCase());
 
     const findColIndex = (keywords: string[], defaultIdx: number): number => {
       const idx = headers.findIndex((h) => keywords.some((k) => h.includes(k)));
       return idx !== -1 ? idx : defaultIdx;
     };
 
-    const colOutName = findColIndex(['stock tr out location', 'out location', 'from location'], 0);
-    const colOutCode = findColIndex(['stock tr out location code', 'code tr out', 'from code'], 1);
+    const colOutName = findColIndex(['from location', 'stock tr out location', 'out location'], 0);
+    const colOutCode = findColIndex(['from location id', 'stock tr out location code', 'code tr out', 'from code'], 1);
     const colDocNo = findColIndex(['documentnumber', 'docno', 'doc no'], 2);
     const colDocDate = findColIndex(['documentdate', 'docdate', 'date'], 3);
-    const colDocType = findColIndex(['documenttype', 'type'], 4);
-    const colInName = findColIndex(['stock deliver to location', 'in location', 'to location'], 5);
-    const colInCode = findColIndex(['stock deliver to location code', 'code tr in', 'to code'], 6);
+    const colDocType = findColIndex(['textline', 'documenttype', 'type'], 4);
+    const colInName = findColIndex(['stockdelivertofkcostcentre', 'stock deliver to location', 'in location', 'to location'], 5);
+    const colInCode = findColIndex(['to location id', 'stock deliver to location code', 'code tr in', 'to code'], 6);
     const colBarcode = findColIndex(['barcode', 'sku', 'item'], 7);
     const colQty = findColIndex(['quantity', 'qty'], 8);
     const colRecNo = findColIndex(['receivingdocumentno', 'receiving doc no', 'recdocno'], 9);
@@ -274,11 +285,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       const rawLine = lines[i].trim();
       if (!rawLine || rawLine.startsWith('---')) continue;
 
-      let parts = isTabSep
-        ? rawLine.split('\t').map((p) => p.trim())
-        : isPipeSep
-        ? rawLine.split('|').map((p) => p.trim()).filter(Boolean)
-        : rawLine.split(',').map((p) => p.trim());
+      const parts = parseLine(rawLine);
 
       if (parts.length < 5) continue;
 
@@ -994,7 +1001,10 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'stn.json');
+  let filePath = path.join(__dirname, '..', 'data', 'ST_july_aug_sep.md');
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(__dirname, '..', 'data', 'stn.json');
+  }
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
@@ -1094,7 +1104,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('❌ Error executing script:', err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('import-stns.ts') || process.argv[1]?.endsWith('import-stns.js')) {
+  main().catch((err) => {
+    console.error('❌ Error executing script:', err);
+    process.exit(1);
+  });
+}

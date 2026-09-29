@@ -259,6 +259,64 @@ export function readAndParseGiftVouchers(filePath: string, limit?: number): Pars
 }
 
 /**
+ * Reads primary GIFT.md and merges with supplementary gift-vouchers.md.
+ * Overlapping vouchers are updated with the latest data, and new ones are added.
+ */
+export function readAndMergeGiftVouchers(
+  primaryPath: string,
+  secondaryPath?: string,
+  limit?: number,
+): ParsedGiftVoucherRow[] {
+  console.log(`📄 Loading primary gift vouchers from: ${primaryPath}`);
+  const primaryRows = readAndParseGiftVouchers(primaryPath);
+  console.log(`   Loaded ${primaryRows.length} rows from primary file.`);
+
+  if (!secondaryPath || !fs.existsSync(secondaryPath)) {
+    return limit ? primaryRows.slice(0, limit) : primaryRows;
+  }
+
+  console.log(`📄 Loading supplementary gift vouchers from: ${secondaryPath}`);
+  const secondaryRows = readAndParseGiftVouchers(secondaryPath);
+  console.log(`   Loaded ${secondaryRows.length} rows from supplementary file.`);
+
+  const voucherMap = new Map<string, ParsedGiftVoucherRow>();
+  for (const r of primaryRows) {
+    voucherMap.set(r.voucherCode, r);
+  }
+
+  let updatedCount = 0;
+  let addedCount = 0;
+
+  for (const r of secondaryRows) {
+    if (voucherMap.has(r.voucherCode)) {
+      const existing = voucherMap.get(r.voucherCode)!;
+      voucherMap.set(r.voucherCode, {
+        ...existing,
+        amount: r.amount,
+        discountAmount: r.discountAmount,
+        afterDiscAmount: r.afterDiscAmount || (r.amount - r.discountAmount),
+        validTill: r.validTill || existing.validTill,
+        isSettled: r.isSettled || existing.isSettled,
+        settledInvoice: r.settledInvoice || existing.settledInvoice,
+        settledCostCentre: r.settledCostCentre || existing.settledCostCentre,
+        dateSettled: r.dateSettled || existing.dateSettled,
+        remarks: r.remarks || existing.remarks,
+        customerName: r.customerName || existing.customerName,
+        customerPhone: r.customerPhone || existing.customerPhone,
+      });
+      updatedCount++;
+    } else {
+      voucherMap.set(r.voucherCode, r);
+      addedCount++;
+    }
+  }
+
+  console.log(`   ✅ Merged datasets: ${updatedCount} overlapping vouchers updated, ${addedCount} new vouchers added.`);
+  const allMerged = Array.from(voucherMap.values());
+  return limit ? allMerged.slice(0, limit) : allMerged;
+}
+
+/**
  * Cleans all existing GIFT vouchers and their related transactions, redemptions, and locations.
  */
 export async function cleanExistingGiftVouchers(prisma: PrismaClient) {
@@ -692,9 +750,25 @@ async function processTenantGiftVouchers(
       settledCount++;
       settledValue += row.amount;
 
-      const settledLoc = resolveLocation('', row.settledCostCentre);
+      const settledLoc = resolveLocation('', row.settledCostCentre) || loc;
       if (settledLoc && row.settledInvoice) {
         matchedOrder = orderByLocAndOrigDoc.get(`${settledLoc.id}:${row.settledInvoice}`) || null;
+      }
+      if (!matchedOrder && row.settledInvoice) {
+        const pad5 = String(row.settledInvoice).padStart(5, '0');
+        matchedOrder =
+          orders.find((o) => {
+            const isLoc = settledLoc ? o.locationId === settledLoc.id : true;
+            return (
+              isLoc &&
+              (o.orderNumber.endsWith(`-${pad5}`) ||
+                o.orderNumber.endsWith(`-${row.settledInvoice}`) ||
+                o.notes?.includes(`Original DocNo: ${row.settledInvoice}`) ||
+                o.notes?.includes(`Doc #${row.settledInvoice}`) ||
+                o.notes?.includes(`Sale #${row.settledInvoice}`) ||
+                o.notes?.includes(`DocNo: ${row.settledInvoice}`))
+            );
+          }) || null;
       }
       if (!matchedOrder && row.settledInvoice) {
         const list = orderByOrigDocOnly.get(row.settledInvoice);
@@ -703,6 +777,15 @@ async function processTenantGiftVouchers(
         } else {
           matchedOrder = orderByOrderNumber.get(row.settledInvoice.toUpperCase()) || null;
         }
+      }
+      if (!matchedOrder && row.settledInvoice) {
+        const pad5 = String(row.settledInvoice).padStart(5, '0');
+        matchedOrder =
+          orders.find(
+            (o) =>
+              o.orderNumber.endsWith(`-${pad5}`) ||
+              o.notes?.includes(`DocNo: ${row.settledInvoice}`),
+          ) || null;
       }
 
       if (matchedOrder) {
@@ -749,6 +832,22 @@ async function processTenantGiftVouchers(
     }
 
     // Transactions & Redemptions
+    const payDesc = paymentMode === 'CARD'
+      ? `Card Payment (${row.hbl > 0 ? 'HBL' : row.meezanBank > 0 ? 'Meezan' : 'POS Terminal'})`
+      : `Cash Payment`;
+    const discNote = row.discountAmount > 0 ? ` (Discount: PKR ${row.discountAmount.toLocaleString()}, Collected: PKR ${row.afterDiscAmount.toLocaleString()})` : '';
+
+    // Always log the ISSUED transaction
+    transactionDataList.push({
+      id: crypto.randomUUID(),
+      voucherId,
+      locationId: loc?.id || null,
+      action: 'ISSUED',
+      amountUsed: new Prisma.Decimal(row.afterDiscAmount),
+      notes: `Gift Voucher purchased by ${row.customerName} via ${payDesc}${discNote}. ${row.remarks || ''}`.trim(),
+      createdAt: row.docDate,
+    });
+
     if (isRedeemed) {
       if (matchedOrder) {
         redemptionDataList.push({
@@ -766,11 +865,11 @@ async function processTenantGiftVouchers(
           locationId: matchedOrder.locationId,
           action: 'REDEEMED',
           amountUsed: new Prisma.Decimal(row.amount),
-          notes: `Redeemed in POS Order ${matchedOrder.orderNumber} (Memo #${row.settledInvoice} at ${row.settledCostCentre})`,
+          notes: `Redeemed in POS Order ${matchedOrder.orderNumber} (Memo #${row.settledInvoice} at ${row.settledCostCentre || loc?.name || 'Store'})`,
           createdAt: row.dateSettled || matchedOrder.createdAt,
         });
       } else {
-        const settledLoc = resolveLocation('', row.settledCostCentre);
+        const settledLoc = resolveLocation('', row.settledCostCentre) || loc;
         transactionDataList.push({
           id: crypto.randomUUID(),
           voucherId,
@@ -778,26 +877,10 @@ async function processTenantGiftVouchers(
           locationId: settledLoc?.id || loc?.id || null,
           action: 'REDEEMED',
           amountUsed: new Prisma.Decimal(row.amount),
-          notes: `Settled in ${row.settledCostCentre || 'Store'} (Invoice #${row.settledInvoice || 'N/A'})${row.dateSettled ? ` on ${row.dateSettled.toISOString().slice(0, 10)}` : ''}`,
+          notes: `Settled in ${row.settledCostCentre || loc?.name || 'Store'} (Invoice #${row.settledInvoice || 'N/A'})${row.dateSettled ? ` on ${row.dateSettled.toISOString().slice(0, 10)}` : ''}`,
           createdAt: row.dateSettled || row.docDate,
         });
       }
-    } else {
-      // Unsettled / Active issuance transaction
-      const payDesc = paymentMode === 'CARD'
-        ? `Card Payment (${row.hbl > 0 ? 'HBL' : row.meezanBank > 0 ? 'Meezan' : 'POS Terminal'})`
-        : `Cash Payment`;
-      const discNote = row.discountAmount > 0 ? ` (Discount: PKR ${row.discountAmount.toLocaleString()}, Collected: PKR ${row.afterDiscAmount.toLocaleString()})` : '';
-
-      transactionDataList.push({
-        id: crypto.randomUUID(),
-        voucherId,
-        locationId: loc?.id || null,
-        action: 'ISSUED',
-        amountUsed: new Prisma.Decimal(row.afterDiscAmount),
-        notes: `Gift Voucher purchased by ${row.customerName} via ${payDesc}${discNote}. ${row.remarks || ''}`.trim(),
-        createdAt: row.docDate,
-      });
     }
   }
 
@@ -870,17 +953,26 @@ async function main() {
 
   const tenantFilter = process.argv.find((arg) => arg.startsWith('--tenant='))?.split('=')[1];
 
-  let filePath = path.join(__dirname, '..', 'data', 'GIFT.md');
+  const defaultPrimaryPath = path.join(__dirname, '..', 'data', 'GIFT.md');
+  const defaultSecondaryPath = path.join(__dirname, '..', 'data', 'gift-vouchers.md');
+
+  let filePath = defaultPrimaryPath;
+  let secondaryPath: string | undefined = fs.existsSync(defaultSecondaryPath) ? defaultSecondaryPath : undefined;
+
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
     filePath = path.isAbsolute(customPath) ? customPath : path.join(process.cwd(), customPath);
+    secondaryPath = undefined;
   }
 
   console.log(`\n======================================================`);
   console.log(`🎁 Gift Vouchers Import & Hierarchy Synchronization`);
   console.log(`======================================================`);
-  console.log(`📄 Target Data File: ${filePath}`);
+  console.log(`📄 Primary Data File    : ${filePath}`);
+  if (secondaryPath) {
+    console.log(`📄 Supplementary Data File: ${secondaryPath}`);
+  }
   if (isDryRun) {
     console.log(`⚠️ DRY RUN MODE: No database changes will be committed.`);
   }
@@ -888,9 +980,9 @@ async function main() {
     console.log(`🗑️ DELETE-ONLY MODE: All GIFT vouchers will be wiped without importing.`);
   }
 
-  const rows = deleteOnly ? [] : readAndParseGiftVouchers(filePath, limit);
+  const rows = deleteOnly ? [] : readAndMergeGiftVouchers(filePath, secondaryPath, limit);
   if (!deleteOnly) {
-    console.log(`📄 Successfully parsed ${rows.length.toLocaleString()} Gift voucher rows from file.`);
+    console.log(`📄 Successfully parsed ${rows.length.toLocaleString()} total Gift voucher rows.`);
 
     if (rows.length > 0) {
       console.log(`\n🔍 Sample Gift Voucher (#${rows[0].voucherNumber}):`);
@@ -901,7 +993,7 @@ async function main() {
       console.log(`   - Net Sale    : PKR ${rows[0].afterDiscAmount.toLocaleString()} (Disc: PKR ${rows[0].discountAmount.toLocaleString()})`);
       console.log(`   - Date Issued : ${rows[0].docDate.toISOString().slice(0, 10)}`);
       console.log(`   - Valid Till  : ${rows[0].validTill ? rows[0].validTill.toISOString().slice(0, 10) : 'No Expiry'}`);
-      console.log(`   - Status      : ${rows[0].isSettled ? `Settled in ${rows[0].settledCostCentre} (Inv #${rows[0].settledInvoice})` : 'Unsettled / Active'}`);
+      console.log(`   - Status      : ${rows[0].isSettled ? `Settled in ${rows[0].settledCostCentre || 'Store'} (Inv #${rows[0].settledInvoice})` : 'Unsettled / Active'}`);
     }
   }
 
@@ -962,8 +1054,12 @@ async function main() {
   }
 
   // Fallback to direct DATABASE_URL
-  console.log(`\n⚙️ Connecting directly via DATABASE_URL...`);
-  const directPool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const directConn =
+    process.argv.find((a) => a.startsWith('--db='))?.split('=')[1] ||
+    process.env.DATABASE_URL_TENANT ||
+    'postgresql://postgres:root@localhost:5432/tenant_speed_main_mox1gfsi';
+  console.log(`\n⚙️ Connecting directly via database (${directConn})...`);
+  const directPool = new Pool({ connectionString: directConn });
   const directAdapter = new PrismaPg(directPool);
   const prisma = new PrismaClient({ adapter: directAdapter } as any);
 
@@ -975,7 +1071,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('❌ Fatal error in gift vouchers script:', err);
-  process.exit(1);
-});
+if (require.main === module || (process.argv[1] && process.argv[1].includes('import-gift-vouchers'))) {
+  main().catch((err) => {
+    console.error('❌ Fatal error in gift vouchers script:', err);
+    process.exit(1);
+  });
+}

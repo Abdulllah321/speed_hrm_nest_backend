@@ -8,7 +8,6 @@ import { PrismaService } from '../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaMasterService } from '../database/prisma-master.service';
 import {
-  CreatePosSalesOrderDto,
   CreateSalesOrderDto,
 } from './dto/create-sales-order.dto';
 import { StockLedgerService } from '../warehouse/stock-ledger/stock-ledger.service';
@@ -955,7 +954,6 @@ export class PosSalesService implements OnModuleInit {
               referenceType: 'POS_SALE',
               // unitCost: item.,
               referenceId: order.id,
-              allowNegativeStock: true, // Warehouse may be negative (allowed by business rules)
             },
             tx,
           );
@@ -5544,7 +5542,7 @@ export class PosSalesService implements OnModuleInit {
 
   // ─── Hold order (max 1 hour, auto-cleared at midnight) ───────────
   async holdOrder(
-    dto: CreatePosSalesOrderDto,
+    dto: CreateSalesOrderDto,
     cashierUserId?: string,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
@@ -8106,6 +8104,40 @@ export class PosSalesService implements OnModuleInit {
           .trim();
       }
 
+      // Balance / OnCredit
+      let balance = 0;
+      const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+      if (balanceMatch) {
+        balance = Number(balanceMatch[1]);
+      } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
+        balance = Number(order.grandTotal);
+      }
+
+      let cashSale = Number(order.cashAmount || 0);
+      let cardSale = Number(order.cardAmount || 0);
+      let onCreditAmount = balance;
+      let creditSale = balance;
+      let cashReturn = 0;
+
+      if (cashSale === 0) {
+        const cashMatch = notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+        if (cashMatch) cashSale = Number(cashMatch[1]);
+      }
+      if (cardSale === 0) {
+        const cardMatch = notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+        if (cardMatch) cardSale = Number(cardMatch[1]);
+      }
+
+      let rewardVoucherAmount = 0;
+      if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+        rewardVoucherAmount = Number(order.grandTotal);
+      } else if (notesStr.includes('[Reward Voucher]')) {
+        const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        if (amtMatch) {
+          rewardVoucherAmount = Number(amtMatch[1]);
+        }
+      }
+
       // Vouchers Used / Redeemed mapping
       let giftVoucherAmt = 0;
       let giftVoucherCode = '';
@@ -8368,7 +8400,7 @@ export class PosSalesService implements OnModuleInit {
       // Balance outstanding for Credit Sale
       let balance = 0;
       const balanceMatch = notesStr.match(
-        /\[Credit Sale\] Balance:\s*([\d.]+)/i,
+        /\[Credit Sale\] Balance:\s*(-?[\d.]+)/i,
       );
       if (balanceMatch) {
         balance = Number(balanceMatch[1]);
@@ -8382,8 +8414,33 @@ export class PosSalesService implements OnModuleInit {
       // Tenders Breakdown
       let cash = Number(order.cashAmount || 0);
       let card = Number(order.cardAmount || 0);
+      let cashReturn = 0;
       let onCredit = balance;
-      let rewardVoucher = 0; // default 0
+
+      const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+      if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
+
+      if (cash === 0) {
+        const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+        if (cashMatch) cash = Number(cashMatch[1]);
+      }
+      if (card === 0) {
+        const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+        if (cardMatch) card = Number(cardMatch[1]);
+      }
+
+      let rewardVoucher = 0;
+      if (
+        order.paymentMethod === 'reward_voucher' ||
+        order.tenderType === 'reward_voucher'
+      ) {
+        rewardVoucher = Number(order.grandTotal);
+      } else if (notesStr.includes('[Reward Voucher]')) {
+        const amtMatch = notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i);
+        if (amtMatch) {
+          rewardVoucher = Number(amtMatch[1]);
+        }
+      }
 
       let giftVoucher = 0;
       let creditVoucher = 0;
@@ -8412,6 +8469,13 @@ export class PosSalesService implements OnModuleInit {
       let issuedGift = 0;
       let issuedCredit = 0;
 
+      if (notesStr) {
+        const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+        if (issuedMatch) {
+          issuedCredit += Number(issuedMatch[1]);
+        }
+      }
+
       const orderIssued = issuedVoucherMap.get(order.id) || [];
       for (const iv of orderIssued) {
         const type = iv.voucherType;
@@ -8425,6 +8489,8 @@ export class PosSalesService implements OnModuleInit {
       }
 
       const tenderDocs = parseTenderDocs(notesStr, order.alliance);
+
+      const creditSale = balance;
 
       rows.push({
         id: order.id,
@@ -8447,6 +8513,18 @@ export class PosSalesService implements OnModuleInit {
         fbr,
         netSale,
         tenderDocuments: tenderDocs,
+        cashSale: cash,
+        cashReturn,
+        cardSale: card,
+        creditSale,
+        giftVoucherAmount: giftVoucher,
+        creditVoucherAmount: creditVoucher,
+        exchangeVoucherAmount: exchangeVoucher,
+        claimVoucherAmount: claimVoucher,
+        giftVoucherCorporate: corporateVoucher,
+        creditVoucherIssuedAmount: issuedCredit,
+        rewardVoucherAmount: rewardVoucher,
+        onCreditAmount: onCredit,
       });
     }
 

@@ -25,6 +25,10 @@ import { SalesRegisterExportService } from './sales-register-export.service';
 import { SalesRegisterExportProcessor } from './sales-register-export.processor';
 import { SalesListExportService } from './sales-list-export.service';
 import { SalesListExportProcessor } from './sales-list-export.processor';
+import { SalesReturnListExportService } from './sales-return-list-export.service';
+import { SalesReturnListExportProcessor } from './sales-return-list-export.processor';
+import { NetSalesListExportService } from './net-sales-list-export.service';
+import { NetSalesListExportProcessor } from './net-sales-list-export.processor';
 import { GrossSalesExportService } from './gross-sales-export.service';
 import { GrossSalesExportProcessor } from './gross-sales-export.processor';
 import { AllianceRegisterExportService } from './alliance-register-export.service';
@@ -67,6 +71,22 @@ import { OnlineOrderManagementController } from './online-order-management.contr
                 maxStalledCount: 1,
               },
             },
+            { 
+              name: 'sales-return-list-export',
+              settings: {
+                lockDuration: 300000,
+                stalledInterval: 120000,
+                maxStalledCount: 1,
+              },
+            },
+            { 
+              name: 'net-sales-list-export',
+              settings: {
+                lockDuration: 300000,
+                stalledInterval: 120000,
+                maxStalledCount: 1,
+              },
+            },
             { name: 'gross-sales-export' },
             { name: 'alliance-register-export' },
             { name: 'cost-of-sales-export' },
@@ -98,6 +118,10 @@ import { OnlineOrderManagementController } from './online-order-management.contr
         SalesRegisterExportProcessor,
         SalesListExportService,
         SalesListExportProcessor,
+        SalesReturnListExportService,
+        SalesReturnListExportProcessor,
+        NetSalesListExportService,
+        NetSalesListExportProcessor,
         GrossSalesExportService,
         GrossSalesExportProcessor,
         AllianceRegisterExportService,
@@ -121,6 +145,8 @@ import { OnlineOrderManagementController } from './online-order-management.contr
         PosSalesActivityExportService,
         SalesRegisterExportService,
         SalesListExportService,
+        SalesReturnListExportService,
+        NetSalesListExportService,
         GrossSalesExportService,
         AllianceRegisterExportService,
         CostOfSalesExportService,
