@@ -20,12 +20,14 @@ const gunzipAsync = promisify(zlib.gunzip);
 export interface NetSalesSummaryTotals {
   orderCount: number;
   unitPrice?: number;
+  priceWost?: number;
   totalItemsSold: number;
   totalItemsReturned: number;
   netItems: number;
   retailSalesValue: number;
   wostAmount: number;
   discountAmount: number;
+  discountWostAmount?: number;
   valueExSalesTax: number;
   taxAmount: number;
   valueInclSalesTax: number;
@@ -39,6 +41,7 @@ export interface NetSalesSummaryLineItem {
   id: string;
   docNo?: string;
   docDate?: string;
+  docMonth?: string;
   salesPerson?: string;
   taxRatePercent?: number;
   taxRateName?: string;
@@ -59,6 +62,7 @@ export interface NetSalesSummaryLineItem {
   retailSalesValue: number;
   wostAmount: number;
   discountAmount: number;
+  discountWostAmount?: number;
   valueExSalesTax: number;
   taxAmount: number;
   valueInclSalesTax: number;
@@ -88,6 +92,8 @@ export interface NetSalesSummaryLocationNode {
 
 export interface NetSalesSummaryFlatRecord {
   locationId?: string;
+  cashierUserId?: string;
+  createdAt?: string | Date;
   locationName: string;
   docNo?: string;
   docDate?: string;
@@ -114,6 +120,7 @@ export interface NetSalesSummaryFlatRecord {
   grossAmount: number;
   returnAmount: number;
   discountAmount: number;
+  discountWostAmount?: number;
   valueExSalesTax?: number;
   taxAmount: number;
   valueInclSalesTax?: number;
@@ -343,7 +350,7 @@ export class NetSalesSummaryExportService {
       const jsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
       const previewResult = {
         ...result,
-        flatItems: (result.flatItems || []).slice(0, 5000),
+        flatItems: (result.flatItems || []).slice(0, 10000),
       };
       const jsonStr = JSON.stringify(previewResult);
       const compressedJson = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
@@ -624,12 +631,14 @@ export class NetSalesSummaryExportService {
     const createEmptyTotals = (): NetSalesSummaryTotals => ({
       orderCount: 0,
       unitPrice: 0,
+      priceWost: 0,
       totalItemsSold: 0,
       totalItemsReturned: 0,
       netItems: 0,
       retailSalesValue: 0,
       wostAmount: 0,
       discountAmount: 0,
+      discountWostAmount: 0,
       valueExSalesTax: 0,
       taxAmount: 0,
       valueInclSalesTax: 0,
@@ -643,17 +652,18 @@ export class NetSalesSummaryExportService {
       target.totalItemsSold += source.totalItemsSold;
       target.totalItemsReturned += source.totalItemsReturned;
       target.netItems += source.netItems;
-      target.retailSalesValue += source.retailSalesValue;
-      target.wostAmount += source.wostAmount;
-      target.discountAmount += source.discountAmount;
-      target.valueExSalesTax += source.valueExSalesTax;
-      target.taxAmount += source.taxAmount;
-      target.valueInclSalesTax += source.valueInclSalesTax;
+      target.retailSalesValue = Number((target.retailSalesValue + source.retailSalesValue).toFixed(2));
+      target.wostAmount = Number((target.wostAmount + source.wostAmount).toFixed(2));
+      target.discountAmount = Number((target.discountAmount + source.discountAmount).toFixed(2));
+      target.discountWostAmount = Number(((target.discountWostAmount || 0) + (source.discountWostAmount || 0)).toFixed(2));
+      target.valueExSalesTax = Number((target.valueExSalesTax + source.valueExSalesTax).toFixed(2));
+      target.taxAmount = Number((target.taxAmount + source.taxAmount).toFixed(2));
+      target.valueInclSalesTax = Number((target.valueInclSalesTax + source.valueInclSalesTax).toFixed(2));
 
       // Legacy field aliases
-      target.grossSalesAmount += source.grossSalesAmount;
-      target.returnAmount += source.returnAmount;
-      target.netSalesAmount += source.netSalesAmount;
+      target.grossSalesAmount = Number((target.grossSalesAmount + source.grossSalesAmount).toFixed(2));
+      target.returnAmount = Number((target.returnAmount + source.returnAmount).toFixed(2));
+      target.netSalesAmount = Number((target.netSalesAmount + source.netSalesAmount).toFixed(2));
     };
 
     const grandTotals = createEmptyTotals();
@@ -732,6 +742,8 @@ export class NetSalesSummaryExportService {
         const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
         const docNo = order.orderNumber || 'N/A';
         const docDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : 'N/A';
+        const docMonth = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
+        const createdAt = order.createdAt ? new Date(order.createdAt).toISOString() : new Date().toISOString();
 
         let salesPerson = 'Default Cashier';
         if (order.cashierUserId && cashierMap.has(order.cashierUserId)) {
@@ -753,36 +765,110 @@ export class NetSalesSummaryExportService {
           locationNodesMap.set(locKey, locNode);
         }
 
+        let ordRetailGross = 0;
+        let ordRetailDisc = 0;
+        let ordCompWost = 0;
+        let ordCompDiscWost = 0;
+
+        const lineItemCalcs: any[] = [];
+
         for (const item of order.items) {
           const qty = Number(item.quantity || 0);
           if (qty <= 0) continue;
+
+          const unitPrice = Number(item.unitPrice || 0);
+          const lineRetailGross = unitPrice * qty;
+          ordRetailGross += lineRetailGross;
+
+          const priceWost = unitPrice / 1.18;
+          const valExcl = Number((priceWost * qty).toFixed(2));
+
+          const rawDiscAmt = Number(item.discountAmount || 0);
+          const discPct = Number(item.discountPercent || (lineRetailGross > 0 && rawDiscAmt > 0 ? (rawDiscAmt / valExcl) * 100 : 0));
+
+          let discAmtWost = 0;
+          let discAmtRetail = 0;
+
+          if (discPct > 0) {
+            discAmtRetail = Math.round((lineRetailGross * (discPct / 100)) * 100) / 100;
+            discAmtWost = Math.round((valExcl * (discPct / 100)) * 100) / 100;
+          } else if (rawDiscAmt > 0) {
+            discAmtWost = rawDiscAmt;
+            discAmtRetail = Math.round(rawDiscAmt * 1.18 * 100) / 100;
+          }
+
+          ordRetailDisc += discAmtRetail;
+          ordCompWost += valExcl;
+          ordCompDiscWost += discAmtWost;
+
+          const amountAfterDiscount = Math.max(0, valExcl - discAmtWost);
+          const calculatedTaxPct = Number(item.taxPercent || 18);
+          const taxAmount = Number(item.taxAmount || Math.round(amountAfterDiscount * (calculatedTaxPct / 100) * 100) / 100);
+          const lineTotal = Number(item.lineTotal || (lineRetailGross - discAmtRetail));
+
+          lineItemCalcs.push({
+            item,
+            qty,
+            unitPrice,
+            lineRetailGross,
+            priceWost,
+            valExcl,
+            discAmtRetail,
+            discAmtWost,
+            amountAfterDiscount,
+            calculatedTaxPct,
+            taxAmount,
+            lineTotal,
+          });
+        }
+
+        const totalItemsCount = lineItemCalcs.reduce((acc, i) => acc + i.qty, 0);
+        const orderWost = Number(order.subtotal || 0);
+        const orderDiscWost = Number(order.discountAmount || 0);
+        const net = Number(order.grandTotal || 0);
+        const tax = Number(order.taxAmount || 0);
+
+        const grossWost = orderWost > 0 ? orderWost : (ordCompWost > 0 ? ordCompWost : net / 1.18);
+        const retailGross = ordRetailGross > 0 ? ordRetailGross : (grossWost * 1.18);
+        const totalDiscWost = orderDiscWost > 0 ? orderDiscWost : ordCompDiscWost;
+        const totalDiscRetail = ordRetailDisc > 0 ? ordRetailDisc : (totalDiscWost * 1.18);
+
+        const orderTotals: NetSalesSummaryTotals = {
+          orderCount: 1,
+          totalItemsSold: totalItemsCount,
+          totalItemsReturned: 0,
+          netItems: totalItemsCount,
+          retailSalesValue: retailGross,
+          wostAmount: grossWost,
+          discountAmount: totalDiscRetail,
+          discountWostAmount: totalDiscWost,
+          valueExSalesTax: Number((grossWost - totalDiscWost).toFixed(2)),
+          taxAmount: tax,
+          valueInclSalesTax: net,
+          grossSalesAmount: retailGross,
+          returnAmount: 0,
+          netSalesAmount: net,
+        };
+
+        addTotals(grandTotals, orderTotals);
+        if (isSeparate && locNode) {
+          addTotals(locNode.totals, orderTotals);
+        }
+
+        for (const calc of lineItemCalcs) {
+          const { item, qty, unitPrice, lineRetailGross, valExcl, discAmtRetail, discAmtWost, amountAfterDiscount, calculatedTaxPct, taxAmount, lineTotal } = calc;
 
           const catName = item.item?.category?.name || 'Unassigned Category';
           const brandName = item.item?.brand?.name || 'Default Brand';
           const divisionName = item.item?.division?.name || 'Default Division';
           const genderName = item.item?.gender?.name || 'Default Gender';
           const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
-          const unitPrice = Number(item.unitPrice || 0);
-          const disc = Number(item.discountAmount || 0);
-          const tax = Number(item.taxAmount || 0);
-          const taxPercent = Number((item as any).taxPercent || (item as any).taxRate || 0);
-
-          const calculatedTaxPct =
-            taxPercent > 0
-              ? taxPercent
-              : tax > 0 && Number(item.lineTotal || 0) - tax > 0
-              ? Math.round((tax / (Number(item.lineTotal || 0) - tax)) * 100 * 100) / 100
-              : tax > 0
-              ? 18
-              : 0;
-          const taxDivisor = 1 + calculatedTaxPct / 100;
-
-          const wostPerUnit = unitPrice / taxDivisor;
-          const wostAmount = Math.round(wostPerUnit * qty * 100) / 100;
-          const valueExSalesTax = Math.round((wostAmount - disc) * 100) / 100;
-          const taxAmount = tax > 0 ? tax : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
-          const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
-          const grossAmt = unitPrice * qty;
+          const sizeName = item.item?.size?.name || 'Default';
+          const colorName = item.item?.color?.name || 'Default';
+          const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
+          const barCode = item.item?.barCode || item.item?.sku || '-';
+          const description = item.item?.description || item.item?.sku || 'Article';
+          const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
 
           const lineTotals: NetSalesSummaryTotals = {
             orderCount: 1,
@@ -790,36 +876,30 @@ export class NetSalesSummaryExportService {
             totalItemsSold: qty,
             totalItemsReturned: 0,
             netItems: qty,
-            retailSalesValue: grossAmt,
-            wostAmount,
-            discountAmount: disc,
-            valueExSalesTax,
+            retailSalesValue: lineRetailGross,
+            wostAmount: valExcl,
+            discountAmount: discAmtRetail,
+            discountWostAmount: discAmtWost,
+            valueExSalesTax: amountAfterDiscount,
             taxAmount,
-            valueInclSalesTax,
-            grossSalesAmount: grossAmt,
+            valueInclSalesTax: lineTotal,
+            grossSalesAmount: lineRetailGross,
             returnAmount: 0,
-            netSalesAmount: valueInclSalesTax,
+            netSalesAmount: lineTotal,
           };
 
-          addTotals(grandTotals, lineTotals);
-
-          const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
-          const barCode = item.item?.barCode || item.item?.sku || '-';
-          const description = item.item?.description || item.item?.sku || 'Article';
-          const sizeName = item.item?.size?.name || 'Default';
-          const colorName = item.item?.color?.name || 'Default';
-          const monthKey = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
-          const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
-
-          const variantKey = `${order.locationId || 'main'}|${monthKey}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}|${calculatedTaxPct}`;
+          const variantKey = `SO:${order.id}|${order.locationId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}|${calculatedTaxPct}`;
 
           let existingRecord = flatItemsMap.get(variantKey);
           if (!existingRecord) {
             existingRecord = {
               locationId: order.locationId || undefined,
+              cashierUserId: order.cashierUserId || undefined,
               locationName: locName,
-              docDate: `${monthKey}-01`,
-              docMonth: monthKey,
+              docNo,
+              docDate,
+              docMonth,
+              createdAt,
               salesPerson,
               taxRatePercent: calculatedTaxPct,
               taxRateName,
@@ -842,6 +922,7 @@ export class NetSalesSummaryExportService {
               grossAmount: 0,
               returnAmount: 0,
               discountAmount: 0,
+              discountWostAmount: 0,
               valueExSalesTax: 0,
               taxAmount: 0,
               valueInclSalesTax: 0,
@@ -852,16 +933,17 @@ export class NetSalesSummaryExportService {
 
           existingRecord.soldQty += qty;
           existingRecord.netQty += qty;
-          existingRecord.retailSalesValue = Math.round(((existingRecord.retailSalesValue || 0) + grossAmt) * 100) / 100;
-          existingRecord.wostAmount = Math.round(((existingRecord.wostAmount || 0) + wostAmount) * 100) / 100;
-          existingRecord.grossAmount = Math.round((existingRecord.grossAmount + grossAmt) * 100) / 100;
-          existingRecord.discountAmount = Math.round((existingRecord.discountAmount + disc) * 100) / 100;
-          existingRecord.valueExSalesTax = Math.round(((existingRecord.valueExSalesTax || 0) + valueExSalesTax) * 100) / 100;
-          existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
-          existingRecord.valueInclSalesTax = Math.round(((existingRecord.valueInclSalesTax || 0) + valueInclSalesTax) * 100) / 100;
-          existingRecord.netAmount = Math.round((existingRecord.netAmount + valueInclSalesTax) * 100) / 100;
+          existingRecord.retailSalesValue = Number(((existingRecord.retailSalesValue || 0) + lineRetailGross).toFixed(2));
+          existingRecord.wostAmount = Number(((existingRecord.wostAmount || 0) + valExcl).toFixed(2));
+          existingRecord.grossAmount = Number((existingRecord.grossAmount + lineRetailGross).toFixed(2));
+          existingRecord.discountAmount = Number((existingRecord.discountAmount + discAmtRetail).toFixed(2));
+          existingRecord.discountWostAmount = Number(((existingRecord.discountWostAmount || 0) + discAmtWost).toFixed(2));
+          existingRecord.valueExSalesTax = Number(((existingRecord.valueExSalesTax || 0) + amountAfterDiscount).toFixed(2));
+          existingRecord.taxAmount = Number((existingRecord.taxAmount + taxAmount).toFixed(2));
+          existingRecord.valueInclSalesTax = Number(((existingRecord.valueInclSalesTax || 0) + lineTotal).toFixed(2));
+          existingRecord.netAmount = Number((existingRecord.netAmount + lineTotal).toFixed(2));
           if (existingRecord.soldQty > 0) {
-            existingRecord.unitPrice = Math.round((existingRecord.grossAmount / existingRecord.soldQty) * 100) / 100;
+            existingRecord.unitPrice = Number((existingRecord.grossAmount / existingRecord.soldQty).toFixed(2));
           }
 
           let globalCat = globalCategoryNodesMap.get(catName);
@@ -894,7 +976,6 @@ export class NetSalesSummaryExportService {
               locNode.categories.push(locCat);
             }
             addTotals(locCat.totals, lineTotals);
-            addTotals(locNode.totals, lineTotals);
           }
         }
       }
@@ -905,7 +986,7 @@ export class NetSalesSummaryExportService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // STEP 2: Process Gross Sales Returns (pos_returns & unlinked stock_ledgers)
+    // STEP 2: Process Gross Sales Returns (pos_returns & pos_claims)
     // ─────────────────────────────────────────────────────────────────────────────
     await onProgress?.(60, 'Querying POS sales returns and return line items...');
 
@@ -931,240 +1012,303 @@ export class NetSalesSummaryExportService {
       if (maxAmount !== undefined) posReturnWhere.totalRefundAmount.lte = Number(maxAmount);
     }
 
-    const [posReturns, returnLedgerEntries] = await Promise.all([
-      (prisma as any).posReturn.findMany({
-        where: posReturnWhere,
-        include: {
-          salesOrder: {
-            include: {
-              customer: { select: { name: true, contactNo: true } },
-            },
+    const posReturns = await (prisma as any).posReturn.findMany({
+      where: posReturnWhere,
+      include: {
+        salesOrder: {
+          select: {
+            id: true,
+            orderNumber: true,
+            locationId: true,
+            cashierUserId: true,
+            fbrInvoiceNumber: true,
+            customer: { select: { name: true, contactNo: true } },
           },
-          items: {
-            include: {
-              item: {
-                include: {
-                  category: { select: { name: true } },
-                  brand: { select: { name: true } },
-                  division: { select: { name: true } },
-                  gender: { select: { name: true } },
-                  silhouette: { select: { name: true } },
-                  size: { select: { name: true } },
-                  color: { select: { name: true } },
-                },
+        },
+        items: {
+          include: {
+            item: {
+              select: {
+                id: true,
+                sku: true,
+                barCode: true,
+                description: true,
+                category: { select: { name: true } },
+                brand: { select: { name: true } },
+                division: { select: { name: true } },
+                gender: { select: { name: true } },
+                silhouette: { select: { name: true } },
+                size: { select: { name: true } },
+                color: { select: { name: true } },
               },
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
-      }),
-      (prisma as any).stockLedger.findMany({
-        where: {
-          referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
-          createdAt: { gte: startDate, lte: endDate },
-          ...(locationWhere ? { locationId: locationWhere } : {}),
-        },
-        include: {
-          item: {
-            include: {
-              category: { select: { name: true } },
-              brand: { select: { name: true } },
-              division: { select: { name: true } },
-              gender: { select: { name: true } },
-              silhouette: { select: { name: true } },
-              size: { select: { name: true } },
-              color: { select: { name: true } },
-            },
+        voucher: {
+          select: {
+            code: true,
+            voucherType: true,
+            faceValue: true,
           },
         },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
-    const handledPosReturnIds = new Set<string>(posReturns.map((r: any) => r.id));
-    const handledSalesOrderIds = new Set<string>(posReturns.map((r: any) => r.salesOrderId).filter(Boolean));
-
-    const orphanEntries = returnLedgerEntries.filter(
-      (e: any) => !handledPosReturnIds.has(e.referenceId) && !handledSalesOrderIds.has(e.referenceId),
-    );
-
-    let orphanSourceOrders: any[] = [];
-    if (orphanEntries.length > 0) {
-      const orphanRefIds = [...new Set(orphanEntries.map((e: any) => e.referenceId).filter(Boolean))] as string[];
-      orphanSourceOrders = await (prisma as any).salesOrder.findMany({
-        where: { id: { in: orphanRefIds } },
-        include: {
-          items: true,
-        },
-      });
-    }
-    const orphanOrderMap = new Map<string, any>(orphanSourceOrders.map((o: any) => [o.id, o]));
+    let posClaims: any[] = [];
+    try {
+      if ((prisma as any).posClaim?.findMany) {
+        const claimWhere: any = {
+          createdAt: { gte: startDate, lte: endDate },
+        };
+        if (locationWhere) claimWhere.salesOrder = { locationId: locationWhere };
+        posClaims = await (prisma as any).posClaim.findMany({
+          where: claimWhere,
+          include: {
+            salesOrder: {
+              select: {
+                id: true,
+                orderNumber: true,
+                locationId: true,
+                cashierUserId: true,
+                fbrInvoiceNumber: true,
+                customer: { select: { name: true, contactNo: true } },
+              },
+            },
+            items: {
+              include: {
+                item: {
+                  select: {
+                    id: true,
+                    sku: true,
+                    barCode: true,
+                    description: true,
+                    category: { select: { name: true } },
+                    brand: { select: { name: true } },
+                    division: { select: { name: true } },
+                    gender: { select: { name: true } },
+                    silhouette: { select: { name: true } },
+                    size: { select: { name: true } },
+                    color: { select: { name: true } },
+                  },
+                },
+              },
+            },
+            voucher: { select: { code: true, faceValue: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+    } catch (_) {}
 
     await onProgress?.(80, 'Merging sales returns into Net Sales Summary matrix...');
 
-    const processReturnItem = (params: {
-      locationId?: string;
-      createdAt?: Date;
-      item: any;
-      quantity: number;
-      unitPrice: number;
-      taxPercent: number;
-      discWost: number;
-      lineTotalWost: number;
-      taxAmt: number;
-      docNo: string;
-      cashierUserId?: string;
-    }) => {
-      const {
-        locationId,
-        createdAt,
-        item,
-        quantity: retQty,
-        unitPrice: rawUnitPrice,
-        taxPercent: rawTaxPercent,
-        discWost: rawDiscWost,
-        lineTotalWost: rawLineTotalWost,
-        taxAmt: rawTaxAmt,
-        docNo,
-        cashierUserId,
-      } = params;
-
-      if (!item || retQty <= 0) return;
-
-      const locName = locationId ? locationMap.get(locationId) || 'Main Outlet' : 'Main Outlet';
-      const locKey = locationId ? `loc:${locationId}` : 'main-outlet';
-      const docDate = createdAt ? new Date(createdAt).toISOString().split('T')[0] : 'N/A';
-      const monthKey = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
-
+    for (const ret of posReturns) {
+      const sampleLocId = ret.locationId || ret.salesOrder?.locationId;
+      const locName = sampleLocId ? locationMap.get(sampleLocId) || 'Main Outlet' : 'Main Outlet';
+      const locKey = sampleLocId ? `loc:${sampleLocId}` : 'main-outlet';
+      const cashierId = ret.cashierUserId || ret.salesOrder?.cashierUserId;
       let salesPerson = 'Default Cashier';
-      if (cashierUserId && cashierMap.has(cashierUserId)) {
-        salesPerson = cashierMap.get(cashierUserId)!;
+      if (cashierId && cashierMap.has(cashierId)) {
+        salesPerson = cashierMap.get(cashierId)!;
+      }
+      const retNo = ret.returnNumber || ret.voucher?.code || `SR-${ret.id.slice(0, 8)}`;
+      const docDate = ret.createdAt ? new Date(ret.createdAt).toISOString().split('T')[0] : 'N/A';
+      const docMonth = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
+      const createdAt = ret.createdAt ? new Date(ret.createdAt).toISOString() : new Date().toISOString();
+
+      let locNode = locationNodesMap.get(locKey);
+      if (isSeparate && !locNode) {
+        locNode = {
+          locationKey: locKey,
+          locationId: sampleLocId || undefined,
+          locationName: locName,
+          categories: [],
+          totals: createEmptyTotals(),
+        };
+        locationNodesMap.set(locKey, locNode);
       }
 
-      const catName = item.category?.name || 'Unassigned Category';
-      const brandName = item.brand?.name || 'Default Brand';
-      const divisionName = item.division?.name || 'Default Division';
-      const genderName = item.gender?.name || 'Default Gender';
-      const silhouetteName = item.silhouette?.name || 'Default Silhouette';
+      let retTotalQty = 0;
+      let retGross = 0;
+      let retWost = 0;
+      let retDisc = 0;
+      let retDiscWost = 0;
+      let retTax = 0;
+      let retNet = 0;
 
-      const unitPrice = Number(rawUnitPrice || item.unitPrice || 0);
-      const calculatedTaxPct = Number(rawTaxPercent || 18);
-      const taxDivisor = 1 + calculatedTaxPct / 100;
+      const retLineCalcs: any[] = [];
 
-      const wostPerUnit = unitPrice / taxDivisor;
-      const wostAmount = rawLineTotalWost !== 0 ? Math.abs(rawLineTotalWost) : Math.round(wostPerUnit * retQty * 100) / 100;
-      const disc = Math.abs(rawDiscWost);
-      const valueExSalesTax = Math.round((wostAmount - disc) * 100) / 100;
-      const taxAmount = rawTaxAmt !== 0 ? Math.abs(rawTaxAmt) : Math.round((valueExSalesTax * (calculatedTaxPct / 100)) * 100) / 100;
-      const valueInclSalesTax = Math.round((valueExSalesTax + taxAmount) * 100) / 100;
-      const grossAmt = unitPrice * retQty;
+      for (const it of ret.items || []) {
+        const qty = Math.abs(Number(it.quantity || 1));
+        const unitPrice = Number(it.originalUnitPrice || it.refundPerUnit || it.originalPaidPerUnit || 0);
+        const unitPriceWost = Number((it.unitPriceWost ? Number(it.unitPriceWost) : unitPrice / 1.18).toFixed(2));
+        const valExcl = Number((it.lineTotalWost ? Number(it.lineTotalWost) : qty * unitPriceWost).toFixed(2));
+        const disc = Number(it.discountPercent ? (unitPrice * qty * Number(it.discountPercent)) / 100 : 0);
+        const discWost = Number((it.discountWost ? Number(it.discountWost) : disc / 1.18).toFixed(2));
+        const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
+        const tax = Number(it.taxAmount || 0);
+        const lineTotal = Number(it.lineTotal || (unitPrice * qty - disc + tax));
+
+        retTotalQty += qty;
+        retGross += unitPrice * qty;
+        retWost += valExcl;
+        retDisc += disc;
+        retDiscWost += discWost;
+        retTax += tax;
+        retNet += lineTotal;
+
+        retLineCalcs.push({
+          it,
+          qty,
+          unitPrice,
+          valExcl,
+          disc,
+          discWost,
+          amtAfterDisc,
+          tax,
+          lineTotal,
+        });
+      }
+
+      if (retLineCalcs.length === 0) {
+        const totalRefAmt = Number(ret.totalRefundAmount || 0);
+        const wostAmt = Number(ret.subtotalWost || totalRefAmt / 1.18);
+        retTotalQty = 1;
+        retGross = totalRefAmt;
+        retWost = wostAmt;
+        retNet = totalRefAmt;
+
+        retLineCalcs.push({
+          it: { item: null },
+          qty: 1,
+          unitPrice: totalRefAmt,
+          valExcl: wostAmt,
+          disc: 0,
+          discWost: 0,
+          amtAfterDisc: wostAmt,
+          tax: Number(ret.taxAmount || 0),
+          lineTotal: totalRefAmt,
+        });
+      }
+
+      const totalRefundAmt = Number(ret.totalRefundAmount || retNet);
 
       const returnTotals: NetSalesSummaryTotals = {
         orderCount: 0,
-        unitPrice,
         totalItemsSold: 0,
-        totalItemsReturned: retQty,
-        netItems: -retQty,
-        retailSalesValue: -grossAmt,
-        wostAmount: -wostAmount,
-        discountAmount: -disc,
-        valueExSalesTax: -valueExSalesTax,
-        taxAmount: -taxAmount,
-        valueInclSalesTax: -valueInclSalesTax,
+        totalItemsReturned: retTotalQty,
+        netItems: -retTotalQty,
+        retailSalesValue: -retGross,
+        wostAmount: -retWost,
+        discountAmount: -retDisc,
+        discountWostAmount: -retDiscWost,
+        valueExSalesTax: -Number(Math.max(0, retWost - retDiscWost).toFixed(2)),
+        taxAmount: -retTax,
+        valueInclSalesTax: -totalRefundAmt,
         grossSalesAmount: 0,
-        returnAmount: valueInclSalesTax,
-        netSalesAmount: -valueInclSalesTax,
+        returnAmount: totalRefundAmt,
+        netSalesAmount: -totalRefundAmt,
       };
 
       addTotals(grandTotals, returnTotals);
+      if (isSeparate && locNode) {
+        addTotals(locNode.totals, returnTotals);
+      }
 
-      const sku = item.sku || item.barCode || 'NO-SKU';
-      const barCode = item.barCode || item.sku || '-';
-      const description = item.description || item.sku || 'Article';
-      const sizeName = item.size?.name || 'Default';
-      const colorName = item.color?.name || 'Default';
-      const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
+      for (const calc of retLineCalcs) {
+        const { it, qty, unitPrice, valExcl, disc, discWost, amtAfterDisc, tax, lineTotal } = calc;
+        const itemObj = it.item;
 
-      const variantKey = `${locationId || 'main'}|${monthKey}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}|${calculatedTaxPct}`;
+        const catName = itemObj?.category?.name || 'Unassigned Category';
+        const brandName = itemObj?.brand?.name || 'Default Brand';
+        const divisionName = itemObj?.division?.name || 'Default Division';
+        const genderName = itemObj?.gender?.name || 'Default Gender';
+        const silhouetteName = itemObj?.silhouette?.name || 'Default Silhouette';
+        const sizeName = itemObj?.size?.name || 'Default';
+        const colorName = itemObj?.color?.name || 'Default';
+        const sku = itemObj?.sku || itemObj?.barCode || 'NO-SKU';
+        const barCode = itemObj?.barCode || itemObj?.sku || '-';
+        const description = itemObj?.description || itemObj?.sku || 'Article';
+        const calculatedTaxPct = Number(it.taxPercent || 18);
+        const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
 
-      let existingRecord = flatItemsMap.get(variantKey);
-      if (!existingRecord) {
-        existingRecord = {
-          locationId: locationId || undefined,
-          locationName: locName,
-          docDate: `${monthKey}-01`,
-          docMonth: monthKey,
-          salesPerson,
-          taxRatePercent: calculatedTaxPct,
-          taxRateName,
-          categoryName: catName,
-          brandName,
-          divisionName,
-          genderName,
-          silhouetteName,
-          sku,
-          barCode,
-          description,
-          sizeName,
-          colorName,
+        const lineReturnTotals: NetSalesSummaryTotals = {
+          orderCount: 0,
           unitPrice,
-          soldQty: 0,
-          returnQty: 0,
-          netQty: 0,
-          retailSalesValue: 0,
-          wostAmount: 0,
-          grossAmount: 0,
-          returnAmount: 0,
-          discountAmount: 0,
-          valueExSalesTax: 0,
-          taxAmount: 0,
-          valueInclSalesTax: 0,
-          netAmount: 0,
+          totalItemsSold: 0,
+          totalItemsReturned: qty,
+          netItems: -qty,
+          retailSalesValue: -(unitPrice * qty),
+          wostAmount: -valExcl,
+          discountAmount: -disc,
+          discountWostAmount: -discWost,
+          valueExSalesTax: -amtAfterDisc,
+          taxAmount: -tax,
+          valueInclSalesTax: -lineTotal,
+          grossSalesAmount: 0,
+          returnAmount: lineTotal,
+          netSalesAmount: -lineTotal,
         };
-        flatItemsMap.set(variantKey, existingRecord);
-      }
 
-      existingRecord.returnQty += retQty;
-      existingRecord.netQty -= retQty;
-      existingRecord.retailSalesValue = Math.round(((existingRecord.retailSalesValue || 0) - grossAmt) * 100) / 100;
-      existingRecord.wostAmount = Math.round(((existingRecord.wostAmount || 0) - wostAmount) * 100) / 100;
-      existingRecord.returnAmount = Math.round((existingRecord.returnAmount + valueInclSalesTax) * 100) / 100;
-      existingRecord.discountAmount = Math.round((existingRecord.discountAmount - disc) * 100) / 100;
-      existingRecord.valueExSalesTax = Math.round(((existingRecord.valueExSalesTax || 0) - valueExSalesTax) * 100) / 100;
-      existingRecord.taxAmount = Math.round((existingRecord.taxAmount - taxAmount) * 100) / 100;
-      existingRecord.valueInclSalesTax = Math.round(((existingRecord.valueInclSalesTax || 0) - valueInclSalesTax) * 100) / 100;
-      existingRecord.netAmount = Math.round((existingRecord.netAmount - valueInclSalesTax) * 100) / 100;
+        const variantKey = `RET:${ret.id}|${sampleLocId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}|${calculatedTaxPct}`;
 
-      let globalCat = globalCategoryNodesMap.get(catName);
-      if (!globalCat) {
-        globalCat = {
-          categoryName: catName,
-          brandName,
-          divisionName,
-          genderName,
-          silhouetteName,
-          totals: createEmptyTotals(),
-          items: [],
-        };
-        globalCategoryNodesMap.set(catName, globalCat);
-      }
-      addTotals(globalCat.totals, returnTotals);
-
-      if (isSeparate) {
-        let locNode = locationNodesMap.get(locKey);
-        if (!locNode) {
-          locNode = {
-            locationKey: locKey,
-            locationId: locationId || undefined,
+        let existingRecord = flatItemsMap.get(variantKey);
+        if (!existingRecord) {
+          existingRecord = {
+            locationId: sampleLocId || undefined,
+            cashierUserId: cashierId || undefined,
             locationName: locName,
-            categories: [],
-            totals: createEmptyTotals(),
+            docNo: retNo,
+            docDate,
+            docMonth,
+            createdAt,
+            salesPerson,
+            taxRatePercent: calculatedTaxPct,
+            taxRateName,
+            categoryName: catName,
+            brandName,
+            divisionName,
+            genderName,
+            silhouetteName,
+            sku,
+            barCode,
+            description,
+            sizeName,
+            colorName,
+            unitPrice,
+            soldQty: 0,
+            returnQty: 0,
+            netQty: 0,
+            retailSalesValue: 0,
+            wostAmount: 0,
+            grossAmount: 0,
+            returnAmount: 0,
+            discountAmount: 0,
+            discountWostAmount: 0,
+            valueExSalesTax: 0,
+            taxAmount: 0,
+            valueInclSalesTax: 0,
+            netAmount: 0,
           };
-          locationNodesMap.set(locKey, locNode);
+          flatItemsMap.set(variantKey, existingRecord);
         }
-        let locCat = locNode.categories.find((c) => c.categoryName === catName);
-        if (!locCat) {
-          locCat = {
+
+        existingRecord.returnQty += qty;
+        existingRecord.netQty -= qty;
+        existingRecord.retailSalesValue = Number(((existingRecord.retailSalesValue || 0) - unitPrice * qty).toFixed(2));
+        existingRecord.wostAmount = Number(((existingRecord.wostAmount || 0) - valExcl).toFixed(2));
+        existingRecord.returnAmount = Number((existingRecord.returnAmount + lineTotal).toFixed(2));
+        existingRecord.discountAmount = Number((existingRecord.discountAmount - disc).toFixed(2));
+        existingRecord.discountWostAmount = Number(((existingRecord.discountWostAmount || 0) - discWost).toFixed(2));
+        existingRecord.valueExSalesTax = Number(((existingRecord.valueExSalesTax || 0) - amtAfterDisc).toFixed(2));
+        existingRecord.taxAmount = Number((existingRecord.taxAmount - tax).toFixed(2));
+        existingRecord.valueInclSalesTax = Number(((existingRecord.valueInclSalesTax || 0) - lineTotal).toFixed(2));
+        existingRecord.netAmount = Number((existingRecord.netAmount - lineTotal).toFixed(2));
+
+        let globalCat = globalCategoryNodesMap.get(catName);
+        if (!globalCat) {
+          globalCat = {
             categoryName: catName,
             brandName,
             divisionName,
@@ -1173,57 +1317,209 @@ export class NetSalesSummaryExportService {
             totals: createEmptyTotals(),
             items: [],
           };
-          locNode.categories.push(locCat);
+          globalCategoryNodesMap.set(catName, globalCat);
         }
-        addTotals(locCat.totals, returnTotals);
-        addTotals(locNode.totals, returnTotals);
-      }
-    };
+        addTotals(globalCat.totals, lineReturnTotals);
 
-    // 2a. Process PosReturn items
-    for (const ret of posReturns) {
-      for (const item of ret.items) {
-        processReturnItem({
-          locationId: ret.locationId,
-          createdAt: ret.createdAt,
-          item: item.item,
-          quantity: Math.abs(Number(item.quantity || 1)),
-          unitPrice: Number(item.originalUnitPrice || item.originalPaidPerUnit || item.unitPrice || 0),
-          taxPercent: Number(item.taxPercent || 18),
-          discWost: Number(item.discountWost || 0),
-          lineTotalWost: Number(item.lineTotalWost || 0),
-          taxAmt: Number(item.taxAmount || 0),
-          docNo: ret.returnNumber || 'POS-RETURN',
-          cashierUserId: ret.cashierUserId,
-        });
+        if (isSeparate && locNode) {
+          let locCat = locNode.categories.find((c) => c.categoryName === catName);
+          if (!locCat) {
+            locCat = {
+              categoryName: catName,
+              brandName,
+              divisionName,
+              genderName,
+              silhouetteName,
+              totals: createEmptyTotals(),
+              items: [],
+            };
+            locNode.categories.push(locCat);
+          }
+          addTotals(locCat.totals, lineReturnTotals);
+        }
       }
     }
 
-    // 2b. Process Orphan Stock Ledger Returns
-    for (const entry of orphanEntries) {
-      if (!entry.item) continue;
-      const srcOrder = orphanOrderMap.get(entry.referenceId);
-      const matchedOi = srcOrder?.items?.find((i: any) => i.itemId === entry.itemId);
-      const retQty = Math.abs(Number(entry.qty || 1));
-      const unitPrice = matchedOi ? Number(matchedOi.unitPrice || 0) : Number(entry.item.unitPrice || 0);
-      const taxPercent = matchedOi ? Number((matchedOi as any).taxPercent || (matchedOi as any).taxRate || 18) : 18;
-      const disc = matchedOi
-        ? Math.round((Number(matchedOi.discountAmount || 0) / (Number(matchedOi.quantity) || 1)) * retQty * 100) / 100
-        : 0;
+    // Process standalone PosClaims (if any)
+    for (const clm of posClaims) {
+      if (posReturns.some((r: any) => r.returnNumber === clm.claimNumber)) continue;
 
-      processReturnItem({
-        locationId: entry.locationId,
-        createdAt: entry.createdAt,
-        item: entry.item,
-        quantity: retQty,
-        unitPrice,
-        taxPercent,
-        discWost: disc,
-        lineTotalWost: 0,
-        taxAmt: 0,
-        docNo: srcOrder?.orderNumber || entry.referenceId || 'POS-RETURN',
-        cashierUserId: srcOrder?.cashierUserId,
-      });
+      const locId = clm.salesOrder?.locationId;
+      const locName = locId ? locationMap.get(locId) || 'Main Outlet' : 'Main Outlet';
+      const locKey = locId ? `loc:${locId}` : 'main-outlet';
+      const cashierId = clm.salesOrder?.cashierUserId;
+      let salesPerson = 'Default Cashier';
+      if (cashierId && cashierMap.has(cashierId)) {
+        salesPerson = cashierMap.get(cashierId)!;
+      }
+      const clmNo = clm.claimNumber || `CLM-${clm.id.slice(0, 8)}`;
+      const docDate = clm.createdAt ? new Date(clm.createdAt).toISOString().split('T')[0] : 'N/A';
+      const docMonth = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
+      const createdAt = clm.createdAt ? new Date(clm.createdAt).toISOString() : new Date().toISOString();
+      const approvedAmt = Number(clm.approvedAmount || clm.claimedAmount || 0);
+      const valExcl = Number((approvedAmt / 1.18).toFixed(2));
+
+      let locNode = locationNodesMap.get(locKey);
+      if (isSeparate && !locNode) {
+        locNode = {
+          locationKey: locKey,
+          locationId: locId || undefined,
+          locationName: locName,
+          categories: [],
+          totals: createEmptyTotals(),
+        };
+        locationNodesMap.set(locKey, locNode);
+      }
+
+      let claimQty = 0;
+      const clmItems = clm.items || [];
+      for (const it of clmItems) {
+        claimQty += Number(it.claimedQty || 1);
+      }
+      if (claimQty === 0) claimQty = 1;
+
+      const claimTotals: NetSalesSummaryTotals = {
+        orderCount: 0,
+        totalItemsSold: 0,
+        totalItemsReturned: claimQty,
+        netItems: -claimQty,
+        retailSalesValue: -approvedAmt,
+        wostAmount: -valExcl,
+        discountAmount: 0,
+        discountWostAmount: 0,
+        valueExSalesTax: -valExcl,
+        taxAmount: 0,
+        valueInclSalesTax: -approvedAmt,
+        grossSalesAmount: 0,
+        returnAmount: approvedAmt,
+        netSalesAmount: -approvedAmt,
+      };
+
+      addTotals(grandTotals, claimTotals);
+      if (isSeparate && locNode) {
+        addTotals(locNode.totals, claimTotals);
+      }
+
+      for (const it of clmItems) {
+        const qty = Number(it.claimedQty || 1);
+        const unitPrice = Number(it.unitPaidPrice || (approvedAmt / claimQty));
+        const lineValExcl = Number((qty * (unitPrice / 1.18)).toFixed(2));
+        const lineTotal = Number(it.claimedAmount || qty * unitPrice);
+        const itemObj = it.item;
+
+        const catName = itemObj?.category?.name || 'Unassigned Category';
+        const brandName = itemObj?.brand?.name || 'Default Brand';
+        const divisionName = itemObj?.division?.name || 'Default Division';
+        const genderName = itemObj?.gender?.name || 'Default Gender';
+        const silhouetteName = itemObj?.silhouette?.name || 'Default Silhouette';
+        const sizeName = itemObj?.size?.name || 'Default';
+        const colorName = itemObj?.color?.name || 'Default';
+        const sku = itemObj?.sku || itemObj?.barCode || 'NO-SKU';
+        const barCode = itemObj?.barCode || itemObj?.sku || '-';
+        const description = itemObj?.description || itemObj?.sku || 'Claim Article';
+
+        const lineClaimTotals: NetSalesSummaryTotals = {
+          orderCount: 0,
+          unitPrice,
+          totalItemsSold: 0,
+          totalItemsReturned: qty,
+          netItems: -qty,
+          retailSalesValue: -lineTotal,
+          wostAmount: -lineValExcl,
+          discountAmount: 0,
+          discountWostAmount: 0,
+          valueExSalesTax: -lineValExcl,
+          taxAmount: 0,
+          valueInclSalesTax: -lineTotal,
+          grossSalesAmount: 0,
+          returnAmount: lineTotal,
+          netSalesAmount: -lineTotal,
+        };
+
+        const variantKey = `CLM:${clm.id}|${locId || 'main'}|${catName}|${brandName}|${divisionName}|${genderName}|${silhouetteName}|${sku}|${barCode}|${sizeName}|${colorName}|0`;
+
+        let existingRecord = flatItemsMap.get(variantKey);
+        if (!existingRecord) {
+          existingRecord = {
+            locationId: locId || undefined,
+            cashierUserId: cashierId || undefined,
+            locationName: locName,
+            docNo: clmNo,
+            docDate,
+            docMonth,
+            createdAt,
+            salesPerson,
+            taxRatePercent: 0,
+            taxRateName: '0% Tax Exempt Group',
+            categoryName: catName,
+            brandName,
+            divisionName,
+            genderName,
+            silhouetteName,
+            sku,
+            barCode,
+            description,
+            sizeName,
+            colorName,
+            unitPrice,
+            soldQty: 0,
+            returnQty: 0,
+            netQty: 0,
+            retailSalesValue: 0,
+            wostAmount: 0,
+            grossAmount: 0,
+            returnAmount: 0,
+            discountAmount: 0,
+            discountWostAmount: 0,
+            valueExSalesTax: 0,
+            taxAmount: 0,
+            valueInclSalesTax: 0,
+            netAmount: 0,
+          };
+          flatItemsMap.set(variantKey, existingRecord);
+        }
+
+        existingRecord.returnQty += qty;
+        existingRecord.netQty -= qty;
+        existingRecord.retailSalesValue = Number(((existingRecord.retailSalesValue || 0) - lineTotal).toFixed(2));
+        existingRecord.wostAmount = Number(((existingRecord.wostAmount || 0) - lineValExcl).toFixed(2));
+        existingRecord.returnAmount = Number((existingRecord.returnAmount + lineTotal).toFixed(2));
+        existingRecord.valueExSalesTax = Number(((existingRecord.valueExSalesTax || 0) - lineValExcl).toFixed(2));
+        existingRecord.valueInclSalesTax = Number(((existingRecord.valueInclSalesTax || 0) - lineTotal).toFixed(2));
+        existingRecord.netAmount = Number((existingRecord.netAmount - lineTotal).toFixed(2));
+
+        let globalCat = globalCategoryNodesMap.get(catName);
+        if (!globalCat) {
+          globalCat = {
+            categoryName: catName,
+            brandName,
+            divisionName,
+            genderName,
+            silhouetteName,
+            totals: createEmptyTotals(),
+            items: [],
+          };
+          globalCategoryNodesMap.set(catName, globalCat);
+        }
+        addTotals(globalCat.totals, lineClaimTotals);
+
+        if (isSeparate && locNode) {
+          let locCat = locNode.categories.find((c) => c.categoryName === catName);
+          if (!locCat) {
+            locCat = {
+              categoryName: catName,
+              brandName,
+              divisionName,
+              genderName,
+              silhouetteName,
+              totals: createEmptyTotals(),
+              items: [],
+            };
+            locNode.categories.push(locCat);
+          }
+          addTotals(locCat.totals, lineClaimTotals);
+        }
+      }
     }
 
     const flatItems = Array.from(flatItemsMap.values());

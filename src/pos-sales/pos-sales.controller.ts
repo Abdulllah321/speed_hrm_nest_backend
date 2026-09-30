@@ -2007,22 +2007,16 @@ export class PosSalesController {
 
   @Get('reports/net-sales-list/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getNetSalesListResult(
-    @Param('jobId') jobId: string,
-    @Res() res: any,
-  ) {
-    const filePath = this.netSalesListExportService.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
-      return res.status(HttpStatus.NOT_FOUND).json({
-        statusCode: HttpStatus.NOT_FOUND,
-        message: 'Preview result not found or expired',
-      });
+  async getNetSalesListResult(@Param('jobId') jobId: string) {
+    const data =
+      await this.netSalesListExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return {
+        status: false,
+        message: 'Net sales list preview result not found or expired',
+      };
     }
-
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Encoding', 'gzip');
-    const readStream = fs.createReadStream(filePath);
-    return readStream.pipe(res);
+    return { status: true, data };
   }
 
   @Post('reports/net-sales-list/export/queue')

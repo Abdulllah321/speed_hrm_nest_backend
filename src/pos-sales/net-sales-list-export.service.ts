@@ -817,34 +817,54 @@ export class NetSalesListExportService {
             if (custMatch) custName = custMatch[1].trim();
           }
 
-          // Line items computation
+          // Line items computation — matches sales-list-export.service.ts transformSingleOrder
           const docItems: NetSalesListLineItem[] = [];
           let docQty = 0;
-          let docGross = 0;
-          let docWost = 0;
-          let docDiscount = 0;
-          let docDiscountWost = 0;
+          let orderRetailGross = 0;
+          let orderComputedWost = 0;
+          let orderRetailDisc = 0;
+          let orderComputedDiscWost = 0;
           let docTax = 0;
           let docNet = 0;
 
+          const orderWost = Number(o.subtotal || 0);
+          const orderDiscWost = Number(o.discountAmount || 0);
+
           for (const it of o.items) {
             const qty = Number(it.quantity) || 1;
-            const price = Number(it.unitPrice) || 0;
-            const lineGross = qty * price;
-            const discAmt = Number(it.discountAmount) || 0;
-            const discWost = discAmt / 1.18;
-            const lineNet = Number(it.lineTotal) || (lineGross - discAmt);
-            const lineTax = Number(it.taxAmount) || 0;
-            const lineWost = price / 1.18;
-            const lineValExcl = qty * lineWost;
+            const unitPrice = Number(it.unitPrice) || 0;
+            const lineRetailGross = unitPrice * qty;
+            orderRetailGross += lineRetailGross;
+
+            const priceWost = unitPrice / 1.18;
+            const valueExcl = priceWost * qty;
+
+            const rawDiscAmt = Number(it.discountAmount || 0);
+            const discPct = Number(it.discountPercent || (lineRetailGross > 0 && rawDiscAmt > 0 ? (rawDiscAmt / valueExcl) * 100 : 0));
+
+            let discAmtWost = 0;
+            let discAmtRetail = 0;
+
+            if (discPct > 0) {
+              discAmtRetail = Math.round((lineRetailGross * (discPct / 100)) * 100) / 100;
+              discAmtWost = Math.round((valueExcl * (discPct / 100)) * 100) / 100;
+            } else if (rawDiscAmt > 0) {
+              discAmtWost = rawDiscAmt;
+              discAmtRetail = Math.round(rawDiscAmt * 1.18 * 100) / 100;
+            }
+
+            orderRetailDisc += discAmtRetail;
+            orderComputedWost += valueExcl;
+            orderComputedDiscWost += discAmtWost;
+
+            const amountAfterDiscount = Math.max(0, valueExcl - discAmtWost);
+            const taxPercent = Number(it.taxPercent || 18);
+            const taxAmount = Number(it.taxAmount || Math.round(amountAfterDiscount * (taxPercent / 100) * 100) / 100);
+            const lineTotal = Number(it.lineTotal || (lineRetailGross - discAmtRetail));
 
             docQty += qty;
-            docGross += lineGross;
-            docWost += lineValExcl;
-            docDiscount += discAmt;
-            docDiscountWost += discWost;
-            docTax += lineTax;
-            docNet += lineNet;
+            docTax += taxAmount;
+            docNet += lineTotal;
 
             const sizeName = it.item?.sizeId ? sizeMap.get(it.item.sizeId) || '' : '';
             const colorName = it.item?.colorId ? colorMap.get(it.item.colorId) || '' : '';
@@ -853,24 +873,67 @@ export class NetSalesListExportService {
               id: it.id,
               docType: 'SALE',
               docNumber: o.orderNumber,
-              sku: it.item?.sku || '',
-              barCode: it.item?.barCode || '',
-              description: it.item?.description || '',
+              sku: it.item?.sku || it.item?.barCode || 'NO-SKU',
+              barCode: it.item?.barCode || it.item?.sku || '-',
+              description: it.item?.description || it.item?.sku || 'Article',
               sizeName,
               colorName,
               quantity: qty,
-              unitPrice: price,
-              priceWost: lineWost,
-              valueExcl: lineValExcl,
-              discountPercent: Number(it.discountPercent) || 0,
-              discountAmount: discAmt,
-              discountAmountWost: discWost,
-              amountAfterDiscount: Math.max(0, lineValExcl - discWost),
-              taxPercent: Number(it.taxPercent) || 0,
-              taxAmount: lineTax,
-              lineTotal: lineNet,
+              unitPrice,
+              priceWost,
+              valueExcl,
+              discountPercent: discPct,
+              discountAmount: discAmtRetail,
+              discountAmountWost: discAmtWost,
+              amountAfterDiscount,
+              taxPercent,
+              taxAmount,
+              lineTotal,
             });
           }
+
+          const orderNet = Number(o.grandTotal !== null && o.grandTotal !== undefined ? o.grandTotal : docNet);
+          const orderTax = Number(o.taxAmount !== null && o.taxAmount !== undefined ? o.taxAmount : docTax);
+
+          if (docItems.length === 0) {
+            const grossWostFallback = orderWost > 0 ? orderWost : orderNet / 1.18;
+            const retailGrossFallback = grossWostFallback * 1.18;
+            docItems.push({
+              id: o.id,
+              docType: 'SALE',
+              docNumber: o.orderNumber,
+              sku: '-',
+              barCode: '-',
+              description: 'Sales Order Summary Record',
+              sizeName: '',
+              colorName: '',
+              quantity: 1,
+              unitPrice: retailGrossFallback,
+              priceWost: grossWostFallback,
+              valueExcl: grossWostFallback,
+              discountPercent: 0,
+              discountAmount: 0,
+              discountAmountWost: 0,
+              amountAfterDiscount: grossWostFallback,
+              taxPercent: 18,
+              taxAmount: orderTax,
+              lineTotal: orderNet,
+            });
+            docQty = 1;
+            orderRetailGross = retailGrossFallback;
+            orderComputedWost = grossWostFallback;
+          }
+
+          // Use order-level WOST (subtotal) with fallback to computed — same as sales-list
+          const grossWost = orderWost > 0 ? orderWost : (orderComputedWost > 0 ? orderComputedWost : orderNet / 1.18);
+          const retailGross = orderRetailGross > 0 ? orderRetailGross : (grossWost * 1.18);
+          const totalDiscWost = orderDiscWost > 0 ? orderDiscWost : orderComputedDiscWost;
+          const totalDiscRetail = orderRetailDisc > 0 ? orderRetailDisc : (totalDiscWost * 1.18);
+          const totalAmtAfterDisc = Math.max(0, grossWost - totalDiscWost);
+          const docGross = retailGross;
+          const docWost = grossWost;
+          const docDiscount = totalDiscRetail;
+          const docDiscountWost = totalDiscWost;
 
           // Full tender extraction
           let balance = 0;
@@ -1001,6 +1064,13 @@ export class NetSalesListExportService {
             else cashSale = paid;
           }
 
+          let merchantName = (o.merchantId && merchantMap.get(o.merchantId)) || o.merchant?.bankName || '-';
+          if ((merchantName === '-' || !merchantName) && notesStr) {
+            const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],(]+)/i);
+            if (merchMatch) merchantName = merchMatch[1].trim();
+          }
+          merchantName = merchantName || '-';
+
           const docNode: NetSalesListDocumentNode = {
             id: o.id,
             docType: 'SALE',
@@ -1015,7 +1085,7 @@ export class NetSalesListExportService {
             customerCnic: o.customer?.cnicNo || undefined,
             customerCode: o.customer?.traderId || o.customer?.subCode || undefined,
             paymentMethod: o.paymentMethod || 'CASH',
-            merchant: o.merchantId ? merchantMap.get(o.merchantId) : undefined,
+            merchant: merchantName !== '-' ? merchantName : undefined,
             fbrInvoiceNumber: o.fbrInvoiceNumber || undefined,
             fbrStatus: (o as any).fbrStatus || undefined,
             notes: o.notes || undefined,
@@ -1025,9 +1095,9 @@ export class NetSalesListExportService {
               wostAmount: docWost,
               discountAmount: docDiscount,
               discountWostAmount: docDiscountWost,
-              amountAfterDiscount: Math.max(0, docWost - docDiscountWost),
-              taxAmount: docTax,
-              netAmount: docNet,
+              amountAfterDiscount: totalAmtAfterDisc,
+              taxAmount: orderTax,
+              netAmount: orderNet,
               cashAmount: cashSale,
               cardAmount: cardSale,
               creditSaleAmount: creditSale,
@@ -1051,8 +1121,8 @@ export class NetSalesListExportService {
           grandTotals.wostSalesAmount += docWost;
           grandTotals.discountSalesAmount += docDiscount;
           grandTotals.discountWostSalesAmount += docDiscountWost;
-          grandTotals.taxSalesAmount += docTax;
-          grandTotals.netSalesAmount += docNet;
+          grandTotals.taxSalesAmount += orderTax;
+          grandTotals.netSalesAmount += orderNet;
 
           grandTotals.cashSale += cashSale;
           grandTotals.cardSale += cardSale;
@@ -1104,9 +1174,17 @@ export class NetSalesListExportService {
                 notes: true,
                 paymentMethod: true,
                 fbrInvoiceNumber: true,
+                locationId: true,
+                cashierUserId: true,
+                customer: {
+                  select: { id: true, name: true, contactNo: true, cnicNo: true, email: true, address: true, traderId: true, subCode: true },
+                },
               },
             },
             customer: {
+              select: { id: true, name: true, contactNo: true, cnicNo: true, email: true, address: true, traderId: true, subCode: true },
+            },
+            originalCustomer: {
               select: { id: true, name: true, contactNo: true, cnicNo: true, email: true, address: true, traderId: true, subCode: true },
             },
             items: {
@@ -1121,9 +1199,12 @@ export class NetSalesListExportService {
         });
 
         for (const ret of returns) {
-          const locName = (ret.locationId && locationMap.get(ret.locationId)) || 'Main Store';
-          const cashierName = (ret.cashierUserId && cashierMap.get(ret.cashierUserId)) || 'Cashier';
-          const custName = ret.customer?.name || 'Walk-in Customer';
+          const cust = ret.customer || ret.originalCustomer || ret.salesOrder?.customer;
+          const locId = ret.locationId || ret.salesOrder?.locationId;
+          const locName = (locId && locationMap.get(locId)) || 'Main Store';
+          const cashUserId = ret.cashierUserId || ret.salesOrder?.cashierUserId;
+          const cashierName = (cashUserId && cashierMap.get(cashUserId)) || 'Cashier';
+          const custName = cust?.name || 'Walk-in Customer';
 
           const vType = (ret.voucher?.voucherType || '').toUpperCase();
           const rType = (ret.returnType || '').toUpperCase();
@@ -1147,7 +1228,7 @@ export class NetSalesListExportService {
             subTypeLabel = 'Cash/Card Refund (RF)';
           }
 
-          // Line items computation for returns
+          // Line items computation for returns — matches sales-return-list-export.service.ts
           const docItems: NetSalesListLineItem[] = [];
           let retQty = 0;
           let retGross = 0;
@@ -1159,22 +1240,22 @@ export class NetSalesListExportService {
 
           for (const it of ret.items) {
             const qty = Number(it.quantity) || 1;
-            const price = Number((it as any).originalUnitPrice || (it as any).currentPriceWithTax || (it as any).originalPaidPerUnit || 0);
-            const lineGross = qty * price;
-            const lineWost = Number((it as any).unitPriceWost ? Number((it as any).unitPriceWost) : price / 1.18);
-            const lineValExcl = Number((it as any).lineTotalWost ? Number((it as any).lineTotalWost) : qty * lineWost);
-            const discAmt = Number(it.discountPercent ? (price * qty * Number(it.discountPercent)) / 100 : 0);
-            const discWost = Number((it as any).discountWost ? Number((it as any).discountWost) : discAmt / 1.18);
-            const lineTax = Number(it.taxAmount || 0);
-            const lineNet = Number(it.lineTotal || (lineGross - discAmt + lineTax));
+            const unitPrice = Number((it as any).originalUnitPrice || (it as any).refundPerUnit || (it as any).originalPaidPerUnit || 0);
+            const unitPriceWost = Number(((it as any).unitPriceWost ? Number((it as any).unitPriceWost) : unitPrice / 1.18).toFixed(2));
+            const valExcl = Number(((it as any).lineTotalWost ? Number((it as any).lineTotalWost) : qty * unitPriceWost).toFixed(2));
+            const disc = Number(it.discountPercent ? (unitPrice * qty * Number(it.discountPercent)) / 100 : 0);
+            const discWost = Number(((it as any).discountWost ? Number((it as any).discountWost) : disc / 1.18).toFixed(2));
+            const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
+            const tax = Number(it.taxAmount || 0);
+            const lineTotal = Number(it.lineTotal || (unitPrice * qty - disc + tax));
 
             retQty += qty;
-            retGross += lineGross;
-            retWost += lineValExcl;
-            retDiscount += discAmt;
+            retGross += unitPrice * qty;
+            retWost += valExcl;
+            retDiscount += disc;
             retDiscountWost += discWost;
-            retTax += lineTax;
-            retNet += lineNet;
+            retTax += tax;
+            retNet += lineTotal;
 
             const sizeName = it.item?.sizeId ? sizeMap.get(it.item.sizeId) || '' : '';
             const colorName = it.item?.colorId ? colorMap.get(it.item.colorId) || '' : '';
@@ -1185,60 +1266,81 @@ export class NetSalesListExportService {
               docType: 'RETURN',
               docNumber: ret.returnNumber,
               refDocNumber: ret.salesOrder?.orderNumber || '',
-              sku: it.item?.sku || '',
-              barCode: it.item?.barCode || '',
+              sku: it.item?.sku || it.item?.barCode || 'NO-SKU',
+              barCode: it.item?.barCode || it.item?.sku || '-',
               description: it.item?.description || 'Return Article',
               sizeName,
               colorName,
               quantity: -qty,
-              unitPrice: price,
-              priceWost: lineWost,
-              valueExcl: -lineValExcl,
+              unitPrice,
+              priceWost: unitPriceWost,
+              valueExcl: -valExcl,
               discountPercent: Number(it.discountPercent) || 0,
-              discountAmount: -discAmt,
+              discountAmount: -disc,
               discountAmountWost: -discWost,
-              amountAfterDiscount: -Math.max(0, lineValExcl - discWost),
+              amountAfterDiscount: -amtAfterDisc,
               taxPercent: Number(it.taxPercent) || 0,
-              taxAmount: -lineTax,
-              lineTotal: -lineNet,
+              taxAmount: -tax,
+              lineTotal: -lineTotal,
               returnReason: (it as any).reason || ret.reason || undefined,
             });
           }
 
+          if (docItems.length === 0) {
+            const totalRefAmt = Number(ret.totalRefundAmount || 0);
+            const wostAmt = Number((ret as any).subtotalWost || (totalRefAmt / 1.18).toFixed(2));
+            retQty = 1;
+            retGross = totalRefAmt;
+            retWost = wostAmt;
+            retNet = totalRefAmt;
+
+            docItems.push({
+              id: ret.id,
+              docType: 'RETURN',
+              docNumber: ret.returnNumber,
+              refDocNumber: ret.salesOrder?.orderNumber || '',
+              sku: '-',
+              barCode: '-',
+              description: 'Return Summary Record',
+              sizeName: '',
+              colorName: '',
+              quantity: -1,
+              unitPrice: totalRefAmt,
+              priceWost: Number((totalRefAmt / 1.18).toFixed(2)),
+              valueExcl: -wostAmt,
+              discountPercent: 0,
+              discountAmount: 0,
+              discountAmountWost: 0,
+              amountAfterDiscount: -wostAmt,
+              taxPercent: 0,
+              taxAmount: -Number(ret.taxAmount || 0),
+              lineTotal: -totalRefAmt,
+              returnReason: ret.reason || undefined,
+            });
+          }
+
           // Refund breakdown
-          const refundMode = (ret.refundMode || '').toUpperCase();
-          const netRefundTotal = Number(ret.totalRefundAmount) || retNet;
+          const totalRefundAmt = Number(ret.totalRefundAmount || retNet);
+          const cashRefund = (ret.refundMode === 'CASH' || rMode === 'CASH') ? totalRefundAmt : 0;
+          const cardRefund = (rMode === 'CARD' || rMode === 'CREDIT_CARD' || rMode === 'DEBIT_CARD') ? totalRefundAmt : 0;
+          const voucherIssuedAmt = (ret.refundMode === 'VOUCHER' || ret.refundMode === 'EXCHANGE_VOUCHER' || ret.voucher)
+            ? Number(ret.voucher?.faceValue || totalRefundAmt)
+            : 0;
 
-          let cashRefund = 0;
-          let cardRefund = 0;
-          let voucherIssued = 0;
-          let exchangeVoucherIssued = 0;
-          let creditVoucherIssued = 0;
-          let claimVoucherIssued = 0;
-          let rewardVoucherIssued = 0;
+          // Route voucher amount by subType — matches sales-return-list-export.service.ts
+          const exchangeVoucherIssued = subType === 'EXCHANGE_SR' ? voucherIssuedAmt : 0;
+          const creditVoucherIssued = subType === 'REFUND_RF' ? voucherIssuedAmt : 0;
+          const claimVoucherIssued = subType === 'CLAIM_CLM' ? voucherIssuedAmt : 0;
+          const rewardVoucherIssued = 0;
 
-          if (refundMode === 'CASH') {
-            cashRefund = netRefundTotal;
-          } else if (refundMode === 'CARD' || refundMode === 'CREDIT_CARD' || refundMode === 'DEBIT_CARD') {
-            cardRefund = netRefundTotal;
-          } else if (refundMode === 'VOUCHER' || refundMode === 'EXCHANGE_VOUCHER' || ret.voucherId) {
-            voucherIssued = netRefundTotal;
-            const vType = (ret.voucher?.voucherType || '').toUpperCase();
-            if (vType === 'CREDIT' || vType.includes('CREDIT')) {
-              creditVoucherIssued = netRefundTotal;
-            } else if (vType === 'CLAIM' || vType.includes('CLAIM')) {
-              claimVoucherIssued = netRefundTotal;
-            } else if (vType === 'REWARD' || vType.includes('REWARD')) {
-              rewardVoucherIssued = netRefundTotal;
-            } else {
-              exchangeVoucherIssued = netRefundTotal;
-            }
-          } else {
-            // Default based on subType
+          // Fallback: if no cash/card/voucher detected, default by subType
+          let finalCashRefund = cashRefund;
+          let finalExchangeVoucherIssued = exchangeVoucherIssued;
+          if (cashRefund === 0 && cardRefund === 0 && voucherIssuedAmt === 0) {
             if (subType === 'REFUND_RF') {
-              cashRefund = netRefundTotal;
+              finalCashRefund = totalRefundAmt;
             } else {
-              exchangeVoucherIssued = netRefundTotal;
+              finalExchangeVoucherIssued = totalRefundAmt;
             }
           }
 
@@ -1249,13 +1351,13 @@ export class NetSalesListExportService {
             refDocNumber: ret.salesOrder?.orderNumber || undefined,
             subTypeLabel,
             createdAt: ret.createdAt.toISOString(),
-            locationId: ret.locationId || undefined,
+            locationId: locId || undefined,
             locationName: locName,
             cashierName,
             customerName: custName,
-            customerPhone: ret.customer?.contactNo || undefined,
-            customerCnic: ret.customer?.cnicNo || undefined,
-            customerCode: ret.customer?.traderId || ret.customer?.subCode || undefined,
+            customerPhone: cust?.contactNo || undefined,
+            customerCnic: cust?.cnicNo || undefined,
+            customerCode: cust?.traderId || cust?.subCode || undefined,
             paymentMethod: `Refund: ${ret.refundMode || rMode || subType}`,
             fbrInvoiceNumber: ret.salesOrder?.fbrInvoiceNumber || undefined,
             notes: ret.reason || ret.salesOrder?.notes || undefined,
@@ -1265,14 +1367,14 @@ export class NetSalesListExportService {
               wostAmount: -retWost,
               discountAmount: -retDiscount,
               discountWostAmount: -retDiscountWost,
-              amountAfterDiscount: -Math.max(0, retWost - retDiscountWost),
+              amountAfterDiscount: -Number(Math.max(0, retWost - retDiscountWost).toFixed(2)),
               taxAmount: -retTax,
-              netAmount: -retNet,
-              cashAmount: -cashRefund,
+              netAmount: -totalRefundAmt,
+              cashAmount: -finalCashRefund,
               cardAmount: -cardRefund,
               creditSaleAmount: 0,
               giftVoucherAmount: 0,
-              exchangeVoucherAmount: -exchangeVoucherIssued,
+              exchangeVoucherAmount: -finalExchangeVoucherIssued,
               creditVoucherAmount: -creditVoucherIssued,
               claimVoucherAmount: -claimVoucherIssued,
               rewardVoucherAmount: -rewardVoucherIssued,
@@ -1299,18 +1401,217 @@ export class NetSalesListExportService {
           grandTotals.discountReturnAmount += retDiscount;
           grandTotals.discountWostReturnAmount += retDiscountWost;
           grandTotals.taxReturnAmount += retTax;
-          grandTotals.netReturnAmount += retNet;
+          grandTotals.netReturnAmount += totalRefundAmt;
 
-          grandTotals.cashRefund += cashRefund;
+          grandTotals.cashRefund += finalCashRefund;
           grandTotals.cardRefund += cardRefund;
-          grandTotals.exchangeVoucherIssued += exchangeVoucherIssued;
+          grandTotals.exchangeVoucherIssued += finalExchangeVoucherIssued;
           grandTotals.creditVoucherIssued += creditVoucherIssued;
           grandTotals.claimVoucherIssued += claimVoucherIssued;
         }
 
         processedReturns += returns.length;
-        const pct = 55 + Math.floor((processedReturns / (totalReturns || 1)) * 30);
+        const pct = 55 + Math.floor((processedReturns / (totalReturns || 1)) * 25);
         await onProgress?.(pct, `Processed ${processedReturns} of ${totalReturns} return documents...`);
+      }
+
+      // 2b. Fetch and process PosClaim records (warranty / defect claims)
+      await onProgress?.(80, 'Querying warranty and defect claim records...');
+      const claimWhere: any = {
+        createdAt: { gte: startDate, lte: endDate },
+      };
+      if (locationWhere) {
+        claimWhere.salesOrder = { locationId: locationWhere };
+      }
+      if (cashierUserId) {
+        claimWhere.salesOrder = { ...(claimWhere.salesOrder || {}), cashierUserId };
+      }
+
+      const claims = await prisma.posClaim.findMany({
+        where: claimWhere,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        include: {
+          salesOrder: {
+            select: {
+              id: true,
+              orderNumber: true,
+              locationId: true,
+              cashierUserId: true,
+              customer: {
+                select: {
+                  id: true,
+                  name: true,
+                  contactNo: true,
+                  cnicNo: true,
+                  subCode: true,
+                  traderId: true,
+                  address: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          voucher: {
+            select: {
+              id: true,
+              code: true,
+              voucherType: true,
+              faceValue: true,
+              isRedeemed: true,
+              description: true,
+            },
+          },
+          items: {
+            include: {
+              item: {
+                select: {
+                  id: true,
+                  sku: true,
+                  barCode: true,
+                  description: true,
+                  sizeId: true,
+                  colorId: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const clm of claims) {
+        if (documents.some((d) => d.docNumber === clm.claimNumber)) continue;
+
+        const cust = clm.salesOrder?.customer;
+        const voucher = clm.voucher;
+        const approvedAmt = Number(clm.approvedAmount || clm.claimedAmount || 0);
+
+        const docItems: NetSalesListLineItem[] = [];
+        let claimQty = 0;
+
+        for (const it of clm.items || []) {
+          const qty = it.claimedQty || 1;
+          const unitPrice = Number(it.unitPaidPrice || 0);
+          const unitPriceWost = Number((unitPrice / 1.18).toFixed(2));
+          const valExcl = Number((qty * unitPriceWost).toFixed(2));
+          const lineTotal = Number(it.claimedAmount || qty * unitPrice);
+
+          claimQty += qty;
+          const sizeName = it.item?.sizeId ? sizeMap.get(it.item.sizeId) || '' : '';
+          const colorName = it.item?.colorId ? colorMap.get(it.item.colorId) || '' : '';
+
+          docItems.push({
+            id: it.id,
+            docType: 'RETURN',
+            docNumber: clm.claimNumber,
+            refDocNumber: clm.salesOrder?.orderNumber || '',
+            sku: it.item?.sku || it.item?.barCode || 'NO-SKU',
+            barCode: it.item?.barCode || it.item?.sku || '-',
+            description: it.item?.description || 'Claim Article',
+            sizeName,
+            colorName,
+            quantity: -qty,
+            unitPrice,
+            priceWost: unitPriceWost,
+            valueExcl: -valExcl,
+            discountPercent: 0,
+            discountAmount: 0,
+            discountAmountWost: 0,
+            amountAfterDiscount: -valExcl,
+            taxPercent: 0,
+            taxAmount: 0,
+            lineTotal: -lineTotal,
+            returnReason: it.reviewNotes || clm.reasonNotes || undefined,
+          });
+        }
+
+        if (docItems.length === 0) {
+          docItems.push({
+            id: clm.id,
+            docType: 'RETURN',
+            docNumber: clm.claimNumber,
+            refDocNumber: clm.salesOrder?.orderNumber || '',
+            sku: '-',
+            barCode: '-',
+            description: 'Claim Record',
+            sizeName: '',
+            colorName: '',
+            quantity: -1,
+            unitPrice: approvedAmt,
+            priceWost: Number((approvedAmt / 1.18).toFixed(2)),
+            valueExcl: -Number((approvedAmt / 1.18).toFixed(2)),
+            discountPercent: 0,
+            discountAmount: 0,
+            discountAmountWost: 0,
+            amountAfterDiscount: -Number((approvedAmt / 1.18).toFixed(2)),
+            taxPercent: 0,
+            taxAmount: 0,
+            lineTotal: -approvedAmt,
+            returnReason: clm.reasonNotes || undefined,
+          });
+          claimQty = 1;
+        }
+
+        const valExcl = Number((approvedAmt / 1.18).toFixed(2));
+        const voucherIssuedAmt = voucher ? Number(voucher.faceValue) : approvedAmt;
+
+        const locId = clm.salesOrder?.locationId;
+        const locName = locId ? locationMap.get(locId) || 'Main Store' : 'Main Store';
+        const cashierName = clm.salesOrder?.cashierUserId ? cashierMap.get(clm.salesOrder.cashierUserId) || 'Cashier' : 'Cashier';
+
+        const docNode: NetSalesListDocumentNode = {
+          id: clm.id,
+          docType: 'RETURN',
+          docNumber: clm.claimNumber,
+          refDocNumber: clm.salesOrder?.orderNumber || undefined,
+          subTypeLabel: 'Warranty Claim (CLM)',
+          createdAt: clm.createdAt.toISOString(),
+          locationId: locId || undefined,
+          locationName: locName,
+          cashierName,
+          customerName: cust?.name || 'Walk-in Customer',
+          customerPhone: cust?.contactNo || undefined,
+          customerCnic: cust?.cnicNo || undefined,
+          customerCode: cust?.subCode || cust?.traderId || undefined,
+          paymentMethod: 'Claim Voucher',
+          notes: clm.reasonNotes || undefined,
+          totals: {
+            totalItems: -claimQty,
+            grossAmount: -approvedAmt,
+            wostAmount: -valExcl,
+            discountAmount: 0,
+            discountWostAmount: 0,
+            amountAfterDiscount: -valExcl,
+            taxAmount: 0,
+            netAmount: -approvedAmt,
+            cashAmount: 0,
+            cardAmount: 0,
+            creditSaleAmount: 0,
+            giftVoucherAmount: 0,
+            exchangeVoucherAmount: 0,
+            creditVoucherAmount: 0,
+            claimVoucherAmount: -voucherIssuedAmt,
+            rewardVoucherAmount: 0,
+            corporateVoucherAmount: 0,
+          },
+          items: docItems,
+          voucherDetails: voucher
+            ? {
+                code: voucher.code,
+                faceValue: Number(voucher.faceValue) || 0,
+                voucherType: voucher.voucherType,
+              }
+            : undefined,
+        };
+
+        documents.push(docNode);
+
+        grandTotals.totalDocuments += 1;
+        grandTotals.returnCount += 1;
+        grandTotals.totalItemsReturned += claimQty;
+        grandTotals.grossReturnAmount += approvedAmt;
+        grandTotals.wostReturnAmount += valExcl;
+        grandTotals.netReturnAmount += approvedAmt;
+        grandTotals.claimVoucherIssued += voucherIssuedAmt;
       }
     }
 
