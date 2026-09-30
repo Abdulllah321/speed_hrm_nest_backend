@@ -9,7 +9,7 @@ export class AttendanceExemptionService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   private async resolveApproverUserId(args: {
     level: {
@@ -202,21 +202,21 @@ export class AttendanceExemptionService {
       const [department, subDepartment, designation] = await Promise.all([
         exemption.department
           ? this.prisma.department.findUnique({
-            where: { id: exemption.department },
-            select: { name: true },
-          })
+              where: { id: exemption.department },
+              select: { name: true },
+            })
           : null,
         exemption.subDepartment
           ? this.prisma.subDepartment.findUnique({
-            where: { id: exemption.subDepartment },
-            select: { name: true },
-          })
+              where: { id: exemption.subDepartment },
+              select: { name: true },
+            })
           : null,
         exemption.employee?.designationId
           ? this.prisma.designation.findUnique({
-            where: { id: exemption.employee.designationId },
-            select: { name: true },
-          })
+              where: { id: exemption.employee.designationId },
+              select: { name: true },
+            })
           : null,
       ]);
 

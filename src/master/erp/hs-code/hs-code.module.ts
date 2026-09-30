@@ -11,21 +11,21 @@ import { UploadEventsService } from '../../../finance/item/upload-events.service
 import { DatabaseModule } from '../../../database/database.module';
 
 @Module({
-    imports: [
-        DatabaseModule,
-        BullModule.registerQueue({
-            name: 'hscode-upload',
-        }),
-    ],
-    controllers: [HsCodeController, HsCodeBulkUploadController],
-    providers: [
-        HsCodeService,
-        HsCodeBulkUploadService,
-        HsCodeUploadProcessor,
-        HsCodeCsvParserService,
-        HsCodeValidatorService,
-        UploadEventsService,
-    ],
-    exports: [HsCodeService],
+  imports: [
+    DatabaseModule,
+    BullModule.registerQueue({
+      name: 'hscode-upload',
+    }),
+  ],
+  controllers: [HsCodeController, HsCodeBulkUploadController],
+  providers: [
+    HsCodeService,
+    HsCodeBulkUploadService,
+    HsCodeUploadProcessor,
+    HsCodeCsvParserService,
+    HsCodeValidatorService,
+    UploadEventsService,
+  ],
+  exports: [HsCodeService],
 })
-export class HsCodeModule { }
+export class HsCodeModule {}

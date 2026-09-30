@@ -31,9 +31,15 @@ export class PurchaseInvoiceController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new purchase invoice' })
-  @ApiResponse({ status: 201, description: 'Purchase invoice created successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Purchase invoice created successfully',
+  })
   @ApiResponse({ status: 400, description: 'Bad request - validation failed' })
-  create(@Body() createPurchaseInvoiceDto: CreatePurchaseInvoiceDto, @Req() req: any) {
+  create(
+    @Body() createPurchaseInvoiceDto: CreatePurchaseInvoiceDto,
+    @Req() req: any,
+  ) {
     return this.purchaseInvoiceService.create(createPurchaseInvoiceDto, {
       userId: req.user?.id,
       ipAddress: req.ip,
@@ -42,13 +48,27 @@ export class PurchaseInvoiceController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all purchase invoices with pagination and filtering' })
+  @ApiOperation({
+    summary: 'Get all purchase invoices with pagination and filtering',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'supplierId', required: false, type: String })
-  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED'] })
-  @ApiQuery({ name: 'paymentStatus', required: false, enum: ['UNPAID', 'PARTIAL', 'PAID'] })
-  @ApiQuery({ name: 'invoiceType', required: false, enum: ['GRN_BASED', 'LANDED_COST_BASED', 'DIRECT'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED'],
+  })
+  @ApiQuery({
+    name: 'paymentStatus',
+    required: false,
+    enum: ['UNPAID', 'PARTIAL', 'PAID'],
+  })
+  @ApiQuery({
+    name: 'invoiceType',
+    required: false,
+    enum: ['GRN_BASED', 'LANDED_COST_BASED', 'DIRECT'],
+  })
   @ApiQuery({ name: 'search', required: false, type: String })
   findAll(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
@@ -103,12 +123,15 @@ export class PurchaseInvoiceController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update purchase invoice' })
-  @ApiResponse({ status: 200, description: 'Purchase invoice updated successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Purchase invoice updated successfully',
+  })
   @ApiResponse({ status: 404, description: 'Purchase invoice not found' })
   update(
     @Param('id') id: string,
     @Body() updatePurchaseInvoiceDto: UpdatePurchaseInvoiceDto,
-    @Req() req: any
+    @Req() req: any,
   ) {
     return this.purchaseInvoiceService.update(id, updatePurchaseInvoiceDto, {
       userId: req.user?.id,
@@ -131,7 +154,11 @@ export class PurchaseInvoiceController {
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Cancel purchase invoice' })
   @ApiResponse({ status: 200, description: 'Invoice cancelled successfully' })
-  cancel(@Param('id') id: string, @Body() cancelDto: { reason?: string }, @Req() req: any) {
+  cancel(
+    @Param('id') id: string,
+    @Body() cancelDto: { reason?: string },
+    @Req() req: any,
+  ) {
     return this.purchaseInvoiceService.cancel(id, cancelDto.reason, {
       userId: req.user?.id,
       ipAddress: req.ip,
@@ -141,7 +168,10 @@ export class PurchaseInvoiceController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete purchase invoice' })
-  @ApiResponse({ status: 200, description: 'Purchase invoice deleted successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Purchase invoice deleted successfully',
+  })
   @ApiResponse({ status: 404, description: 'Purchase invoice not found' })
   remove(@Param('id') id: string, @Req() req: any) {
     return this.purchaseInvoiceService.remove(id, {
@@ -176,7 +206,9 @@ export class PurchaseInvoiceController {
   }
 
   @Post('register-report/export')
-  @ApiOperation({ summary: 'Queue Purchase Invoice Register Report background export' })
+  @ApiOperation({
+    summary: 'Queue Purchase Invoice Register Report background export',
+  })
   queueRegisterReportExport(
     @Body()
     body: {
@@ -209,13 +241,17 @@ export class PurchaseInvoiceController {
   }
 
   @Get('register-report/export/:jobId/status')
-  @ApiOperation({ summary: 'Get status of queued Purchase Invoice Register export' })
+  @ApiOperation({
+    summary: 'Get status of queued Purchase Invoice Register export',
+  })
   getRegisterExportStatus(@Param('jobId') jobId: string) {
     return this.piRegisterExportService.getJobStatus(jobId);
   }
 
   @Get('register-report/export/:jobId/download')
-  @ApiOperation({ summary: 'Download completed Purchase Invoice Register export file' })
+  @ApiOperation({
+    summary: 'Download completed Purchase Invoice Register export file',
+  })
   downloadRegisterExport(@Param('jobId') jobId: string, @Res() res: any) {
     return this.piRegisterExportService.streamExportFile(jobId, res);
   }

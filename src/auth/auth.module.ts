@@ -7,8 +7,13 @@ import { PosModule } from '../master/pos/pos.module';
 import { PosSessionModule } from '../pos-session/pos-session.module';
 
 @Module({
-  imports: [DatabaseModule, forwardRef(() => CompanyModule), PosModule, PosSessionModule],
+  imports: [
+    DatabaseModule,
+    forwardRef(() => CompanyModule),
+    PosModule,
+    PosSessionModule,
+  ],
   controllers: [AuthController],
   providers: [AuthService],
 })
-export class AuthModule { }
+export class AuthModule {}

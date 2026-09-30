@@ -40,7 +40,8 @@ export class AuthService {
 
   constructor(
     private prismaMaster: PrismaMasterService,
-    @Inject(forwardRef(() => CompanyService)) private companyService: CompanyService,
+    @Inject(forwardRef(() => CompanyService))
+    private companyService: CompanyService,
     private posService: PosService,
     @Optional() private prisma: PrismaService,
     private encryptionService: EncryptionService,
@@ -66,10 +67,7 @@ export class AuthService {
       this.logger.debug(`[LOGIN] Step 1: Looking up user: ${email}`);
       const user = await this.prismaMaster.user.findFirst({
         where: {
-          OR: [
-            { email },
-            { employeeId: email }
-          ]
+          OR: [{ email }, { employeeId: email }],
         },
         include: { role: true },
       });
@@ -174,9 +172,7 @@ export class AuthService {
         `[LOGIN] Step 7: Fetching permissions | roleId=${user.roleId || 'none'}`,
       );
       const permissions = await this.getUserPermissions(user.id);
-      this.logger.debug(
-        `[LOGIN] Step 7 OK: ${permissions.length} permissions`,
-      );
+      this.logger.debug(`[LOGIN] Step 7 OK: ${permissions.length} permissions`);
 
       this.logger.log(
         `[LOGIN] Success: ${email} | userId=${user.id} | role=${user.role?.name} | total=${Date.now() - startTime}ms`,
@@ -993,7 +989,7 @@ export class AuthService {
     if (!this.prisma.getTenantId()) {
       // If no context, we must create a temporary one for this specific company
       if (company?.dbUrl) {
-        let dbUrl = company.dbUrl;
+        const dbUrl = company.dbUrl;
         let dbPassword = '';
         if (company.dbPassword) {
           try {
@@ -1451,9 +1447,9 @@ export class AuthService {
         role: true,
         userPermissions: {
           include: {
-            permission: true
-          }
-        }
+            permission: true,
+          },
+        },
       },
     })) as any[];
 
@@ -1556,7 +1552,10 @@ export class AuthService {
         where: { employeeId: data.employeeId },
       });
       if (existingUser) {
-        return { status: false, message: 'User account already exists for this employee' };
+        return {
+          status: false,
+          message: 'User account already exists for this employee',
+        };
       }
     }
 
@@ -1634,24 +1633,25 @@ export class AuthService {
     return { status: true, data: user, message: 'User created successfully' };
   }
 
-
   async updateUser(id: string, data: any) {
     const { userPermissions, ...userData } = data;
 
     // Handle roleExpiresAt date parsing if sent as string
     if (userData.roleExpiresAt !== undefined) {
-      userData.roleExpiresAt = userData.roleExpiresAt ? new Date(userData.roleExpiresAt) : null;
+      userData.roleExpiresAt = userData.roleExpiresAt
+        ? new Date(userData.roleExpiresAt)
+        : null;
     }
 
-    const user = await this.prismaMaster.user.update({ 
-      where: { id }, 
-      data: userData 
+    const user = await this.prismaMaster.user.update({
+      where: { id },
+      data: userData,
     });
 
     if (userPermissions !== undefined) {
       // Delete existing overrides
       await this.prismaMaster.userPermission.deleteMany({
-        where: { userId: id }
+        where: { userId: id },
       });
 
       // Create new overrides
@@ -1661,8 +1661,8 @@ export class AuthService {
             userId: id,
             permissionId: up.permissionId,
             isAllowed: up.isAllowed ?? true,
-            expiresAt: up.expiresAt ? new Date(up.expiresAt) : null
-          }))
+            expiresAt: up.expiresAt ? new Date(up.expiresAt) : null,
+          })),
         });
       }
     }
@@ -1754,10 +1754,7 @@ export class AuthService {
         },
         userPermissions: {
           where: {
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gt: new Date() } }
-            ]
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
           },
           select: {
             isAllowed: true,
@@ -1772,7 +1769,10 @@ export class AuthService {
     const permissionsSet = new Set<string>();
 
     // 1. Process role permissions if role has not expired
-    const isRoleActive = user.roleId && user.role && (!user.roleExpiresAt || user.roleExpiresAt > new Date());
+    const isRoleActive =
+      user.roleId &&
+      user.role &&
+      (!user.roleExpiresAt || user.roleExpiresAt > new Date());
     if (isRoleActive && user.role) {
       const roleName = user.role.name.toLowerCase();
       if (roleName === 'super_admin' || roleName === 'admin') {
@@ -1890,7 +1890,14 @@ export class AuthService {
     return { status: true, message: 'Password reset successfully' };
   }
 
-  async verifyManager(emailOrId: string, pass: string): Promise<{ status: boolean; message: string; data?: { userId: string; email: string } }> {
+  async verifyManager(
+    emailOrId: string,
+    pass: string,
+  ): Promise<{
+    status: boolean;
+    message: string;
+    data?: { userId: string; email: string };
+  }> {
     const user = await this.prismaMaster.user.findFirst({
       where: {
         OR: [
@@ -1939,7 +1946,10 @@ export class AuthService {
       );
 
     if (!isManagerOrAdmin) {
-      return { status: false, message: 'This user is not authorized as a Manager' };
+      return {
+        status: false,
+        message: 'This user is not authorized as a Manager',
+      };
     }
 
     return {
@@ -2203,10 +2213,15 @@ export class AuthService {
       const activeSession = await this.prisma.posSession.findUnique({
         where: { id: context.posSessionId },
       });
-      if (activeSession && activeSession.userId && activeSession.userId !== user.id) {
+      if (
+        activeSession &&
+        activeSession.userId &&
+        activeSession.userId !== user.id
+      ) {
         return {
           status: false,
-          message: 'Cannot switch cashier profiles while a POS session is active. Please close the active shift first.',
+          message:
+            'Cannot switch cashier profiles while a POS session is active. Please close the active shift first.',
         };
       }
 
@@ -2397,7 +2412,8 @@ export class AuthService {
         if (posSession.userId && posSession.userId !== user.id) {
           return {
             status: false,
-            message: 'Cannot switch cashier profiles while a POS session is active. Please close the active shift first.',
+            message:
+              'Cannot switch cashier profiles while a POS session is active. Please close the active shift first.',
           };
         }
         await this.prisma.posSession.update({

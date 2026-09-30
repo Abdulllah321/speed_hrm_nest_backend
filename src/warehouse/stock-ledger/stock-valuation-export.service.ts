@@ -46,7 +46,7 @@ export class StockValuationExportService {
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
     private readonly fiscalClosingService: FiscalYearClosingService,
-  ) { }
+  ) {}
 
   isJobCancelled(jobId?: string): boolean {
     if (!jobId) return false;
@@ -90,8 +90,11 @@ export class StockValuationExportService {
             wJob.name === 'generate-valuation-preview' &&
             wJob.data?.userId === opts.userId
           ) {
-            this.logger.log(`Pruning superseded waiting valuation preview job ${wJob.id} for user ${opts.userId}`);
-            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
+            this.logger.log(
+              `Pruning superseded waiting valuation preview job ${wJob.id} for user ${opts.userId}`,
+            );
+            if (wJob.data?.jobId)
+              this.cancelledPreviewJobIds.add(wJob.data.jobId);
             await wJob.remove();
           }
         }
@@ -102,12 +105,16 @@ export class StockValuationExportService {
             aJob.data?.userId === opts.userId
           ) {
             const activeJobId = aJob.data?.jobId;
-            this.logger.log(`Cancelling active running valuation preview job ${activeJobId} for user ${opts.userId}`);
+            this.logger.log(
+              `Cancelling active running valuation preview job ${activeJobId} for user ${opts.userId}`,
+            );
             if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Could not prune valuation preview jobs for user ${opts.userId}: ${err.message}`);
+        this.logger.warn(
+          `Could not prune valuation preview jobs for user ${opts.userId}: ${err.message}`,
+        );
       }
     }
 
@@ -166,7 +173,13 @@ export class StockValuationExportService {
   }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
-      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -212,7 +225,10 @@ export class StockValuationExportService {
     let serializableItemMetricsMap: Record<string, any> | undefined;
     if (data?.itemMetricsMap instanceof Map) {
       serializableItemMetricsMap = Object.fromEntries(data.itemMetricsMap);
-    } else if (typeof data?.itemMetricsMap === 'object' && data?.itemMetricsMap !== null) {
+    } else if (
+      typeof data?.itemMetricsMap === 'object' &&
+      data?.itemMetricsMap !== null
+    ) {
       serializableItemMetricsMap = data.itemMetricsMap;
     }
 
@@ -223,31 +239,52 @@ export class StockValuationExportService {
 
     const jsonStr = JSON.stringify(payloadToSerialize);
     const gzipped = zlib.gzipSync(jsonStr);
-    const filePath = path.join(previewDir, `valuation-preview-${jobId}.json.gz`);
+    const filePath = path.join(
+      previewDir,
+      `valuation-preview-${jobId}.json.gz`,
+    );
     fs.writeFileSync(filePath, gzipped);
 
-    setTimeout(() => {
-      if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
-      }
-    }, 60 * 60 * 1000);
+    setTimeout(
+      () => {
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      },
+      60 * 60 * 1000,
+    );
   }
 
   getReportPreviewResult(jobId: string): any {
-    const filePath = path.join(process.cwd(), 'uploads', 'previews', `valuation-preview-${jobId}.json.gz`);
+    const filePath = path.join(
+      process.cwd(),
+      'uploads',
+      'previews',
+      `valuation-preview-${jobId}.json.gz`,
+    );
     if (!fs.existsSync(filePath)) {
       return null;
     }
     const gzipped = fs.readFileSync(filePath);
     const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
     const parsed = JSON.parse(jsonStr);
-    if (parsed && parsed.itemMetricsMap && !(parsed.itemMetricsMap instanceof Map)) {
+    if (
+      parsed &&
+      parsed.itemMetricsMap &&
+      !(parsed.itemMetricsMap instanceof Map)
+    ) {
       parsed.itemMetricsMap = new Map(Object.entries(parsed.itemMetricsMap));
     }
     return parsed;
   }
 
-  async queueExport(opts: QueueStockValuationExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueStockValuationExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -301,15 +338,20 @@ export class StockValuationExportService {
       },
     );
 
-    this.logger.log(`[StockValuationExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`);
+    this.logger.log(
+      `[StockValuationExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -320,7 +362,9 @@ export class StockValuationExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     // Increment download count in ExportHistory
@@ -332,7 +376,9 @@ export class StockValuationExportService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export history download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -341,18 +387,27 @@ export class StockValuationExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
     let filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      const publicFallback = path.join(process.cwd(), 'public', record.filePath);
+      const publicFallback = path.join(
+        process.cwd(),
+        'public',
+        record.filePath,
+      );
       if (fs.existsSync(publicFallback)) {
         filePath = publicFallback;
       } else {
-        throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+        throw new NotFoundException(
+          'Export file not found. It may have expired or the job is still running.',
+        );
       }
     }
 
@@ -364,8 +419,16 @@ export class StockValuationExportService {
     });
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
@@ -386,7 +449,8 @@ export class StockValuationExportService {
     showVariant?: boolean;
   }) {
     // Use injected singleton prisma instance to prevent creating orphan pg-pool connections
-    const { root, grandTotals, meta } = await this.generateValuationReportDataInternal(this.prisma, opts);
+    const { root, grandTotals, meta } =
+      await this.generateValuationReportDataInternal(this.prisma, opts);
     return { data: root, grandTotals, meta };
   }
 
@@ -441,12 +505,19 @@ export class StockValuationExportService {
       return new Date(fyYear, 6, 1, 0, 0, 0, 0);
     };
 
-    const startDate = startStr ? new Date(startStr) : getDefaultFiscalYearStart(now);
+    const startDate = startStr
+      ? new Date(startStr)
+      : getDefaultFiscalYearStart(now);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
     // Resolve nearest Fiscal Opening Snapshot date to prune scanning closed historical fiscal years
-    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
-    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : startDate;
+    const snapshotDate =
+      await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(
+        prisma,
+        startDate,
+      );
+    const queryStartDate =
+      snapshotDate && snapshotDate < startDate ? snapshotDate : startDate;
 
     // Discover active items from InventoryItem and StockLedger within active query date window
     const [inventoryItems, ledgerItems] = await Promise.all([
@@ -466,10 +537,12 @@ export class StockValuationExportService {
       }),
     ]);
 
-    const uniqueItemIds = [...new Set([
-      ...inventoryItems.map((i: any) => i.itemId),
-      ...ledgerItems.map((l: any) => l.itemId),
-    ])];
+    const uniqueItemIds = [
+      ...new Set([
+        ...inventoryItems.map((i: any) => i.itemId),
+        ...ledgerItems.map((l: any) => l.itemId),
+      ]),
+    ];
 
     if (uniqueItemIds.length === 0) {
       return {
@@ -480,7 +553,10 @@ export class StockValuationExportService {
       };
     }
 
-    await onProgress?.(25, 'Loading product catalog, brands, categories & valuation settings...');
+    await onProgress?.(
+      25,
+      'Loading product catalog, brands, categories & valuation settings...',
+    );
 
     const itemChunks = chunkArray(uniqueItemIds, 1000);
     const itemsNested = await Promise.all(
@@ -510,9 +586,12 @@ export class StockValuationExportService {
     );
     const tenantSettings = settingsNested.flat();
 
-    const settingMap = new Map(tenantSettings.map(s => [s.itemId, s]));
+    const settingMap = new Map(tenantSettings.map((s) => [s.itemId, s]));
 
-    await onProgress?.(45, 'Applying active brand, category & search filters...');
+    await onProgress?.(
+      45,
+      'Applying active brand, category & search filters...',
+    );
 
     // Apply active filter parameters (Brand, Division, Category, Gender, Silhouette, SearchText)
     let activeItems = items;
@@ -551,7 +630,15 @@ export class StockValuationExportService {
           const matchBrand = brandName.toLowerCase().includes(q);
           const matchDiv = divName.toLowerCase().includes(q);
           const matchCat = catName.toLowerCase().includes(q);
-          if (!matchBar && !matchSku && !matchDesc && !matchBrand && !matchDiv && !matchCat) return false;
+          if (
+            !matchBar &&
+            !matchSku &&
+            !matchDesc &&
+            !matchBrand &&
+            !matchDiv &&
+            !matchCat
+          )
+            return false;
         }
 
         return true;
@@ -561,9 +648,12 @@ export class StockValuationExportService {
     const totalItems = activeItems.length;
     const pageItems = activeItems;
 
-    const matchedItemIds = pageItems.map(i => i.id);
+    const matchedItemIds = pageItems.map((i) => i.id);
 
-    await onProgress?.(60, 'Fetching historical stock ledger movements and cost entries...');
+    await onProgress?.(
+      60,
+      'Fetching historical stock ledger movements and cost entries...',
+    );
 
     // Fetch stock ledger entries in 1,000 item chunks to compute historical WAC safely
     const matchedItemChunks = chunkArray(matchedItemIds, 1000);
@@ -612,14 +702,44 @@ export class StockValuationExportService {
       }
     }
 
-    await onProgress?.(80, `Calculating weighted average costs, opening, sales & closing valuation for ${matchedItemIds.length} items...`);
+    await onProgress?.(
+      80,
+      `Calculating weighted average costs, opening, sales & closing valuation for ${matchedItemIds.length} items...`,
+    );
 
     // Raw breakdown entries collected during WAC loop, resolved to doc numbers after
-    const itemPurchaseBreakdownRaw = new Map<string, { referenceId: string; referenceType: string; qty: number; unitCost: number; date: Date }[]>();
-    const itemSaleBreakdownRaw = new Map<string, { referenceId: string; referenceType: string; qty: number; unitCost: number; date: Date }[]>();
+    const itemPurchaseBreakdownRaw = new Map<
+      string,
+      {
+        referenceId: string;
+        referenceType: string;
+        qty: number;
+        unitCost: number;
+        date: Date;
+      }[]
+    >();
+    const itemSaleBreakdownRaw = new Map<
+      string,
+      {
+        referenceId: string;
+        referenceType: string;
+        qty: number;
+        unitCost: number;
+        date: Date;
+      }[]
+    >();
 
-    type BreakdownLine = { docNumber: string; docType: string; qty: number; unitCost: number; totalValue: number; date: Date };
-    type ValuationMetrics = ReturnType<typeof this.createEmptyValuationTotals> & {
+    type BreakdownLine = {
+      docNumber: string;
+      docType: string;
+      qty: number;
+      unitCost: number;
+      totalValue: number;
+      date: Date;
+    };
+    type ValuationMetrics = ReturnType<
+      typeof this.createEmptyValuationTotals
+    > & {
       purchaseBreakdown: BreakdownLine[];
       saleBreakdown: BreakdownLine[];
     };
@@ -633,8 +753,8 @@ export class StockValuationExportService {
       if (defaultCost === 0) {
         defaultCost = Number(
           valuationMethod === 'STANDARD'
-            ? (setting?.standardCost || 0)
-            : (setting?.averageCost || item.fob || 0)
+            ? setting?.standardCost || 0
+            : setting?.averageCost || item.fob || 0,
         );
       }
 
@@ -662,29 +782,50 @@ export class StockValuationExportService {
       let adjVal = 0;
 
       // Per-item raw breakdown lines (within the report period only)
-      const purchaseBreakdownRaw: { referenceId: string; referenceType: string; qty: number; unitCost: number; date: Date }[] = [];
-      const saleBreakdownRaw: { referenceId: string; referenceType: string; qty: number; unitCost: number; date: Date }[] = [];
+      const purchaseBreakdownRaw: {
+        referenceId: string;
+        referenceType: string;
+        qty: number;
+        unitCost: number;
+        date: Date;
+      }[] = [];
+      const saleBreakdownRaw: {
+        referenceId: string;
+        referenceType: string;
+        qty: number;
+        unitCost: number;
+        date: Date;
+      }[] = [];
 
       for (const entry of entries) {
         const entryQty = Number(entry.qty);
         let entryCost = Number(entry.unitCost ?? entry.rate ?? 0);
         const ref = entry.referenceType || '';
-        
+
         // For genuine inbound purchases (Landed Costs, GRNs), a 0 cost means Free of Cost (FOC).
         // For outbound movements (Sales) missing a rate, cost them at running WAC.
-        const isInboundPurchase = 
-          entry.movementType === 'INBOUND' && 
-          (ref === 'LANDED_COST' || ref === 'GRN' || ref === 'PURCHASE' || ref.startsWith('GRN') || ref.startsWith('PURCHASE'));
-          
+        const isInboundPurchase =
+          entry.movementType === 'INBOUND' &&
+          (ref === 'LANDED_COST' ||
+            ref === 'GRN' ||
+            ref === 'PURCHASE' ||
+            ref.startsWith('GRN') ||
+            ref.startsWith('PURCHASE'));
+
         if (entryCost === 0 && !isInboundPurchase) {
           entryCost = runningWac;
         }
-        
+
         const isBeforePeriod = entry.createdAt < startDate;
         const isFiscalYearOpening = ref === 'FISCAL_YEAR_OPENING';
 
         // Skip mid-range automated Fiscal Year Opening snapshots to prevent double counting when querying across fiscal years
-        if (isFiscalYearOpening && !isBeforePeriod && queryStartDate < entry.createdAt && startDate < entry.createdAt) {
+        if (
+          isFiscalYearOpening &&
+          !isBeforePeriod &&
+          queryStartDate < entry.createdAt &&
+          startDate < entry.createdAt
+        ) {
           continue;
         }
 
@@ -738,7 +879,14 @@ export class StockValuationExportService {
 
         const isPosSalesReturn =
           !isTransfer &&
-          (['POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALES_RETURN', 'SRN'].includes(ref) ||
+          ([
+            'POS_RETURN',
+            'POS_EXCHANGE_IN',
+            'POS_REFUND',
+            'POS_VOID',
+            'SALES_RETURN',
+            'SRN',
+          ].includes(ref) ||
             ref.startsWith('POS_RETURN') ||
             ref.startsWith('POS_REFUND') ||
             ref.startsWith('POS_VOID') ||
@@ -757,7 +905,8 @@ export class StockValuationExportService {
           if (valuationMethod === 'WEIGHTED_AVG') {
             const newQty = qtyBalance + entryQty;
             if (newQty > 0) {
-              runningWac = ((qtyBalance * runningWac) + (entryQty * entryCost)) / newQty;
+              runningWac =
+                (qtyBalance * runningWac + entryQty * entryCost) / newQty;
             } else {
               runningWac = entryCost;
             }
@@ -813,7 +962,14 @@ export class StockValuationExportService {
 
           if (!isBeforePeriod) {
             const isPurchaseReturn =
-              ['PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_INV', 'PRN', 'PURCHASE_RETURN_NOTE'].includes(ref) ||
+              [
+                'PURCHASE_RETURN',
+                'PURCHASE_RETURN_GRN',
+                'PURCHASE_RETURN_LC',
+                'PURCHASE_RETURN_INV',
+                'PRN',
+                'PURCHASE_RETURN_NOTE',
+              ].includes(ref) ||
               ref.startsWith('PURCHASE_RETURN') ||
               ref.startsWith('PRN');
 
@@ -821,7 +977,17 @@ export class StockValuationExportService {
               !isTransfer &&
               !isAdjustment &&
               !isOpening &&
-              (['POS_SALE', 'POS_EXCHANGE_OUT', 'POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALE', 'SALES_ORDER', 'DELIVERY_CHALLAN'].includes(ref) ||
+              ([
+                'POS_SALE',
+                'POS_EXCHANGE_OUT',
+                'POS_RETURN',
+                'POS_EXCHANGE_IN',
+                'POS_REFUND',
+                'POS_VOID',
+                'SALE',
+                'SALES_ORDER',
+                'DELIVERY_CHALLAN',
+              ].includes(ref) ||
                 ref.startsWith('POS_SALE') ||
                 ref.startsWith('SALE') ||
                 entry.movementType === 'OUTBOUND');
@@ -873,17 +1039,22 @@ export class StockValuationExportService {
 
       // Calculations of final stage values
       const safeOpeningQty = Math.max(0, openingQty);
-      const openingValue = (safeOpeningQty * openingWac) + periodOpeningVal;
+      const openingValue = safeOpeningQty * openingWac + periodOpeningVal;
       const finalOpeningQty = safeOpeningQty + periodOpeningQty;
-      const finalOpeningWac = finalOpeningQty > 0 ? openingValue / finalOpeningQty : defaultCost;
+      const finalOpeningWac =
+        finalOpeningQty > 0 ? openingValue / finalOpeningQty : defaultCost;
 
       const purchaseCost = purchaseQty > 0 ? purchaseVal / purchaseQty : 0;
-      const purchaseRetCost = purchaseRetQty > 0 ? purchaseRetVal / purchaseRetQty : 0;
+      const purchaseRetCost =
+        purchaseRetQty > 0 ? purchaseRetVal / purchaseRetQty : 0;
 
       // 1. Available Stock Calculation
       const availableQty = finalOpeningQty + purchaseQty - purchaseRetQty;
       const availableVal = openingValue + purchaseVal - purchaseRetVal;
-      const availableCost = availableQty > 0 ? availableVal / availableQty : (finalOpeningWac || defaultCost);
+      const availableCost =
+        availableQty > 0
+          ? availableVal / availableQty
+          : finalOpeningWac || defaultCost;
 
       // 2. Net Sales Valuation directly derived upon Available Stock Cost
       const salesCost = availableCost;
@@ -896,7 +1067,8 @@ export class StockValuationExportService {
       // 4. Closing Balance Calculation
       const closingQty = availableQty - salesQty + adjQty;
       const closingVal = availableVal - salesVal + adjVal;
-      const closingCost = closingQty > 0 ? closingVal / closingQty : availableCost;
+      const closingCost =
+        closingQty > 0 ? closingVal / closingQty : availableCost;
 
       itemMetricsMap.set(item.id, {
         openingQty: finalOpeningQty,
@@ -926,12 +1098,17 @@ export class StockValuationExportService {
       });
 
       // Store raw breakdown lines keyed by item id for post-loop resolution
-      if (purchaseBreakdownRaw.length > 0) itemPurchaseBreakdownRaw.set(item.id, purchaseBreakdownRaw);
-      if (saleBreakdownRaw.length > 0) itemSaleBreakdownRaw.set(item.id, saleBreakdownRaw);
+      if (purchaseBreakdownRaw.length > 0)
+        itemPurchaseBreakdownRaw.set(item.id, purchaseBreakdownRaw);
+      if (saleBreakdownRaw.length > 0)
+        itemSaleBreakdownRaw.set(item.id, saleBreakdownRaw);
     }
 
     // ── Resolve document numbers for purchase & sale breakdowns ──────────────
-    await onProgress?.(83, 'Resolving LC / GRN / POS order numbers for breakdown tooltips...');
+    await onProgress?.(
+      83,
+      'Resolving LC / GRN / POS order numbers for breakdown tooltips...',
+    );
 
     // Collect all unique referenceIds by type across all items
     const allLcIds = new Set<string>();
@@ -941,12 +1118,16 @@ export class StockValuationExportService {
     for (const rawList of itemPurchaseBreakdownRaw.values()) {
       for (const r of rawList) {
         if (r.referenceType === 'LANDED_COST') allLcIds.add(r.referenceId);
-        else if (r.referenceType === 'GRN' || r.referenceType.startsWith('GRN')) allGrnIds.add(r.referenceId);
+        else if (r.referenceType === 'GRN' || r.referenceType.startsWith('GRN'))
+          allGrnIds.add(r.referenceId);
       }
     }
     for (const rawList of itemSaleBreakdownRaw.values()) {
       for (const r of rawList) {
-        if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(r.referenceType) || r.referenceType === 'OUTBOUND') {
+        if (
+          ['POS_SALE', 'POS_EXCHANGE_OUT'].includes(r.referenceType) ||
+          r.referenceType === 'OUTBOUND'
+        ) {
           allSaleOrderIds.add(r.referenceId);
         }
       }
@@ -956,38 +1137,49 @@ export class StockValuationExportService {
     const [resolvedLcs, resolvedGrns, resolvedSaleOrders] = await Promise.all([
       allLcIds.size > 0
         ? prisma.landedCost.findMany({
-          where: { id: { in: [...allLcIds] } },
-          select: { id: true, landedCostNumber: true, lcNo: true },
-        })
+            where: { id: { in: [...allLcIds] } },
+            select: { id: true, landedCostNumber: true, lcNo: true },
+          })
         : [],
       allGrnIds.size > 0
         ? prisma.goodsReceiptNote.findMany({
-          where: { id: { in: [...allGrnIds] } },
-          select: { id: true, grnNumber: true },
-        })
+            where: { id: { in: [...allGrnIds] } },
+            select: { id: true, grnNumber: true },
+          })
         : [],
       allSaleOrderIds.size > 0
-        ? (prisma as any).salesOrder
-          ?.findMany?.({
-            where: { id: { in: [...allSaleOrderIds] } },
-            select: { id: true, orderNumber: true },
-          })
-          .catch(() => []) ?? []
+        ? ((prisma as any).salesOrder
+            ?.findMany?.({
+              where: { id: { in: [...allSaleOrderIds] } },
+              select: { id: true, orderNumber: true },
+            })
+            .catch(() => []) ?? [])
         : [],
     ]);
 
     const lcDocMap = new Map<string, { number: string; lcNo?: string }>(
-      resolvedLcs.map((l: any) => [l.id, { number: l.landedCostNumber, lcNo: l.lcNo || undefined }] as [string, { number: string; lcNo?: string }]),
+      resolvedLcs.map(
+        (l: any) =>
+          [l.id, { number: l.landedCostNumber, lcNo: l.lcNo || undefined }] as [
+            string,
+            { number: string; lcNo?: string },
+          ],
+      ),
     );
     const grnDocMap = new Map<string, string>(
       resolvedGrns.map((g: any) => [g.id, g.grnNumber] as [string, string]),
     );
     const saleOrderDocMap = new Map<string, string>(
-      (resolvedSaleOrders as any[]).map((s: any) => [s.id, s.orderNumber] as [string, string]),
+      (resolvedSaleOrders as any[]).map(
+        (s: any) => [s.id, s.orderNumber] as [string, string],
+      ),
     );
 
     // Helper: turn a referenceId + referenceType into a human-readable doc number
-    const resolveDocNumber = (referenceId: string, referenceType: string): { docNumber: string; docType: string } => {
+    const resolveDocNumber = (
+      referenceId: string,
+      referenceType: string,
+    ): { docNumber: string; docType: string } => {
       if (referenceType === 'LANDED_COST') {
         const lc = lcDocMap.get(referenceId);
         if (lc) {
@@ -999,17 +1191,31 @@ export class StockValuationExportService {
         const grn = grnDocMap.get(referenceId);
         if (grn) return { docNumber: grn, docType: 'GRN' };
       }
-      if (['POS_SALE', 'POS_EXCHANGE_OUT', 'OUTBOUND'].includes(referenceType)) {
+      if (
+        ['POS_SALE', 'POS_EXCHANGE_OUT', 'OUTBOUND'].includes(referenceType)
+      ) {
         const order = saleOrderDocMap.get(referenceId);
         if (order) return { docNumber: order, docType: 'SALE' };
       }
-      if (['POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALES_RETURN'].includes(referenceType)
-        || referenceType.startsWith('POS_RETURN') || referenceType.startsWith('SALES_RETURN')) {
+      if (
+        [
+          'POS_RETURN',
+          'POS_EXCHANGE_IN',
+          'POS_REFUND',
+          'POS_VOID',
+          'SALES_RETURN',
+        ].includes(referenceType) ||
+        referenceType.startsWith('POS_RETURN') ||
+        referenceType.startsWith('SALES_RETURN')
+      ) {
         const order = saleOrderDocMap.get(referenceId);
         if (order) return { docNumber: order, docType: 'SALE_RETURN' };
       }
       // Fallback: use a shortened ID
-      const shortId = referenceId && referenceId.length > 8 ? `#${referenceId.slice(0, 8)}` : referenceId || '—';
+      const shortId =
+        referenceId && referenceId.length > 8
+          ? `#${referenceId.slice(0, 8)}`
+          : referenceId || '—';
       return { docNumber: shortId, docType: referenceType };
     };
 
@@ -1018,7 +1224,10 @@ export class StockValuationExportService {
       const metrics = itemMetricsMap.get(itemId);
       if (!metrics) continue;
       metrics.purchaseBreakdown = rawList.map((r) => {
-        const { docNumber, docType } = resolveDocNumber(r.referenceId, r.referenceType);
+        const { docNumber, docType } = resolveDocNumber(
+          r.referenceId,
+          r.referenceType,
+        );
         return {
           docNumber,
           docType,
@@ -1034,7 +1243,10 @@ export class StockValuationExportService {
       const metrics = itemMetricsMap.get(itemId);
       if (!metrics) continue;
       metrics.saleBreakdown = rawList.map((r) => {
-        const { docNumber, docType } = resolveDocNumber(r.referenceId, r.referenceType);
+        const { docNumber, docType } = resolveDocNumber(
+          r.referenceId,
+          r.referenceType,
+        );
         return {
           docNumber,
           docType,
@@ -1073,41 +1285,53 @@ export class StockValuationExportService {
     const addValuationTotals = (target: any, source: any) => {
       target.openingQty += source.openingQty;
       target.openingValue += source.openingValue;
-      target.openingCost = target.openingQty > 0 ? target.openingValue / target.openingQty : 0;
+      target.openingCost =
+        target.openingQty > 0 ? target.openingValue / target.openingQty : 0;
 
       target.purchaseQty += source.purchaseQty;
       target.purchaseValue += source.purchaseValue;
-      target.purchaseCost = target.purchaseQty > 0 ? target.purchaseValue / target.purchaseQty : 0;
+      target.purchaseCost =
+        target.purchaseQty > 0 ? target.purchaseValue / target.purchaseQty : 0;
 
       target.purchaseRetQty += source.purchaseRetQty;
       target.purchaseRetValue += source.purchaseRetValue;
-      target.purchaseRetCost = target.purchaseRetQty > 0 ? target.purchaseRetValue / target.purchaseRetQty : 0;
+      target.purchaseRetCost =
+        target.purchaseRetQty > 0
+          ? target.purchaseRetValue / target.purchaseRetQty
+          : 0;
 
       target.availableQty += source.availableQty;
       target.availableValue += source.availableValue;
-      target.availableCost = target.availableQty > 0 ? target.availableValue / target.availableQty : 0;
+      target.availableCost =
+        target.availableQty > 0
+          ? target.availableValue / target.availableQty
+          : 0;
 
       target.salesQty += source.salesQty;
       target.salesValue += source.salesValue;
-      target.salesCost = target.salesQty > 0 ? target.salesValue / target.salesQty : 0;
+      target.salesCost =
+        target.salesQty > 0 ? target.salesValue / target.salesQty : 0;
 
       target.adjQty += source.adjQty;
       target.adjValue += source.adjValue;
-      target.adjCost = target.adjQty !== 0 ? target.adjValue / target.adjQty : 0;
+      target.adjCost =
+        target.adjQty !== 0 ? target.adjValue / target.adjQty : 0;
 
       target.closingQty += source.closingQty;
       target.closingValue += source.closingValue;
-      target.closingCost = target.closingQty > 0 ? target.closingValue / target.closingQty : 0;
+      target.closingCost =
+        target.closingQty > 0 ? target.closingValue / target.closingQty : 0;
     };
 
     for (const item of items) {
-      const metrics = itemMetricsMap.get(item.id) || this.createEmptyValuationTotals();
+      const metrics =
+        itemMetricsMap.get(item.id) || this.createEmptyValuationTotals();
 
       let currentLevelNodes = root;
       for (let i = 0; i < levels.length; i++) {
         const levelName = levels[i];
         let nodeVal = '';
-        let extraFields: any = {};
+        const extraFields: any = {};
 
         if (levelName === 'brand') {
           nodeVal = item.brand?.name || 'No Brand';
@@ -1132,7 +1356,9 @@ export class StockValuationExportService {
           extraFields.size = item.size?.name || 'Default';
         }
 
-        let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+        let existingNode = currentLevelNodes.find(
+          (n) => n.level === levelName && n.value === nodeVal,
+        );
         if (!existingNode) {
           existingNode = {
             level: levelName,
@@ -1147,10 +1373,14 @@ export class StockValuationExportService {
         addValuationTotals(existingNode.totals, metrics);
 
         // Attach purchase & sale breakdowns on leaf variant nodes (or leaf article nodes when variant level is off)
-        if (i === levels.length - 1 && (levelName === 'variant' || levelName === 'article')) {
+        if (
+          i === levels.length - 1 &&
+          (levelName === 'variant' || levelName === 'article')
+        ) {
           const m = itemMetricsMap.get(item.id);
           if (m) {
-            if (!existingNode.purchaseBreakdown) existingNode.purchaseBreakdown = [];
+            if (!existingNode.purchaseBreakdown)
+              existingNode.purchaseBreakdown = [];
             if (!existingNode.saleBreakdown) existingNode.saleBreakdown = [];
             existingNode.purchaseBreakdown.push(...(m.purchaseBreakdown || []));
             existingNode.saleBreakdown.push(...(m.saleBreakdown || []));

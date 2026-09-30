@@ -178,14 +178,17 @@ export class LeaveEncashmentService {
     return null;
   }
 
-  async list(params?: {
-    employeeId?: string;
-    paymentMonth?: string;
-    paymentYear?: string;
-    paymentMonthYear?: string;
-    approvalStatus?: string;
-    status?: string;
-  }, user?: any) {
+  async list(
+    params?: {
+      employeeId?: string;
+      paymentMonth?: string;
+      paymentYear?: string;
+      paymentMonthYear?: string;
+      approvalStatus?: string;
+      status?: string;
+    },
+    user?: any,
+  ) {
     try {
       const where: any = {};
 
@@ -201,10 +204,10 @@ export class LeaveEncashmentService {
       if (!isAdmin && user?.userId) {
         // Show requests created by user OR for user's employee record OR where user is an approver
         where.OR = [
-          { createdById: user.userId },           // Requests they created
-          { employeeId: user.employeeId },        // Requests for their employee record
-          { approval1: user.userId },             // Requests where they are level 1 approver
-          { approval2: user.userId },             // Requests where they are level 2 approver
+          { createdById: user.userId }, // Requests they created
+          { employeeId: user.employeeId }, // Requests for their employee record
+          { approval1: user.userId }, // Requests where they are level 1 approver
+          { approval2: user.userId }, // Requests where they are level 2 approver
         ];
       } else if (params?.employeeId) {
         where.employeeId = params.employeeId;

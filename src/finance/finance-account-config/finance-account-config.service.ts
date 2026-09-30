@@ -17,7 +17,9 @@ export class FinanceAccountConfigService {
   /** Return all configured account roles with their linked account details. */
   async findAll() {
     const configs = await this.prisma.financeAccountConfig.findMany({
-      include: { account: { select: { id: true, code: true, name: true, type: true } } },
+      include: {
+        account: { select: { id: true, code: true, name: true, type: true } },
+      },
       orderBy: { key: 'asc' },
     });
     return { status: true, data: configs };
@@ -30,7 +32,9 @@ export class FinanceAccountConfigService {
       select: { id: true },
     });
     if (!account) {
-      throw new BadRequestException(`ChartOfAccount not found: ${dto.accountId}`);
+      throw new BadRequestException(
+        `ChartOfAccount not found: ${dto.accountId}`,
+      );
     }
 
     const config = await this.prisma.financeAccountConfig.upsert({
@@ -55,7 +59,11 @@ export class FinanceAccountConfigService {
       configs.map((dto) =>
         this.prisma.financeAccountConfig.upsert({
           where: { key: dto.key as any },
-          create: { key: dto.key as any, accountId: dto.accountId, description: dto.description },
+          create: {
+            key: dto.key as any,
+            accountId: dto.accountId,
+            description: dto.description,
+          },
           update: { accountId: dto.accountId, description: dto.description },
         }),
       ),
@@ -65,7 +73,9 @@ export class FinanceAccountConfigService {
 
   /** Delete a role mapping (resets it to unconfigured). */
   async remove(key: AccountRoleKey) {
-    await this.prisma.financeAccountConfig.delete({ where: { key: key as any } });
+    await this.prisma.financeAccountConfig.delete({
+      where: { key: key as any },
+    });
     return { status: true, message: `Config for ${key} removed` };
   }
 

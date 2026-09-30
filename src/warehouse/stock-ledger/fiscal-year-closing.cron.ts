@@ -28,16 +28,24 @@ export class FiscalYearClosingCron {
       // Closing date is June 30th 23:59:59 of previous night
       const closingDate = new Date(closingYear, 5, 30, 23, 59, 59);
 
-      this.logger.log(`Executing automated year-end close for ${fiscalYearName} as of ${closingDate.toISOString()}`);
-      
-      const result = await this.fiscalClosingService.executeYearEndClose(this.prisma, {
-        fiscalYearName,
-        closingDate,
-      });
+      this.logger.log(
+        `Executing automated year-end close for ${fiscalYearName} as of ${closingDate.toISOString()}`,
+      );
+
+      const result = await this.fiscalClosingService.executeYearEndClose(
+        this.prisma,
+        {
+          fiscalYearName,
+          closingDate,
+        },
+      );
 
       this.logger.log(`Automated Fiscal Close Completed: ${result.message}`);
     } catch (err: any) {
-      this.logger.error(`Automated Fiscal Close Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `Automated Fiscal Close Failed: ${err.message}`,
+        err.stack,
+      );
     }
   }
 }

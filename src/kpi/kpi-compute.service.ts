@@ -13,7 +13,10 @@ export interface KpiMetricResult {
  * Resolves date range from a period string.
  * Supports: "2026-04" (monthly), "2026-Q1" (quarterly), "2026" (yearly)
  */
-function parsePeriodRange(period: string, periodType: string): { from: Date; to: Date } {
+function parsePeriodRange(
+  period: string,
+  periodType: string,
+): { from: Date; to: Date } {
   const now = new Date();
 
   if (periodType === 'monthly') {
@@ -45,13 +48,21 @@ function parsePeriodRange(period: string, periodType: string): { from: Date; to:
 
   // Fallback: current month
   const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const to = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
   return { from, to };
 }
 
 @Injectable()
 export class KpiComputeService {
-  constructor(private prisma: PrismaService,) {}
+  constructor(private prisma: PrismaService) {}
 
   /**
    * Compute a single auto KPI metric for an employee over a period.
@@ -230,7 +241,8 @@ export class KpiComputeService {
     let leavesTaken = 0;
     for (const app of leaveApps) {
       const diffMs = Math.abs(
-        new Date(app.toDate as any).getTime() - new Date(app.fromDate as any).getTime(),
+        new Date(app.toDate as any).getTime() -
+          new Date(app.fromDate as any).getTime(),
       );
       const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
       if (app.dayType === 'halfDay') leavesTaken += days * 0.5;
@@ -298,7 +310,11 @@ export class KpiComputeService {
         status: 'active',
         promotionDate: { gte: from, lte: to },
       },
-      select: { incrementPercentage: true, incrementAmount: true, salary: true },
+      select: {
+        incrementPercentage: true,
+        incrementAmount: true,
+        salary: true,
+      },
     });
 
     let avgPct = 0;
@@ -339,7 +355,13 @@ export class KpiComputeService {
     const taskIds = assigned.map((a) => a.taskId);
 
     if (taskIds.length === 0) {
-      return { formula: 'task_completion_rate', label: 'Task Completion Rate', actualValue: 0, unit: '%', meta: { completed: 0, total: 0 } };
+      return {
+        formula: 'task_completion_rate',
+        label: 'Task Completion Rate',
+        actualValue: 0,
+        unit: '%',
+        meta: { completed: 0, total: 0 },
+      };
     }
 
     const [total, completedOnTime] = await Promise.all([
@@ -361,11 +383,16 @@ export class KpiComputeService {
 
     // Fallback: count all done tasks in period if the self-join OR is unsupported
     const completedAny = await this.prisma.task.count({
-      where: { id: { in: taskIds }, status: 'done', completedAt: { gte: from, lte: to } },
+      where: {
+        id: { in: taskIds },
+        status: 'done',
+        completedAt: { gte: from, lte: to },
+      },
     });
 
     // Use raw on-time count; if 0 but completedAny > 0, use completedAny as approximation
-    const effectiveCompleted = completedOnTime > 0 ? completedOnTime : completedAny;
+    const effectiveCompleted =
+      completedOnTime > 0 ? completedOnTime : completedAny;
     const rate = total > 0 ? (effectiveCompleted / total) * 100 : 0;
 
     return {
@@ -393,7 +420,13 @@ export class KpiComputeService {
     const taskIds = assigned.map((a) => a.taskId);
 
     if (taskIds.length === 0) {
-      return { formula: 'task_quality_score', label: 'Task Quality Score', actualValue: 0, unit: 'score', meta: { reviewCount: 0 } };
+      return {
+        formula: 'task_quality_score',
+        label: 'Task Quality Score',
+        actualValue: 0,
+        unit: 'score',
+        meta: { reviewCount: 0 },
+      };
     }
 
     const reviews = await this.prisma.taskReview.findMany({
@@ -404,9 +437,10 @@ export class KpiComputeService {
       select: { rating: true },
     });
 
-    const avgRating = reviews.length > 0
-      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-      : 0;
+    const avgRating =
+      reviews.length > 0
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        : 0;
 
     const score = Math.round(avgRating * 20 * 100) / 100; // 1–5 → 0–100
 
@@ -415,7 +449,10 @@ export class KpiComputeService {
       label: 'Task Quality Score',
       actualValue: score,
       unit: 'score',
-      meta: { reviewCount: reviews.length, avgRating: Math.round(avgRating * 100) / 100 },
+      meta: {
+        reviewCount: reviews.length,
+        avgRating: Math.round(avgRating * 100) / 100,
+      },
     };
   }
 
@@ -435,7 +472,13 @@ export class KpiComputeService {
     const taskIds = assigned.map((a) => a.taskId);
 
     if (taskIds.length === 0) {
-      return { formula: 'avg_task_completion_hours', label: 'Delivery Efficiency', actualValue: 0, unit: '%', meta: { taskCount: 0 } };
+      return {
+        formula: 'avg_task_completion_hours',
+        label: 'Delivery Efficiency',
+        actualValue: 0,
+        unit: '%',
+        meta: { taskCount: 0 },
+      };
     }
 
     const tasks = await this.prisma.task.findMany({
@@ -450,7 +493,13 @@ export class KpiComputeService {
     });
 
     if (tasks.length === 0) {
-      return { formula: 'avg_task_completion_hours', label: 'Delivery Efficiency', actualValue: 0, unit: '%', meta: { taskCount: 0 } };
+      return {
+        formula: 'avg_task_completion_hours',
+        label: 'Delivery Efficiency',
+        actualValue: 0,
+        unit: '%',
+        meta: { taskCount: 0 },
+      };
     }
 
     const scores = tasks.map((t) => {

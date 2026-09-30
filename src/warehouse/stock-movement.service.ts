@@ -462,33 +462,47 @@ export class StockMovementService {
     console.log('🎉 [Stock Movement] Transfer Complete: Outlet → Warehouse');
   }
 
-  
-
-  private async executePosReturn(dto: CreateStockMovementDto, tx: any, movementId: string) {
+  private async executePosReturn(
+    dto: CreateStockMovementDto,
+    tx: any,
+    movementId: string,
+  ) {
     const targetLocationId = dto.toLocationId || dto.fromLocationId;
     if (!targetLocationId) {
-      throw new BadRequestException('Location ID is required for POS Return movement');
+      throw new BadRequestException(
+        'Location ID is required for POS Return movement',
+      );
     }
 
     const itemRate = await this.getCurrentItemRate(tx, dto.itemId);
-    const defaultWarehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
-    const warehouseId = dto.fromWarehouseId || dto.toWarehouseId || defaultWarehouse?.id || '';
+    const defaultWarehouse = await tx.warehouse.findFirst({
+      where: { isActive: true, isDeleted: false },
+    });
+    const warehouseId =
+      dto.fromWarehouseId || dto.toWarehouseId || defaultWarehouse?.id || '';
 
     // 1. Ledger INBOUND for outlet
-    await this.stockLedgerService.createEntry({
-      itemId: dto.itemId,
-      warehouseId,
-      locationId: targetLocationId,
-      qty: dto.quantity,
-      movementType: MovementType.INBOUND,
-      referenceType: dto.referenceType || 'POS_RETURN',
-      referenceId: dto.referenceId || movementId,
-      rate: itemRate,
-    }, tx);
+    await this.stockLedgerService.createEntry(
+      {
+        itemId: dto.itemId,
+        warehouseId,
+        locationId: targetLocationId,
+        qty: dto.quantity,
+        movementType: MovementType.INBOUND,
+        referenceType: dto.referenceType || 'POS_RETURN',
+        referenceId: dto.referenceId || movementId,
+        rate: itemRate,
+      },
+      tx,
+    );
 
     // 2. InventoryItem increment at outlet
     const existing = await tx.inventoryItem.findFirst({
-      where: { itemId: dto.itemId, locationId: targetLocationId, status: 'AVAILABLE' },
+      where: {
+        itemId: dto.itemId,
+        locationId: targetLocationId,
+        status: 'AVAILABLE',
+      },
     });
     if (existing) {
       await tx.inventoryItem.update({
@@ -508,45 +522,72 @@ export class StockMovementService {
     }
   }
 
-  private async executeInterOutletTransfer(dto: CreateStockMovementDto, tx: any, movementId: string) {
+  private async executeInterOutletTransfer(
+    dto: CreateStockMovementDto,
+    tx: any,
+    movementId: string,
+  ) {
     if (!dto.fromLocationId || !dto.toLocationId) {
-      throw new BadRequestException('fromLocationId and toLocationId are required for inter-outlet transfers');
+      throw new BadRequestException(
+        'fromLocationId and toLocationId are required for inter-outlet transfers',
+      );
     }
 
     const itemRate = await this.getCurrentItemRate(tx, dto.itemId);
-    const defaultWarehouse = await tx.warehouse.findFirst({ where: { isActive: true, isDeleted: false } });
-    const warehouseId = dto.fromWarehouseId || dto.toWarehouseId || defaultWarehouse?.id || '';
+    const defaultWarehouse = await tx.warehouse.findFirst({
+      where: { isActive: true, isDeleted: false },
+    });
+    const warehouseId =
+      dto.fromWarehouseId || dto.toWarehouseId || defaultWarehouse?.id || '';
 
-    const outboundRefType = dto.referenceType || (dto.type === 'CROSS_LOCATION_RETURN_TRANSFER' ? 'OUTLET_TRANSFER_OUT' : 'INTER_OUTLET_TRANSFER');
-    const inboundRefType = (outboundRefType === 'OUTLET_TRANSFER_OUT' || dto.type === 'CROSS_LOCATION_RETURN_TRANSFER') ? 'OUTLET_TRANSFER_IN' : outboundRefType;
+    const outboundRefType =
+      dto.referenceType ||
+      (dto.type === 'CROSS_LOCATION_RETURN_TRANSFER'
+        ? 'OUTLET_TRANSFER_OUT'
+        : 'INTER_OUTLET_TRANSFER');
+    const inboundRefType =
+      outboundRefType === 'OUTLET_TRANSFER_OUT' ||
+      dto.type === 'CROSS_LOCATION_RETURN_TRANSFER'
+        ? 'OUTLET_TRANSFER_IN'
+        : outboundRefType;
 
     // 1. Ledger OUTBOUND for source outlet
-    await this.stockLedgerService.createEntry({
-      itemId: dto.itemId,
-      warehouseId,
-      locationId: dto.fromLocationId,
-      qty: -dto.quantity,
-      movementType: MovementType.OUTBOUND,
-      referenceType: outboundRefType,
-      referenceId: dto.referenceId || movementId,
-      rate: itemRate,
-    }, tx);
+    await this.stockLedgerService.createEntry(
+      {
+        itemId: dto.itemId,
+        warehouseId,
+        locationId: dto.fromLocationId,
+        qty: -dto.quantity,
+        movementType: MovementType.OUTBOUND,
+        referenceType: outboundRefType,
+        referenceId: dto.referenceId || movementId,
+        rate: itemRate,
+      },
+      tx,
+    );
 
     // 2. Ledger INBOUND for destination outlet
-    await this.stockLedgerService.createEntry({
-      itemId: dto.itemId,
-      warehouseId,
-      locationId: dto.toLocationId,
-      qty: dto.quantity,
-      movementType: MovementType.INBOUND,
-      referenceType: inboundRefType,
-      referenceId: dto.referenceId || movementId,
-      rate: itemRate,
-    }, tx);
+    await this.stockLedgerService.createEntry(
+      {
+        itemId: dto.itemId,
+        warehouseId,
+        locationId: dto.toLocationId,
+        qty: dto.quantity,
+        movementType: MovementType.INBOUND,
+        referenceType: inboundRefType,
+        referenceId: dto.referenceId || movementId,
+        rate: itemRate,
+      },
+      tx,
+    );
 
     // 3. InventoryItem decrement at source outlet
     const sourceStock = await tx.inventoryItem.findFirst({
-      where: { itemId: dto.itemId, locationId: dto.fromLocationId, status: 'AVAILABLE' },
+      where: {
+        itemId: dto.itemId,
+        locationId: dto.fromLocationId,
+        status: 'AVAILABLE',
+      },
     });
     if (sourceStock) {
       await tx.inventoryItem.update({
@@ -557,7 +598,11 @@ export class StockMovementService {
 
     // 4. InventoryItem increment at destination outlet
     const destStock = await tx.inventoryItem.findFirst({
-      where: { itemId: dto.itemId, locationId: dto.toLocationId, status: 'AVAILABLE' },
+      where: {
+        itemId: dto.itemId,
+        locationId: dto.toLocationId,
+        status: 'AVAILABLE',
+      },
     });
     if (destStock) {
       await tx.inventoryItem.update({
@@ -576,7 +621,9 @@ export class StockMovementService {
       });
     }
 
-    console.log(`✅ [Stock Movement] Auto-accepted Inter-Outlet Transfer (${dto.type}) completed: ${dto.fromLocationId} → ${dto.toLocationId}`);
+    console.log(
+      `✅ [Stock Movement] Auto-accepted Inter-Outlet Transfer (${dto.type}) completed: ${dto.fromLocationId} → ${dto.toLocationId}`,
+    );
   }
 
   async getMovements(itemId?: string) {

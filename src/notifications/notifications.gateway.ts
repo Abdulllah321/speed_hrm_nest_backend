@@ -14,4 +14,3 @@ export class NotificationsGateway {
     this.server?.emit('notification', { locationId, ...payload });
   }
 }
-

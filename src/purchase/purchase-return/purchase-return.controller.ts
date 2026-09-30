@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PurchaseReturnService } from './purchase-return.service';
 import { PurchaseReturnRegisterExportService } from './purchase-return-register-export.service';
@@ -15,7 +26,10 @@ export class PurchaseReturnController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new purchase return' })
-  @ApiResponse({ status: 201, description: 'Purchase return created successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Purchase return created successfully',
+  })
   create(@Body() createDto: CreatePurchaseReturnDto, @Req() req: any) {
     return this.purchaseReturnService.create(createDto, {
       userId: req.user?.id,
@@ -27,10 +41,7 @@ export class PurchaseReturnController {
   @Get()
   @ApiOperation({ summary: 'Get all purchase returns' })
   @ApiResponse({ status: 200, description: 'List of purchase returns' })
-  findAll(
-    @Query('status') status?: string,
-    @Query('search') search?: string,
-  ) {
+  findAll(@Query('status') status?: string, @Query('search') search?: string) {
     return this.purchaseReturnService.findAll(status, search);
   }
 
@@ -50,7 +61,10 @@ export class PurchaseReturnController {
 
   @Get('eligible-invoices')
   @ApiOperation({ summary: 'Get eligible purchase invoices for return' })
-  @ApiResponse({ status: 200, description: 'List of eligible purchase invoices' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of eligible purchase invoices',
+  })
   getEligibleInvoices() {
     return this.purchaseReturnService.getEligibleInvoices();
   }
@@ -87,7 +101,9 @@ export class PurchaseReturnController {
   }
 
   @Post('register-report/export')
-  @ApiOperation({ summary: 'Queue Purchase Return Register Report background export' })
+  @ApiOperation({
+    summary: 'Queue Purchase Return Register Report background export',
+  })
   queueRegisterReportExport(
     @Body()
     body: {
@@ -120,15 +136,22 @@ export class PurchaseReturnController {
   }
 
   @Get('register-report/export/:jobId/status')
-  @ApiOperation({ summary: 'Get status of queued Purchase Return Register export' })
+  @ApiOperation({
+    summary: 'Get status of queued Purchase Return Register export',
+  })
   getRegisterExportStatus(@Param('jobId') jobId: string) {
     return this.purchaseReturnRegisterExportService.getJobStatus(jobId);
   }
 
   @Get('register-report/export/:jobId/download')
-  @ApiOperation({ summary: 'Download completed Purchase Return Register export file' })
+  @ApiOperation({
+    summary: 'Download completed Purchase Return Register export file',
+  })
   downloadRegisterExport(@Param('jobId') jobId: string, @Res() res: any) {
-    return this.purchaseReturnRegisterExportService.streamExportFile(jobId, res);
+    return this.purchaseReturnRegisterExportService.streamExportFile(
+      jobId,
+      res,
+    );
   }
 
   @Get(':id')
@@ -141,9 +164,16 @@ export class PurchaseReturnController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update purchase return' })
-  @ApiResponse({ status: 200, description: 'Purchase return updated successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Purchase return updated successfully',
+  })
   @ApiResponse({ status: 400, description: 'Bad request - validation failed' })
-  update(@Param('id') id: string, @Body() updateDto: UpdatePurchaseReturnDto, @Req() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdatePurchaseReturnDto,
+    @Req() req: any,
+  ) {
     return this.purchaseReturnService.update(id, updateDto, {
       userId: req.user?.id,
       ipAddress: req.ip,
@@ -155,20 +185,28 @@ export class PurchaseReturnController {
   @ApiOperation({ summary: 'Update purchase return status' })
   @ApiResponse({ status: 200, description: 'Status updated successfully' })
   updateStatus(
-    @Param('id') id: string, 
+    @Param('id') id: string,
     @Body() body: { status: string; approvedBy?: string },
-    @Req() req: any
+    @Req() req: any,
   ) {
-    return this.purchaseReturnService.updateStatus(id, body.status, body.approvedBy, {
-      userId: req.user?.id,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
+    return this.purchaseReturnService.updateStatus(
+      id,
+      body.status,
+      body.approvedBy,
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete purchase return' })
-  @ApiResponse({ status: 200, description: 'Purchase return deleted successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Purchase return deleted successfully',
+  })
   @ApiResponse({ status: 400, description: 'Cannot delete non-draft return' })
   remove(@Param('id') id: string, @Req() req: any) {
     return this.purchaseReturnService.remove(id, {

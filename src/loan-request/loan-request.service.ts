@@ -209,10 +209,10 @@ export class LoanRequestService {
       if (!isAdmin && user?.userId) {
         // Show requests created by user OR for user's employee record OR where user is an approver
         where.OR = [
-          { createdById: user.userId },           // Requests they created
-          { employeeId: user.employeeId },        // Requests for their employee record
-          { approval1: user.userId },             // Requests where they are level 1 approver
-          { approval2: user.userId },             // Requests where they are level 2 approver
+          { createdById: user.userId }, // Requests they created
+          { employeeId: user.employeeId }, // Requests for their employee record
+          { approval1: user.userId }, // Requests where they are level 1 approver
+          { approval2: user.userId }, // Requests where they are level 2 approver
         ];
       } else if (params?.employeeId) {
         where.employeeId = params.employeeId;
@@ -294,8 +294,8 @@ export class LoanRequestService {
       const employeeIds = [...new Set(loanRequests.map((lr) => lr.employeeId))];
 
       // Fetch all required data in parallel
-      const [loanTypes, departments, subDepartments, users] =
-        await Promise.all([
+      const [loanTypes, departments, subDepartments, users] = await Promise.all(
+        [
           this.prisma.loanType.findMany({
             where: { id: { in: loanTypeIds } },
             select: { id: true, name: true },
@@ -312,7 +312,8 @@ export class LoanRequestService {
             where: { id: { in: userIds as string[] } },
             select: { id: true, firstName: true, lastName: true, email: true },
           }),
-        ]);
+        ],
+      );
 
       // Create maps for efficient lookups
       const loanTypeMap = new Map(loanTypes.map((t) => [t.id, t]));
@@ -376,10 +377,10 @@ export class LoanRequestService {
               designationId: true,
               locationId: true,
               designation: {
-                select: { id: true, name: true }
+                select: { id: true, name: true },
               },
               location: {
-                select: { id: true, name: true }
+                select: { id: true, name: true },
               },
             },
           },
@@ -630,7 +631,8 @@ export class LoanRequestService {
               approvalStatus,
               status,
               createdById: ctx.userId,
-              disbursementType: loanRequestItem.disbursementType || "with_payroll",
+              disbursementType:
+                loanRequestItem.disbursementType || 'with_payroll',
             },
             include: {
               employee: {
@@ -646,10 +648,10 @@ export class LoanRequestService {
                   designationId: true,
                   locationId: true,
                   designation: {
-                    select: { id: true, name: true }
+                    select: { id: true, name: true },
                   },
                   location: {
-                    select: { id: true, name: true }
+                    select: { id: true, name: true },
                   },
                 },
               },
@@ -708,19 +710,19 @@ export class LoanRequestService {
       // Log activity
       if (Array.isArray(result) && result.length > 0 && ctx.userId) {
         runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'create',
-          module: 'loan-request',
-          entity: 'LoanRequest',
-          entityId: result[0].id,
-          description: 'Created loan request',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
+          'Activity Log',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'create',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: result[0].id,
+            description: 'Created loan request',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
       }
 
       return {
@@ -834,10 +836,10 @@ export class LoanRequestService {
               designationId: true,
               locationId: true,
               designation: {
-                select: { id: true, name: true }
+                select: { id: true, name: true },
               },
               location: {
-                select: { id: true, name: true }
+                select: { id: true, name: true },
               },
             },
           },
@@ -924,19 +926,19 @@ export class LoanRequestService {
       // Log activity
       if (ctx.userId) {
         runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'update',
-          module: 'loan-request',
-          entity: 'LoanRequest',
-          entityId: id,
-          description: 'Updated loan request',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
+          'Activity Log',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'update',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: id,
+            description: 'Updated loan request',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
       }
 
       return {
@@ -1033,7 +1035,8 @@ export class LoanRequestService {
               approval1: ctx.userId,
               approvalStatus: nextApprovalStatus,
               status: nextStatus,
-              approvedById: nextApprovalStatus === 'approved' ? ctx.userId : null,
+              approvedById:
+                nextApprovalStatus === 'approved' ? ctx.userId : null,
               approvedAt: nextApprovalStatus === 'approved' ? new Date() : null,
               updatedById: ctx.userId,
             } as any,
@@ -1051,19 +1054,19 @@ export class LoanRequestService {
           });
 
           runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'approve',
-            module: 'loan-request',
-            entity: 'LoanRequest',
-            entityId: id,
-            description: 'Approved loan request (Level 1)',
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-        }),
-      );
+            'Activity Log',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'approve',
+              module: 'loan-request',
+              entity: 'LoanRequest',
+              entityId: id,
+              description: 'Approved loan request (Level 1)',
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1106,19 +1109,19 @@ export class LoanRequestService {
         });
 
         runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'approve',
-          module: 'loan-request',
-          entity: 'LoanRequest',
-          entityId: id,
-          description: 'Approved loan request (Level 1)',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
+          'Activity Log',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'approve',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: id,
+            description: 'Approved loan request (Level 1)',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
 
         const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1176,19 +1179,19 @@ export class LoanRequestService {
         });
 
         runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'approve',
-          module: 'loan-request',
-          entity: 'LoanRequest',
-          entityId: id,
-          description: 'Approved loan request (Level 2)',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
+          'Activity Log',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'approve',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: id,
+            description: 'Approved loan request (Level 2)',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
 
         const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1283,19 +1286,19 @@ export class LoanRequestService {
           });
 
           runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-            userId: ctx.userId,
-            action: 'reject',
-            module: 'loan-request',
-            entity: 'LoanRequest',
-            entityId: id,
-            description: 'Rejected loan request (Level 1)',
-            ipAddress: ctx.ipAddress,
-            userAgent: ctx.userAgent,
-            status: 'success',
-        }),
-      );
+            'Activity Log',
+            this.activityLogs.log({
+              userId: ctx.userId,
+              action: 'reject',
+              module: 'loan-request',
+              entity: 'LoanRequest',
+              entityId: id,
+              description: 'Rejected loan request (Level 1)',
+              ipAddress: ctx.ipAddress,
+              userAgent: ctx.userAgent,
+              status: 'success',
+            }),
+          );
 
           const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1333,19 +1336,19 @@ export class LoanRequestService {
         });
 
         runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'reject',
-          module: 'loan-request',
-          entity: 'LoanRequest',
-          entityId: id,
-          description: 'Rejected loan request (Level 1)',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
+          'Activity Log',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'reject',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: id,
+            description: 'Rejected loan request (Level 1)',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
 
         const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1404,19 +1407,19 @@ export class LoanRequestService {
         });
 
         runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'reject',
-          module: 'loan-request',
-          entity: 'LoanRequest',
-          entityId: id,
-          description: 'Rejected loan request (Level 2)',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
+          'Activity Log',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'reject',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: id,
+            description: 'Rejected loan request (Level 2)',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
 
         const enriched = await this.enrichSingleLoanRequest(updated);
 
@@ -1463,19 +1466,19 @@ export class LoanRequestService {
       // Log activity
       if (ctx.userId) {
         runInBackground(
-        'Activity Log',
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'delete',
-          module: 'loan-request',
-          entity: 'LoanRequest',
-          entityId: id,
-          description: 'Deleted loan request',
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
-        }),
-      );
+          'Activity Log',
+          this.activityLogs.log({
+            userId: ctx.userId,
+            action: 'delete',
+            module: 'loan-request',
+            entity: 'LoanRequest',
+            entityId: id,
+            description: 'Deleted loan request',
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            status: 'success',
+          }),
+        );
       }
 
       return { status: true, message: 'Loan request deleted successfully' };

@@ -32,7 +32,11 @@ import { PurchaseOrderExportController } from './purchase-order-export.controlle
       { name: 'purchase-order-export' },
     ),
   ],
-  controllers: [PurchaseOrderController, PoBulkUploadController, PurchaseOrderExportController],
+  controllers: [
+    PurchaseOrderController,
+    PoBulkUploadController,
+    PurchaseOrderExportController,
+  ],
   providers: [
     PurchaseOrderService,
     PoBulkUploadService,
@@ -45,6 +49,10 @@ import { PurchaseOrderExportController } from './purchase-order-export.controlle
     PurchaseOrderExportService,
     PurchaseOrderExportProcessor,
   ],
-  exports: [PurchaseOrderService, PoRegisterExportService, PurchaseOrderExportService],
+  exports: [
+    PurchaseOrderService,
+    PoRegisterExportService,
+    PurchaseOrderExportService,
+  ],
 })
 export class PurchaseOrderModule {}

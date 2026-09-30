@@ -16,18 +16,31 @@ export interface LoanRequestExportJobData {
 }
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
-const HEADER_BG    = '1E3A5F';
-const HEADER_FG    = 'FFFFFF';
+const HEADER_BG = '1E3A5F';
+const HEADER_FG = 'FFFFFF';
 const SUBHEADER_BG = '4472C4';
 const SUBHEADER_FG = 'FFFFFF';
-const EMP_NAME_BG  = 'D9E2F3';
-const SUBTOTAL_BG  = 'FFF2CC';
-const GRAND_BG     = 'E2EFDA';
+const EMP_NAME_BG = 'D9E2F3';
+const SUBTOTAL_BG = 'FFF2CC';
+const GRAND_BG = 'E2EFDA';
 const BORDER_COLOR = 'B4C6E7';
 const CURRENCY_FMT = '#,##0';
 
 /** Month abbreviations */
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 /** Build month label like "Jul-26" */
 function monthLabel(year: number, month: number): string {
@@ -35,7 +48,12 @@ function monthLabel(year: number, month: number): string {
 }
 
 /** Determine current Pakistani fiscal year (Jul → Jun) */
-function getFiscalYear(): { startMonth: number; startYear: number; endMonth: number; endYear: number } {
+function getFiscalYear(): {
+  startMonth: number;
+  startYear: number;
+  endMonth: number;
+  endYear: number;
+} {
   const now = new Date();
   const m = now.getMonth() + 1; // 1-based
   const y = now.getFullYear();
@@ -46,7 +64,9 @@ function getFiscalYear(): { startMonth: number; startYear: number; endMonth: num
 }
 
 /** Generate ordered list of months from fiscal start to end */
-function getFiscalMonths(fy: ReturnType<typeof getFiscalYear>): { year: number; month: number }[] {
+function getFiscalMonths(
+  fy: ReturnType<typeof getFiscalYear>,
+): { year: number; month: number }[] {
   const months: { year: number; month: number }[] = [];
   let y = fy.startYear;
   let m = fy.startMonth;
@@ -54,7 +74,10 @@ function getFiscalMonths(fy: ReturnType<typeof getFiscalYear>): { year: number; 
     months.push({ year: y, month: m });
     if (y === fy.endYear && m === fy.endMonth) break;
     m++;
-    if (m > 12) { m = 1; y++; }
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
   }
   return months;
 }
@@ -113,62 +136,95 @@ export class LoanRequestExportProcessor {
       });
 
       if (loanRequests.length === 0) {
-        this.logger.log(`[LoanRequestExport ${jobId}] No loan requests to export`);
+        this.logger.log(
+          `[LoanRequestExport ${jobId}] No loan requests to export`,
+        );
         // Still create file with header only
       }
 
       // Fetch department/sub-department names for abbreviations
-      const deptIds = [...new Set(loanRequests.map(lr => lr.employee?.departmentId).filter(Boolean))] as string[];
-      const subDeptIds = [...new Set(loanRequests.map(lr => lr.employee?.subDepartmentId).filter(Boolean))] as string[];
+      const deptIds = [
+        ...new Set(
+          loanRequests.map((lr) => lr.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
+      const subDeptIds = [
+        ...new Set(
+          loanRequests
+            .map((lr) => lr.employee?.subDepartmentId)
+            .filter(Boolean),
+        ),
+      ] as string[];
 
       const [departments, subDepartments] = await Promise.all([
         deptIds.length > 0
-          ? prisma.department.findMany({ where: { id: { in: deptIds } }, select: { id: true, name: true } })
+          ? prisma.department.findMany({
+              where: { id: { in: deptIds } },
+              select: { id: true, name: true },
+            })
           : [],
         subDeptIds.length > 0
-          ? prisma.subDepartment.findMany({ where: { id: { in: subDeptIds } }, select: { id: true, name: true } })
+          ? prisma.subDepartment.findMany({
+              where: { id: { in: subDeptIds } },
+              select: { id: true, name: true },
+            })
           : [],
       ]);
 
       const deptMap = new Map<string, { id: string; name: string }>(
-        departments.map(d => [d.id, d] as [string, { id: string; name: string }])
+        departments.map(
+          (d) => [d.id, d] as [string, { id: string; name: string }],
+        ),
       );
       const subDeptMap = new Map<string, { id: string; name: string }>(
-        subDepartments.map(sd => [sd.id, sd] as [string, { id: string; name: string }])
+        subDepartments.map(
+          (sd) => [sd.id, sd] as [string, { id: string; name: string }],
+        ),
       );
 
       // Fetch loan types
-      const loanTypeIds = [...new Set(loanRequests.map(lr => lr.loanTypeId).filter(Boolean))] as string[];
-      const loanTypes = loanTypeIds.length > 0
-        ? await prisma.loanType.findMany({ where: { id: { in: loanTypeIds } }, select: { id: true, name: true } })
-        : [];
+      const loanTypeIds = [
+        ...new Set(loanRequests.map((lr) => lr.loanTypeId).filter(Boolean)),
+      ] as string[];
+      const loanTypes =
+        loanTypeIds.length > 0
+          ? await prisma.loanType.findMany({
+              where: { id: { in: loanTypeIds } },
+              select: { id: true, name: true },
+            })
+          : [];
       const loanTypeMap = new Map<string, { id: string; name: string }>(
-        loanTypes.map(lt => [lt.id, lt] as [string, { id: string; name: string }])
+        loanTypes.map(
+          (lt) => [lt.id, lt] as [string, { id: string; name: string }],
+        ),
       );
 
       // Fetch actual payroll deductions for each employee in the fiscal year
-      const employeeIds = [...new Set(loanRequests.map(lr => lr.employeeId))];
+      const employeeIds = [...new Set(loanRequests.map((lr) => lr.employeeId))];
 
       // Build monthYear strings for fiscal year for filtering
-      const fiscalMonthYears = fiscalMonths.map(fm => `${fm.year}-${String(fm.month).padStart(2, '0')}`);
+      const fiscalMonthYears = fiscalMonths.map(
+        (fm) => `${fm.year}-${String(fm.month).padStart(2, '0')}`,
+      );
 
-      const payrollDetails = employeeIds.length > 0
-        ? await prisma.payrollDetail.findMany({
-            where: {
-              employeeId: { in: employeeIds },
-              payroll: {
-                status: 'confirmed',
+      const payrollDetails =
+        employeeIds.length > 0
+          ? await prisma.payrollDetail.findMany({
+              where: {
+                employeeId: { in: employeeIds },
+                payroll: {
+                  status: 'confirmed',
+                },
               },
-            },
-            select: {
-              employeeId: true,
-              loanDeduction: true,
-              payroll: {
-                select: { month: true, year: true },
+              select: {
+                employeeId: true,
+                loanDeduction: true,
+                payroll: {
+                  select: { month: true, year: true },
+                },
               },
-            },
-          })
-        : [];
+            })
+          : [];
 
       // Build map: employeeId → { "YYYY-MM" → deductionAmount }
       const deductionMap = new Map<string, Map<string, number>>();
@@ -177,7 +233,9 @@ export class LoanRequestExportProcessor {
         const monthYear = `${pd.payroll.year}-${String(pd.payroll.month).padStart(2, '0')}`;
         if (!deductionMap.has(empId)) deductionMap.set(empId, new Map());
         const existing = deductionMap.get(empId)!.get(monthYear) || 0;
-        deductionMap.get(empId)!.set(monthYear, existing + Number(pd.loanDeduction || 0));
+        deductionMap
+          .get(empId)!
+          .set(monthYear, existing + Number(pd.loanDeduction || 0));
       }
 
       // ── Streaming workbook writer ──────────────────────────────────────
@@ -188,7 +246,12 @@ export class LoanRequestExportProcessor {
       });
 
       const ws = workbook.addWorksheet('Employee Loan Account', {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
       });
 
       // Set column widths: Month | Voucher No. | Date | Amount | Monthly Installment | Balance
@@ -206,8 +269,15 @@ export class LoanRequestExportProcessor {
       // ── Row 1: Company Name ────────────────────────────────────────────
       const titleRow = ws.getRow(currentRow);
       titleRow.getCell(1).value = 'Speed (Private) Limited';
-      titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: `FF${HEADER_BG}` } };
-      titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).font = {
+        bold: true,
+        size: 14,
+        color: { argb: `FF${HEADER_BG}` },
+      };
+      titleRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       titleRow.height = 26;
       ws.mergeCells(currentRow, 1, currentRow, 6);
       titleRow.commit();
@@ -216,8 +286,15 @@ export class LoanRequestExportProcessor {
       // ── Row 2: Report Title ────────────────────────────────────────────
       const subtitleRow = ws.getRow(currentRow);
       subtitleRow.getCell(1).value = 'Employee Loan Account';
-      subtitleRow.getCell(1).font = { bold: true, size: 12, color: { argb: `FF${HEADER_BG}` } };
-      subtitleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      subtitleRow.getCell(1).font = {
+        bold: true,
+        size: 12,
+        color: { argb: `FF${HEADER_BG}` },
+      };
+      subtitleRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       subtitleRow.height = 22;
       ws.mergeCells(currentRow, 1, currentRow, 6);
       subtitleRow.commit();
@@ -227,9 +304,17 @@ export class LoanRequestExportProcessor {
       const fyStartLabel = `${MONTH_NAMES[fy.startMonth - 1].toUpperCase()} ${fy.startYear}`;
       const fyEndLabel = `${MONTH_NAMES[fy.endMonth - 1].toUpperCase()} ${fy.endYear}`;
       const periodRow = ws.getRow(currentRow);
-      periodRow.getCell(1).value = `FOR THE PERIOD FROM ${fyStartLabel} TO ${fyEndLabel}`;
-      periodRow.getCell(1).font = { bold: true, size: 10, color: { argb: 'FF374151' } };
-      periodRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      periodRow.getCell(1).value =
+        `FOR THE PERIOD FROM ${fyStartLabel} TO ${fyEndLabel}`;
+      periodRow.getCell(1).font = {
+        bold: true,
+        size: 10,
+        color: { argb: 'FF374151' },
+      };
+      periodRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       periodRow.height = 20;
       ws.mergeCells(currentRow, 1, currentRow, 6);
       periodRow.commit();
@@ -241,14 +326,29 @@ export class LoanRequestExportProcessor {
       currentRow++;
 
       // ── Row 5: Column Headers ──────────────────────────────────────────
-      const headerLabels = ['Month', 'Payment Voucher', '', ' Amount ', ' Monthly  ', ' Balance '];
+      const headerLabels = [
+        'Month',
+        'Payment Voucher',
+        '',
+        ' Amount ',
+        ' Monthly  ',
+        ' Balance ',
+      ];
       const headerLabels2 = ['', 'No.', 'Date', '', ' Installment ', ''];
       const headerRow = ws.getRow(currentRow);
       headerLabels.forEach((label, idx) => {
         const cell = headerRow.getCell(idx + 1);
         cell.value = label;
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 10 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 10,
+        };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
         cell.border = thinBorder();
       });
@@ -261,8 +361,16 @@ export class LoanRequestExportProcessor {
       headerLabels2.forEach((label, idx) => {
         const cell = headerRow2.getCell(idx + 1);
         cell.value = label;
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 10 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 10,
+        };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
         cell.border = thinBorder();
       });
@@ -293,32 +401,34 @@ export class LoanRequestExportProcessor {
         loanTypeId: string;
       }
 
-      const employeeLoanDataList: EmployeeLoanData[] = loanRequests.map(lr => {
-        const emp = lr.employee;
-        const empName = emp?.employeeName || 'Unknown';
+      const employeeLoanDataList: EmployeeLoanData[] = loanRequests.map(
+        (lr) => {
+          const emp = lr.employee;
+          const empName = emp?.employeeName || 'Unknown';
 
-        // Build department abbreviation
-        let deptAbbrev = '';
-        if (emp?.subDepartmentId) {
-          const sd = subDeptMap.get(emp.subDepartmentId);
-          deptAbbrev = sd?.name || '';
-        }
-        if (!deptAbbrev && emp?.departmentId) {
-          const dept = deptMap.get(emp.departmentId);
-          deptAbbrev = dept?.name || '';
-        }
+          // Build department abbreviation
+          let deptAbbrev = '';
+          if (emp?.subDepartmentId) {
+            const sd = subDeptMap.get(emp.subDepartmentId);
+            deptAbbrev = sd?.name || '';
+          }
+          if (!deptAbbrev && emp?.departmentId) {
+            const dept = deptMap.get(emp.departmentId);
+            deptAbbrev = dept?.name || '';
+          }
 
-        return {
-          empName,
-          deptAbbrev,
-          loanAmount: Number(lr.amount),
-          repaymentStart: lr.repaymentStartMonthYear,
-          numberOfInstallments: lr.numberOfInstallments,
-          requestedDate: lr.requestedDate,
-          employeeId: lr.employeeId,
-          loanTypeId: lr.loanTypeId,
-        };
-      });
+          return {
+            empName,
+            deptAbbrev,
+            loanAmount: Number(lr.amount),
+            repaymentStart: lr.repaymentStartMonthYear,
+            numberOfInstallments: lr.numberOfInstallments,
+            requestedDate: lr.requestedDate,
+            employeeId: lr.employeeId,
+            loanTypeId: lr.loanTypeId,
+          };
+        },
+      );
 
       // Pre-compute totals for each employee
       interface EmployeeMonthRow {
@@ -357,7 +467,10 @@ export class LoanRequestExportProcessor {
           repStartYear = rd.getFullYear();
           repStartMonth = rd.getMonth() + 1; // next month
           repStartMonth++;
-          if (repStartMonth > 12) { repStartMonth = 1; repStartYear++; }
+          if (repStartMonth > 12) {
+            repStartMonth = 1;
+            repStartYear++;
+          }
         }
 
         // Build display name
@@ -366,7 +479,8 @@ export class LoanRequestExportProcessor {
           : eld.empName;
 
         // Get actual deductions from payroll
-        const empDeductions = deductionMap.get(eld.employeeId) || new Map<string, number>();
+        const empDeductions =
+          deductionMap.get(eld.employeeId) || new Map<string, number>();
 
         const rows: EmployeeMonthRow[] = [];
         let balance = loanAmount;
@@ -379,9 +493,10 @@ export class LoanRequestExportProcessor {
           const label = monthLabel(fm.year, fm.month);
 
           // Check if this month is at or after repayment start
-          const isAfterRepStart = repStartYear > 0 && (
-            fm.year > repStartYear || (fm.year === repStartYear && fm.month >= repStartMonth)
-          );
+          const isAfterRepStart =
+            repStartYear > 0 &&
+            (fm.year > repStartYear ||
+              (fm.year === repStartYear && fm.month >= repStartMonth));
 
           // Determine installment: use actual payroll deduction if available,
           // otherwise use calculated amount if within repayment period
@@ -446,9 +561,16 @@ export class LoanRequestExportProcessor {
       grandRow.getCell(6).numFmt = CURRENCY_FMT;
       grandRow.getCell(6).font = { bold: true, size: 11 };
       for (let c = 1; c <= 6; c++) {
-        grandRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GRAND_BG}` } };
+        grandRow.getCell(c).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${GRAND_BG}` },
+        };
         grandRow.getCell(c).border = thinBorder();
-        grandRow.getCell(c).alignment = { horizontal: c >= 4 ? 'right' : 'left', vertical: 'middle' };
+        grandRow.getCell(c).alignment = {
+          horizontal: c >= 4 ? 'right' : 'left',
+          vertical: 'middle',
+        };
       }
       grandRow.height = 22;
       grandRow.commit();
@@ -467,9 +589,17 @@ export class LoanRequestExportProcessor {
         // Employee name header row
         const empNameRow = ws.getRow(currentRow);
         empNameRow.getCell(1).value = section.empDisplayName;
-        empNameRow.getCell(1).font = { bold: true, size: 11, color: { argb: `FF${HEADER_BG}` } };
+        empNameRow.getCell(1).font = {
+          bold: true,
+          size: 11,
+          color: { argb: `FF${HEADER_BG}` },
+        };
         for (let c = 1; c <= 6; c++) {
-          empNameRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${EMP_NAME_BG}` } };
+          empNameRow.getCell(c).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: `FF${EMP_NAME_BG}` },
+          };
           empNameRow.getCell(c).border = thinBorder();
         }
         empNameRow.height = 20;
@@ -538,7 +668,11 @@ export class LoanRequestExportProcessor {
         subRow.getCell(6).alignment = { horizontal: 'right' };
 
         for (let c = 1; c <= 6; c++) {
-          subRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBTOTAL_BG}` } };
+          subRow.getCell(c).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: `FF${SUBTOTAL_BG}` },
+          };
           subRow.getCell(c).border = thinBorder();
         }
         subRow.height = 18;
@@ -570,7 +704,9 @@ export class LoanRequestExportProcessor {
 
       await job.progress(100);
 
-      this.logger.log(`[LoanRequestExport ${jobId}] Finished (${sections.length} employees)`);
+      this.logger.log(
+        `[LoanRequestExport ${jobId}] Finished (${sections.length} employees)`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -584,11 +720,15 @@ export class LoanRequestExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[LoanRequestExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[LoanRequestExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (_err) {}
+        try {
+          fs.unlinkSync(filePath);
+        } catch (_err) {}
       }
 
       await this.exportHistoryService.failExport(prisma, jobId);

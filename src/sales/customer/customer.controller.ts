@@ -14,7 +14,7 @@ import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer-dto';
 
 @Controller('api/sales/customers')
 export class CustomerController {
-  constructor(private readonly service: CustomerService,) { }
+  constructor(private readonly service: CustomerService) {}
 
   private ctx(req: any) {
     return {
@@ -56,7 +56,14 @@ export class CustomerController {
   @Post('ledger/:customerId/pay-credit')
   recordCreditPayment(
     @Param('customerId') customerId: string,
-    @Body() dto: { orderIds: string[]; paymentMethod: string; notes?: string; cardLast4?: string; slipRef?: string },
+    @Body()
+    dto: {
+      orderIds: string[];
+      paymentMethod: string;
+      notes?: string;
+      cardLast4?: string;
+      slipRef?: string;
+    },
     @Req() req,
   ) {
     return this.service.recordCreditPayment(customerId, dto, this.ctx(req));

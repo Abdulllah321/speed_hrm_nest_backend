@@ -22,7 +22,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/purchase-requisition')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PurchaseRequisitionController {
-  constructor(private readonly service: PurchaseRequisitionService,) {}
+  constructor(private readonly service: PurchaseRequisitionService) {}
 
   @Post()
   @Permissions('erp.procurement.pr.create')
@@ -38,7 +38,11 @@ export class PurchaseRequisitionController {
   @Get()
   @Permissions('erp.procurement.pr.read')
   @ApiOperation({ summary: 'List all purchase requisitions' })
-  @ApiQuery({ name: 'status', required: false, description: 'Filter by status' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    description: 'Filter by status',
+  })
   findAll(@Query('status') status?: string) {
     return this.service.findAll(status);
   }

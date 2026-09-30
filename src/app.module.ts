@@ -127,7 +127,9 @@ import { VoucherExportModule } from './finance/voucher-export/voucher-export.mod
         try {
           // If we explicitly want no redis in this dev environment, return memory store implicitly
           if (process.env.NO_REDIS === 'true') {
-            console.log('Redis disabled via NO_REDIS, using memory cache instead');
+            console.log(
+              'Redis disabled via NO_REDIS, using memory cache instead',
+            );
             return {};
           }
 
@@ -140,7 +142,9 @@ import { VoucherExportModule } from './finance/voucher-export/voucher-export.mod
           });
           return { store };
         } catch (error) {
-          console.warn('Failed to connect to Redis. Using fallback memory cache.');
+          console.warn(
+            'Failed to connect to Redis. Using fallback memory cache.',
+          );
           return {}; // fallback memory cache
         }
       },
@@ -264,4 +268,4 @@ import { VoucherExportModule } from './finance/voucher-export/voucher-export.mod
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

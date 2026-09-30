@@ -13,7 +13,12 @@ import { CprService } from './cpr.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
-import { CreateCprDto, UpdateCprDto, PreviewCprDto, ConfirmBatchCprDto } from './dto/cpr.dto';
+import {
+  CreateCprDto,
+  UpdateCprDto,
+  PreviewCprDto,
+  ConfirmBatchCprDto,
+} from './dto/cpr.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -31,10 +36,17 @@ export class CprController {
   @Permissions('hr.payroll.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Preview CPR Tax calculations' })
-  @ApiResponse({ status: 200, description: 'Returns CPR Tax calculation preview array' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns CPR Tax calculation preview array',
+  })
   async preview(@Body() body: PreviewCprDto) {
     const data = await this.service.preview(body);
-    return { status: true, data, message: 'CPR Tax preview calculated successfully' };
+    return {
+      status: true,
+      data,
+      message: 'CPR Tax preview calculated successfully',
+    };
   }
 
   @Post('cpr-tax/confirm-batch')
@@ -42,7 +54,10 @@ export class CprController {
   @Permissions('hr.payroll.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Batch confirm and save CPR Tax records' })
-  @ApiResponse({ status: 201, description: 'CPR Tax records confirmed successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'CPR Tax records confirmed successfully',
+  })
   async confirmBatch(@Body() body: ConfirmBatchCprDto) {
     const res = await this.service.confirmBatch(body);
     return { status: true, data: res, message: res.message };
@@ -53,10 +68,17 @@ export class CprController {
   @Permissions('hr.payroll.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create CPR Tax record' })
-  @ApiResponse({ status: 201, description: 'CPR Tax record created successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'CPR Tax record created successfully',
+  })
   async create(@Body() body: CreateCprDto) {
     const data = await this.service.create(body);
-    return { status: true, data, message: 'CPR Tax record created successfully' };
+    return {
+      status: true,
+      data,
+      message: 'CPR Tax record created successfully',
+    };
   }
 
   @Get('cpr-tax')
@@ -72,7 +94,11 @@ export class CprController {
     @Query('employeeIds') employeeIds?: string,
   ) {
     const data = await this.service.list({ month, year, months, employeeIds });
-    return { status: true, data, message: 'CPR Tax records fetched successfully' };
+    return {
+      status: true,
+      data,
+      message: 'CPR Tax records fetched successfully',
+    };
   }
 
   @Get('cpr-tax/:id')
@@ -83,7 +109,11 @@ export class CprController {
   @ApiResponse({ status: 200, description: 'Returns CPR Tax record details' })
   async get(@Param('id') id: string) {
     const data = await this.service.get(id);
-    return { status: true, data, message: 'CPR Tax record fetched successfully' };
+    return {
+      status: true,
+      data,
+      message: 'CPR Tax record fetched successfully',
+    };
   }
 
   @Put('cpr-tax/:id')
@@ -91,10 +121,17 @@ export class CprController {
   @Permissions('hr.payroll.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update CPR Tax record' })
-  @ApiResponse({ status: 200, description: 'CPR Tax record updated successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'CPR Tax record updated successfully',
+  })
   async update(@Param('id') id: string, @Body() body: UpdateCprDto) {
     const data = await this.service.update(id, body);
-    return { status: true, data, message: 'CPR Tax record updated successfully' };
+    return {
+      status: true,
+      data,
+      message: 'CPR Tax record updated successfully',
+    };
   }
 
   @Delete('cpr-tax/:id')
@@ -102,10 +139,16 @@ export class CprController {
   @Permissions('hr.payroll.create')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete CPR Tax record' })
-  @ApiResponse({ status: 200, description: 'CPR Tax record deleted successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'CPR Tax record deleted successfully',
+  })
   async delete(@Param('id') id: string) {
     const data = await this.service.delete(id);
-    return { status: true, data, message: 'CPR Tax record deleted successfully' };
+    return {
+      status: true,
+      data,
+      message: 'CPR Tax record deleted successfully',
+    };
   }
 }
-

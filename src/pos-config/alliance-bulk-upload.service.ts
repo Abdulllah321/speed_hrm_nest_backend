@@ -7,11 +7,11 @@ import { BaseBulkUploadService } from '../common/services/base-bulk-upload.servi
 
 @Injectable()
 export class AllianceBulkUploadService extends BaseBulkUploadService {
-    constructor(
-        @InjectQueue('alliance-upload') uploadQueue: Queue,
-        prisma: PrismaService,
-        eventsService: UploadEventsService,
-    ) {
-        super(uploadQueue, prisma, eventsService, 'alliance');
-    }
+  constructor(
+    @InjectQueue('alliance-upload') uploadQueue: Queue,
+    prisma: PrismaService,
+    eventsService: UploadEventsService,
+  ) {
+    super(uploadQueue, prisma, eventsService, 'alliance');
+  }
 }

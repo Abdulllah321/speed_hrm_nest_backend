@@ -14,7 +14,8 @@ import {
 @Injectable()
 export class OldSeasonService {
   constructor(
-    private prisma: PrismaService,    private prismaMaster: PrismaMasterService,
+    private prisma: PrismaService,
+    private prismaMaster: PrismaMasterService,
 
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private activityLogs: ActivityLogsService,
@@ -29,7 +30,7 @@ export class OldSeasonService {
 
     const oldSeasons = await this.prisma.oldSeason.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -59,9 +60,7 @@ export class OldSeasonService {
 
   async getById(id: string) {
     const season = await this.prisma.oldSeason.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!season) return { status: false, message: 'Old Season not found' };
 
@@ -115,9 +114,7 @@ export class OldSeasonService {
   ) {
     try {
       const existing = await this.prisma.oldSeason.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Old Season not found' };
 
@@ -194,8 +191,8 @@ export class OldSeasonService {
     try {
       const result = await this.prisma.oldSeason.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       await this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
@@ -224,14 +221,12 @@ export class OldSeasonService {
   ) {
     try {
       const existing = await this.prisma.oldSeason.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const result = await this.prisma.oldSeason.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

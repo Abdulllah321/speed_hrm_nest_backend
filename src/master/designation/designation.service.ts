@@ -16,16 +16,14 @@ export class DesignationService {
   async list() {
     const items = await this.prisma.designation.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
     const item = await this.prisma.designation.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Designation not found' };
     return { status: true, data: item };
@@ -149,9 +147,7 @@ export class DesignationService {
   ) {
     try {
       const existing = await this.prisma.designation.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const updated = await this.prisma.designation.update({
         where: { id },
@@ -265,18 +261,20 @@ export class DesignationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'designation', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'designation',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.designation.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const removed = await this.prisma.designation.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: removed,
@@ -329,14 +327,18 @@ export class DesignationService {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'designation', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'designation',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const removed = await this.prisma.designation.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: ids,

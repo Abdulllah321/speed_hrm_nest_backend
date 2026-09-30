@@ -15,7 +15,7 @@ import { runInBackground } from '../../common/utils/run-in-background.util';
 export class ChannelClassService {
   constructor(
     private prisma: PrismaService,
-private prismaMaster: PrismaMasterService,
+    private prismaMaster: PrismaMasterService,
 
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private activityLogs: ActivityLogsService,
@@ -30,7 +30,7 @@ private prismaMaster: PrismaMasterService,
 
     const channelClasses = await this.prisma.channelClass.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -58,9 +58,7 @@ private prismaMaster: PrismaMasterService,
 
   async getChannelClassById(id: string) {
     const item = await this.prisma.channelClass.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Channel Class not found' };
 
@@ -93,14 +91,14 @@ private prismaMaster: PrismaMasterService,
       runInBackground(
         'Created channel classes (${result.count})',
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'channel-classes',
-        entity: 'ChannelClass',
-        description: `Created channel classes (${result.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      }),
+          userId: createdById,
+          action: 'create',
+          module: 'channel-classes',
+          entity: 'ChannelClass',
+          description: `Created channel classes (${result.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
         this.cacheManager.del('channel_classes_all'),
       );
       return {
@@ -120,9 +118,7 @@ private prismaMaster: PrismaMasterService,
   ) {
     try {
       const existing = await this.prisma.channelClass.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const result = await this.prisma.channelClass.update({
         where: { id },
@@ -132,18 +128,18 @@ private prismaMaster: PrismaMasterService,
       runInBackground(
         'Updated channel class ${result.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'channel-classes',
-        entity: 'ChannelClass',
-        entityId: id,
-        description: `Updated channel class ${result.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'channel-classes',
+          entity: 'ChannelClass',
+          entityId: id,
+          description: `Updated channel class ${result.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('channel_classes_all'),
       );
       return {
@@ -174,16 +170,16 @@ private prismaMaster: PrismaMasterService,
       runInBackground(
         'Bulk updated channel classes (${updated.length})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'channel-classes',
-        entity: 'ChannelClass',
-        description: `Bulk updated channel classes (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'channel-classes',
+          entity: 'ChannelClass',
+          description: `Bulk updated channel classes (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('channel_classes_all'),
       );
       return {
@@ -203,21 +199,21 @@ private prismaMaster: PrismaMasterService,
     try {
       const result = await this.prisma.channelClass.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk deleted channel classes (${result.count})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'channel-classes',
-        entity: 'ChannelClass',
-        description: `Bulk deleted channel classes (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'channel-classes',
+          entity: 'ChannelClass',
+          description: `Bulk deleted channel classes (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('channel_classes_all'),
       );
       return {
@@ -236,29 +232,27 @@ private prismaMaster: PrismaMasterService,
   ) {
     try {
       const existing = await this.prisma.channelClass.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const result = await this.prisma.channelClass.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Deleted channel class ${existing?.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'channel-classes',
-        entity: 'ChannelClass',
-        entityId: id,
-        description: `Deleted channel class ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'channel-classes',
+          entity: 'ChannelClass',
+          entityId: id,
+          description: `Deleted channel class ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('channel_classes_all'),
       );
       return {

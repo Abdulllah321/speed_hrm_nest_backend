@@ -31,11 +31,11 @@ export class CreatePaymentVoucherDetailDto {
 
   @IsString()
   @IsOptional()
-  narration?: string;       // Per-line narration
+  narration?: string; // Per-line narration
 
   @IsString()
   @IsOptional()
-  refBillNo?: string;       // Bill/ref number for this line
+  refBillNo?: string; // Bill/ref number for this line
 
   @IsString()
   @IsOptional()
@@ -106,7 +106,7 @@ export class CreatePaymentVoucherDto {
   creditAccountId: string;
 
   @IsOptional()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsString()
   supplierId?: string;
 

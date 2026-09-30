@@ -6,14 +6,20 @@ import * as path from 'path';
 @Injectable()
 export class ReportPreviewCleanupService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ReportPreviewCleanupService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
-  
+  private readonly previewStorageDir = path.join(
+    process.cwd(),
+    'uploads',
+    'report-previews',
+  );
+
   // Default TTL: 2 hours (in milliseconds)
   private readonly DEFAULT_TTL_MS = 2 * 60 * 60 * 1000;
 
   async onApplicationBootstrap() {
     // Run an initial sweep on application startup to remove leftover stale chunks
-    this.logger.log('[PreviewCleanup] Running startup cleanup sweep on preview chunks storage...');
+    this.logger.log(
+      '[PreviewCleanup] Running startup cleanup sweep on preview chunks storage...',
+    );
     await this.cleanupExpiredPreviews();
   }
 
@@ -30,7 +36,9 @@ export class ReportPreviewCleanupService implements OnApplicationBootstrap {
    * Prune expired preview chunks based on file last modified time (mtime).
    * @param maxAgeMs Maximum age in milliseconds before a file is considered expired (default: 2 hours).
    */
-  async cleanupExpiredPreviews(maxAgeMs: number = this.DEFAULT_TTL_MS): Promise<{ deletedCount: number; bytesFreed: number }> {
+  async cleanupExpiredPreviews(
+    maxAgeMs: number = this.DEFAULT_TTL_MS,
+  ): Promise<{ deletedCount: number; bytesFreed: number }> {
     if (!fs.existsSync(this.previewStorageDir)) {
       return { deletedCount: 0, bytesFreed: 0 };
     }
@@ -44,7 +52,11 @@ export class ReportPreviewCleanupService implements OnApplicationBootstrap {
 
       for (const file of files) {
         // Only target preview chunks (.gz, .json, .ndjson, .tmp)
-        if (!file.includes('-preview-') && !file.endsWith('.gz') && !file.endsWith('.tmp')) {
+        if (
+          !file.includes('-preview-') &&
+          !file.endsWith('.gz') &&
+          !file.endsWith('.tmp')
+        ) {
           continue;
         }
 
@@ -60,7 +72,9 @@ export class ReportPreviewCleanupService implements OnApplicationBootstrap {
           }
         } catch (fileErr: any) {
           // File may have been removed concurrently or in use
-          this.logger.debug(`[PreviewCleanup] Could not stat/unlink file ${file}: ${fileErr.message}`);
+          this.logger.debug(
+            `[PreviewCleanup] Could not stat/unlink file ${file}: ${fileErr.message}`,
+          );
         }
       }
 
@@ -71,7 +85,10 @@ export class ReportPreviewCleanupService implements OnApplicationBootstrap {
         );
       }
     } catch (err: any) {
-      this.logger.error(`[PreviewCleanup] Error during preview cleanup sweep: ${err.message}`, err.stack);
+      this.logger.error(
+        `[PreviewCleanup] Error during preview cleanup sweep: ${err.message}`,
+        err.stack,
+      );
     }
 
     return { deletedCount, bytesFreed };
@@ -95,7 +112,9 @@ export class ReportPreviewCleanupService implements OnApplicationBootstrap {
         }
       }
     } catch (err: any) {
-      this.logger.warn(`[PreviewCleanup] Failed to delete preview for jobId ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `[PreviewCleanup] Failed to delete preview for jobId ${jobId}: ${err.message}`,
+      );
     }
 
     return deleted;

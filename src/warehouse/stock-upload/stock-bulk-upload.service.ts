@@ -8,223 +8,238 @@ import * as path from 'path';
 
 @Injectable()
 export class StockBulkUploadService {
-    private readonly logger = new Logger(StockBulkUploadService.name);
+  private readonly logger = new Logger(StockBulkUploadService.name);
 
-    constructor(
-        @InjectQueue('stock-upload') private uploadQueue: Queue,
-        private prisma: PrismaService,
-        private eventsService: UploadEventsService,
-    ) { }
+  constructor(
+    @InjectQueue('stock-upload') private uploadQueue: Queue,
+    private prisma: PrismaService,
+    private eventsService: UploadEventsService,
+  ) {}
 
-    async initiateValidation(
-        fileBuffer: Buffer,
-        filename: string,
-        userId: string,
-        effectiveDate?: string,
-    ): Promise<{ uploadId: string; jobId: string }> {
-        const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  async initiateValidation(
+    fileBuffer: Buffer,
+    filename: string,
+    userId: string,
+    effectiveDate?: string,
+  ): Promise<{ uploadId: string; jobId: string }> {
+    const tempJobId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
-        const upload = await this.prisma.bulkUpload.create({
-            data: {
-                jobId: tempJobId,
-                filename,
-                totalRecords: 0,
-                uploadedBy: userId,
-                status: 'validating',
-                message: effectiveDate ? `Effective Date: ${effectiveDate}` : null,
-            },
-        });
+    const upload = await this.prisma.bulkUpload.create({
+      data: {
+        jobId: tempJobId,
+        filename,
+        totalRecords: 0,
+        uploadedBy: userId,
+        status: 'validating',
+        message: effectiveDate ? `Effective Date: ${effectiveDate}` : null,
+      },
+    });
 
-        // Persist file to disk so the import phase can recover it
-        const uploadDir = path.join(process.cwd(), 'uploads', 'bulk', 'stock');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        const ext = filename.split('.').pop();
-        const filePath = path.join(uploadDir, `stock-upload-${upload.id}.${ext}`);
-        fs.writeFileSync(filePath, fileBuffer);
+    // Persist file to disk so the import phase can recover it
+    const uploadDir = path.join(process.cwd(), 'uploads', 'bulk', 'stock');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    const ext = filename.split('.').pop();
+    const filePath = path.join(uploadDir, `stock-upload-${upload.id}.${ext}`);
+    fs.writeFileSync(filePath, fileBuffer);
 
-        const job = await this.uploadQueue.add(
-            {
-                uploadId: upload.id,
-                fileBuffer,
-                filename,
-                userId,
-                tenantId: this.prisma.getTenantId() || '',
-                tenantDbUrl: this.prisma.getTenantDbUrl() || '',
-                mode: 'validate',
-                uploadType: 'stock',
-                effectiveDate,
-            } as any,
-            { removeOnComplete: false, removeOnFail: false },
-        );
+    const job = await this.uploadQueue.add(
+      {
+        uploadId: upload.id,
+        fileBuffer,
+        filename,
+        userId,
+        tenantId: this.prisma.getTenantId() || '',
+        tenantDbUrl: this.prisma.getTenantDbUrl() || '',
+        mode: 'validate',
+        uploadType: 'stock',
+        effectiveDate,
+      } as any,
+      { removeOnComplete: false, removeOnFail: false },
+    );
 
-        const uniqueJobId = `${upload.id}:${job.id}`;
-        await this.prisma.bulkUpload.update({
-            where: { id: upload.id },
-            data: { jobId: uniqueJobId },
-        });
+    const uniqueJobId = `${upload.id}:${job.id}`;
+    await this.prisma.bulkUpload.update({
+      where: { id: upload.id },
+      data: { jobId: uniqueJobId },
+    });
 
-        this.logger.log(`Stock validation initiated: ${upload.id} (Job: ${job.id}), saved to ${filePath}`);
+    this.logger.log(
+      `Stock validation initiated: ${upload.id} (Job: ${job.id}), saved to ${filePath}`,
+    );
 
-        return { uploadId: upload.id, jobId: uniqueJobId };
+    return { uploadId: upload.id, jobId: uniqueJobId };
+  }
+
+  async confirmUpload(
+    uploadId: string,
+    userId: string,
+    effectiveDate?: string,
+  ): Promise<{ uploadId: string; jobId: string }> {
+    const upload = await this.prisma.bulkUpload.findUnique({
+      where: { id: uploadId },
+    });
+
+    if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
+
+    if (['processing', 'pending', 'completed'].includes(upload.status)) {
+      return { uploadId: upload.id, jobId: upload.jobId };
     }
 
-    async confirmUpload(uploadId: string, userId: string, effectiveDate?: string): Promise<{ uploadId: string; jobId: string }> {
-        const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
-
-        if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
-
-        if (['processing', 'pending', 'completed'].includes(upload.status)) {
-            return { uploadId: upload.id, jobId: upload.jobId };
-        }
-
-        if (upload.status !== 'validated') {
-            throw new Error(`Upload must be in 'validated' status to confirm (current: ${upload.status})`);
-        }
-
-        this.eventsService.emit({
-            uploadId,
-            type: 'status',
-            data: { status: 'pending', message: 'Import confirmation received...' },
-        });
-
-        await this.prisma.bulkUpload.update({
-            where: { id: uploadId },
-            data: { status: 'pending', message: 'Confirming upload...' },
-        });
-
-        const job = await this.uploadQueue.add(
-            {
-                uploadId: upload.id,
-                filename: upload.filename,
-                userId,
-                tenantId: this.prisma.getTenantId() || '',
-                tenantDbUrl: this.prisma.getTenantDbUrl() || '',
-                mode: 'import',
-                uploadType: 'stock',
-                effectiveDate,
-            } as any,
-            { removeOnComplete: false, removeOnFail: false },
-        );
-
-        const uniqueJobId = `${upload.id}:${job.id}`;
-        await this.prisma.bulkUpload.update({
-            where: { id: upload.id },
-            data: { jobId: uniqueJobId },
-        });
-
-        this.logger.log(`Stock import confirmed: ${upload.id} (Job: ${job.id})`);
-
-        return { uploadId, jobId: uniqueJobId };
+    if (upload.status !== 'validated') {
+      throw new Error(
+        `Upload must be in 'validated' status to confirm (current: ${upload.status})`,
+      );
     }
 
-    async getUploadStatus(uploadId: string) {
-        const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
-        if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
+    this.eventsService.emit({
+      uploadId,
+      type: 'status',
+      data: { status: 'pending', message: 'Import confirmation received...' },
+    });
 
-        let jobProgress = 0;
-        let jobState = 'unknown';
-        try {
-            const bullJobId = upload.jobId.includes(':')
-                ? upload.jobId.split(':').slice(1).join(':')
-                : upload.jobId;
-            const job = await this.uploadQueue.getJob(bullJobId);
-            if (job) {
-                jobProgress = await job.progress();
-                jobState = await job.getState();
-            }
-        } catch (error) {
-            this.logger.warn(`Failed to get job status: ${error.message}`);
-        }
+    await this.prisma.bulkUpload.update({
+      where: { id: uploadId },
+      data: { status: 'pending', message: 'Confirming upload...' },
+    });
 
-        return {
-            uploadId: upload.id,
-            filename: upload.filename,
-            status: upload.status,
-            totalRecords: upload.totalRecords,
-            processedRecords: upload.processedRecords,
-            successRecords: upload.successRecords,
-            failedRecords: upload.failedRecords,
-            skippedRecords: upload.skippedRecords,
-            progress: jobProgress,
-            jobState,
-            errors: upload.errors,
-            successSummary: upload.successSummary,
-            errorReportPath: upload.errorReportPath,
-            successReportPath: upload.successReportPath,
-            message: upload.message,
-            createdAt: upload.createdAt,
-            completedAt: upload.completedAt,
-        };
+    const job = await this.uploadQueue.add(
+      {
+        uploadId: upload.id,
+        filename: upload.filename,
+        userId,
+        tenantId: this.prisma.getTenantId() || '',
+        tenantDbUrl: this.prisma.getTenantDbUrl() || '',
+        mode: 'import',
+        uploadType: 'stock',
+        effectiveDate,
+      } as any,
+      { removeOnComplete: false, removeOnFail: false },
+    );
+
+    const uniqueJobId = `${upload.id}:${job.id}`;
+    await this.prisma.bulkUpload.update({
+      where: { id: upload.id },
+      data: { jobId: uniqueJobId },
+    });
+
+    this.logger.log(`Stock import confirmed: ${upload.id} (Job: ${job.id})`);
+
+    return { uploadId, jobId: uniqueJobId };
+  }
+
+  async getUploadStatus(uploadId: string) {
+    const upload = await this.prisma.bulkUpload.findUnique({
+      where: { id: uploadId },
+    });
+    if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
+
+    let jobProgress = 0;
+    let jobState = 'unknown';
+    try {
+      const bullJobId = upload.jobId.includes(':')
+        ? upload.jobId.split(':').slice(1).join(':')
+        : upload.jobId;
+      const job = await this.uploadQueue.getJob(bullJobId);
+      if (job) {
+        jobProgress = await job.progress();
+        jobState = await job.getState();
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to get job status: ${error.message}`);
     }
 
-    async cancelUpload(uploadId: string): Promise<void> {
-        const upload = await this.prisma.bulkUpload.findUnique({ where: { id: uploadId } });
-        if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
+    return {
+      uploadId: upload.id,
+      filename: upload.filename,
+      status: upload.status,
+      totalRecords: upload.totalRecords,
+      processedRecords: upload.processedRecords,
+      successRecords: upload.successRecords,
+      failedRecords: upload.failedRecords,
+      skippedRecords: upload.skippedRecords,
+      progress: jobProgress,
+      jobState,
+      errors: upload.errors,
+      successSummary: upload.successSummary,
+      errorReportPath: upload.errorReportPath,
+      successReportPath: upload.successReportPath,
+      message: upload.message,
+      createdAt: upload.createdAt,
+      completedAt: upload.completedAt,
+    };
+  }
 
-        try {
-            const bullJobId = upload.jobId.includes(':')
-                ? upload.jobId.split(':').slice(1).join(':')
-                : upload.jobId;
-            const job = await this.uploadQueue.getJob(bullJobId);
-            if (job) await job.remove();
-        } catch (error) {
-            this.logger.warn(`Failed to remove job: ${error.message}`);
-        }
+  async cancelUpload(uploadId: string): Promise<void> {
+    const upload = await this.prisma.bulkUpload.findUnique({
+      where: { id: uploadId },
+    });
+    if (!upload) throw new NotFoundException(`Upload ${uploadId} not found`);
 
-        await this.prisma.bulkUpload.update({
-            where: { id: uploadId },
-            data: { status: 'cancelled', completedAt: new Date() },
-        });
-
-        this.logger.log(`Stock upload cancelled: ${uploadId}`);
+    try {
+      const bullJobId = upload.jobId.includes(':')
+        ? upload.jobId.split(':').slice(1).join(':')
+        : upload.jobId;
+      const job = await this.uploadQueue.getJob(bullJobId);
+      if (job) await job.remove();
+    } catch (error) {
+      this.logger.warn(`Failed to remove job: ${error.message}`);
     }
 
-    async getUploadHistory(userId: string, limit = 50) {
-        return this.prisma.bulkUpload.findMany({
-            where: { uploadedBy: userId },
-            orderBy: { createdAt: 'desc' },
-            take: limit,
-            select: {
-                id: true,
-                filename: true,
-                status: true,
-                totalRecords: true,
-                successRecords: true,
-                failedRecords: true,
-                skippedRecords: true,
-                createdAt: true,
-                completedAt: true,
-            },
-        });
-    }
+    await this.prisma.bulkUpload.update({
+      where: { id: uploadId },
+      data: { status: 'cancelled', completedAt: new Date() },
+    });
 
-    generateErrorReport(errors: any[]): string {
-        if (!errors || errors.length === 0) return 'No errors found';
-        let csv = 'Row,BarCode,LocationCode,Field,Reason,Value\n';
-        errors.forEach((e) => {
-            const row = e.row || 'N/A';
-            const barCode = e.barCode || e.data?.barCode || 'N/A';
-            const locationCode = e.locationCode || e.data?.locationCode || 'N/A';
-            const field = e.field || e.data?.field || 'N/A';
-            const reason = (e.reason || '').replace(/"/g, '""');
-            const value = e.value || e.data?.value || 'N/A';
-            csv += `${row},${barCode},${locationCode},${field},"${reason}",${value}\n`;
-        });
-        return csv;
-    }
+    this.logger.log(`Stock upload cancelled: ${uploadId}`);
+  }
 
-    generateSuccessReport(successSummary: any[]): string {
-        if (!successSummary || successSummary.length === 0) return 'No success summary available';
-        let csv = 'LocationCode,LocationName,SuccessCount,TotalQtyUploaded\n';
-        successSummary.forEach((s) => {
-            const code = s.locationCode || 'N/A';
-            const name = (s.locationName || 'N/A').replace(/"/g, '""');
-            const count = s.count ?? s.successCount ?? 0;
-            const qty = s.totalQty ?? 0;
-            csv += `${code},"${name}",${count},${qty}\n`;
-        });
-        return csv;
-    }
+  async getUploadHistory(userId: string, limit = 50) {
+    return this.prisma.bulkUpload.findMany({
+      where: { uploadedBy: userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        filename: true,
+        status: true,
+        totalRecords: true,
+        successRecords: true,
+        failedRecords: true,
+        skippedRecords: true,
+        createdAt: true,
+        completedAt: true,
+      },
+    });
+  }
+
+  generateErrorReport(errors: any[]): string {
+    if (!errors || errors.length === 0) return 'No errors found';
+    let csv = 'Row,BarCode,LocationCode,Field,Reason,Value\n';
+    errors.forEach((e) => {
+      const row = e.row || 'N/A';
+      const barCode = e.barCode || e.data?.barCode || 'N/A';
+      const locationCode = e.locationCode || e.data?.locationCode || 'N/A';
+      const field = e.field || e.data?.field || 'N/A';
+      const reason = (e.reason || '').replace(/"/g, '""');
+      const value = e.value || e.data?.value || 'N/A';
+      csv += `${row},${barCode},${locationCode},${field},"${reason}",${value}\n`;
+    });
+    return csv;
+  }
+
+  generateSuccessReport(successSummary: any[]): string {
+    if (!successSummary || successSummary.length === 0)
+      return 'No success summary available';
+    let csv = 'LocationCode,LocationName,SuccessCount,TotalQtyUploaded\n';
+    successSummary.forEach((s) => {
+      const code = s.locationCode || 'N/A';
+      const name = (s.locationName || 'N/A').replace(/"/g, '""');
+      const count = s.count ?? s.successCount ?? 0;
+      const qty = s.totalQty ?? 0;
+      csv += `${code},"${name}",${count},${qty}\n`;
+    });
+    return csv;
+  }
 }

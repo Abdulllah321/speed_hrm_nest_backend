@@ -11,9 +11,7 @@ import * as fs from 'fs';
 export class SalesInvoiceExportProcessor {
   private readonly logger = new Logger(SalesInvoiceExportProcessor.name);
 
-  constructor(
-    private readonly notificationsService: NotificationsService,
-  ) {}
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   @Process('export-sales-invoices')
   async handleExport(job: Job) {
@@ -90,17 +88,33 @@ export class SalesInvoiceExportProcessor {
       { header: 'CostCentre', key: 'costCentre', width: 20 },
       { header: 'POS ID', key: 'posId', width: 15 },
       { header: 'FBR Invoice#', key: 'fbrInvoiceNo', width: 20 },
-      { header: 'FKExchangeVoucherNumber', key: 'fkExchangeVoucher', width: 20 },
+      {
+        header: 'FKExchangeVoucherNumber',
+        key: 'fkExchangeVoucher',
+        width: 20,
+      },
       { header: 'Selling Price', key: 'sellingPrice', width: 15 },
       { header: 'Price WOST', key: 'priceWost', width: 15 },
       { header: 'Sales Tax %', key: 'salesTaxPct', width: 15 },
       { header: 'Additional Sales Tax %', key: 'addSalesTaxPct', width: 20 },
       { header: 'Total Price WOST', key: 'totalPriceWost', width: 20 },
       { header: 'Total Discount', key: 'totalDiscount', width: 15 },
-      { header: 'Value Excluding Sales Tax', key: 'valueExcludingSalesTax', width: 20 },
+      {
+        header: 'Value Excluding Sales Tax',
+        key: 'valueExcludingSalesTax',
+        width: 20,
+      },
       { header: 'Sales Tax Value', key: 'salesTaxValue', width: 15 },
-      { header: 'Additional Sales Tax Value', key: 'addSalesTaxValue', width: 20 },
-      { header: 'Value Inculding Sales Tax', key: 'valueIncludingSalesTax', width: 20 },
+      {
+        header: 'Additional Sales Tax Value',
+        key: 'addSalesTaxValue',
+        width: 20,
+      },
+      {
+        header: 'Value Inculding Sales Tax',
+        key: 'valueIncludingSalesTax',
+        width: 20,
+      },
       { header: 'FKConceptID', key: 'fkConceptId', width: 15 },
       { header: 'Delivery Challan Number', key: 'dcNo', width: 20 },
       { header: 'Sale Order Number', key: 'soNo', width: 20 },
@@ -125,7 +139,8 @@ export class SalesInvoiceExportProcessor {
     const batchSize = 500;
 
     const { invoiceIds } = job.data;
-    const whereClause = invoiceIds && invoiceIds.length > 0 ? { id: { in: invoiceIds } } : {};
+    const whereClause =
+      invoiceIds && invoiceIds.length > 0 ? { id: { in: invoiceIds } } : {};
 
     try {
       while (hasMore) {
@@ -154,11 +169,11 @@ export class SalesInvoiceExportProcessor {
                     size: true,
                     hsCode: true,
                     silhouette: true,
-                  }
-                }
-              }
-            }
-          }
+                  },
+                },
+              },
+            },
+          },
         });
 
         if (invoices.length === 0) {
@@ -182,16 +197,19 @@ export class SalesInvoiceExportProcessor {
             const quantity = Number(item.quantity || 0);
             const unitPrice = Number(item.salePrice || 0);
             const discountAmount = Number(item.discount || 0);
-            
+
             const taxRate = Number(product.taxRate1 || 18);
-            const wostUnitPrice = unitPrice / (1 + (taxRate / 100));
+            const wostUnitPrice = unitPrice / (1 + taxRate / 100);
             const wostTotal = wostUnitPrice * quantity;
-            
+
             const taxableAmt = Math.max(0, wostTotal - discountAmount);
             const valueExclTax = taxableAmt;
             const salesTax = (taxableAmt * taxRate) / 100;
             const valueInclTax = valueExclTax + salesTax;
-            const discountPct = quantity > 0 && unitPrice > 0 ? (discountAmount / (unitPrice * quantity)) * 100 : 0;
+            const discountPct =
+              quantity > 0 && unitPrice > 0
+                ? (discountAmount / (unitPrice * quantity)) * 100
+                : 0;
 
             const rowData = {
               invoiceNo: invoice.invoiceNo,
@@ -239,7 +257,8 @@ export class SalesInvoiceExportProcessor {
               year: y,
               month: m,
               companyName: 'Speed Pvt. Ltd.',
-              companyAddress: 'Office No. 01 | 1st Floor | Services Club Extension Building | Merewether Road | Karachi - 75520 | Pakistan. Tel +922135652161 | Fax +922135652166',
+              companyAddress:
+                'Office No. 01 | 1st Floor | Services Club Extension Building | Merewether Road | Karachi - 75520 | Pakistan. Tel +922135652161 | Fax +922135652166',
               companyPhone: 'N/A',
               costCentre: 'Speed Pvt. Ltd.',
               posId: 'N/A',
@@ -259,12 +278,18 @@ export class SalesInvoiceExportProcessor {
               dcNo: invoice.deliveryChallan?.challanNo || '',
               soNo: invoice.salesOrder?.orderNo || '',
               poNo: '',
-              soDate: invoice.salesOrder ? new Date(invoice.salesOrder.orderDate || invoice.salesOrder.createdAt).toLocaleDateString('en-GB') : '',
+              soDate: invoice.salesOrder
+                ? new Date(
+                    invoice.salesOrder.orderDate ||
+                      invoice.salesOrder.createdAt,
+                  ).toLocaleDateString('en-GB')
+                : '',
               taxRate1: taxRate,
               taxRate2: 0,
               clientType: invoice.customer?.clientType || 'N/A',
               clientName: invoice.customer?.name || 'N/A',
-              clientGst: invoice.customer?.gstNo || invoice.customer?.strn || 'N/A',
+              clientGst:
+                invoice.customer?.gstNo || invoice.customer?.strn || 'N/A',
             };
 
             const row = sheet.addRow(rowData);
@@ -290,7 +315,6 @@ export class SalesInvoiceExportProcessor {
         entityType: 'sales-invoice-export',
         entityId: job.id.toString(),
       });
-
     } catch (error: any) {
       this.logger.error(`Failed to export sales invoices: ${error.message}`);
       throw error;

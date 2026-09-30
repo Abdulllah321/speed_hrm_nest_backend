@@ -83,7 +83,11 @@ export class StockAdjustmentController {
   @Post(':id/submit')
   async submit(
     @Param('id') id: string,
-    @Body() dto: { items?: { itemId: string; physicalQty: number; rate?: number }[]; notes?: string },
+    @Body()
+    dto: {
+      items?: { itemId: string; physicalQty: number; rate?: number }[];
+      notes?: string;
+    },
     @Req() req: any,
   ) {
     this.logger.log(`Stock adjustment submit request received for ID: ${id}`);

@@ -20,7 +20,7 @@ export class TenantDatabaseService implements OnModuleInit {
   constructor(
     private readonly prismaMaster: PrismaMasterService,
     private readonly encryptionService: EncryptionService,
-  ) { }
+  ) {}
 
   async onModuleInit() {
     const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
@@ -200,13 +200,9 @@ export class TenantDatabaseService implements OnModuleInit {
     }
   }
 
-  private generateDatabaseUrl(
-    dbName: string,
-    dbUser: string,
-  ): string {
+  private generateDatabaseUrl(dbName: string, dbUser: string): string {
     return `postgresql://${dbUser}:[password]@${this.dbHost}:${this.dbPort}/${dbName}?schema=public`;
   }
-
 
   private async runMigrations(dbUrl: string): Promise<void> {
     this.logger.log('Running migrations on tenant database...');

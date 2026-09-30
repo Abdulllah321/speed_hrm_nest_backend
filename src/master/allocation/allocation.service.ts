@@ -131,8 +131,8 @@ export class AllocationService {
     try {
       const items = await this.prisma.allocation.findMany({
         orderBy: { createdAt: 'desc' },
-          where: { isDeleted: false }
-    });
+        where: { isDeleted: false },
+      });
 
       if (items.length === 0) {
         return { status: true, data: [] };
@@ -163,9 +163,7 @@ export class AllocationService {
   async get(id: string) {
     try {
       const allocation = await this.prisma.allocation.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
 
       if (!allocation) {
@@ -202,9 +200,7 @@ export class AllocationService {
   ) {
     try {
       const existing = await this.prisma.allocation.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Allocation not found' };
 
@@ -264,20 +260,22 @@ export class AllocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'allocation', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'allocation',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.allocation.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Allocation not found' };
 
       const removed = await this.prisma.allocation.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: removed,
@@ -330,7 +328,11 @@ export class AllocationService {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'allocation', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'allocation',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
@@ -338,8 +340,8 @@ export class AllocationService {
         where: {
           id: { in: ids },
         },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: ids,

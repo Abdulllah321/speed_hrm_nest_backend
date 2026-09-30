@@ -1,5 +1,20 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  DefaultValuePipe,
+  ParseIntPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ReportsService } from './reports.service';
 
@@ -8,7 +23,7 @@ import { ReportsService } from './reports.service';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class ReportsController {
-  constructor(private readonly reports: ReportsService,) {}
+  constructor(private readonly reports: ReportsService) {}
 
   /**
    * GET /api/finance/reports/trial-balance
@@ -18,16 +33,29 @@ export class ReportsController {
    */
   @Get('trial-balance')
   @ApiOperation({ summary: 'Trial Balance' })
-  @ApiQuery({ name: 'from', required: false, type: String, description: 'ISO date (period start)' })
-  @ApiQuery({ name: 'to',   required: false, type: String, description: 'ISO date (period end)' })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    type: String,
+    description: 'ISO date (period start)',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    type: String,
+    description: 'ISO date (period end)',
+  })
   @ApiQuery({ name: 'includeTagAccounts', required: false, type: Boolean })
   async trialBalance(
     @Query('from') from?: string,
-    @Query('to')   to?: string,
+    @Query('to') to?: string,
     @Query('includeTagAccounts') includeTagAccounts?: string,
   ) {
     const includeTags = includeTagAccounts === 'true';
-    return { status: true, data: await this.reports.getTrialBalance(from, to, includeTags) };
+    return {
+      status: true,
+      data: await this.reports.getTrialBalance(from, to, includeTags),
+    };
   }
 
   /**
@@ -36,17 +64,17 @@ export class ReportsController {
    */
   @Get('general-ledger/:accountId')
   @ApiOperation({ summary: 'General Ledger for single or multiple accounts' })
-  @ApiQuery({ name: 'from',  required: false, type: String })
-  @ApiQuery({ name: 'to',    required: false, type: String })
-  @ApiQuery({ name: 'page',  required: false, type: Number })
+  @ApiQuery({ name: 'from', required: false, type: String })
+  @ApiQuery({ name: 'to', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'sourceType', required: false, type: String })
   @ApiQuery({ name: 'accountId', required: false, type: String })
   async generalLedger(
     @Param('accountId') accountId: string,
-    @Query('from')  from?: string,
-    @Query('to')    to?: string,
-    @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page  = 1,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
     @Query('sourceType') sourceType?: string,
     @Query('sortBy') sortBy?: string,
@@ -54,11 +82,25 @@ export class ReportsController {
     @Query('accountId') queryAccountId?: string,
   ) {
     const effectiveId = queryAccountId || accountId;
-    return { status: true, data: await this.reports.getGeneralLedger(effectiveId, from, to, page, limit, sourceType, sortBy, sortOrder) };
+    return {
+      status: true,
+      data: await this.reports.getGeneralLedger(
+        effectiveId,
+        from,
+        to,
+        page,
+        limit,
+        sourceType,
+        sortBy,
+        sortOrder,
+      ),
+    };
   }
 
   @Get('general-ledger')
-  @ApiOperation({ summary: 'General Ledger for multiple accounts via query parameter' })
+  @ApiOperation({
+    summary: 'General Ledger for multiple accounts via query parameter',
+  })
   @ApiQuery({ name: 'accountId', required: true, type: String })
   @ApiQuery({ name: 'from', required: false, type: String })
   @ApiQuery({ name: 'to', required: false, type: String })
@@ -75,7 +117,19 @@ export class ReportsController {
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
-    return { status: true, data: await this.reports.getGeneralLedger(accountId, from, to, page, limit, sourceType, sortBy, sortOrder) };
+    return {
+      status: true,
+      data: await this.reports.getGeneralLedger(
+        accountId,
+        from,
+        to,
+        page,
+        limit,
+        sourceType,
+        sortBy,
+        sortOrder,
+      ),
+    };
   }
 
   /**
@@ -98,7 +152,8 @@ export class ReportsController {
     @Query('includeTagAccounts') includeTagAccounts?: string,
     @Query('showZeroBalances') showZeroBalances?: string,
   ) {
-    const isIncludeTags = includeTagAccounts !== undefined ? includeTagAccounts === 'true' : true;
+    const isIncludeTags =
+      includeTagAccounts !== undefined ? includeTagAccounts === 'true' : true;
     const isShowZero = showZeroBalances === 'true';
     return {
       status: true,
@@ -120,8 +175,18 @@ export class ReportsController {
    */
   @Get('balance-sheet')
   @ApiOperation({ summary: 'Balance Sheet' })
-  @ApiQuery({ name: 'asOf', required: false, type: String, description: 'ISO date snapshot' })
-  @ApiQuery({ name: 'compareAsOf', required: false, type: String, description: 'Comparative ISO date snapshot' })
+  @ApiQuery({
+    name: 'asOf',
+    required: false,
+    type: String,
+    description: 'ISO date snapshot',
+  })
+  @ApiQuery({
+    name: 'compareAsOf',
+    required: false,
+    type: String,
+    description: 'Comparative ISO date snapshot',
+  })
   @ApiQuery({ name: 'includeTagAccounts', required: false, type: Boolean })
   @ApiQuery({ name: 'showZeroBalances', required: false, type: Boolean })
   async balanceSheet(
@@ -135,7 +200,8 @@ export class ReportsController {
       data: await this.reports.getBalanceSheet({
         asOf,
         compareAsOf,
-        includeTagAccounts: includeTagAccounts === 'true' || includeTagAccounts === undefined,
+        includeTagAccounts:
+          includeTagAccounts === 'true' || includeTagAccounts === undefined,
         showZeroBalances: showZeroBalances === 'true',
       }),
     };
@@ -147,8 +213,18 @@ export class ReportsController {
    */
   @Get('general-ledger-summary')
   @ApiOperation({ summary: 'General Ledger Subaccount Summary Report' })
-  @ApiQuery({ name: 'parentAccountIds', required: true, type: String, description: 'Comma-separated parent account IDs' })
-  @ApiQuery({ name: 'subAccountIds', required: false, type: String, description: 'Comma-separated sub-account IDs (optional)' })
+  @ApiQuery({
+    name: 'parentAccountIds',
+    required: true,
+    type: String,
+    description: 'Comma-separated parent account IDs',
+  })
+  @ApiQuery({
+    name: 'subAccountIds',
+    required: false,
+    type: String,
+    description: 'Comma-separated sub-account IDs (optional)',
+  })
   @ApiQuery({ name: 'from', required: false, type: String })
   @ApiQuery({ name: 'to', required: false, type: String })
   async generalLedgerSummary(
@@ -157,8 +233,14 @@ export class ReportsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    const parentIds = parentAccountIds && parentAccountIds.trim() !== '' ? parentAccountIds.split(',') : [];
-    const ids = subAccountIds && subAccountIds.trim() !== '' ? subAccountIds.split(',') : [];
+    const parentIds =
+      parentAccountIds && parentAccountIds.trim() !== ''
+        ? parentAccountIds.split(',')
+        : [];
+    const ids =
+      subAccountIds && subAccountIds.trim() !== ''
+        ? subAccountIds.split(',')
+        : [];
     return {
       status: true,
       data: await this.reports.getSubaccountSummary(parentIds, ids, from, to),
@@ -183,20 +265,31 @@ export class ReportsController {
     let parentIds: string[] = [];
     if (Array.isArray(body?.parentAccountIds)) {
       parentIds = body.parentAccountIds;
-    } else if (typeof body?.parentAccountIds === 'string' && body.parentAccountIds.trim() !== '') {
+    } else if (
+      typeof body?.parentAccountIds === 'string' &&
+      body.parentAccountIds.trim() !== ''
+    ) {
       parentIds = body.parentAccountIds.split(',');
     }
 
     let ids: string[] = [];
     if (Array.isArray(body?.subAccountIds)) {
       ids = body.subAccountIds;
-    } else if (typeof body?.subAccountIds === 'string' && body.subAccountIds.trim() !== '') {
+    } else if (
+      typeof body?.subAccountIds === 'string' &&
+      body.subAccountIds.trim() !== ''
+    ) {
       ids = body.subAccountIds.split(',');
     }
 
     return {
       status: true,
-      data: await this.reports.getSubaccountSummary(parentIds, ids, body?.from, body?.to),
+      data: await this.reports.getSubaccountSummary(
+        parentIds,
+        ids,
+        body?.from,
+        body?.to,
+      ),
     };
   }
 
@@ -207,11 +300,11 @@ export class ReportsController {
   @Get('summary')
   @ApiOperation({ summary: 'Account activity summary (dashboard)' })
   @ApiQuery({ name: 'from', required: false, type: String })
-  @ApiQuery({ name: 'to',   required: false, type: String })
-  async summary(
-    @Query('from') from?: string,
-    @Query('to')   to?: string,
-  ) {
-    return { status: true, data: await this.reports.getAccountSummary(from, to) };
+  @ApiQuery({ name: 'to', required: false, type: String })
+  async summary(@Query('from') from?: string, @Query('to') to?: string) {
+    return {
+      status: true,
+      data: await this.reports.getAccountSummary(from, to),
+    };
   }
 }

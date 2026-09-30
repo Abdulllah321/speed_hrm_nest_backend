@@ -28,12 +28,16 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   private static readonly clientsPool = new Map<string, PrismaClient>();
 
   // AsyncLocalStorage to maintain active tenant context per asynchronous execution branch
-  public static readonly asyncLocalStorage = new AsyncLocalStorage<PrismaServiceContext>();
+  public static readonly asyncLocalStorage =
+    new AsyncLocalStorage<PrismaServiceContext>();
 
   constructor(
     @Optional()
     @Inject('PRISMA_SERVICE_OPTIONS')
-    options?: { tenantId?: string; tenantDbUrl?: string },
+    options?: {
+      tenantId?: string;
+      tenantDbUrl?: string;
+    },
   ) {
     if (options && options.tenantDbUrl) {
       // 1. Manual instantiation for background/export jobs
@@ -94,19 +98,34 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
           '$disconnect',
         ];
         // A. Handle own methods & properties of PrismaService instance or Object prototype
-        if (ownMethods.includes(prop as string) || (typeof prop === 'string' && prop in Object.prototype)) {
+        if (
+          ownMethods.includes(prop as string) ||
+          (typeof prop === 'string' && prop in Object.prototype)
+        ) {
           return Reflect.get(target, prop, receiver);
         }
 
         // B. Delegate JavaScript/TypeScript inspects, Object prototype methods, NestJS lifecycle hooks, private properties, and Promise properties
         if (
           typeof prop === 'symbol' ||
-          (typeof prop === 'string' && (
-            prop.startsWith('_') ||
-            prop.startsWith('onModule') ||
-            prop.startsWith('onApplication') ||
-            ['constructor', 'then', 'catch', 'finally', 'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable', 'toString', 'valueOf', 'toLocaleString', 'toJSON', 'inspect'].includes(prop)
-          ))
+          (typeof prop === 'string' &&
+            (prop.startsWith('_') ||
+              prop.startsWith('onModule') ||
+              prop.startsWith('onApplication') ||
+              [
+                'constructor',
+                'then',
+                'catch',
+                'finally',
+                'hasOwnProperty',
+                'isPrototypeOf',
+                'propertyIsEnumerable',
+                'toString',
+                'valueOf',
+                'toLocaleString',
+                'toJSON',
+                'inspect',
+              ].includes(prop)))
         ) {
           return Reflect.get(target, prop, receiver);
         }
@@ -115,7 +134,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
         const context = PrismaService.asyncLocalStorage.getStore();
         if (!context) {
           throw new Error(
-            `PrismaService context is missing. Ensure the user is authenticated and the TenantMiddleware has set the context before calling database operations (Accessed property: ${String(prop)}).`
+            `PrismaService context is missing. Ensure the user is authenticated and the TenantMiddleware has set the context before calling database operations (Accessed property: ${String(prop)}).`,
           );
         }
 
@@ -136,7 +155,9 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
    */
   static getTenantClient(companyId: string, dbUrl: string): PrismaClient {
     if (!companyId || !dbUrl) {
-      throw new Error('companyId and dbUrl are required for tenant client creation');
+      throw new Error(
+        'companyId and dbUrl are required for tenant client creation',
+      );
     }
 
     let client = PrismaService.clientsPool.get(companyId);
@@ -237,7 +258,10 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
           await pool.end();
         }
       } catch (error) {
-        console.error(`Error disconnecting client for company ${companyId}:`, error);
+        console.error(
+          `Error disconnecting client for company ${companyId}:`,
+          error,
+        );
       }
     }
     PrismaService.clientsPool.clear();
@@ -255,7 +279,9 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    this.logger.log('Destroying PrismaService singleton - cleaning up all tenant connection pools...');
+    this.logger.log(
+      'Destroying PrismaService singleton - cleaning up all tenant connection pools...',
+    );
     await PrismaService.cleanupAllPools();
     if ((this as any)._noOpPool) {
       try {

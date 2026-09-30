@@ -117,7 +117,11 @@ export interface WholesaleInvoiceRegisterResult {
 @Injectable()
 export class WholesaleInvoiceRegisterService {
   private readonly logger = new Logger(WholesaleInvoiceRegisterService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
+  private readonly previewStorageDir = path.join(
+    process.cwd(),
+    'uploads',
+    'report-previews',
+  );
 
   constructor(
     @InjectQueue('sales-invoice-export') private readonly exportQueue: Queue,
@@ -166,7 +170,9 @@ export class WholesaleInvoiceRegisterService {
       },
     );
 
-    this.logger.log(`[WholesaleInvoiceRegister] Queued preview job ${jobId} for user ${opts.userId}`);
+    this.logger.log(
+      `[WholesaleInvoiceRegister] Queued preview job ${jobId} for user ${opts.userId}`,
+    );
     return { jobId };
   }
 
@@ -222,15 +228,25 @@ export class WholesaleInvoiceRegisterService {
       },
     );
 
-    this.logger.log(`[WholesaleInvoiceRegister] Queued export job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[WholesaleInvoiceRegister] Queued export job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
   async getJobQueueStatus(jobId: string): Promise<any> {
-    const job = await this.exportQueue.getJob(`preview-wi-${jobId}`) ||
-                await this.exportQueue.getJob(jobId);
+    const job =
+      (await this.exportQueue.getJob(`preview-wi-${jobId}`)) ||
+      (await this.exportQueue.getJob(jobId));
     if (!job) {
-      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        status: 'unknown',
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -262,7 +278,10 @@ export class WholesaleInvoiceRegisterService {
 
   async saveReportPreviewResult(jobId: string, result: any): Promise<void> {
     try {
-      const jsonPath = path.join(this.previewStorageDir, `wi-preview-${jobId}.json.gz`);
+      const jsonPath = path.join(
+        this.previewStorageDir,
+        `wi-preview-${jobId}.json.gz`,
+      );
       const previewResult = {
         ...result,
         flatItems: (result.flatItems || []).slice(0, 5000),
@@ -272,7 +291,9 @@ export class WholesaleInvoiceRegisterService {
       const compressedJson = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
       await fs.promises.writeFile(jsonPath, compressedJson);
     } catch (err: any) {
-      this.logger.warn(`Failed to save compressed preview JSON for ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Failed to save compressed preview JSON for ${jobId}: ${err.message}`,
+      );
     }
 
     const filePath = this.getPreviewNdjsonFilePath(jobId);
@@ -293,24 +314,26 @@ export class WholesaleInvoiceRegisterService {
             }
           };
 
-          const metaLine = JSON.stringify({
-            type: 'meta',
-            reportType: result.reportType,
-            dateRange: result.dateRange,
-            totalRecords: (result.flatItems || []).length,
-          }) + '\n';
+          const metaLine =
+            JSON.stringify({
+              type: 'meta',
+              reportType: result.reportType,
+              dateRange: result.dateRange,
+              totalRecords: (result.flatItems || []).length,
+            }) + '\n';
           await safeWrite(metaLine);
 
           const CHUNK = 100;
           const customers = result.customers || [];
           for (let i = 0; i < customers.length; i += CHUNK) {
             const slice = customers.slice(i, i + CHUNK);
-            const chunkLine = JSON.stringify({
-              type: 'customers',
-              startIndex: i,
-              count: slice.length,
-              customers: slice,
-            }) + '\n';
+            const chunkLine =
+              JSON.stringify({
+                type: 'customers',
+                startIndex: i,
+                count: slice.length,
+                customers: slice,
+              }) + '\n';
             await safeWrite(chunkLine);
             await new Promise((res) => setImmediate(res));
           }
@@ -318,22 +341,24 @@ export class WholesaleInvoiceRegisterService {
           const flatItems = result.flatItems || [];
           for (let i = 0; i < flatItems.length; i += 1500) {
             const slice = flatItems.slice(i, i + 1500);
-            const chunkLine = JSON.stringify({
-              type: 'flatItems',
-              startIndex: i,
-              count: slice.length,
-              flatItems: slice,
-            }) + '\n';
+            const chunkLine =
+              JSON.stringify({
+                type: 'flatItems',
+                startIndex: i,
+                count: slice.length,
+                flatItems: slice,
+              }) + '\n';
             await safeWrite(chunkLine);
             await new Promise((res) => setImmediate(res));
           }
 
-          const totalsLine = JSON.stringify({
-            type: 'totals',
-            grandTotals: result.grandTotals,
-            totalRecords: flatItems.length,
-            done: true,
-          }) + '\n';
+          const totalsLine =
+            JSON.stringify({
+              type: 'totals',
+              grandTotals: result.grandTotals,
+              totalRecords: flatItems.length,
+              done: true,
+            }) + '\n';
           await safeWrite(totalsLine);
 
           gzip.end();
@@ -347,7 +372,10 @@ export class WholesaleInvoiceRegisterService {
   }
 
   async getReportPreviewResult(jobId: string): Promise<any | null> {
-    const jsonPath = path.join(this.previewStorageDir, `wi-preview-${jobId}.json.gz`);
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `wi-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) {
       const compressed = await fs.promises.readFile(jsonPath);
       const decompressed = await gunzipAsync(compressed);
@@ -355,7 +383,10 @@ export class WholesaleInvoiceRegisterService {
       return parsed.data || parsed;
     }
 
-    const ndjsonPath = path.join(this.previewStorageDir, `wi-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `wi-preview-${jobId}.ndjson.gz`,
+    );
     if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
@@ -436,7 +467,10 @@ export class WholesaleInvoiceRegisterService {
 
     const now = new Date();
 
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -463,11 +497,14 @@ export class WholesaleInvoiceRegisterService {
       return new Date(`${dateStr}${timePart}`);
     };
 
-    const getFiscalYearBounds = (fyStr?: string): { start: Date; end: Date } => {
+    const getFiscalYearBounds = (
+      fyStr?: string,
+    ): { start: Date; end: Date } => {
       let startYear: number;
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
-      const defaultStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+      const defaultStartYear =
+        currentMonth >= 6 ? currentYear : currentYear - 1;
 
       if (!fyStr || fyStr === 'current') {
         startYear = defaultStartYear;
@@ -583,8 +620,11 @@ export class WholesaleInvoiceRegisterService {
         categories: [],
         totals: createEmptyTotals(),
       };
-      
-      const invoiceCategoriesMap = new Map<string, WholesaleInvoiceCategoryNode>();
+
+      const invoiceCategoriesMap = new Map<
+        string,
+        WholesaleInvoiceCategoryNode
+      >();
       let invoiceMatchSearch = false;
       let addedAnyItems = false;
 
@@ -623,7 +663,9 @@ export class WholesaleInvoiceRegisterService {
 
         const qty = invItem.quantity || 0;
         const grossSellingPrice = Number(invItem.salePrice || 0);
-        const itemTaxRate = Number((itemObj as any).taxRate1 ?? inv.taxRate ?? defaultTaxRate ?? 18);
+        const itemTaxRate = Number(
+          (itemObj as any).taxRate1 ?? inv.taxRate ?? defaultTaxRate ?? 18,
+        );
 
         const wostUnitPrice = grossSellingPrice / (1 + itemTaxRate / 100);
         const wostTotal = wostUnitPrice * qty;
@@ -632,9 +674,12 @@ export class WholesaleInvoiceRegisterService {
         const taxableAmt = Math.max(0, valueExclTax - discount);
         const salesTax = Math.round(taxableAmt * (itemTaxRate / 100));
         // Add tax if needed, assume 0 for now as not in item
-        const addTax = 0; 
+        const addTax = 0;
         const taxPayable = salesTax + addTax;
-        const valueInclTax = invItem.total !== undefined ? Math.round(Number(invItem.total)) : (taxableAmt + taxPayable);
+        const valueInclTax =
+          invItem.total !== undefined
+            ? Math.round(Number(invItem.total))
+            : taxableAmt + taxPayable;
 
         const record: WholesaleInvoiceLineItem = {
           id: invItem.id,
@@ -689,26 +734,31 @@ export class WholesaleInvoiceRegisterService {
 
         const categoryKey = `${catName}-${brandName}`;
         if (!invoiceCategoriesMap.has(categoryKey)) {
-            invoiceCategoriesMap.set(categoryKey, {
-                categoryName: catName,
-                brandName: brandName,
-                totals: createEmptyTotals(),
-                products: [],
-            });
+          invoiceCategoriesMap.set(categoryKey, {
+            categoryName: catName,
+            brandName: brandName,
+            totals: createEmptyTotals(),
+            products: [],
+          });
         }
         const categoryNode = invoiceCategoriesMap.get(categoryKey)!;
 
         const productKey = `${sku}-${description}-${grossSellingPrice}`;
-        let productNode = categoryNode.products.find(p => p.sku === sku && p.description === description && p.sellingPrice === grossSellingPrice);
+        let productNode = categoryNode.products.find(
+          (p) =>
+            p.sku === sku &&
+            p.description === description &&
+            p.sellingPrice === grossSellingPrice,
+        );
         if (!productNode) {
-            productNode = {
-                sku,
-                description,
-                sellingPrice: grossSellingPrice,
-                totals: createEmptyTotals(),
-                items: [],
-            };
-            categoryNode.products.push(productNode);
+          productNode = {
+            sku,
+            description,
+            sellingPrice: grossSellingPrice,
+            totals: createEmptyTotals(),
+            items: [],
+          };
+          categoryNode.products.push(productNode);
         }
 
         // Add to product
@@ -764,7 +814,9 @@ export class WholesaleInvoiceRegisterService {
       }
     }
 
-    const validCustomers = Array.from(customerMap.values()).filter(c => c.invoices.length > 0);
+    const validCustomers = Array.from(customerMap.values()).filter(
+      (c) => c.invoices.length > 0,
+    );
 
     await onProgress?.(100, 'Report generation complete');
 

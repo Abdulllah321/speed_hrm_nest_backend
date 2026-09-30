@@ -30,7 +30,7 @@ export class ColorService {
 
     const colors = await this.prisma.color.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -58,9 +58,7 @@ export class ColorService {
 
   async getColorById(id: string) {
     const item = await this.prisma.color.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Color not found' };
 
@@ -90,14 +88,14 @@ export class ColorService {
       runInBackground(
         'Created colors (${result.count})',
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'colors',
-        entity: 'Color',
-        description: `Created colors (${result.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      }),
+          userId: createdById,
+          action: 'create',
+          module: 'colors',
+          entity: 'Color',
+          description: `Created colors (${result.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
         this.cacheManager.del('colors_all'),
       );
       return {
@@ -117,9 +115,7 @@ export class ColorService {
   ) {
     try {
       const existing = await this.prisma.color.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const result = await this.prisma.color.update({
         where: { id },
@@ -129,18 +125,18 @@ export class ColorService {
       runInBackground(
         'Updated color ${result.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'colors',
-        entity: 'Color',
-        entityId: id,
-        description: `Updated color ${result.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'colors',
+          entity: 'Color',
+          entityId: id,
+          description: `Updated color ${result.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('colors_all'),
       );
       return {
@@ -171,16 +167,16 @@ export class ColorService {
       runInBackground(
         'Bulk updated colors (${updated.length})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'colors',
-        entity: 'Color',
-        description: `Bulk updated colors (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'colors',
+          entity: 'Color',
+          description: `Bulk updated colors (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('colors_all'),
       );
       return {
@@ -200,21 +196,21 @@ export class ColorService {
     try {
       const result = await this.prisma.color.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk deleted colors (${result.count})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'colors',
-        entity: 'Color',
-        description: `Bulk deleted colors (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'colors',
+          entity: 'Color',
+          description: `Bulk deleted colors (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('colors_all'),
       );
       return {
@@ -233,28 +229,27 @@ export class ColorService {
   ) {
     try {
       const existing = await this.prisma.color.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.color.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.color.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Deleted color ${existing?.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'colors',
-        entity: 'Color',
-        entityId: id,
-        description: `Deleted color ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'colors',
+          entity: 'Color',
+          entityId: id,
+          description: `Deleted color ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('colors_all'),
       );
       return {

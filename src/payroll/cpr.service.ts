@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { CreateCprDto, UpdateCprDto, PreviewCprDto, ConfirmBatchCprDto } from './dto/cpr.dto';
-
+import {
+  CreateCprDto,
+  UpdateCprDto,
+  PreviewCprDto,
+  ConfirmBatchCprDto,
+} from './dto/cpr.dto';
 
 @Injectable()
 export class CprService {
@@ -18,10 +22,20 @@ export class CprService {
         cprNo: data.cprNo?.trim() || '',
         carAmount: data.carAmount !== undefined ? data.carAmount : null,
         ntn: data.ntn || null,
-        taxableAmountAnnual: data.taxableAmountAnnual !== undefined ? data.taxableAmountAnnual : null,
-        taxableAmountGross: data.taxableAmountGross !== undefined ? data.taxableAmountGross : null,
-        taxAmountMonthlyTax: data.taxAmountMonthlyTax !== undefined ? data.taxAmountMonthlyTax : null,
-        taxAmountAnnual: data.taxAmountAnnual !== undefined ? data.taxAmountAnnual : null,
+        taxableAmountAnnual:
+          data.taxableAmountAnnual !== undefined
+            ? data.taxableAmountAnnual
+            : null,
+        taxableAmountGross:
+          data.taxableAmountGross !== undefined
+            ? data.taxableAmountGross
+            : null,
+        taxAmountMonthlyTax:
+          data.taxAmountMonthlyTax !== undefined
+            ? data.taxAmountMonthlyTax
+            : null,
+        taxAmountAnnual:
+          data.taxAmountAnnual !== undefined ? data.taxAmountAnnual : null,
         taxPeriod: data.taxPeriod || null,
         paymentDate: data.paymentDate ? new Date(data.paymentDate) : null,
       },
@@ -31,25 +45,42 @@ export class CprService {
             id: true,
             employeeId: true,
             employeeName: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
   }
 
-  async list(filters?: { month?: string; year?: string; months?: string; employeeIds?: string }) {
+  async list(filters?: {
+    month?: string;
+    year?: string;
+    months?: string;
+    employeeIds?: string;
+  }) {
     this.prisma.ensureTenantContext();
 
     const empIdList = filters?.employeeIds
-      ? filters.employeeIds.split(',').map((id) => id.trim()).filter(Boolean)
+      ? filters.employeeIds
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
       : [];
-    const employeeFilter = empIdList.length > 0 ? { employeeId: { in: empIdList } } : {};
+    const employeeFilter =
+      empIdList.length > 0 ? { employeeId: { in: empIdList } } : {};
 
     // 1. Resolve which periods to fetch/process
     let periods: string[] = [];
     if (filters?.months) {
-      periods = filters.months.split(',').map(m => m.trim()).filter(Boolean);
-    } else if (filters?.month && filters?.year && filters.month !== 'all' && filters.year !== 'all') {
+      periods = filters.months
+        .split(',')
+        .map((m) => m.trim())
+        .filter(Boolean);
+    } else if (
+      filters?.month &&
+      filters?.year &&
+      filters.month !== 'all' &&
+      filters.year !== 'all'
+    ) {
       const monthStr = String(Number(filters.month)).padStart(2, '0');
       const yearStr = String(filters.year);
       periods = [`${yearStr}-${monthStr}`];
@@ -58,7 +89,7 @@ export class CprService {
     if (periods.length > 0) {
       // Fetch active tax slabs once
       const allTaxSlabs = await this.prisma.taxSlab.findMany({
-        where: { status: 'active', isDeleted: false }
+        where: { status: 'active', isDeleted: false },
       });
 
       for (const targetPeriod of periods) {
@@ -70,11 +101,11 @@ export class CprService {
           where: {
             month: monthStr,
             year: yearStr,
-            status: 'confirmed'
+            status: 'confirmed',
           },
           include: {
             details: true,
-          }
+          },
         });
 
         if (payroll) {
@@ -84,7 +115,7 @@ export class CprService {
               where: {
                 employeeId: detail.employeeId,
                 taxPeriod: targetPeriod,
-              }
+              },
             });
 
             // Find the baseline/oldest record for copying info (or employee details)
@@ -94,12 +125,12 @@ export class CprService {
               },
               orderBy: {
                 createdAt: 'asc',
-              }
+              },
             });
 
             // Fetch the employee object for name and CNIC as fallback
             const employee = await this.prisma.employee.findUnique({
-              where: { id: detail.employeeId }
+              where: { id: detail.employeeId },
             });
 
             if (!cprRecord && (baselineRecord || employee)) {
@@ -114,7 +145,7 @@ export class CprService {
                   carAmount: baselineRecord?.carAmount || null,
                   ntn: baselineRecord?.ntn || null,
                   taxPeriod: targetPeriod,
-                }
+                },
               });
             }
 
@@ -123,9 +154,10 @@ export class CprService {
               let baseAnnualTaxable = 0;
               let carBenefitInBreakup = 0;
               if (detail.taxBreakup) {
-                const breakup = typeof detail.taxBreakup === 'string'
-                  ? JSON.parse(detail.taxBreakup)
-                  : (detail.taxBreakup as any);
+                const breakup =
+                  typeof detail.taxBreakup === 'string'
+                    ? JSON.parse(detail.taxBreakup)
+                    : (detail.taxBreakup as any);
 
                 if (breakup && breakup.taxableIncome !== undefined) {
                   baseAnnualTaxable = Number(breakup.taxableIncome || 0);
@@ -136,18 +168,20 @@ export class CprService {
               }
 
               // Calculate car benefit: 5% of carAmount
-              const carAmountVal = cprRecord.carAmount !== null ? Number(cprRecord.carAmount) : 0;
+              const carAmountVal =
+                cprRecord.carAmount !== null ? Number(cprRecord.carAmount) : 0;
               const carBenefit = carAmountVal * 0.05;
               // Avoid double adding car perk if it's already in payroll taxBreakup.taxableIncome
-              const newTaxableAnnual = (baseAnnualTaxable - carBenefitInBreakup) + carBenefit;
-
+              const newTaxableAnnual =
+                baseAnnualTaxable - carBenefitInBreakup + carBenefit;
 
               // Calculate Monthly Taxable Gross = Sum of taxable salary breakup components + taxable allowances
               let monthlyTaxableGross = 0;
               if (detail.salaryBreakup) {
-                const sBreakup = typeof detail.salaryBreakup === 'string'
-                  ? JSON.parse(detail.salaryBreakup)
-                  : (detail.salaryBreakup as any);
+                const sBreakup =
+                  typeof detail.salaryBreakup === 'string'
+                    ? JSON.parse(detail.salaryBreakup)
+                    : (detail.salaryBreakup as any);
                 if (Array.isArray(sBreakup)) {
                   for (const comp of sBreakup) {
                     if (comp.isTaxable !== false) {
@@ -158,9 +192,10 @@ export class CprService {
               }
 
               if (detail.allowanceBreakup) {
-                const aBreakup = typeof detail.allowanceBreakup === 'string'
-                  ? JSON.parse(detail.allowanceBreakup)
-                  : (detail.allowanceBreakup as any);
+                const aBreakup =
+                  typeof detail.allowanceBreakup === 'string'
+                    ? JSON.parse(detail.allowanceBreakup)
+                    : (detail.allowanceBreakup as any);
                 if (Array.isArray(aBreakup)) {
                   for (const allow of aBreakup) {
                     if (allow.isTaxable === true) {
@@ -170,7 +205,12 @@ export class CprService {
                 }
               }
 
-              const finalTaxableGross = monthlyTaxableGross > 0 ? monthlyTaxableGross : (detail.grossSalary !== null ? Number(detail.grossSalary) : 0);
+              const finalTaxableGross =
+                monthlyTaxableGross > 0
+                  ? monthlyTaxableGross
+                  : detail.grossSalary !== null
+                    ? Number(detail.grossSalary)
+                    : 0;
 
               // Recalculate monthly tax using tax slabs and remaining months in tax year
               let newMonthlyTax = 0;
@@ -181,7 +221,8 @@ export class CprService {
                   .find(
                     (s) =>
                       newTaxableAnnual >= Number(s.minAmount) &&
-                      (s.maxAmount === null || newTaxableAnnual <= Number(s.maxAmount)),
+                      (s.maxAmount === null ||
+                        newTaxableAnnual <= Number(s.maxAmount)),
                   );
 
                 if (slab) {
@@ -201,12 +242,17 @@ export class CprService {
                   const previousPeriods: string[] = [];
                   let loopMonth = 7; // July
                   let loopYear = monthNum >= 7 ? yearNum : yearNum - 1;
-                  
+
                   while (true) {
-                    if (loopYear > yearNum || (loopYear === yearNum && loopMonth >= monthNum)) {
+                    if (
+                      loopYear > yearNum ||
+                      (loopYear === yearNum && loopMonth >= monthNum)
+                    ) {
                       break;
                     }
-                    previousPeriods.push(`${loopYear}-${String(loopMonth).padStart(2, '0')}`);
+                    previousPeriods.push(
+                      `${loopYear}-${String(loopMonth).padStart(2, '0')}`,
+                    );
                     loopMonth++;
                     if (loopMonth > 12) {
                       loopMonth = 1;
@@ -220,8 +266,8 @@ export class CprService {
                     const previousCprs = await this.prisma.cprTax.findMany({
                       where: {
                         employeeId: detail.employeeId,
-                        taxPeriod: { in: previousPeriods }
-                      }
+                        taxPeriod: { in: previousPeriods },
+                      },
                     });
                     for (const pCpr of previousCprs) {
                       ytdTaxDeducted += Number(pCpr.taxAmountMonthlyTax || 0);
@@ -249,7 +295,10 @@ export class CprService {
                       } catch (e) {}
                     }
                     const standardMonthly = Math.round(annualTax / 12);
-                    newMonthlyTax = Math.max(0, standardMonthly - advanceTaxCredit);
+                    newMonthlyTax = Math.max(
+                      0,
+                      standardMonthly - advanceTaxCredit,
+                    );
                   }
                 }
               }
@@ -263,7 +312,7 @@ export class CprService {
                   taxAmountMonthlyTax: newMonthlyTax,
                   taxAmountAnnual: Math.round(calculatedAnnualTax),
                   paymentDate: detail.paymentDate || cprRecord.paymentDate,
-                }
+                },
               });
             }
           }
@@ -282,12 +331,12 @@ export class CprService {
               id: true,
               employeeId: true,
               employeeName: true,
-            }
-          }
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
-        }
+        },
       });
     }
 
@@ -300,12 +349,12 @@ export class CprService {
             id: true,
             employeeId: true,
             employeeName: true,
-          }
-        }
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
-      }
+      },
     });
   }
 
@@ -319,9 +368,9 @@ export class CprService {
             id: true,
             employeeId: true,
             employeeName: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
     if (!record) {
       throw new NotFoundException(`CPR Tax record with ID ${id} not found`);
@@ -337,19 +386,39 @@ export class CprService {
     return this.prisma.cprTax.update({
       where: { id },
       data: {
-        employeeId: data.employeeId !== undefined ? (data.employeeId || null) : undefined,
+        employeeId:
+          data.employeeId !== undefined ? data.employeeId || null : undefined,
         cnic: data.cnic !== undefined ? data.cnic : undefined,
         name: data.name !== undefined ? data.name : undefined,
-        city: data.city !== undefined ? (data.city || null) : undefined,
-        cprNo: data.cprNo !== undefined ? (data.cprNo?.trim() || '') : undefined,
-        carAmount: data.carAmount !== undefined ? (data.carAmount || null) : undefined,
-        ntn: data.ntn !== undefined ? (data.ntn || null) : undefined,
-        taxableAmountAnnual: data.taxableAmountAnnual !== undefined ? (data.taxableAmountAnnual || null) : undefined,
-        taxableAmountGross: data.taxableAmountGross !== undefined ? (data.taxableAmountGross || null) : undefined,
-        taxAmountMonthlyTax: data.taxAmountMonthlyTax !== undefined ? (data.taxAmountMonthlyTax || null) : undefined,
-        taxAmountAnnual: data.taxAmountAnnual !== undefined ? (data.taxAmountAnnual || null) : undefined,
-        taxPeriod: data.taxPeriod !== undefined ? (data.taxPeriod || null) : undefined,
-        paymentDate: data.paymentDate !== undefined ? (data.paymentDate ? new Date(data.paymentDate) : null) : undefined,
+        city: data.city !== undefined ? data.city || null : undefined,
+        cprNo: data.cprNo !== undefined ? data.cprNo?.trim() || '' : undefined,
+        carAmount:
+          data.carAmount !== undefined ? data.carAmount || null : undefined,
+        ntn: data.ntn !== undefined ? data.ntn || null : undefined,
+        taxableAmountAnnual:
+          data.taxableAmountAnnual !== undefined
+            ? data.taxableAmountAnnual || null
+            : undefined,
+        taxableAmountGross:
+          data.taxableAmountGross !== undefined
+            ? data.taxableAmountGross || null
+            : undefined,
+        taxAmountMonthlyTax:
+          data.taxAmountMonthlyTax !== undefined
+            ? data.taxAmountMonthlyTax || null
+            : undefined,
+        taxAmountAnnual:
+          data.taxAmountAnnual !== undefined
+            ? data.taxAmountAnnual || null
+            : undefined,
+        taxPeriod:
+          data.taxPeriod !== undefined ? data.taxPeriod || null : undefined,
+        paymentDate:
+          data.paymentDate !== undefined
+            ? data.paymentDate
+              ? new Date(data.paymentDate)
+              : null
+            : undefined,
       },
       include: {
         employee: {
@@ -357,9 +426,9 @@ export class CprService {
             id: true,
             employeeId: true,
             employeeName: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
   }
 
@@ -367,7 +436,7 @@ export class CprService {
     this.prisma.ensureTenantContext();
     await this.get(id);
     await this.prisma.cprTax.delete({
-      where: { id }
+      where: { id },
     });
     return { success: true, message: 'CPR Tax record deleted successfully' };
   }
@@ -442,7 +511,6 @@ export class CprService {
 
     const previewList: any[] = [];
 
-
     for (const detail of filteredDetails) {
       // Find existing CPR record or baseline
       const existingCpr = await this.prisma.cprTax.findFirst({
@@ -464,23 +532,36 @@ export class CprService {
       const employee = detail.employee;
 
       // Determine Taxpayer details
-      const name = existingCpr?.name || baselineRecord?.name || employee?.employeeName || '—';
-      const cnic = existingCpr?.cnic || baselineRecord?.cnic || employee?.cnicNumber || '—';
-      const city = existingCpr?.city || baselineRecord?.city || employee?.city?.name || '—';
+      const name =
+        existingCpr?.name ||
+        baselineRecord?.name ||
+        employee?.employeeName ||
+        '—';
+      const cnic =
+        existingCpr?.cnic ||
+        baselineRecord?.cnic ||
+        employee?.cnicNumber ||
+        '—';
+      const city =
+        existingCpr?.city ||
+        baselineRecord?.city ||
+        employee?.city?.name ||
+        '—';
       const cprNo =
         existingCpr?.cprNo && existingCpr.cprNo !== '—'
           ? existingCpr.cprNo
           : baselineRecord?.cprNo && baselineRecord.cprNo !== '—'
-          ? baselineRecord.cprNo
-          : `CPR-${yearStr}${monthStr}-${(employee?.employeeId || detail.employeeId).slice(-4).toUpperCase()}`;
+            ? baselineRecord.cprNo
+            : `CPR-${yearStr}${monthStr}-${(employee?.employeeId || detail.employeeId).slice(-4).toUpperCase()}`;
       const ntn = existingCpr?.ntn || baselineRecord?.ntn || '—';
 
       const carAmountVal =
         existingCpr?.carAmount !== null && existingCpr?.carAmount !== undefined
           ? Number(existingCpr.carAmount)
-          : baselineRecord?.carAmount !== null && baselineRecord?.carAmount !== undefined
-          ? Number(baselineRecord.carAmount)
-          : 0;
+          : baselineRecord?.carAmount !== null &&
+              baselineRecord?.carAmount !== undefined
+            ? Number(baselineRecord.carAmount)
+            : 0;
 
       // Base annual taxable income from payroll
       let baseAnnualTaxable = 0;
@@ -500,8 +581,8 @@ export class CprService {
 
       const carBenefit = carAmountVal * 0.05;
       // Avoid double adding car perk if it's already in payroll taxBreakup.taxableIncome
-      const newTaxableAnnual = (baseAnnualTaxable - carBenefitInBreakup) + carBenefit;
-
+      const newTaxableAnnual =
+        baseAnnualTaxable - carBenefitInBreakup + carBenefit;
 
       // Calculate monthly taxable gross
       let monthlyTaxableGross = 0;
@@ -537,8 +618,8 @@ export class CprService {
         monthlyTaxableGross > 0
           ? monthlyTaxableGross
           : detail.grossSalary !== null
-          ? Number(detail.grossSalary)
-          : 0;
+            ? Number(detail.grossSalary)
+            : 0;
 
       // Find tax slab
       let newMonthlyTax = 0;
@@ -572,10 +653,15 @@ export class CprService {
           let loopYear = monthNum >= 7 ? yearNum : yearNum - 1;
 
           while (true) {
-            if (loopYear > yearNum || (loopYear === yearNum && loopMonth >= monthNum)) {
+            if (
+              loopYear > yearNum ||
+              (loopYear === yearNum && loopMonth >= monthNum)
+            ) {
               break;
             }
-            previousPeriods.push(`${loopYear}-${String(loopMonth).padStart(2, '0')}`);
+            previousPeriods.push(
+              `${loopYear}-${String(loopMonth).padStart(2, '0')}`,
+            );
             loopMonth++;
             if (loopMonth > 12) {
               loopMonth = 1;
@@ -623,7 +709,7 @@ export class CprService {
       }
 
       const monthNum = Number(monthStr);
-      let taxMonthNum = monthNum >= 7 ? monthNum - 6 : monthNum + 6;
+      const taxMonthNum = monthNum >= 7 ? monthNum - 6 : monthNum + 6;
       const remainingMonths = 13 - taxMonthNum;
 
       // Sum YTD tax deducted from previous CPR records
@@ -633,10 +719,15 @@ export class CprService {
       let loopMonth = 7;
       let loopYear = monthNum >= 7 ? yearNum : yearNum - 1;
       while (true) {
-        if (loopYear > yearNum || (loopYear === yearNum && loopMonth >= monthNum)) {
+        if (
+          loopYear > yearNum ||
+          (loopYear === yearNum && loopMonth >= monthNum)
+        ) {
           break;
         }
-        previousPeriods.push(`${loopYear}-${String(loopMonth).padStart(2, '0')}`);
+        previousPeriods.push(
+          `${loopYear}-${String(loopMonth).padStart(2, '0')}`,
+        );
         loopMonth++;
         if (loopMonth > 12) {
           loopMonth = 1;
@@ -679,7 +770,10 @@ export class CprService {
         slab: matchedSlab
           ? {
               minAmount: Number(matchedSlab.minAmount || 0),
-              maxAmount: matchedSlab.maxAmount !== null ? Number(matchedSlab.maxAmount) : null,
+              maxAmount:
+                matchedSlab.maxAmount !== null
+                  ? Number(matchedSlab.maxAmount)
+                  : null,
               rate: Number(matchedSlab.rate || 0),
               fixedAmount: Number(matchedSlab.fixedAmount || 0),
             }
@@ -697,7 +791,6 @@ export class CprService {
     for (const record of dto.records) {
       let existing: any = null;
       if (record.employeeId) {
-
         existing = await this.prisma.cprTax.findFirst({
           where: {
             employeeId: record.employeeId,
@@ -716,11 +809,25 @@ export class CprService {
             cprNo: record.cprNo?.trim() || '',
             carAmount: record.carAmount !== undefined ? record.carAmount : null,
             ntn: record.ntn || null,
-            taxableAmountAnnual: record.taxableAmountAnnual !== undefined ? record.taxableAmountAnnual : null,
-            taxableAmountGross: record.taxableAmountGross !== undefined ? record.taxableAmountGross : null,
-            taxAmountMonthlyTax: record.taxAmountMonthlyTax !== undefined ? record.taxAmountMonthlyTax : null,
-            taxAmountAnnual: record.taxAmountAnnual !== undefined ? record.taxAmountAnnual : null,
-            paymentDate: record.paymentDate ? new Date(record.paymentDate) : null,
+            taxableAmountAnnual:
+              record.taxableAmountAnnual !== undefined
+                ? record.taxableAmountAnnual
+                : null,
+            taxableAmountGross:
+              record.taxableAmountGross !== undefined
+                ? record.taxableAmountGross
+                : null,
+            taxAmountMonthlyTax:
+              record.taxAmountMonthlyTax !== undefined
+                ? record.taxAmountMonthlyTax
+                : null,
+            taxAmountAnnual:
+              record.taxAmountAnnual !== undefined
+                ? record.taxAmountAnnual
+                : null,
+            paymentDate: record.paymentDate
+              ? new Date(record.paymentDate)
+              : null,
           },
         });
         results.push(updated);
@@ -734,12 +841,26 @@ export class CprService {
             cprNo: record.cprNo?.trim() || '',
             carAmount: record.carAmount !== undefined ? record.carAmount : null,
             ntn: record.ntn || null,
-            taxableAmountAnnual: record.taxableAmountAnnual !== undefined ? record.taxableAmountAnnual : null,
-            taxableAmountGross: record.taxableAmountGross !== undefined ? record.taxableAmountGross : null,
-            taxAmountMonthlyTax: record.taxAmountMonthlyTax !== undefined ? record.taxAmountMonthlyTax : null,
-            taxAmountAnnual: record.taxAmountAnnual !== undefined ? record.taxAmountAnnual : null,
+            taxableAmountAnnual:
+              record.taxableAmountAnnual !== undefined
+                ? record.taxableAmountAnnual
+                : null,
+            taxableAmountGross:
+              record.taxableAmountGross !== undefined
+                ? record.taxableAmountGross
+                : null,
+            taxAmountMonthlyTax:
+              record.taxAmountMonthlyTax !== undefined
+                ? record.taxAmountMonthlyTax
+                : null,
+            taxAmountAnnual:
+              record.taxAmountAnnual !== undefined
+                ? record.taxAmountAnnual
+                : null,
             taxPeriod: dto.taxPeriod,
-            paymentDate: record.paymentDate ? new Date(record.paymentDate) : null,
+            paymentDate: record.paymentDate
+              ? new Date(record.paymentDate)
+              : null,
           },
         });
         results.push(created);
@@ -753,4 +874,3 @@ export class CprService {
     };
   }
 }
-

@@ -32,7 +32,7 @@ export class GenderService {
 
     const genders = await this.prisma.gender.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -62,9 +62,7 @@ export class GenderService {
 
   async getGenderById(id: string) {
     const gender = await this.prisma.gender.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!gender) return { status: false, message: 'Gender not found' };
 
@@ -122,9 +120,7 @@ export class GenderService {
   ) {
     try {
       const existing = await this.prisma.gender.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const gender = await this.prisma.gender.update({
         where: { id },
@@ -207,14 +203,18 @@ export class GenderService {
   ) {
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'gender', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'gender',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const result = await this.prisma.gender.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: result,
@@ -246,17 +246,20 @@ export class GenderService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'gender', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'gender',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.gender.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.gender.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.gender.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       const response = {
         status: true,

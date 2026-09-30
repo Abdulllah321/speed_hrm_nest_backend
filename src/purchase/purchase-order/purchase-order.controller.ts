@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Patch, Query, UseGuards, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Patch,
+  Query,
+  UseGuards,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { PurchaseOrderService } from './purchase-order.service';
 import { PoRegisterExportService } from './po-register-export.service';
 import {
@@ -58,7 +69,8 @@ export class PurchaseOrderController {
   @Post('register-report/export')
   @Permissions('erp.procurement.po.read')
   queueRegisterExport(
-    @Body() body: {
+    @Body()
+    body: {
       brandId?: string;
       vendorId?: string;
       startDate?: string;
@@ -125,7 +137,10 @@ export class PurchaseOrderController {
 
   @Post('multi-direct')
   @Permissions('erp.procurement.po.create')
-  createMultiDirect(@Body() body: CreateMultiDirectPurchaseOrderDto, @Req() req: any) {
+  createMultiDirect(
+    @Body() body: CreateMultiDirectPurchaseOrderDto,
+    @Req() req: any,
+  ) {
     return this.purchaseOrderService.createMultiDirect(body, {
       userId: req.user?.id,
       ipAddress: req.ip,
@@ -135,7 +150,11 @@ export class PurchaseOrderController {
 
   @Patch(':id')
   @Permissions('erp.procurement.po.update')
-  updatePo(@Param('id') id: string, @Body() dto: UpdatePurchaseOrderDto, @Req() req: any) {
+  updatePo(
+    @Param('id') id: string,
+    @Body() dto: UpdatePurchaseOrderDto,
+    @Req() req: any,
+  ) {
     return this.purchaseOrderService.update(id, dto, {
       userId: req.user?.id,
       ipAddress: req.ip,
@@ -144,8 +163,16 @@ export class PurchaseOrderController {
   }
 
   @Patch(':id/status')
-  @Permissions('erp.procurement.po.update', 'erp.procurement.po.check', 'erp.procurement.po.authorize')
-  updateStatus(@Param('id') id: string, @Body('status') status: string, @Req() req: any) {
+  @Permissions(
+    'erp.procurement.po.update',
+    'erp.procurement.po.check',
+    'erp.procurement.po.authorize',
+  )
+  updateStatus(
+    @Param('id') id: string,
+    @Body('status') status: string,
+    @Req() req: any,
+  ) {
     return this.purchaseOrderService.updateStatus(id, status, {
       userId: req.user?.id,
       ipAddress: req.ip,

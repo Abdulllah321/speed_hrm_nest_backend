@@ -110,7 +110,7 @@ export class UploadProcessor {
       };
 
       let totalRecordsCount = 0;
-      let successRecordsCount = 0;
+      const successRecordsCount = 0;
       let lastEmitTime = Date.now();
       const itemIdSet = new Set<string>();
       const carryOverItemIds = new Set<string>();
@@ -898,7 +898,9 @@ export class UploadProcessor {
     let subCategoryId: string | null = null;
 
     if (data.department) {
-      categoryId = await tenantMasterData.getOrCreateCategory(data.department as string);
+      categoryId = await tenantMasterData.getOrCreateCategory(
+        data.department as string,
+      );
       if (data.productCategory) {
         subCategoryId = await tenantMasterData.getOrCreateSubCategory(
           data.productCategory as string,
@@ -906,7 +908,9 @@ export class UploadProcessor {
         );
       }
     } else if (data.productCategory) {
-      categoryId = await tenantMasterData.getOrCreateCategory(data.productCategory as string);
+      categoryId = await tenantMasterData.getOrCreateCategory(
+        data.productCategory as string,
+      );
     }
 
     const [divisionId, itemSubclassId] = await Promise.all([

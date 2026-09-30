@@ -17,7 +17,10 @@ export class VendorQuotationService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createDto: CreateVendorQuotationDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createDto: CreateVendorQuotationDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       // Verify RFQ exists and vendor is part of it
       const rfq = await this.prisma.requestForQuotation.findUnique({
@@ -300,7 +303,9 @@ export class VendorQuotationService {
               where: { id: lastEntry.referenceId },
               include: {
                 supplier: true,
-                grn: { include: { purchaseOrder: { include: { vendor: true } } } },
+                grn: {
+                  include: { purchaseOrder: { include: { vendor: true } } },
+                },
               },
             });
             vendorName =
@@ -321,23 +326,28 @@ export class VendorQuotationService {
     // Attach to the PR items in each quotation
     for (const q of quotations) {
       if (q.rfq?.purchaseRequisition?.items) {
-        q.rfq.purchaseRequisition.items = q.rfq.purchaseRequisition.items.map((item) => {
-          const lastInfo = lastPurchaseMap.get(item.itemId);
-          if (lastInfo) {
-            return {
-              ...item,
-              lastPurchaseInfo: lastInfo,
-            };
-          }
-          return item;
-        }) as any;
+        q.rfq.purchaseRequisition.items = q.rfq.purchaseRequisition.items.map(
+          (item) => {
+            const lastInfo = lastPurchaseMap.get(item.itemId);
+            if (lastInfo) {
+              return {
+                ...item,
+                lastPurchaseInfo: lastInfo,
+              };
+            }
+            return item;
+          },
+        ) as any;
       }
     }
 
     return quotations;
   }
 
-  async selectQuotation(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async selectQuotation(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const quotation = await this.findOne(id);
 
@@ -416,7 +426,10 @@ export class VendorQuotationService {
     }
   }
 
-  async submitQuotation(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async submitQuotation(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const quotation = await this.findOne(id);
 
@@ -484,7 +497,11 @@ export class VendorQuotationService {
     }
   }
 
-  async update(id: string, updateDto: UpdateVendorQuotationDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdateVendorQuotationDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const quotation = await this.findOne(id);
 
@@ -598,7 +615,10 @@ export class VendorQuotationService {
     }
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const quotation = await this.findOne(id);
 

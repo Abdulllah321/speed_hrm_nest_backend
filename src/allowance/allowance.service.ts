@@ -331,7 +331,7 @@ export class AllowanceService {
         runInBackground(
           'Create Allowances',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'create',
             module: 'allowance',
             entity: 'Allowance',
@@ -410,7 +410,7 @@ export class AllowanceService {
         runInBackground(
           'Update Allowance',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'update',
             module: 'allowance',
             entity: 'Allowance',
@@ -452,14 +452,12 @@ export class AllowanceService {
         where: { id },
       });
 
-      
-
       // Log activity
       if (ctx.userId) {
         runInBackground(
           'Delete Allowance',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'delete',
             module: 'allowance',
             entity: 'Allowance',
@@ -509,7 +507,7 @@ export class AllowanceService {
         runInBackground(
           'Bulk Delete Allowances',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'delete',
             module: 'allowance',
             entity: 'Allowance',

@@ -17,16 +17,14 @@ export class AllowanceHeadService {
   async list() {
     const items = await this.prisma.allowanceHead.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
     const item = await this.prisma.allowanceHead.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Allowance head not found' };
     return { status: true, data: item };
@@ -162,9 +160,7 @@ export class AllowanceHeadService {
   ) {
     try {
       const existing = await this.prisma.allowanceHead.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const updateData: {
         name: string;
@@ -260,7 +256,10 @@ export class AllowanceHeadService {
           data: updateData,
         });
       }
-      const response = { status: true, message: 'Allowance heads updated successfully' };
+      const response = {
+        status: true,
+        message: 'Allowance heads updated successfully',
+      };
       runInBackground(
         'Bulk Update Allowance Heads',
         this.activityLogs.log({
@@ -301,18 +300,20 @@ export class AllowanceHeadService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'allowanceHead', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'allowanceHead',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.allowanceHead.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const removed = await this.prisma.allowanceHead.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Allowance Head',
@@ -357,14 +358,18 @@ export class AllowanceHeadService {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'allowanceHead', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'allowanceHead',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const removed = await this.prisma.allowanceHead.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       runInBackground(
         'Bulk Delete Allowance Heads',

@@ -5,7 +5,13 @@ import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
 import { NotificationsService } from '../notifications/notifications.service';
 
-export type VoucherType = 'GIFT' | 'EXCHANGE' | 'CREDIT' | 'CORPORATE' | 'OUTLET_GIFT' | 'REFUND';
+export type VoucherType =
+  | 'GIFT'
+  | 'EXCHANGE'
+  | 'CREDIT'
+  | 'CORPORATE'
+  | 'OUTLET_GIFT'
+  | 'REFUND';
 
 // Code format per type:
 //   GIFT        → GFT-XXXXXX
@@ -15,1048 +21,1188 @@ export type VoucherType = 'GIFT' | 'EXCHANGE' | 'CREDIT' | 'CORPORATE' | 'OUTLET
 //   OUTLET_GIFT → OGT-XXXXXX
 //   REFUND      → RFD-XXXXXX
 function generateCode(type: VoucherType): string {
-    const prefix: Record<VoucherType, string> = {
-        GIFT: 'GFT',
-        EXCHANGE: 'EXC',
-        CREDIT: 'CRD',
-        CORPORATE: 'CRP',
-        OUTLET_GIFT: 'OGT',
-        REFUND: 'RFD',
-    };
-    const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
-    return `${prefix[type]}-${rand}`;
+  const prefix: Record<VoucherType, string> = {
+    GIFT: 'GFT',
+    EXCHANGE: 'EXC',
+    CREDIT: 'CRD',
+    CORPORATE: 'CRP',
+    OUTLET_GIFT: 'OGT',
+    REFUND: 'RFD',
+  };
+  const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `${prefix[type]}-${rand}`;
 }
 
 @Injectable()
 export class VoucherService {
-    constructor(
-        private prisma: PrismaService,
-        private activityLogs: ActivityLogsService,
-        private notificationsService: NotificationsService,
-    ) {}
+  constructor(
+    private prisma: PrismaService,
+    private activityLogs: ActivityLogsService,
+    private notificationsService: NotificationsService,
+  ) {}
 
-    // ── List vouchers (admin / POS with full pagination & filters) ─
-    async listVouchers(filters?: {
-        voucherType?: string;
-        locationId?: string;
-        isActive?: boolean;
-        status?: string; // 'ALL' | 'ACTIVE' | 'REDEEMED' | 'VOIDED' | 'EXPIRED'
-        search?: string;
-        startDate?: string;
-        endDate?: string;
-        includeVoided?: boolean;
-        page?: number;
-        limit?: number;
-    }) {
-        try {
-            const where: any = {};
-            const now = new Date();
+  // ── List vouchers (admin / POS with full pagination & filters) ─
+  async listVouchers(filters?: {
+    voucherType?: string;
+    locationId?: string;
+    isActive?: boolean;
+    status?: string; // 'ALL' | 'ACTIVE' | 'REDEEMED' | 'VOIDED' | 'EXPIRED'
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+    includeVoided?: boolean;
+    page?: number;
+    limit?: number;
+  }) {
+    try {
+      const where: any = {};
+      const now = new Date();
 
-            // 1. Status Filter
-            const statusFilter = (filters?.status || 'ALL').toUpperCase();
-            if (statusFilter === 'ACTIVE') {
-                where.isDeleted = false;
-                where.isRedeemed = false;
-                where.OR = [{ expiresAt: null }, { expiresAt: { gte: now } }];
-            } else if (statusFilter === 'REDEEMED') {
-                where.isRedeemed = true;
-            } else if (statusFilter === 'VOIDED') {
-                where.isDeleted = true;
-            } else if (statusFilter === 'EXPIRED') {
-                where.isDeleted = false;
-                where.isRedeemed = false;
-                where.expiresAt = { lt: now };
-            } else {
-                // ALL Statuses
-                if (!filters?.includeVoided) {
-                    where.isDeleted = false;
-                }
-            }
-
-            // 2. Voucher Type Filter
-            if (filters?.voucherType && filters.voucherType !== 'ALL') {
-                const vType = filters.voucherType.toUpperCase();
-                if (vType === 'CLAIM') {
-                    where.OR = [
-                        { claims: { some: {} } },
-                        { description: { contains: 'approved claim', mode: 'insensitive' } },
-                    ];
-                } else if (vType === 'EXCHANGE') {
-                    where.voucherType = 'EXCHANGE';
-                    where.NOT = [
-                        { claims: { some: {} } },
-                        { description: { contains: 'approved claim', mode: 'insensitive' } },
-                    ];
-                } else {
-                    where.voucherType = vType;
-                }
-            }
-
-            // 3. Location Filter
-            if (filters?.locationId) {
-                where.OR = [
-                    { issuedByLocationId: filters.locationId },
-                    { locations: { some: { locationId: filters.locationId } } },
-                ];
-            }
-
-            // 4. Date Range Filter (createdAt)
-            if (filters?.startDate || filters?.endDate) {
-                where.createdAt = {};
-                if (filters.startDate) {
-                    const start = new Date(filters.startDate);
-                    start.setUTCHours(0, 0, 0, 0);
-                    where.createdAt.gte = start;
-                }
-                if (filters.endDate) {
-                    const end = new Date(filters.endDate);
-                    end.setUTCHours(23, 59, 59, 999);
-                    where.createdAt.lte = end;
-                }
-            }
-
-            // 5. Search Filter
-            if (filters?.search && filters.search.trim() !== '') {
-                const term = filters.search.trim();
-                const searchConditions = [
-                    { code: { contains: term, mode: 'insensitive' } },
-                    { description: { contains: term, mode: 'insensitive' } },
-                    { companyName: { contains: term, mode: 'insensitive' } },
-                    { companyGlCode: { contains: term, mode: 'insensitive' } },
-                    { customer: { name: { contains: term, mode: 'insensitive' } } },
-                    { customer: { traderId: { contains: term, mode: 'insensitive' } } },
-                    { customer: { contactNo: { contains: term, mode: 'insensitive' } } },
-                ];
-                if (where.OR) {
-                    where.AND = [{ OR: searchConditions }];
-                } else {
-                    where.OR = searchConditions;
-                }
-            }
-
-            // 6. Pagination Parameters
-            const page = Math.max(Number(filters?.page || 1), 1);
-            const limit = Math.min(Math.max(Number(filters?.limit || 25), 1), 200);
-            const skip = (page - 1) * limit;
-
-            // Execute Count & FindMany concurrently for 50k+ dataset performance
-            const [total, vouchers] = await Promise.all([
-                this.prisma.voucher.count({ where }),
-                this.prisma.voucher.findMany({
-                    where,
-                    skip,
-                    take: limit,
-                    include: {
-                        customer: { select: { id: true, name: true, traderId: true, contactNo: true, cnicNo: true } },
-                        locations: { include: { location: { select: { id: true, name: true, code: true, shortCode: true } } } },
-                        redemptions: { select: { amountUsed: true, orderId: true } },
-                        claims: { select: { id: true, claimNumber: true } },
-                    },
-                    orderBy: { createdAt: 'desc' },
-                }),
-            ]);
-
-            // Optimize maps for current page slice only
-            const sourceOrderIds = vouchers
-                .map(v => v.sourceOrderId)
-                .filter((id): id is string => !!id);
-
-            const sourceOrders = sourceOrderIds.length > 0
-                ? await this.prisma.salesOrder.findMany({
-                    where: { id: { in: sourceOrderIds } },
-                    select: { id: true, orderNumber: true, returnNumber: true, refundNumber: true },
-                })
-                : [];
-
-            const sourceOrderMap = new Map(sourceOrders.map(o => [o.id, o]));
-
-            const locationIds = vouchers
-                .map(v => v.issuedByLocationId)
-                .filter((id): id is string => !!id);
-
-            const locations = locationIds.length > 0
-                ? await this.prisma.location.findMany({
-                    where: { id: { in: locationIds } },
-                    select: { id: true, name: true, code: true, shortCode: true },
-                })
-                : [];
-
-            const locationMap = new Map(locations.map(l => [l.id, l]));
-
-            const data = vouchers.map(v => {
-                const sourceOrder = v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null;
-                const issuedByLocation = v.issuedByLocationId ? locationMap.get(v.issuedByLocationId) : null;
-                return {
-                    ...v,
-                    sourceOrder: sourceOrder ? {
-                        orderNumber: sourceOrder.orderNumber,
-                        returnNumber: sourceOrder.returnNumber,
-                        refundNumber: sourceOrder.refundNumber,
-                    } : null,
-                    issuedByLocation: issuedByLocation ? {
-                        id: issuedByLocation.id,
-                        name: issuedByLocation.name,
-                        code: issuedByLocation.code,
-                        shortCode: issuedByLocation.shortCode,
-                    } : null,
-                };
-            });
-
-            const totalPages = Math.ceil(total / limit);
-
-            return {
-                status: true,
-                data,
-                pagination: {
-                    page,
-                    limit,
-                    total,
-                    totalPages,
-                },
-            };
-        } catch (error: any) {
-            return { status: false, message: error.message };
+      // 1. Status Filter
+      const statusFilter = (filters?.status || 'ALL').toUpperCase();
+      if (statusFilter === 'ACTIVE') {
+        where.isDeleted = false;
+        where.isRedeemed = false;
+        where.OR = [{ expiresAt: null }, { expiresAt: { gte: now } }];
+      } else if (statusFilter === 'REDEEMED') {
+        where.isRedeemed = true;
+      } else if (statusFilter === 'VOIDED') {
+        where.isDeleted = true;
+      } else if (statusFilter === 'EXPIRED') {
+        where.isDeleted = false;
+        where.isRedeemed = false;
+        where.expiresAt = { lt: now };
+      } else {
+        // ALL Statuses
+        if (!filters?.includeVoided) {
+          where.isDeleted = false;
         }
-    }
-
-    // ── Issue a voucher (admin or POS) ────────────────────────────
-    async issueVoucher(data: {
-        voucherType: VoucherType;
-        faceValue: number;
-        discount?: number;
-        description?: string;
-        customerId?: string;
-        companyName?: string;
-        companyGlCode?: string;
-        requireCustomerMatch?: boolean;
-        issuedByLocationId?: string;
-        issuedByUserId?: string;
-        sourceOrderId?: string;
-        expiresAt?: string;
-        locationIds?: string[]; // empty = all locations
-        paymentMode?: string;
-        cardholderName?: string;
-        cardLast4?: string;
-        slipNo?: string;
-        merchantId?: string;
-    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
-        try {
-            const code = generateCode(data.voucherType);
-
-            // EXCHANGE vouchers are usable everywhere by default (empty location restriction)
-            // REFUND vouchers are also locked to issuing location (record-only)
-            const locationIds =
-                (data.voucherType === 'REFUND') && data.issuedByLocationId
-                    ? [data.issuedByLocationId]
-                    : (data.locationIds ?? []);
-
-            // REFUND vouchers are immediately marked as redeemed (record-only, not usable)
-            const isRefundVoucher = data.voucherType === 'REFUND';
-
-            const voucher = await this.prisma.voucher.create({
-                data: {
-                    code,
-                    voucherType: data.voucherType,
-                    faceValue: data.faceValue,
-                    discount: data.discount ?? 0,
-                    description: data.description,
-                    customerId: data.customerId,
-                    companyName: data.companyName,
-                    companyGlCode: data.companyGlCode,
-                    requireCustomerMatch: data.requireCustomerMatch ?? false,
-                    issuedByLocationId: data.issuedByLocationId,
-                    issuedByUserId: data.issuedByUserId,
-                    sourceOrderId: data.sourceOrderId,
-                    expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
-                    isActive: !isRefundVoucher, // REFUND vouchers are inactive (not redeemable)
-                    isRedeemed: isRefundVoucher, // REFUND vouchers are marked as redeemed
-                    paymentMode: data.paymentMode,
-                    cardholderName: data.cardholderName,
-                    cardLast4: data.cardLast4,
-                    slipNo: data.slipNo,
-                    merchantId: data.merchantId,
-                    locations: {
-                        create: locationIds.map((locId) => ({ locationId: locId })),
-                    },
-                    transactions: {
-                        create: {
-                            action: isRefundVoucher ? 'ISSUED_REFUND' : 'ISSUED',
-                            amountUsed: 0,
-                            locationId: data.issuedByLocationId,
-                            notes: isRefundVoucher 
-                                ? `Refund voucher issued - Cash refunded to customer (Record only)`
-                                : data.paymentMode === 'CARD'
-                                    ? `Issued as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
-                                    : `Issued as ${data.voucherType} (Paid via Cash)`,
-                        },
-                    },
-                },
-                include: {
-                    locations: { include: { location: { select: { id: true, name: true, code: true } } } },
-                },
-            });
-
-            runInBackground(
-                'Issue Voucher',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'create',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    entityId: voucher.id,
-                    description: `Issued voucher ${voucher.code} (${voucher.voucherType})`,
-                    newValues: JSON.stringify(data),
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'success',
-                }),
-            );
-
-            return { status: true, data: voucher, message: `Voucher ${code} issued` };
-        } catch (error: any) {
-            runInBackground(
-                'Issue Voucher (Failure)',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'create',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    description: `Failed to issue voucher`,
-                    errorMessage: error?.message,
-                    newValues: JSON.stringify(data),
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'failure',
-                }),
-            );
-            return { status: false, message: error.message };
-        }
-    }
-
-    // ── Bulk issue vouchers ────────────────────────────────────────
-    async bulkIssueVouchers(data: {
-        voucherType: VoucherType;
-        faceValue: number;
-        quantity: number; // max 500 per batch
-        discount?: number;
-        description?: string;
-        companyName?: string;
-        companyGlCode?: string;
-        customerId?: string;
-        requireCustomerMatch?: boolean;
-        expiresAt?: string;
-        locationIds?: string[];
-        issuedByLocationId?: string;
-        issuedByUserId?: string;
-        paymentMode?: string;
-        cardholderName?: string;
-        cardLast4?: string;
-        slipNo?: string;
-        merchantId?: string;
-    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
-        try {
-            const qty = Math.min(data.quantity, 500);
-            const locationIds = data.locationIds ?? [];
-
-            // Generate all codes upfront and ensure uniqueness
-            const codes = new Set<string>();
-            while (codes.size < qty) {
-                codes.add(generateCode(data.voucherType));
-            }
-
-            const expiresAt = data.expiresAt ? new Date(data.expiresAt) : undefined;
-
-            // Use createMany for the vouchers, then batch the junction records
-            const created = await this.prisma.$transaction(async (tx) => {
-                const vouchers: { id: string; code: string }[] = [];
-
-                for (const code of codes) {
-                    const v = await tx.voucher.create({
-                        data: {
-                            code,
-                            voucherType: data.voucherType,
-                            faceValue: data.faceValue,
-                            discount: data.discount ?? 0,
-                            description: data.description,
-                            companyName: data.companyName,
-                            companyGlCode: data.companyGlCode,
-                            customerId: data.customerId,
-                            requireCustomerMatch: data.requireCustomerMatch ?? false,
-                            issuedByLocationId: data.issuedByLocationId,
-                            issuedByUserId: data.issuedByUserId,
-                            expiresAt,
-                            paymentMode: data.paymentMode,
-                            cardholderName: data.cardholderName,
-                            cardLast4: data.cardLast4,
-                            slipNo: data.slipNo,
-                            merchantId: data.merchantId,
-                            locations: {
-                                create: locationIds.map((locId) => ({ locationId: locId })),
-                            },
-                            transactions: {
-                                create: {
-                                    action: 'ISSUED',
-                                    amountUsed: 0,
-                                    locationId: data.issuedByLocationId,
-                                    notes: data.paymentMode === 'CARD'
-                                        ? `Bulk issued (${qty}) as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
-                                        : `Bulk issued (${qty}) as ${data.voucherType} (Paid via Cash)`,
-                                },
-                            },
-                        },
-                        select: { id: true, code: true },
-                    });
-                    vouchers.push(v);
-                }
-
-                return vouchers;
-            });
-
-            runInBackground(
-                'Bulk Issue Vouchers',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'create',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    description: `Bulk issued ${created.length} vouchers of type ${data.voucherType}`,
-                    newValues: JSON.stringify(data),
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'success',
-                }),
-            );
-
-            return {
-                status: true,
-                data: { count: created.length, codes: created.map((v) => v.code) },
-                message: `${created.length} vouchers issued successfully`,
-            };
-        } catch (error: any) {
-            runInBackground(
-                'Bulk Issue Vouchers (Failure)',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'create',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    description: `Failed to bulk issue vouchers`,
-                    errorMessage: error?.message,
-                    newValues: JSON.stringify(data),
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'failure',
-                }),
-            );
-            return { status: false, message: error.message };
-        }
-    }
-
-    // ── Validate a voucher code at checkout ───────────────────────
-    async validateVoucher(
-        code: string,
-        locationId: string,
-        customerId?: string,
-    ) {
-        try {
-            const cleanCode = code.trim().toUpperCase();
-            let voucher = await this.prisma.voucher.findFirst({
-                where: { code: cleanCode, isDeleted: false },
-                include: {
-                    locations: true,
-                    redemptions: { select: { amountUsed: true } },
-                },
-            });
-
-            // Smart fallback for legacy document numbers (e.g., cashier typing "1", "2", "0001" at POS)
-            if (!voucher && locationId) {
-                const loc = await this.prisma.location.findUnique({
-                    where: { id: locationId },
-                    select: { code: true, shortCode: true, name: true },
-                });
-                const prefixes = [loc?.shortCode, loc?.code].filter((p): p is string => !!p);
-                const candidates: string[] = [];
-                for (const p of prefixes) {
-                    const upperP = p.toUpperCase();
-                    candidates.push(
-                        `GFT-${upperP}-${cleanCode.padStart(4, '0')}`,
-                        `GFT-${upperP}-${cleanCode}`,
-                        `CRD-${upperP}-${cleanCode.padStart(4, '0')}`,
-                        `CRD-${upperP}-${cleanCode}`,
-                        `EXC-${upperP}-${cleanCode.padStart(4, '0')}`,
-                        `EXC-${upperP}-${cleanCode}`,
-                        `${upperP}-${cleanCode.padStart(4, '0')}`,
-                        `${upperP}-${cleanCode}`,
-                        `GFT-${cleanCode.padStart(4, '0')}`,
-                        `CRD-${cleanCode.padStart(4, '0')}`,
-                        `GFT-${cleanCode}`,
-                        `CRD-${cleanCode}`,
-                    );
-                }
-                candidates.push(cleanCode);
-
-                voucher = await this.prisma.voucher.findFirst({
-                    where: {
-                        isDeleted: false,
-                        OR: [
-                            { code: { in: candidates, mode: 'insensitive' } },
-                            {
-                                AND: [
-                                    { issuedByLocationId: locationId },
-                                    { description: { contains: `Doc #${cleanCode}`, mode: 'insensitive' } },
-                                ],
-                            },
-                        ],
-                    },
-                    include: {
-                        locations: true,
-                        redemptions: { select: { amountUsed: true } },
-                    },
-                });
-            }
-
-            if (!voucher) return { status: false, message: 'Voucher not found' };
-            if (voucher.isRedeemed) return { status: false, message: 'Voucher has already been redeemed' };
-            if (!voucher.isActive) return { status: false, message: 'Voucher has been voided' };
-            if (voucher.expiresAt && voucher.expiresAt < new Date()) {
-                return { status: false, message: 'Voucher has expired' };
-            }
-
-            // Location check — if locations list is non-empty, must match
-            // Bypass location check for EXCHANGE and CREDIT vouchers (they can be used everywhere by default)
-            const bypassLocationCheck = voucher.voucherType === 'EXCHANGE' || voucher.voucherType === 'CREDIT';
-            if (voucher.locations.length > 0 && !bypassLocationCheck) {
-                const allowed = voucher.locations.some((l) => l.locationId === locationId);
-                if (!allowed) {
-                    return { status: false, message: 'Voucher is not valid at this location' };
-                }
-            }
-
-            // Customer binding check (optional per config)
-            if (voucher.requireCustomerMatch && voucher.customerId) {
-                if (!customerId || customerId !== voucher.customerId) {
-                    return {
-                        status: false,
-                        message: 'This voucher is bound to a specific customer. Please select the correct customer.',
-                    };
-                }
-            }
-
-            return {
-                status: true,
-                data: {
-                    id: voucher.id,
-                    code: voucher.code,
-                    voucherType: voucher.voucherType,
-                    faceValue: Number(voucher.faceValue),
-                    discount: Number(voucher.discount),
-                    description: voucher.description,
-                    customerId: voucher.customerId,
-                    requireCustomerMatch: voucher.requireCustomerMatch,
-                    expiresAt: voucher.expiresAt,
-                },
-                message: 'Voucher is valid',
-            };
-        } catch (error: any) {
-            return { status: false, message: error.message };
-        }
-    }
-
-    async validateAllianceVoucher(
-        code: string,
-        locationId: string,
-        customerId?: string,
-        allianceId?: string,
-        billAmount?: number,
-    ) {
-        // Condition 1: Basic Voucher Validation
-        const standardResult = await this.validateVoucher(code, locationId, customerId);
-        if (!standardResult.status || !standardResult.data) {
-            return standardResult;
-        }
-
-        const voucher = standardResult.data;
-
-        // Condition 2: Must be an EXCHANGE voucher
-        if (voucher.voucherType !== 'EXCHANGE') {
-            return {
-                status: false,
-                message: 'Voucher is invalid. Only EXCHANGE vouchers are allowed for Alliance discounts.',
-            };
-        }
-
-        // Condition 4: Bill amount must be >= Voucher amount
-        if (billAmount !== undefined && Number(billAmount) < Number(voucher.faceValue)) {
-            return {
-                status: false,
-                message: `Alliance voucher cannot be applied. The current bill amount (Rs. ${Number(billAmount).toLocaleString()}) must be greater than or equal to the voucher amount (Rs. ${Number(voucher.faceValue).toLocaleString()}).`,
-            };
-        }
-
-        if (allianceId) {
-            const alliance = await this.prisma.allianceDiscount.findFirst({
-                where: { id: allianceId, isDeleted: false },
-            });
-            if (!alliance) {
-                return { status: false, message: 'Alliance partner not found' };
-            }
-
-            // Condition 3: Voucher must be issued against a sale in which the same alliance discount was used
-            // Fetch the voucher from DB to check sourceOrderId relation
-            const dbVoucher = await this.prisma.voucher.findUnique({
-                where: { id: voucher.id },
-                select: { sourceOrderId: true },
-            });
-
-            if (!dbVoucher || !dbVoucher.sourceOrderId) {
-                return {
-                    status: false,
-                    message: 'Alliance voucher is invalid because its originating sales invoice cannot be determined.',
-                };
-            }
-
-            const sourceOrder = await this.prisma.salesOrder.findUnique({
-                where: { id: dbVoucher.sourceOrderId },
-                select: { allianceId: true, orderNumber: true },
-            });
-
-            if (!sourceOrder) {
-                return {
-                    status: false,
-                    message: 'Originating sales invoice for this voucher was not found.',
-                };
-            }
-
-            if (sourceOrder.allianceId !== allianceId) {
-                return {
-                    status: false,
-                    message: `This voucher was issued against Invoice #${sourceOrder.orderNumber} which did not use the same alliance discount.`,
-                };
-            }
-        }
-
-        return standardResult;
-    }
-
-    // ── Redeem voucher(s) during order creation (called inside tx) ─
-    async redeemVouchers(
-        voucherRedemptions: { voucherId: string; amountUsed: number }[],
-        orderId: string,
-        locationId: string,
-        tx: any,
-        ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
-    ) {
-        const creditVouchers: { code: string; faceValue: number; expiresAt: Date | null }[] = [];
-
-        for (const r of voucherRedemptions) {
-            const voucher = await tx.voucher.findUnique({ where: { id: r.voucherId } });
-            if (!voucher || !voucher.isActive || voucher.isRedeemed) {
-                throw new Error(`Voucher ${r.voucherId} is no longer valid`);
-            }
-
-            const faceValue = Number(voucher.faceValue);
-            const amountUsed = Number(r.amountUsed);
-            const remainingBalance = faceValue - amountUsed;
-
-            // Mark original voucher as redeemed
-            await tx.voucher.update({
-                where: { id: r.voucherId },
-                data: { isRedeemed: true, isActive: false },
-            });
-
-            await tx.voucherTransaction.create({
-                data: {
-                    voucherId: r.voucherId,
-                    orderId,
-                    locationId,
-                    action: 'REDEEMED',
-                    amountUsed: r.amountUsed,
-                },
-            });
-
-            await tx.voucherRedemption.create({
-                data: { voucherId: r.voucherId, orderId, amountUsed: r.amountUsed },
-            });
-
-            // ── Cross-location notification ──
-            if (voucher.issuedByLocationId && voucher.issuedByLocationId !== locationId) {
-                try {
-                    // Fetch location short codes
-                    const locs = await tx.location.findMany({
-                        where: { id: { in: [voucher.issuedByLocationId, locationId] } },
-                        select: { id: true, shortCode: true, name: true }
-                    });
-                    const locMap = new Map<string, any>(locs.map((l: any) => [l.id, l]));
-                    const issuedLoc = locMap.get(voucher.issuedByLocationId) as any;
-                    const redeemedLoc = locMap.get(locationId) as any;
-
-                    const issuedCode = issuedLoc?.shortCode || issuedLoc?.name || 'Unknown';
-                    const redeemedCode = redeemedLoc?.shortCode || redeemedLoc?.name || 'Unknown';
-
-                    // Fetch employee user IDs at issuing location
-                    const employees = await tx.employee.findMany({
-                        where: { locationId: voucher.issuedByLocationId, isDeleted: false, userId: { not: null } },
-                        select: { userId: true }
-                    });
-                    const userIds = employees.map((emp: any) => emp.userId).filter(Boolean) as string[];
-
-                    if (userIds.length > 0) {
-                        runInBackground(
-                            'Notify Cross-Location Voucher Redemption',
-                            ...userIds.map(userId =>
-                                this.notificationsService.create({
-                                    userId,
-                                    title: 'Cross-Location Voucher Used',
-                                    message: `Voucher ${voucher.code} (issued by ${issuedCode}) was used/redeemed at ${redeemedCode}.`,
-                                    category: 'general',
-                                    priority: 'normal',
-                                    entityType: 'voucher',
-                                    entityId: voucher.id,
-                                    channels: ['inApp'],
-                                })
-                            )
-                        );
-                    }
-                } catch (err) {
-                    console.error('Failed to process cross-location voucher notification:', err);
-                }
-            }
-
-            // ── Generate remaining balance voucher ──
-            if (remainingBalance > 0) {
-                const isCorporate = voucher.voucherType === 'CORPORATE';
-                const nextType = isCorporate ? 'CORPORATE' : 'CREDIT';
-                const newCode = generateCode(nextType);
-                const expiresAt = voucher.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-                const creditVoucher = await tx.voucher.create({
-                    data: {
-                        code: newCode,
-                        voucherType: nextType,
-                        faceValue: remainingBalance,
-                        description: isCorporate
-                            ? `Corporate voucher for unused balance from ${voucher.code}`
-                            : `Credit voucher for unused balance from ${voucher.code}`,
-                        customerId: isCorporate ? null : voucher.customerId,
-                        companyName: isCorporate ? voucher.companyName : null,
-                        companyGlCode: isCorporate ? voucher.companyGlCode : null,
-                        issuedByLocationId: locationId,
-                        issuedByUserId: ctx?.userId,
-                        sourceOrderId: orderId,
-                        expiresAt,
-                        isActive: true,
-                        isRedeemed: false,
-                    },
-                });
-
-                // Add location restriction (same as original voucher)
-                // Bypass for CREDIT vouchers as they are usable everywhere by default
-                const originalLocations = voucher.voucherType === 'EXCHANGE' || voucher.voucherType === 'CREDIT'
-                    ? []
-                    : await tx.voucherLocation.findMany({
-                        where: { voucherId: voucher.id },
-                        select: { locationId: true },
-                    });
-
-                if (originalLocations.length > 0) {
-                    await tx.voucherLocation.createMany({
-                        data: originalLocations.map(loc => ({
-                            voucherId: creditVoucher.id,
-                            locationId: loc.locationId,
-                        })),
-                    });
-                }
-
-                // Log remaining balance voucher issuance
-                await tx.voucherTransaction.create({
-                    data: {
-                        voucherId: creditVoucher.id,
-                        action: 'ISSUED',
-                        amountUsed: 0,
-                        locationId,
-                        notes: isCorporate
-                            ? `Corporate voucher issued for unused balance of ${voucher.code}`
-                            : `Credit voucher issued for unused balance of ${voucher.code}`,
-                    },
-                });
-
-                creditVouchers.push({
-                    code: creditVoucher.code,
-                    faceValue: remainingBalance,
-                    expiresAt: creditVoucher.expiresAt,
-                });
-            }
-        }
-
-        return creditVouchers;
-    }
-
-    // Helper to generate credit voucher code
-    private generateCreditVoucherCode(): string {
-        const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
-        return `CRD-${rand}`;
-    }
-
-    // ── Auto-issue exchange voucher on return ─────────────────────
-    async issueExchangeVoucher(data: {
-        faceValue: number;
-        sourceOrderId: string;
-        issuedByLocationId: string;
-        issuedByUserId?: string;
-        customerId?: string;
-        expiresInDays?: number;
-    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + (data.expiresInDays ?? 30));
-
-        return this.issueVoucher({
-            voucherType: 'EXCHANGE',
-            faceValue: data.faceValue,
-            description: `Exchange voucher for return of order`,
-            customerId: data.customerId,
-            issuedByLocationId: data.issuedByLocationId,
-            issuedByUserId: data.issuedByUserId,
-            sourceOrderId: data.sourceOrderId,
-            expiresAt: expiresAt.toISOString(),
-        }, ctx);
-    }
-
-    // ── Auto-issue refund voucher (record-only, NOT redeemable) ───
-    async issueRefundVoucher(data: {
-        faceValue: number;
-        sourceOrderId: string;
-        issuedByLocationId: string;
-        issuedByUserId?: string;
-        customerId?: string;
-    }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
-        return this.issueVoucher({
-            voucherType: 'REFUND',
-            faceValue: data.faceValue,
-            description: `Refund voucher - Cash refunded to customer (Record only)`,
-            customerId: data.customerId,
-            issuedByLocationId: data.issuedByLocationId,
-            issuedByUserId: data.issuedByUserId,
-            sourceOrderId: data.sourceOrderId,
-            // REFUND vouchers are immediately marked as redeemed (record-only)
-        }, ctx);
-    }
-
-    // ── Void a voucher ────────────────────────────────────────────
-    async voidVoucher(id: string, reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
-        try {
-            const voucher = await this.prisma.voucher.findFirst({ where: { id, isDeleted: false } });
-            if (!voucher) return { status: false, message: 'Voucher not found' };
-            if (voucher.isRedeemed) return { status: false, message: 'Cannot void a redeemed voucher' };
-
-            await this.prisma.voucher.update({
-                where: { id },
-                data: { isActive: false, isDeleted: true, deletedAt: new Date() },
-            });
-
-            await this.prisma.voucherTransaction.create({
-                data: {
-                    voucherId: id,
-                    action: 'VOIDED',
-                    amountUsed: 0,
-                    notes: reason ?? 'Voided by staff',
-                },
-            });
-
-            runInBackground(
-                'Void Voucher',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'update',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    entityId: id,
-                    description: `Voided voucher ${voucher.code}. Reason: ${reason ?? 'N/A'}`,
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'success',
-                }),
-            );
-
-            return { status: true, message: 'Voucher voided' };
-        } catch (error: any) {
-            runInBackground(
-                'Void Voucher (Failure)',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'update',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    entityId: id,
-                    description: `Failed to void voucher`,
-                    errorMessage: error?.message,
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'failure',
-                }),
-            );
-            return { status: false, message: error.message };
-        }
-    }
-
-    // ── Restore a voided voucher ──────────────────────────────────
-    async restoreVoidedVoucher(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
-        try {
-            const voucher = await this.prisma.voucher.findFirst({ where: { id } });
-            if (!voucher) return { status: false, message: 'Voucher not found' };
-            if (!voucher.isDeleted) return { status: false, message: 'Voucher is not voided/deleted' };
-            if (voucher.isRedeemed) return { status: false, message: 'Cannot restore a redeemed voucher' };
-
-            await this.prisma.voucher.update({
-                where: { id },
-                data: { isActive: true, isDeleted: false, deletedAt: null },
-            });
-
-            await this.prisma.voucherTransaction.create({
-                data: {
-                    voucherId: id,
-                    action: 'RESTORED',
-                    amountUsed: 0,
-                    notes: 'Restored by staff',
-                },
-            });
-
-            runInBackground(
-                'Restore Voucher',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'update',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    entityId: id,
-                    description: `Restored voucher ${voucher.code}.`,
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'success',
-                }),
-            );
-
-            return { status: true, message: 'Voucher restored' };
-        } catch (error: any) {
-            runInBackground(
-                'Restore Voucher (Failure)',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'update',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    entityId: id,
-                    description: `Failed to restore voucher`,
-                    errorMessage: error?.message,
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'failure',
-                }),
-            );
-            return { status: false, message: error.message };
-        }
-    }
-
-    // ── Restore voucher on order void/return ──────────────────────
-    async restoreVoucher(voucherId: string, orderId: string, locationId: string, tx: any) {
-        await tx.voucher.update({
-            where: { id: voucherId },
-            data: { isRedeemed: false, isActive: true },
-        });
-
-        await tx.voucherTransaction.create({
-            data: {
-                voucherId,
-                orderId,
-                locationId,
-                action: 'RESTORED',
-                amountUsed: 0,
-                notes: 'Restored due to order void/return',
+      }
+
+      // 2. Voucher Type Filter
+      if (filters?.voucherType && filters.voucherType !== 'ALL') {
+        const vType = filters.voucherType.toUpperCase();
+        if (vType === 'CLAIM') {
+          where.OR = [
+            { claims: { some: {} } },
+            {
+              description: { contains: 'approved claim', mode: 'insensitive' },
             },
+          ];
+        } else if (vType === 'EXCHANGE') {
+          where.voucherType = 'EXCHANGE';
+          where.NOT = [
+            { claims: { some: {} } },
+            {
+              description: { contains: 'approved claim', mode: 'insensitive' },
+            },
+          ];
+        } else {
+          where.voucherType = vType;
+        }
+      }
+
+      // 3. Location Filter
+      if (filters?.locationId) {
+        where.OR = [
+          { issuedByLocationId: filters.locationId },
+          { locations: { some: { locationId: filters.locationId } } },
+        ];
+      }
+
+      // 4. Date Range Filter (createdAt)
+      if (filters?.startDate || filters?.endDate) {
+        where.createdAt = {};
+        if (filters.startDate) {
+          const start = new Date(filters.startDate);
+          start.setUTCHours(0, 0, 0, 0);
+          where.createdAt.gte = start;
+        }
+        if (filters.endDate) {
+          const end = new Date(filters.endDate);
+          end.setUTCHours(23, 59, 59, 999);
+          where.createdAt.lte = end;
+        }
+      }
+
+      // 5. Search Filter
+      if (filters?.search && filters.search.trim() !== '') {
+        const term = filters.search.trim();
+        const searchConditions = [
+          { code: { contains: term, mode: 'insensitive' } },
+          { description: { contains: term, mode: 'insensitive' } },
+          { companyName: { contains: term, mode: 'insensitive' } },
+          { companyGlCode: { contains: term, mode: 'insensitive' } },
+          { customer: { name: { contains: term, mode: 'insensitive' } } },
+          { customer: { traderId: { contains: term, mode: 'insensitive' } } },
+          { customer: { contactNo: { contains: term, mode: 'insensitive' } } },
+        ];
+        if (where.OR) {
+          where.AND = [{ OR: searchConditions }];
+        } else {
+          where.OR = searchConditions;
+        }
+      }
+
+      // 6. Pagination Parameters
+      const page = Math.max(Number(filters?.page || 1), 1);
+      const limit = Math.min(Math.max(Number(filters?.limit || 25), 1), 200);
+      const skip = (page - 1) * limit;
+
+      // Execute Count & FindMany concurrently for 50k+ dataset performance
+      const [total, vouchers] = await Promise.all([
+        this.prisma.voucher.count({ where }),
+        this.prisma.voucher.findMany({
+          where,
+          skip,
+          take: limit,
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                traderId: true,
+                contactNo: true,
+                cnicNo: true,
+              },
+            },
+            locations: {
+              include: {
+                location: {
+                  select: { id: true, name: true, code: true, shortCode: true },
+                },
+              },
+            },
+            redemptions: { select: { amountUsed: true, orderId: true } },
+            claims: { select: { id: true, claimNumber: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+
+      // Optimize maps for current page slice only
+      const sourceOrderIds = vouchers
+        .map((v) => v.sourceOrderId)
+        .filter((id): id is string => !!id);
+
+      const sourceOrders =
+        sourceOrderIds.length > 0
+          ? await this.prisma.salesOrder.findMany({
+              where: { id: { in: sourceOrderIds } },
+              select: {
+                id: true,
+                orderNumber: true,
+                returnNumber: true,
+                refundNumber: true,
+              },
+            })
+          : [];
+
+      const sourceOrderMap = new Map(sourceOrders.map((o) => [o.id, o]));
+
+      const locationIds = vouchers
+        .map((v) => v.issuedByLocationId)
+        .filter((id): id is string => !!id);
+
+      const locations =
+        locationIds.length > 0
+          ? await this.prisma.location.findMany({
+              where: { id: { in: locationIds } },
+              select: { id: true, name: true, code: true, shortCode: true },
+            })
+          : [];
+
+      const locationMap = new Map(locations.map((l) => [l.id, l]));
+
+      const data = vouchers.map((v) => {
+        const sourceOrder = v.sourceOrderId
+          ? sourceOrderMap.get(v.sourceOrderId)
+          : null;
+        const issuedByLocation = v.issuedByLocationId
+          ? locationMap.get(v.issuedByLocationId)
+          : null;
+        return {
+          ...v,
+          sourceOrder: sourceOrder
+            ? {
+                orderNumber: sourceOrder.orderNumber,
+                returnNumber: sourceOrder.returnNumber,
+                refundNumber: sourceOrder.refundNumber,
+              }
+            : null,
+          issuedByLocation: issuedByLocation
+            ? {
+                id: issuedByLocation.id,
+                name: issuedByLocation.name,
+                code: issuedByLocation.code,
+                shortCode: issuedByLocation.shortCode,
+              }
+            : null,
+        };
+      });
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        status: true,
+        data,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+        },
+      };
+    } catch (error: any) {
+      return { status: false, message: error.message };
+    }
+  }
+
+  // ── Issue a voucher (admin or POS) ────────────────────────────
+  async issueVoucher(
+    data: {
+      voucherType: VoucherType;
+      faceValue: number;
+      discount?: number;
+      description?: string;
+      customerId?: string;
+      companyName?: string;
+      companyGlCode?: string;
+      requireCustomerMatch?: boolean;
+      issuedByLocationId?: string;
+      issuedByUserId?: string;
+      sourceOrderId?: string;
+      expiresAt?: string;
+      locationIds?: string[]; // empty = all locations
+      paymentMode?: string;
+      cardholderName?: string;
+      cardLast4?: string;
+      slipNo?: string;
+      merchantId?: string;
+    },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const code = generateCode(data.voucherType);
+
+      // EXCHANGE vouchers are usable everywhere by default (empty location restriction)
+      // REFUND vouchers are also locked to issuing location (record-only)
+      const locationIds =
+        data.voucherType === 'REFUND' && data.issuedByLocationId
+          ? [data.issuedByLocationId]
+          : (data.locationIds ?? []);
+
+      // REFUND vouchers are immediately marked as redeemed (record-only, not usable)
+      const isRefundVoucher = data.voucherType === 'REFUND';
+
+      const voucher = await this.prisma.voucher.create({
+        data: {
+          code,
+          voucherType: data.voucherType,
+          faceValue: data.faceValue,
+          discount: data.discount ?? 0,
+          description: data.description,
+          customerId: data.customerId,
+          companyName: data.companyName,
+          companyGlCode: data.companyGlCode,
+          requireCustomerMatch: data.requireCustomerMatch ?? false,
+          issuedByLocationId: data.issuedByLocationId,
+          issuedByUserId: data.issuedByUserId,
+          sourceOrderId: data.sourceOrderId,
+          expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+          isActive: !isRefundVoucher, // REFUND vouchers are inactive (not redeemable)
+          isRedeemed: isRefundVoucher, // REFUND vouchers are marked as redeemed
+          paymentMode: data.paymentMode,
+          cardholderName: data.cardholderName,
+          cardLast4: data.cardLast4,
+          slipNo: data.slipNo,
+          merchantId: data.merchantId,
+          locations: {
+            create: locationIds.map((locId) => ({ locationId: locId })),
+          },
+          transactions: {
+            create: {
+              action: isRefundVoucher ? 'ISSUED_REFUND' : 'ISSUED',
+              amountUsed: 0,
+              locationId: data.issuedByLocationId,
+              notes: isRefundVoucher
+                ? `Refund voucher issued - Cash refunded to customer (Record only)`
+                : data.paymentMode === 'CARD'
+                  ? `Issued as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
+                  : `Issued as ${data.voucherType} (Paid via Cash)`,
+            },
+          },
+        },
+        include: {
+          locations: {
+            include: {
+              location: { select: { id: true, name: true, code: true } },
+            },
+          },
+        },
+      });
+
+      runInBackground(
+        'Issue Voucher',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'pos-config',
+          entity: 'Voucher',
+          entityId: voucher.id,
+          description: `Issued voucher ${voucher.code} (${voucher.voucherType})`,
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return { status: true, data: voucher, message: `Voucher ${code} issued` };
+    } catch (error: any) {
+      runInBackground(
+        'Issue Voucher (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'pos-config',
+          entity: 'Voucher',
+          description: `Failed to issue voucher`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      return { status: false, message: error.message };
+    }
+  }
+
+  // ── Bulk issue vouchers ────────────────────────────────────────
+  async bulkIssueVouchers(
+    data: {
+      voucherType: VoucherType;
+      faceValue: number;
+      quantity: number; // max 500 per batch
+      discount?: number;
+      description?: string;
+      companyName?: string;
+      companyGlCode?: string;
+      customerId?: string;
+      requireCustomerMatch?: boolean;
+      expiresAt?: string;
+      locationIds?: string[];
+      issuedByLocationId?: string;
+      issuedByUserId?: string;
+      paymentMode?: string;
+      cardholderName?: string;
+      cardLast4?: string;
+      slipNo?: string;
+      merchantId?: string;
+    },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const qty = Math.min(data.quantity, 500);
+      const locationIds = data.locationIds ?? [];
+
+      // Generate all codes upfront and ensure uniqueness
+      const codes = new Set<string>();
+      while (codes.size < qty) {
+        codes.add(generateCode(data.voucherType));
+      }
+
+      const expiresAt = data.expiresAt ? new Date(data.expiresAt) : undefined;
+
+      // Use createMany for the vouchers, then batch the junction records
+      const created = await this.prisma.$transaction(async (tx) => {
+        const vouchers: { id: string; code: string }[] = [];
+
+        for (const code of codes) {
+          const v = await tx.voucher.create({
+            data: {
+              code,
+              voucherType: data.voucherType,
+              faceValue: data.faceValue,
+              discount: data.discount ?? 0,
+              description: data.description,
+              companyName: data.companyName,
+              companyGlCode: data.companyGlCode,
+              customerId: data.customerId,
+              requireCustomerMatch: data.requireCustomerMatch ?? false,
+              issuedByLocationId: data.issuedByLocationId,
+              issuedByUserId: data.issuedByUserId,
+              expiresAt,
+              paymentMode: data.paymentMode,
+              cardholderName: data.cardholderName,
+              cardLast4: data.cardLast4,
+              slipNo: data.slipNo,
+              merchantId: data.merchantId,
+              locations: {
+                create: locationIds.map((locId) => ({ locationId: locId })),
+              },
+              transactions: {
+                create: {
+                  action: 'ISSUED',
+                  amountUsed: 0,
+                  locationId: data.issuedByLocationId,
+                  notes:
+                    data.paymentMode === 'CARD'
+                      ? `Bulk issued (${qty}) as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
+                      : `Bulk issued (${qty}) as ${data.voucherType} (Paid via Cash)`,
+                },
+              },
+            },
+            select: { id: true, code: true },
+          });
+          vouchers.push(v);
+        }
+
+        return vouchers;
+      });
+
+      runInBackground(
+        'Bulk Issue Vouchers',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'pos-config',
+          entity: 'Voucher',
+          description: `Bulk issued ${created.length} vouchers of type ${data.voucherType}`,
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return {
+        status: true,
+        data: { count: created.length, codes: created.map((v) => v.code) },
+        message: `${created.length} vouchers issued successfully`,
+      };
+    } catch (error: any) {
+      runInBackground(
+        'Bulk Issue Vouchers (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'pos-config',
+          entity: 'Voucher',
+          description: `Failed to bulk issue vouchers`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      return { status: false, message: error.message };
+    }
+  }
+
+  // ── Validate a voucher code at checkout ───────────────────────
+  async validateVoucher(code: string, locationId: string, customerId?: string) {
+    try {
+      const cleanCode = code.trim().toUpperCase();
+      let voucher = await this.prisma.voucher.findFirst({
+        where: { code: cleanCode, isDeleted: false },
+        include: {
+          locations: true,
+          redemptions: { select: { amountUsed: true } },
+        },
+      });
+
+      // Smart fallback for legacy document numbers (e.g., cashier typing "1", "2", "0001" at POS)
+      if (!voucher && locationId) {
+        const loc = await this.prisma.location.findUnique({
+          where: { id: locationId },
+          select: { code: true, shortCode: true, name: true },
         });
-    }
-
-    // ── Get voucher detail ────────────────────────────────────────
-    async getVoucher(id: string) {
-        try {
-            const voucher = await this.prisma.voucher.findFirst({
-                where: { id },
-                include: {
-                    locations: { include: { location: { select: { id: true, name: true, code: true } } } },
-                    transactions: { orderBy: { createdAt: 'desc' } },
-                    redemptions: { include: { order: { select: { orderNumber: true, createdAt: true } } } },
-                },
-            });
-            if (!voucher) return { status: false, message: 'Voucher not found' };
-
-            const sourceOrder = voucher.sourceOrderId
-                ? await this.prisma.salesOrder.findUnique({
-                    where: { id: voucher.sourceOrderId },
-                    select: { orderNumber: true, returnNumber: true, refundNumber: true },
-                })
-                : null;
-
-            return {
-                status: true,
-                data: {
-                    ...voucher,
-                    sourceOrder: sourceOrder ? {
-                        orderNumber: sourceOrder.orderNumber,
-                        returnNumber: sourceOrder.returnNumber,
-                        refundNumber: sourceOrder.refundNumber,
-                    } : null,
-                },
-            };
-        } catch (error: any) {
-            return { status: false, message: error.message };
+        const prefixes = [loc?.shortCode, loc?.code].filter(
+          (p): p is string => !!p,
+        );
+        const candidates: string[] = [];
+        for (const p of prefixes) {
+          const upperP = p.toUpperCase();
+          candidates.push(
+            `GFT-${upperP}-${cleanCode.padStart(4, '0')}`,
+            `GFT-${upperP}-${cleanCode}`,
+            `CRD-${upperP}-${cleanCode.padStart(4, '0')}`,
+            `CRD-${upperP}-${cleanCode}`,
+            `EXC-${upperP}-${cleanCode.padStart(4, '0')}`,
+            `EXC-${upperP}-${cleanCode}`,
+            `${upperP}-${cleanCode.padStart(4, '0')}`,
+            `${upperP}-${cleanCode}`,
+            `GFT-${cleanCode.padStart(4, '0')}`,
+            `CRD-${cleanCode.padStart(4, '0')}`,
+            `GFT-${cleanCode}`,
+            `CRD-${cleanCode}`,
+          );
         }
+        candidates.push(cleanCode);
+
+        voucher = await this.prisma.voucher.findFirst({
+          where: {
+            isDeleted: false,
+            OR: [
+              { code: { in: candidates, mode: 'insensitive' } },
+              {
+                AND: [
+                  { issuedByLocationId: locationId },
+                  {
+                    description: {
+                      contains: `Doc #${cleanCode}`,
+                      mode: 'insensitive',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          include: {
+            locations: true,
+            redemptions: { select: { amountUsed: true } },
+          },
+        });
+      }
+
+      if (!voucher) return { status: false, message: 'Voucher not found' };
+      if (voucher.isRedeemed)
+        return { status: false, message: 'Voucher has already been redeemed' };
+      if (!voucher.isActive)
+        return { status: false, message: 'Voucher has been voided' };
+      if (voucher.expiresAt && voucher.expiresAt < new Date()) {
+        return { status: false, message: 'Voucher has expired' };
+      }
+
+      // Location check — if locations list is non-empty, must match
+      // Bypass location check for EXCHANGE and CREDIT vouchers (they can be used everywhere by default)
+      const bypassLocationCheck =
+        voucher.voucherType === 'EXCHANGE' || voucher.voucherType === 'CREDIT';
+      if (voucher.locations.length > 0 && !bypassLocationCheck) {
+        const allowed = voucher.locations.some(
+          (l) => l.locationId === locationId,
+        );
+        if (!allowed) {
+          return {
+            status: false,
+            message: 'Voucher is not valid at this location',
+          };
+        }
+      }
+
+      // Customer binding check (optional per config)
+      if (voucher.requireCustomerMatch && voucher.customerId) {
+        if (!customerId || customerId !== voucher.customerId) {
+          return {
+            status: false,
+            message:
+              'This voucher is bound to a specific customer. Please select the correct customer.',
+          };
+        }
+      }
+
+      return {
+        status: true,
+        data: {
+          id: voucher.id,
+          code: voucher.code,
+          voucherType: voucher.voucherType,
+          faceValue: Number(voucher.faceValue),
+          discount: Number(voucher.discount),
+          description: voucher.description,
+          customerId: voucher.customerId,
+          requireCustomerMatch: voucher.requireCustomerMatch,
+          expiresAt: voucher.expiresAt,
+        },
+        message: 'Voucher is valid',
+      };
+    } catch (error: any) {
+      return { status: false, message: error.message };
+    }
+  }
+
+  async validateAllianceVoucher(
+    code: string,
+    locationId: string,
+    customerId?: string,
+    allianceId?: string,
+    billAmount?: number,
+  ) {
+    // Condition 1: Basic Voucher Validation
+    const standardResult = await this.validateVoucher(
+      code,
+      locationId,
+      customerId,
+    );
+    if (!standardResult.status || !standardResult.data) {
+      return standardResult;
     }
 
-    // ── Update voucher expiry ──────────────────────────────────────
-    async updateVoucherExpiry(
-        id: string,
-        expiresAt: string | null,
-        ctx?: { userId?: string; ipAddress?: string; userAgent?: string }
+    const voucher = standardResult.data;
+
+    // Condition 2: Must be an EXCHANGE voucher
+    if (voucher.voucherType !== 'EXCHANGE') {
+      return {
+        status: false,
+        message:
+          'Voucher is invalid. Only EXCHANGE vouchers are allowed for Alliance discounts.',
+      };
+    }
+
+    // Condition 4: Bill amount must be >= Voucher amount
+    if (
+      billAmount !== undefined &&
+      Number(billAmount) < Number(voucher.faceValue)
     ) {
-        try {
-            const voucher = await this.prisma.voucher.findFirst({ where: { id, isDeleted: false } });
-            if (!voucher) return { status: false, message: 'Voucher not found' };
-            if (voucher.isRedeemed) return { status: false, message: 'Cannot edit expiry of a redeemed voucher' };
-            if (!voucher.isActive) return { status: false, message: 'Cannot edit expiry of an inactive/voided voucher' };
-
-            const updatedExpiresAt = expiresAt ? new Date(expiresAt) : null;
-
-            await this.prisma.voucher.update({
-                where: { id },
-                data: { expiresAt: updatedExpiresAt },
-            });
-
-            await this.prisma.voucherTransaction.create({
-                data: {
-                    voucherId: id,
-                    action: 'EXPIRY_UPDATED',
-                    amountUsed: 0,
-                    notes: `Expiry updated to ${updatedExpiresAt ? updatedExpiresAt.toLocaleString() : 'No expiry'}`,
-                },
-            });
-
-            runInBackground(
-                'Update Voucher Expiry',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'update',
-                    module: 'pos-config',
-                    entity: 'Voucher',
-                    entityId: id,
-                    description: `Updated voucher ${voucher.code} expiry to ${updatedExpiresAt ? updatedExpiresAt.toISOString() : 'No expiry'}`,
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'success',
-                }),
-            );
-
-            return { status: true, message: 'Voucher expiry updated' };
-        } catch (error: any) {
-            return { status: false, message: error.message };
-        }
+      return {
+        status: false,
+        message: `Alliance voucher cannot be applied. The current bill amount (Rs. ${Number(billAmount).toLocaleString()}) must be greater than or equal to the voucher amount (Rs. ${Number(voucher.faceValue).toLocaleString()}).`,
+      };
     }
+
+    if (allianceId) {
+      const alliance = await this.prisma.allianceDiscount.findFirst({
+        where: { id: allianceId, isDeleted: false },
+      });
+      if (!alliance) {
+        return { status: false, message: 'Alliance partner not found' };
+      }
+
+      // Condition 3: Voucher must be issued against a sale in which the same alliance discount was used
+      // Fetch the voucher from DB to check sourceOrderId relation
+      const dbVoucher = await this.prisma.voucher.findUnique({
+        where: { id: voucher.id },
+        select: { sourceOrderId: true },
+      });
+
+      if (!dbVoucher || !dbVoucher.sourceOrderId) {
+        return {
+          status: false,
+          message:
+            'Alliance voucher is invalid because its originating sales invoice cannot be determined.',
+        };
+      }
+
+      const sourceOrder = await this.prisma.salesOrder.findUnique({
+        where: { id: dbVoucher.sourceOrderId },
+        select: { allianceId: true, orderNumber: true },
+      });
+
+      if (!sourceOrder) {
+        return {
+          status: false,
+          message: 'Originating sales invoice for this voucher was not found.',
+        };
+      }
+
+      if (sourceOrder.allianceId !== allianceId) {
+        return {
+          status: false,
+          message: `This voucher was issued against Invoice #${sourceOrder.orderNumber} which did not use the same alliance discount.`,
+        };
+      }
+    }
+
+    return standardResult;
+  }
+
+  // ── Redeem voucher(s) during order creation (called inside tx) ─
+  async redeemVouchers(
+    voucherRedemptions: { voucherId: string; amountUsed: number }[],
+    orderId: string,
+    locationId: string,
+    tx: any,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const creditVouchers: {
+      code: string;
+      faceValue: number;
+      expiresAt: Date | null;
+    }[] = [];
+
+    for (const r of voucherRedemptions) {
+      const voucher = await tx.voucher.findUnique({
+        where: { id: r.voucherId },
+      });
+      if (!voucher || !voucher.isActive || voucher.isRedeemed) {
+        throw new Error(`Voucher ${r.voucherId} is no longer valid`);
+      }
+
+      const faceValue = Number(voucher.faceValue);
+      const amountUsed = Number(r.amountUsed);
+      const remainingBalance = faceValue - amountUsed;
+
+      // Mark original voucher as redeemed
+      await tx.voucher.update({
+        where: { id: r.voucherId },
+        data: { isRedeemed: true, isActive: false },
+      });
+
+      await tx.voucherTransaction.create({
+        data: {
+          voucherId: r.voucherId,
+          orderId,
+          locationId,
+          action: 'REDEEMED',
+          amountUsed: r.amountUsed,
+        },
+      });
+
+      await tx.voucherRedemption.create({
+        data: { voucherId: r.voucherId, orderId, amountUsed: r.amountUsed },
+      });
+
+      // ── Cross-location notification ──
+      if (
+        voucher.issuedByLocationId &&
+        voucher.issuedByLocationId !== locationId
+      ) {
+        try {
+          // Fetch location short codes
+          const locs = await tx.location.findMany({
+            where: { id: { in: [voucher.issuedByLocationId, locationId] } },
+            select: { id: true, shortCode: true, name: true },
+          });
+          const locMap = new Map<string, any>(locs.map((l: any) => [l.id, l]));
+          const issuedLoc = locMap.get(voucher.issuedByLocationId) as any;
+          const redeemedLoc = locMap.get(locationId) as any;
+
+          const issuedCode =
+            issuedLoc?.shortCode || issuedLoc?.name || 'Unknown';
+          const redeemedCode =
+            redeemedLoc?.shortCode || redeemedLoc?.name || 'Unknown';
+
+          // Fetch employee user IDs at issuing location
+          const employees = await tx.employee.findMany({
+            where: {
+              locationId: voucher.issuedByLocationId,
+              isDeleted: false,
+              userId: { not: null },
+            },
+            select: { userId: true },
+          });
+          const userIds = employees
+            .map((emp: any) => emp.userId)
+            .filter(Boolean) as string[];
+
+          if (userIds.length > 0) {
+            runInBackground(
+              'Notify Cross-Location Voucher Redemption',
+              ...userIds.map((userId) =>
+                this.notificationsService.create({
+                  userId,
+                  title: 'Cross-Location Voucher Used',
+                  message: `Voucher ${voucher.code} (issued by ${issuedCode}) was used/redeemed at ${redeemedCode}.`,
+                  category: 'general',
+                  priority: 'normal',
+                  entityType: 'voucher',
+                  entityId: voucher.id,
+                  channels: ['inApp'],
+                }),
+              ),
+            );
+          }
+        } catch (err) {
+          console.error(
+            'Failed to process cross-location voucher notification:',
+            err,
+          );
+        }
+      }
+
+      // ── Generate remaining balance voucher ──
+      if (remainingBalance > 0) {
+        const isCorporate = voucher.voucherType === 'CORPORATE';
+        const nextType = isCorporate ? 'CORPORATE' : 'CREDIT';
+        const newCode = generateCode(nextType);
+        const expiresAt =
+          voucher.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+        const creditVoucher = await tx.voucher.create({
+          data: {
+            code: newCode,
+            voucherType: nextType,
+            faceValue: remainingBalance,
+            description: isCorporate
+              ? `Corporate voucher for unused balance from ${voucher.code}`
+              : `Credit voucher for unused balance from ${voucher.code}`,
+            customerId: isCorporate ? null : voucher.customerId,
+            companyName: isCorporate ? voucher.companyName : null,
+            companyGlCode: isCorporate ? voucher.companyGlCode : null,
+            issuedByLocationId: locationId,
+            issuedByUserId: ctx?.userId,
+            sourceOrderId: orderId,
+            expiresAt,
+            isActive: true,
+            isRedeemed: false,
+          },
+        });
+
+        // Add location restriction (same as original voucher)
+        // Bypass for CREDIT vouchers as they are usable everywhere by default
+        const originalLocations =
+          voucher.voucherType === 'EXCHANGE' || voucher.voucherType === 'CREDIT'
+            ? []
+            : await tx.voucherLocation.findMany({
+                where: { voucherId: voucher.id },
+                select: { locationId: true },
+              });
+
+        if (originalLocations.length > 0) {
+          await tx.voucherLocation.createMany({
+            data: originalLocations.map((loc) => ({
+              voucherId: creditVoucher.id,
+              locationId: loc.locationId,
+            })),
+          });
+        }
+
+        // Log remaining balance voucher issuance
+        await tx.voucherTransaction.create({
+          data: {
+            voucherId: creditVoucher.id,
+            action: 'ISSUED',
+            amountUsed: 0,
+            locationId,
+            notes: isCorporate
+              ? `Corporate voucher issued for unused balance of ${voucher.code}`
+              : `Credit voucher issued for unused balance of ${voucher.code}`,
+          },
+        });
+
+        creditVouchers.push({
+          code: creditVoucher.code,
+          faceValue: remainingBalance,
+          expiresAt: creditVoucher.expiresAt,
+        });
+      }
+    }
+
+    return creditVouchers;
+  }
+
+  // Helper to generate credit voucher code
+  private generateCreditVoucherCode(): string {
+    const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `CRD-${rand}`;
+  }
+
+  // ── Auto-issue exchange voucher on return ─────────────────────
+  async issueExchangeVoucher(
+    data: {
+      faceValue: number;
+      sourceOrderId: string;
+      issuedByLocationId: string;
+      issuedByUserId?: string;
+      customerId?: string;
+      expiresInDays?: number;
+    },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + (data.expiresInDays ?? 30));
+
+    return this.issueVoucher(
+      {
+        voucherType: 'EXCHANGE',
+        faceValue: data.faceValue,
+        description: `Exchange voucher for return of order`,
+        customerId: data.customerId,
+        issuedByLocationId: data.issuedByLocationId,
+        issuedByUserId: data.issuedByUserId,
+        sourceOrderId: data.sourceOrderId,
+        expiresAt: expiresAt.toISOString(),
+      },
+      ctx,
+    );
+  }
+
+  // ── Auto-issue refund voucher (record-only, NOT redeemable) ───
+  async issueRefundVoucher(
+    data: {
+      faceValue: number;
+      sourceOrderId: string;
+      issuedByLocationId: string;
+      issuedByUserId?: string;
+      customerId?: string;
+    },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    return this.issueVoucher(
+      {
+        voucherType: 'REFUND',
+        faceValue: data.faceValue,
+        description: `Refund voucher - Cash refunded to customer (Record only)`,
+        customerId: data.customerId,
+        issuedByLocationId: data.issuedByLocationId,
+        issuedByUserId: data.issuedByUserId,
+        sourceOrderId: data.sourceOrderId,
+        // REFUND vouchers are immediately marked as redeemed (record-only)
+      },
+      ctx,
+    );
+  }
+
+  // ── Void a voucher ────────────────────────────────────────────
+  async voidVoucher(
+    id: string,
+    reason?: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const voucher = await this.prisma.voucher.findFirst({
+        where: { id, isDeleted: false },
+      });
+      if (!voucher) return { status: false, message: 'Voucher not found' };
+      if (voucher.isRedeemed)
+        return { status: false, message: 'Cannot void a redeemed voucher' };
+
+      await this.prisma.voucher.update({
+        where: { id },
+        data: { isActive: false, isDeleted: true, deletedAt: new Date() },
+      });
+
+      await this.prisma.voucherTransaction.create({
+        data: {
+          voucherId: id,
+          action: 'VOIDED',
+          amountUsed: 0,
+          notes: reason ?? 'Voided by staff',
+        },
+      });
+
+      runInBackground(
+        'Void Voucher',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-config',
+          entity: 'Voucher',
+          entityId: id,
+          description: `Voided voucher ${voucher.code}. Reason: ${reason ?? 'N/A'}`,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return { status: true, message: 'Voucher voided' };
+    } catch (error: any) {
+      runInBackground(
+        'Void Voucher (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-config',
+          entity: 'Voucher',
+          entityId: id,
+          description: `Failed to void voucher`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      return { status: false, message: error.message };
+    }
+  }
+
+  // ── Restore a voided voucher ──────────────────────────────────
+  async restoreVoidedVoucher(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const voucher = await this.prisma.voucher.findFirst({ where: { id } });
+      if (!voucher) return { status: false, message: 'Voucher not found' };
+      if (!voucher.isDeleted)
+        return { status: false, message: 'Voucher is not voided/deleted' };
+      if (voucher.isRedeemed)
+        return { status: false, message: 'Cannot restore a redeemed voucher' };
+
+      await this.prisma.voucher.update({
+        where: { id },
+        data: { isActive: true, isDeleted: false, deletedAt: null },
+      });
+
+      await this.prisma.voucherTransaction.create({
+        data: {
+          voucherId: id,
+          action: 'RESTORED',
+          amountUsed: 0,
+          notes: 'Restored by staff',
+        },
+      });
+
+      runInBackground(
+        'Restore Voucher',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-config',
+          entity: 'Voucher',
+          entityId: id,
+          description: `Restored voucher ${voucher.code}.`,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return { status: true, message: 'Voucher restored' };
+    } catch (error: any) {
+      runInBackground(
+        'Restore Voucher (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-config',
+          entity: 'Voucher',
+          entityId: id,
+          description: `Failed to restore voucher`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      return { status: false, message: error.message };
+    }
+  }
+
+  // ── Restore voucher on order void/return ──────────────────────
+  async restoreVoucher(
+    voucherId: string,
+    orderId: string,
+    locationId: string,
+    tx: any,
+  ) {
+    await tx.voucher.update({
+      where: { id: voucherId },
+      data: { isRedeemed: false, isActive: true },
+    });
+
+    await tx.voucherTransaction.create({
+      data: {
+        voucherId,
+        orderId,
+        locationId,
+        action: 'RESTORED',
+        amountUsed: 0,
+        notes: 'Restored due to order void/return',
+      },
+    });
+  }
+
+  // ── Get voucher detail ────────────────────────────────────────
+  async getVoucher(id: string) {
+    try {
+      const voucher = await this.prisma.voucher.findFirst({
+        where: { id },
+        include: {
+          locations: {
+            include: {
+              location: { select: { id: true, name: true, code: true } },
+            },
+          },
+          transactions: { orderBy: { createdAt: 'desc' } },
+          redemptions: {
+            include: {
+              order: { select: { orderNumber: true, createdAt: true } },
+            },
+          },
+        },
+      });
+      if (!voucher) return { status: false, message: 'Voucher not found' };
+
+      const sourceOrder = voucher.sourceOrderId
+        ? await this.prisma.salesOrder.findUnique({
+            where: { id: voucher.sourceOrderId },
+            select: {
+              orderNumber: true,
+              returnNumber: true,
+              refundNumber: true,
+            },
+          })
+        : null;
+
+      return {
+        status: true,
+        data: {
+          ...voucher,
+          sourceOrder: sourceOrder
+            ? {
+                orderNumber: sourceOrder.orderNumber,
+                returnNumber: sourceOrder.returnNumber,
+                refundNumber: sourceOrder.refundNumber,
+              }
+            : null,
+        },
+      };
+    } catch (error: any) {
+      return { status: false, message: error.message };
+    }
+  }
+
+  // ── Update voucher expiry ──────────────────────────────────────
+  async updateVoucherExpiry(
+    id: string,
+    expiresAt: string | null,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const voucher = await this.prisma.voucher.findFirst({
+        where: { id, isDeleted: false },
+      });
+      if (!voucher) return { status: false, message: 'Voucher not found' };
+      if (voucher.isRedeemed)
+        return {
+          status: false,
+          message: 'Cannot edit expiry of a redeemed voucher',
+        };
+      if (!voucher.isActive)
+        return {
+          status: false,
+          message: 'Cannot edit expiry of an inactive/voided voucher',
+        };
+
+      const updatedExpiresAt = expiresAt ? new Date(expiresAt) : null;
+
+      await this.prisma.voucher.update({
+        where: { id },
+        data: { expiresAt: updatedExpiresAt },
+      });
+
+      await this.prisma.voucherTransaction.create({
+        data: {
+          voucherId: id,
+          action: 'EXPIRY_UPDATED',
+          amountUsed: 0,
+          notes: `Expiry updated to ${updatedExpiresAt ? updatedExpiresAt.toLocaleString() : 'No expiry'}`,
+        },
+      });
+
+      runInBackground(
+        'Update Voucher Expiry',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-config',
+          entity: 'Voucher',
+          entityId: id,
+          description: `Updated voucher ${voucher.code} expiry to ${updatedExpiresAt ? updatedExpiresAt.toISOString() : 'No expiry'}`,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return { status: true, message: 'Voucher expiry updated' };
+    } catch (error: any) {
+      return { status: false, message: error.message };
+    }
+  }
 }

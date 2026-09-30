@@ -21,11 +21,13 @@ export class LoanRequestExportService {
     private readonly uploadService: UploadService,
   ) {}
 
-  async queueExport(opts: QueueLoanRequestExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueLoanRequestExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
 
     // Read tenant credentials from the live request context
-    const tenantId    = this.prisma.getTenantId()    ?? '';
+    const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
     // Create pending export history record
@@ -56,15 +58,20 @@ export class LoanRequestExportService {
       },
     );
 
-    this.logger.log(`[LoanRequestExport] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId})`);
+    this.logger.log(
+      `[LoanRequestExport] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
-    const state    = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const state = await job.getState();
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -75,7 +82,9 @@ export class LoanRequestExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     // Increment download count in ExportHistory
@@ -87,7 +96,9 @@ export class LoanRequestExportService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -96,7 +107,10 @@ export class LoanRequestExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -105,23 +119,32 @@ export class LoanRequestExportService {
       : path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
-    const stat   = fs.statSync(filePath);
+    const stat = fs.statSync(filePath);
     const stream = fs.createReadStream(filePath);
     stream.on('close', () => {
       fs.unlink(filePath, (err) => {
-        if (err) this.logger.warn(`Could not delete export file: ${err.message}`);
-        else     this.logger.log(`[LoanRequestExport] Cleaned up ${filePath}`);
+        if (err)
+          this.logger.warn(`Could not delete export file: ${err.message}`);
+        else this.logger.log(`[LoanRequestExport] Cleaned up ${filePath}`);
       });
     });
     stream.on('error', (err) => {
       this.logger.error(`[LoanRequestExport] Stream error: ${err.message}`);
     });
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

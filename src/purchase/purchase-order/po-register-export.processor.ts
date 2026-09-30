@@ -47,7 +47,9 @@ export class PoRegisterExportProcessor {
           () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
@@ -69,7 +71,9 @@ export class PoRegisterExportProcessor {
       format,
       search,
     } = job.data;
-    this.logger.log(`[PoRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`);
+    this.logger.log(
+      `[PoRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
@@ -128,17 +132,25 @@ export class PoRegisterExportProcessor {
         }),
       );
     } catch (err: any) {
-      this.logger.error(`[PoRegisterExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[PoRegisterExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       try {
         await this.exportHistoryService.failExport(prisma as any, jobId);
       } catch (e: any) {
-        this.logger.error(`Failed to update export history status to FAILED for job ${jobId}`);
+        this.logger.error(
+          `Failed to update export history status to FAILED for job ${jobId}`,
+        );
       }
       throw err;
     }
   }
 
-  private async generateExcel(filePath: string, reportData: PoRegisterReportResult): Promise<void> {
+  private async generateExcel(
+    filePath: string,
+    reportData: PoRegisterReportResult,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -165,16 +177,37 @@ export class PoRegisterExportProcessor {
     };
 
     // Title Row
-    const titleRow = worksheet.addRow(['Purchase Order Register', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    const titleRow = worksheet.addRow([
+      'Purchase Order Register',
+      '',
+      '',
+      '',
+      '',
+      '',
+      `${reportData.startDate} - ${reportData.endDate}`,
+    ]);
     titleRow.height = 30;
-    titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
-    titleRow.getCell(7).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.getCell(1).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 14,
+      underline: true,
+    };
+    titleRow.getCell(7).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 11,
+      underline: true,
+    };
     titleRow.commit();
 
     worksheet.addRow([]).commit();
 
     for (const doc of reportData.documents) {
-      const grnSummary = (doc.grns || []).map((g) => `${g.grnNumber} (${g.status})`).join(', ') || 'None';
+      const grnSummary =
+        (doc.grns || [])
+          .map((g) => `${g.grnNumber} (${g.status})`)
+          .join(', ') || 'None';
 
       // Document Box Header Row
       const docBoxRow1 = worksheet.addRow([
@@ -187,11 +220,23 @@ export class PoRegisterExportProcessor {
         '',
       ]);
       docBoxRow1.height = 26;
-      docBoxRow1.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11 };
-      docBoxRow1.getCell(2).font = { bold: true, color: { argb: 'FF005F5B' }, size: 11 };
+      docBoxRow1.getCell(1).font = {
+        bold: true,
+        color: { argb: 'FFCC0000' },
+        size: 11,
+      };
+      docBoxRow1.getCell(2).font = {
+        bold: true,
+        color: { argb: 'FF005F5B' },
+        size: 11,
+      };
       docBoxRow1.getCell(3).font = { bold: true, size: 10 };
       docBoxRow1.getCell(4).font = { bold: true, size: 10 };
-      docBoxRow1.getCell(5).font = { bold: true, color: { argb: 'FF0284C7' }, size: 10 };
+      docBoxRow1.getCell(5).font = {
+        bold: true,
+        color: { argb: 'FF0284C7' },
+        size: 10,
+      };
       docBoxRow1.commit();
 
       // Table Headers
@@ -216,10 +261,26 @@ export class PoRegisterExportProcessor {
       for (const div of doc.divisions) {
         for (const cat of div.categories) {
           // Category Row (Green)
-          const catRow = worksheet.addRow([`Category: ${cat.categoryName}`, '', '', '', cat.totalQuantity, '', cat.totalAmount]);
+          const catRow = worksheet.addRow([
+            `Category: ${cat.categoryName}`,
+            '',
+            '',
+            '',
+            cat.totalQuantity,
+            '',
+            cat.totalAmount,
+          ]);
           catRow.height = 22;
-          catRow.getCell(1).font = { bold: true, color: { argb: 'FF008000' }, size: 11 };
-          catRow.getCell(5).font = { bold: true, color: { argb: 'FF008000' }, size: 11 };
+          catRow.getCell(1).font = {
+            bold: true,
+            color: { argb: 'FF008000' },
+            size: 11,
+          };
+          catRow.getCell(5).font = {
+            bold: true,
+            color: { argb: 'FF008000' },
+            size: 11,
+          };
           catRow.getCell(5).alignment = { horizontal: 'right' };
           catRow.getCell(5).numFmt = '#,##0';
           catRow.getCell(7).font = { bold: true, color: { argb: 'FF008000' } };
@@ -230,19 +291,46 @@ export class PoRegisterExportProcessor {
             for (const sil of gen.silhouettes) {
               for (const art of sil.articles) {
                 // Article Row (Blue, SKU & Description)
-                const artRow = worksheet.addRow([`  SKU: ${art.sku} - ${art.description}`, '', '', '', art.totalQuantity, '', art.totalAmount]);
+                const artRow = worksheet.addRow([
+                  `  SKU: ${art.sku} - ${art.description}`,
+                  '',
+                  '',
+                  '',
+                  art.totalQuantity,
+                  '',
+                  art.totalAmount,
+                ]);
                 artRow.height = 20;
-                artRow.getCell(1).font = { bold: true, color: { argb: 'FF0000FF' }, size: 10 };
-                artRow.getCell(5).font = { bold: true, color: { argb: 'FF0000FF' }, size: 10 };
+                artRow.getCell(1).font = {
+                  bold: true,
+                  color: { argb: 'FF0000FF' },
+                  size: 10,
+                };
+                artRow.getCell(5).font = {
+                  bold: true,
+                  color: { argb: 'FF0000FF' },
+                  size: 10,
+                };
                 artRow.getCell(5).alignment = { horizontal: 'right' };
                 artRow.getCell(5).numFmt = '#,##0';
-                artRow.getCell(7).font = { bold: true, color: { argb: 'FF0000FF' } };
+                artRow.getCell(7).font = {
+                  bold: true,
+                  color: { argb: 'FF0000FF' },
+                };
                 artRow.getCell(7).numFmt = '#,##0.00';
                 artRow.commit();
 
                 // Variant Detail Rows
                 for (const v of art.variants) {
-                  const vRow = worksheet.addRow(['', v.color, v.size, v.barCode, v.quantity, v.unitPrice, v.lineTotal]);
+                  const vRow = worksheet.addRow([
+                    '',
+                    v.color,
+                    v.size,
+                    v.barCode,
+                    v.quantity,
+                    v.unitPrice,
+                    v.lineTotal,
+                  ]);
                   vRow.height = 18;
                   vRow.getCell(2).alignment = { horizontal: 'center' };
                   vRow.getCell(3).alignment = { horizontal: 'center' };
@@ -265,12 +353,24 @@ export class PoRegisterExportProcessor {
       }
 
       // Document Total Row
-      const docTotRow = worksheet.addRow([`Total for PO #${doc.poNumber}`, '', '', '', doc.totalQuantity, '', doc.totalAmount]);
+      const docTotRow = worksheet.addRow([
+        `Total for PO #${doc.poNumber}`,
+        '',
+        '',
+        '',
+        doc.totalQuantity,
+        '',
+        doc.totalAmount,
+      ]);
       docTotRow.height = 22;
       for (let c = 1; c <= 7; c++) {
         const cell = docTotRow.getCell(c);
         cell.font = { bold: true, size: 10, color: { argb: 'FFCC0000' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0F0' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFF0F0' },
+        };
         cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
       }
       docTotRow.getCell(5).alignment = { horizontal: 'right' };
@@ -283,12 +383,24 @@ export class PoRegisterExportProcessor {
     }
 
     // Grand Total Row
-    const grandRow = worksheet.addRow(['GRAND TOTAL', '', '', '', reportData.grandTotals.quantity, '', reportData.grandTotals.amount]);
+    const grandRow = worksheet.addRow([
+      'GRAND TOTAL',
+      '',
+      '',
+      '',
+      reportData.grandTotals.quantity,
+      '',
+      reportData.grandTotals.amount,
+    ]);
     grandRow.height = 26;
     for (let c = 1; c <= 7; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' },
+      };
       cell.border = borderThin;
     }
     grandRow.getCell(5).alignment = { horizontal: 'right' };
@@ -300,10 +412,20 @@ export class PoRegisterExportProcessor {
     await workbook.commit();
   }
 
-  private async generatePdf(filePath: string, reportData: PoRegisterReportResult): Promise<void> {
+  private async generatePdf(
+    filePath: string,
+    reportData: PoRegisterReportResult,
+  ): Promise<void> {
     const launchArgs =
       process.platform === 'linux'
-        ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
+        ? [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+          ]
         : [];
 
     const browser = await puppeteer.launch({
@@ -402,9 +524,15 @@ export class PoRegisterExportProcessor {
         divHtml += catHtml;
       }
 
-      const grnTagsHtml = (doc.grns || []).length > 0
-        ? doc.grns.map(g => `<span class="grn-badge">${g.grnNumber} (${g.status})</span>`).join(' ')
-        : '<span class="no-grn">No GRN Generated</span>';
+      const grnTagsHtml =
+        (doc.grns || []).length > 0
+          ? doc.grns
+              .map(
+                (g) =>
+                  `<span class="grn-badge">${g.grnNumber} (${g.status})</span>`,
+              )
+              .join(' ')
+          : '<span class="no-grn">No GRN Generated</span>';
 
       docsHtml += `
         <div class="doc-block">

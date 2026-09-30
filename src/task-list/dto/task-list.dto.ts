@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsString, IsOptional, IsIn, IsInt, IsArray, Min } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsIn,
+  IsInt,
+  IsArray,
+  Min,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTaskListDto {

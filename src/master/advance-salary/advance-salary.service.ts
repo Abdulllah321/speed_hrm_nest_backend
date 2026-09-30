@@ -61,9 +61,7 @@ export class AdvanceSalaryService {
           : employee.departmentId;
       if (!departmentId) return null;
       const department = await this.prisma.department.findFirst({
-        where: { id: departmentId,
-            isDeleted: false
-        },
+        where: { id: departmentId, isDeleted: false },
         select: { headId: true },
       });
       if (!department?.headId) return null;
@@ -81,9 +79,7 @@ export class AdvanceSalaryService {
           : employee.subDepartmentId;
       if (!subDepartmentId) return null;
       const subDepartment = await this.prisma.subDepartment.findFirst({
-        where: { id: subDepartmentId,
-            isDeleted: false
-        },
+        where: { id: subDepartmentId, isDeleted: false },
         select: { headId: true },
       });
       if (!subDepartment?.headId) return null;
@@ -113,14 +109,17 @@ export class AdvanceSalaryService {
     return null;
   }
 
-  async list(params?: {
-    employeeId?: string;
-    deductionMonth?: string;
-    deductionYear?: string;
-    deductionMonthYear?: string;
-    approvalStatus?: string;
-    status?: string;
-  }, user?: any) {
+  async list(
+    params?: {
+      employeeId?: string;
+      deductionMonth?: string;
+      deductionYear?: string;
+      deductionMonthYear?: string;
+      approvalStatus?: string;
+      status?: string;
+    },
+    user?: any,
+  ) {
     try {
       const where: any = {};
 
@@ -136,10 +135,10 @@ export class AdvanceSalaryService {
       if (!isAdmin && user?.userId) {
         // Show requests created by user OR for user's employee record OR where user is an approver
         where.OR = [
-          { createdById: user.userId },           // Requests they created
-          { employeeId: user.employeeId },        // Requests for their employee record
-          { approval1: user.userId },             // Requests where they are level 1 approver
-          { approval2: user.userId },             // Requests where they are level 2 approver
+          { createdById: user.userId }, // Requests they created
+          { employeeId: user.employeeId }, // Requests for their employee record
+          { approval1: user.userId }, // Requests where they are level 1 approver
+          { approval2: user.userId }, // Requests where they are level 2 approver
         ];
       } else if (params?.employeeId) {
         where.employeeId = params.employeeId;
@@ -211,15 +210,11 @@ export class AdvanceSalaryService {
           select: { id: true, firstName: true, lastName: true, email: true },
         }),
         this.prisma.department.findMany({
-          where: { id: { in: Array.from(deptIds) },
-              isDeleted: false
-        },
+          where: { id: { in: Array.from(deptIds) }, isDeleted: false },
           select: { id: true, name: true },
         }),
         this.prisma.subDepartment.findMany({
-          where: { id: { in: Array.from(subDeptIds) },
-              isDeleted: false
-        },
+          where: { id: { in: Array.from(subDeptIds) }, isDeleted: false },
           select: { id: true, name: true },
         }),
       ]);
@@ -294,17 +289,19 @@ export class AdvanceSalaryService {
         }),
         advanceSalary.employee?.departmentId
           ? this.prisma.department.findFirst({
-              where: { id: advanceSalary.employee.departmentId,
-                  isDeleted: false
-            },
+              where: {
+                id: advanceSalary.employee.departmentId,
+                isDeleted: false,
+              },
               select: { id: true, name: true },
             })
           : null,
         advanceSalary.employee?.subDepartmentId
           ? this.prisma.subDepartment.findFirst({
-              where: { id: advanceSalary.employee.subDepartmentId,
-                  isDeleted: false
-            },
+              where: {
+                id: advanceSalary.employee.subDepartmentId,
+                isDeleted: false,
+              },
               select: { id: true, name: true },
             })
           : null,
@@ -474,7 +471,8 @@ export class AdvanceSalaryService {
               approvalStatus,
               status,
               createdById: ctx.userId,
-              disbursementType: (advanceSalaryItem as any).disbursementType || "with_payroll",
+              disbursementType:
+                (advanceSalaryItem as any).disbursementType || 'with_payroll',
             },
           });
           createdAdvanceSalaries.push(created);
@@ -578,14 +576,24 @@ export class AdvanceSalaryService {
         };
       }
 
-      const employeeIds = Array.from(new Set(body.advanceSalaries.map((a) => a.employeeId)));
+      const employeeIds = Array.from(
+        new Set(body.advanceSalaries.map((a) => a.employeeId)),
+      );
       const employees = await this.prisma.employee.findMany({
         where: { id: { in: employeeIds }, status: 'active' },
-        select: { id: true, employeeId: true, employeeName: true, userId: true },
+        select: {
+          id: true,
+          employeeId: true,
+          employeeName: true,
+          userId: true,
+        },
       });
 
       if (employees.length !== employeeIds.length) {
-        return { status: false, message: 'One or more employees were not found' };
+        return {
+          status: false,
+          message: 'One or more employees were not found',
+        };
       }
 
       const now = new Date();
@@ -812,7 +820,8 @@ export class AdvanceSalaryService {
               approval1: ctx.userId,
               approvalStatus: nextApprovalStatus,
               status: nextStatus,
-              approvedById: nextApprovalStatus === 'approved' ? ctx.userId : null,
+              approvedById:
+                nextApprovalStatus === 'approved' ? ctx.userId : null,
               approvedAt: nextApprovalStatus === 'approved' ? new Date() : null,
               updatedById: ctx.userId,
             } as any,

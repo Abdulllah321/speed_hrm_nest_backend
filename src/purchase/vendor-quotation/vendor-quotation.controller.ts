@@ -22,7 +22,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/vendor-quotation')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class VendorQuotationController {
-  constructor(private readonly service: VendorQuotationService,) {}
+  constructor(private readonly service: VendorQuotationService) {}
 
   @Post()
   @Permissions('erp.procurement.vq.create')
@@ -82,7 +82,11 @@ export class VendorQuotationController {
   @Patch(':id')
   @Permissions('erp.procurement.vq.update')
   @ApiOperation({ summary: 'Update vendor quotation' })
-  update(@Param('id') id: string, @Body() updateDto: UpdateVendorQuotationDto, @Req() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateVendorQuotationDto,
+    @Req() req: any,
+  ) {
     return this.service.update(id, updateDto, {
       userId: req.user?.id,
       ipAddress: req.ip,

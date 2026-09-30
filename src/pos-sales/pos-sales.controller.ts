@@ -69,7 +69,7 @@ export class PosSalesController {
     private readonly corporateVoucherExportService: CorporateVoucherExportService,
     private readonly creditVoucherExportService: CreditVoucherExportService,
     private readonly voucherRegisterExportService: VoucherRegisterExportService,
-  ) { }
+  ) {}
 
   // ─── POS Customer Endpoints ────────────────────────────────────────
   // These mirror /api/sales/customers but are mounted under /api/pos-sales/customers
@@ -292,7 +292,7 @@ export class PosSalesController {
         const decoded: any = jwt.decode(req.cookies.posTerminalToken);
         effectivePosId = decoded?.posId || decoded?.terminalId;
         if (!effectiveLocationId) effectiveLocationId = decoded?.locationId;
-      } catch (e) { }
+      } catch (e) {}
     }
 
     // 3. Fallback: any user with a locationId on their token
@@ -507,7 +507,7 @@ export class PosSalesController {
           if (!dto.posId) dto.posId = decoded.posId;
           if (!dto.locationId) dto.locationId = decoded.locationId;
         }
-      } catch (e) { }
+      } catch (e) {}
     }
     const ctx = {
       userId: req.user?.id,
@@ -626,7 +626,7 @@ export class PosSalesController {
       try {
         const decoded: any = jwt.decode(req.cookies.posTerminalToken);
         effectiveLocationId = decoded?.locationId;
-      } catch (e) { }
+      } catch (e) {}
     }
 
     return this.posSalesService.getSalesReport(req.user, {
@@ -767,7 +767,10 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get(['reports/net-sales-summary/export/:jobId/download', 'reports/net-sales-summary/export/:jobId/download/:fileName'])
+  @Get([
+    'reports/net-sales-summary/export/:jobId/download',
+    'reports/net-sales-summary/export/:jobId/download/:fileName',
+  ])
   @ApiOperation({ summary: 'Download Net Sales Summary Export' })
   async downloadNetSalesSummaryExport(
     @Param('jobId') jobId: string,
@@ -856,7 +859,6 @@ export class PosSalesController {
   }
 
   // ─── Alliance Register Report Endpoints ──────────────────────────
-
 
   @Get('reports/alliance-register')
   @ApiOperation({
@@ -1003,7 +1005,10 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get(['reports/sales-list/export/:jobId/download', 'reports/sales-list/export/:jobId/download/:fileName'])
+  @Get([
+    'reports/sales-list/export/:jobId/download',
+    'reports/sales-list/export/:jobId/download/:fileName',
+  ])
   @ApiOperation({ summary: 'Download Sales List Export' })
   async downloadSalesListExport(
     @Param('jobId') jobId: string,
@@ -1236,7 +1241,10 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get(['reports/gross-sales-export/:jobId/download', 'reports/gross-sales-export/:jobId/download/:fileName'])
+  @Get([
+    'reports/gross-sales-export/:jobId/download',
+    'reports/gross-sales-export/:jobId/download/:fileName',
+  ])
   @ApiOperation({ summary: 'Download Gross Sales Export' })
   async downloadGrossSalesExport(
     @Param('jobId') jobId: string,
@@ -1562,7 +1570,8 @@ export class PosSalesController {
       startDate,
       endDate,
       asOfDate,
-      isOutstandingOnly: isOutstandingOnly === 'true' || isOutstandingOnly === '1',
+      isOutstandingOnly:
+        isOutstandingOnly === 'true' || isOutstandingOnly === '1',
       search,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit !== undefined ? parseInt(limit, 10) : undefined,
@@ -1688,7 +1697,8 @@ export class PosSalesController {
   @Get('reports/sales-list/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getSalesListResult(@Param('jobId') jobId: string) {
-    const data = await this.salesListExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.salesListExportService.getReportPreviewResult(jobId);
     if (!data) {
       return {
         status: false,
@@ -1698,7 +1708,10 @@ export class PosSalesController {
     return { status: true, data };
   }
 
-  @Get(['reports/sales-list/stream-preview-excel/:jobId', 'reports/sales-list/stream-preview-excel/:jobId/:fileName'])
+  @Get([
+    'reports/sales-list/stream-preview-excel/:jobId',
+    'reports/sales-list/stream-preview-excel/:jobId/:fileName',
+  ])
   @ApiOperation({ summary: 'Stream filtered preview Excel for Sales List' })
   async streamSalesListPreviewExcel(
     @Param('jobId') jobId: string,
@@ -1823,7 +1836,8 @@ export class PosSalesController {
   @Get('reports/sales-return-list/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getSalesReturnListResult(@Param('jobId') jobId: string) {
-    const data = await this.salesReturnListExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.salesReturnListExportService.getReportPreviewResult(jobId);
     if (!data) {
       return {
         status: false,
@@ -1833,8 +1847,13 @@ export class PosSalesController {
     return { status: true, data };
   }
 
-  @Get(['reports/sales-return-list/stream-preview-excel/:jobId', 'reports/sales-return-list/stream-preview-excel/:jobId/:fileName'])
-  @ApiOperation({ summary: 'Stream filtered preview Excel for Sales Return List' })
+  @Get([
+    'reports/sales-return-list/stream-preview-excel/:jobId',
+    'reports/sales-return-list/stream-preview-excel/:jobId/:fileName',
+  ])
+  @ApiOperation({
+    summary: 'Stream filtered preview Excel for Sales Return List',
+  })
   async streamSalesReturnListPreviewExcel(
     @Param('jobId') jobId: string,
     @Query('exportType') exportType: 'flat' | 'hierarchical',
@@ -1901,7 +1920,10 @@ export class PosSalesController {
     return { status: true, data: status };
   }
 
-  @Get(['reports/sales-return-list/export/:jobId/download', 'reports/sales-return-list/export/:jobId/download/:fileName'])
+  @Get([
+    'reports/sales-return-list/export/:jobId/download',
+    'reports/sales-return-list/export/:jobId/download/:fileName',
+  ])
   async downloadSalesReturnListExport(
     @Param('jobId') jobId: string,
     @Res() res: any,
@@ -2046,7 +2068,8 @@ export class PosSalesController {
   @Get('reports/net-sales-list/export/:jobId/status')
   @UseGuards(JwtAuthGuard)
   async getNetSalesListExportStatus(@Param('jobId') jobId: string) {
-    const status = await this.netSalesListExportService.getExportJobStatus(jobId);
+    const status =
+      await this.netSalesListExportService.getExportJobStatus(jobId);
     return { status: true, data: status };
   }
 
@@ -2054,7 +2077,13 @@ export class PosSalesController {
   @UseGuards(JwtAuthGuard)
   async registerNetSalesListClientExport(
     @Req() req: any,
-    @Body() body: { fileName: string; fileBase64: string; mimeType: string; exportFormat: 'xlsx' | 'pdf' },
+    @Body()
+    body: {
+      fileName: string;
+      fileBase64: string;
+      mimeType: string;
+      exportFormat: 'xlsx' | 'pdf';
+    },
   ) {
     const userId = req.user?.id || req.user?.userId;
     const result =
@@ -2245,7 +2274,8 @@ export class PosSalesController {
   @Get('reports/gross-sales-return/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getGrossSalesReturnResult(@Param('jobId') jobId: string) {
-    const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.grossSalesExportService.getReportPreviewResult(jobId);
     if (!data) {
       return {
         status: false,
@@ -2255,8 +2285,13 @@ export class PosSalesController {
     return { status: true, data };
   }
 
-  @Get(['reports/gross-sales-return/stream-preview-excel/:jobId', 'reports/gross-sales-return/stream-preview-excel/:jobId/:fileName'])
-  @ApiOperation({ summary: 'Stream filtered preview Excel for Gross Sales Return' })
+  @Get([
+    'reports/gross-sales-return/stream-preview-excel/:jobId',
+    'reports/gross-sales-return/stream-preview-excel/:jobId/:fileName',
+  ])
+  @ApiOperation({
+    summary: 'Stream filtered preview Excel for Gross Sales Return',
+  })
   async streamGrossSalesReturnPreviewExcel(
     @Param('jobId') jobId: string,
     @Query('exportType') exportType: 'flat' | 'hierarchical',
@@ -2389,7 +2424,8 @@ export class PosSalesController {
   @Get('reports/gross-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getGrossSalesSummaryResult(@Param('jobId') jobId: string) {
-    const data = await this.grossSalesExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.grossSalesExportService.getReportPreviewResult(jobId);
     if (!data) {
       return {
         status: false,
@@ -2399,8 +2435,13 @@ export class PosSalesController {
     return { status: true, data };
   }
 
-  @Get(['reports/gross-sales-summary/stream-preview-excel/:jobId', 'reports/gross-sales-summary/stream-preview-excel/:jobId/:fileName'])
-  @ApiOperation({ summary: 'Stream filtered preview Excel for Gross Sales Summary' })
+  @Get([
+    'reports/gross-sales-summary/stream-preview-excel/:jobId',
+    'reports/gross-sales-summary/stream-preview-excel/:jobId/:fileName',
+  ])
+  @ApiOperation({
+    summary: 'Stream filtered preview Excel for Gross Sales Summary',
+  })
   async streamGrossSalesSummaryPreviewExcel(
     @Param('jobId') jobId: string,
     @Query('exportType') exportType: 'flat' | 'hierarchical',
@@ -2530,7 +2571,8 @@ export class PosSalesController {
   @Get('reports/net-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getNetSalesSummaryResult(@Param('jobId') jobId: string) {
-    const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
     if (!data) {
       return {
         status: false,
@@ -2556,8 +2598,13 @@ export class PosSalesController {
     return { status: true, data: result };
   }
 
-  @Get(['reports/net-sales-summary/stream-preview-excel/:jobId', 'reports/net-sales-summary/stream-preview-excel/:jobId/:fileName'])
-  @ApiOperation({ summary: 'Stream filtered preview Excel for Net Sales Summary' })
+  @Get([
+    'reports/net-sales-summary/stream-preview-excel/:jobId',
+    'reports/net-sales-summary/stream-preview-excel/:jobId/:fileName',
+  ])
+  @ApiOperation({
+    summary: 'Stream filtered preview Excel for Net Sales Summary',
+  })
   async streamNetSalesSummaryPreviewExcel(
     @Req() req: any,
     @Param('jobId') jobId: string,
@@ -2568,7 +2615,8 @@ export class PosSalesController {
   ) {
     try {
       let effectiveLocationId = locationId;
-      const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
+      const userLocationId =
+        req.user?.terminalLocationId || req.user?.locationId;
       if (req.user?.isTerminal && userLocationId) {
         effectiveLocationId = userLocationId;
       }

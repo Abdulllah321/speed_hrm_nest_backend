@@ -29,11 +29,14 @@ export interface QueueStockTransactionDetailExportOptions {
 
 @Injectable()
 export class StockTransactionDetailExportService {
-  private readonly logger = new Logger(StockTransactionDetailExportService.name);
+  private readonly logger = new Logger(
+    StockTransactionDetailExportService.name,
+  );
   private readonly cancelledPreviewJobIds = new Set<string>();
 
   constructor(
-    @InjectQueue('stock-transaction-detail-export') private readonly exportQueue: Queue,
+    @InjectQueue('stock-transaction-detail-export')
+    private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
     private readonly exportHistoryService: ExportHistoryService,
@@ -85,8 +88,11 @@ export class StockTransactionDetailExportService {
             wJob.name === 'generate-report-preview' &&
             wJob.data?.userId === opts.userId
           ) {
-            this.logger.log(`Pruning superseded waiting stock transaction detail preview job ${wJob.id} for user ${opts.userId}`);
-            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
+            this.logger.log(
+              `Pruning superseded waiting stock transaction detail preview job ${wJob.id} for user ${opts.userId}`,
+            );
+            if (wJob.data?.jobId)
+              this.cancelledPreviewJobIds.add(wJob.data.jobId);
             await wJob.remove();
           }
         }
@@ -97,12 +103,16 @@ export class StockTransactionDetailExportService {
             aJob.data?.userId === opts.userId
           ) {
             const activeJobId = aJob.data?.jobId;
-            this.logger.log(`Cancelling active running stock transaction detail preview job ${activeJobId} for user ${opts.userId}`);
+            this.logger.log(
+              `Cancelling active running stock transaction detail preview job ${activeJobId} for user ${opts.userId}`,
+            );
             if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Could not prune stock transaction detail preview jobs for user ${opts.userId}: ${err.message}`);
+        this.logger.warn(
+          `Could not prune stock transaction detail preview jobs for user ${opts.userId}: ${err.message}`,
+        );
       }
     }
 
@@ -135,7 +145,9 @@ export class StockTransactionDetailExportService {
       },
     );
 
-    this.logger.log(`[StockTransactionDetailPreview ${jobId}] Queued background computation for user ${opts.userId}`);
+    this.logger.log(
+      `[StockTransactionDetailPreview ${jobId}] Queued background computation for user ${opts.userId}`,
+    );
     return { jobId };
   }
 
@@ -148,25 +160,41 @@ export class StockTransactionDetailExportService {
     const cleanRoot = Array.isArray(data?.root) ? data.root : [];
     const payloadToSerialize = {
       root: cleanRoot,
-      grandTotals: data?.grandTotals || { openingBalance: 0, closingBalance: 0, inTransitQty: 0 },
+      grandTotals: data?.grandTotals || {
+        openingBalance: 0,
+        closingBalance: 0,
+        inTransitQty: 0,
+      },
     };
 
     const jsonStr = JSON.stringify(payloadToSerialize, (_, v) =>
-      typeof v === 'bigint' ? v.toString() : v
+      typeof v === 'bigint' ? v.toString() : v,
     );
     const gzipped = zlib.gzipSync(jsonStr);
     const filePath = path.join(previewDir, `preview-${jobId}.json.gz`);
     fs.writeFileSync(filePath, gzipped);
 
-    setTimeout(() => {
-      if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
-      }
-    }, 60 * 60 * 1000);
+    setTimeout(
+      () => {
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      },
+      60 * 60 * 1000,
+    );
   }
 
   getReportPreviewResult(jobId: string): any {
-    const filePath = path.join(process.cwd(), 'uploads', 'previews', `preview-${jobId}.json.gz`);
+    const filePath = path.join(
+      process.cwd(),
+      'uploads',
+      'previews',
+      `preview-${jobId}.json.gz`,
+    );
     if (!fs.existsSync(filePath)) {
       return null;
     }
@@ -185,7 +213,13 @@ export class StockTransactionDetailExportService {
   }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
-      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -224,7 +258,9 @@ export class StockTransactionDetailExportService {
     };
   }
 
-  async queueExport(opts: QueueStockTransactionDetailExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueStockTransactionDetailExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -271,7 +307,9 @@ export class StockTransactionDetailExportService {
       },
     );
 
-    this.logger.log(`[StockTransactionDetailExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`);
+    this.logger.log(
+      `[StockTransactionDetailExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, tenant: ${tenantId})`,
+    );
     return { jobId };
   }
 
@@ -282,8 +320,13 @@ export class StockTransactionDetailExportService {
     format: 'xlsx' | 'pdf' | 'html';
   }) {
     const jobId = uuidv4();
-    const ext = opts.format === 'pdf' ? 'pdf' : (opts.format === 'html' ? 'html' : 'xlsx');
-    const relativePath = path.join('uploads', 'exports', `export-${jobId}.${ext}`);
+    const ext =
+      opts.format === 'pdf' ? 'pdf' : opts.format === 'html' ? 'html' : 'xlsx';
+    const relativePath = path.join(
+      'uploads',
+      'exports',
+      `export-${jobId}.${ext}`,
+    );
     const fullPath = path.join(process.cwd(), relativePath);
 
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -293,7 +336,9 @@ export class StockTransactionDetailExportService {
       data: {
         id: jobId,
         userId: opts.userId,
-        fileName: opts.fileName || `stock-transaction-detail-${new Date().toISOString().slice(0, 10)}.${ext}`,
+        fileName:
+          opts.fileName ||
+          `stock-transaction-detail-${new Date().toISOString().slice(0, 10)}.${ext}`,
         filePath: relativePath,
         moduleName: 'STOCK_TRANSACTION_DETAIL_REPORT',
         status: 'PENDING',
@@ -302,11 +347,17 @@ export class StockTransactionDetailExportService {
 
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : this.prisma;
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : this.prisma;
 
-    const mimeType = opts.format === 'pdf' ? 'application/pdf' : (opts.format === 'html' ? 'text/html' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const mimeType =
+      opts.format === 'pdf'
+        ? 'application/pdf'
+        : opts.format === 'html'
+          ? 'text/html'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
     await this.exportHistoryService.completeAndUploadExport(
       prisma,
@@ -319,11 +370,14 @@ export class StockTransactionDetailExportService {
     return { status: true, jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -334,7 +388,9 @@ export class StockTransactionDetailExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     try {
@@ -345,7 +401,9 @@ export class StockTransactionDetailExportService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export history download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -354,26 +412,41 @@ export class StockTransactionDetailExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
     const filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
     const stat = fs.statSync(filePath);
 
     const stream = fs.createReadStream(filePath);
     stream.on('error', (err) => {
-      this.logger.error(`[StockTransactionDetailExport] Stream error: ${err.message}`);
+      this.logger.error(
+        `[StockTransactionDetailExport] Stream error: ${err.message}`,
+      );
     });
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

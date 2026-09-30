@@ -23,15 +23,15 @@ export interface CprTaxExportJobData {
 // ── Colour palette ─────────────────────────────────────────────────────────────
 const SUBHEADER_BG = '1E3A5F';
 const SUBHEADER_FG = 'F1F5F9';
-const ALT_ROW_BG   = 'F0F4F8';
+const ALT_ROW_BG = 'F0F4F8';
 const BORDER_COLOR = 'CBD5E1';
-const VALUE_FG      = '0F766E';
+const VALUE_FG = '0F766E';
 
 const GROUP_COLORS: Record<string, string> = {
-  Identity:  '1E3A5F',
+  Identity: '1E3A5F',
   Financial: '1A3A4A',
-  Period:    '1E4D2B',
-  Contact:   '4A1942',
+  Period: '1E4D2B',
+  Contact: '4A1942',
 };
 
 const COLUMNS: {
@@ -42,22 +42,100 @@ const COLUMNS: {
   numFmt?: string;
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
-  { header: 'S.No',                     key: 'sNo',                 width: 8,   group: 'Identity',  align: 'center' },
-  { header: 'Employee ID',              key: 'employeeCode',        width: 14,  group: 'Identity',  align: 'center' },
-  { header: 'Employee Name',            key: 'employeeName',        width: 25,  group: 'Identity' },
-  { header: 'Taxpayer Name',            key: 'name',                width: 25,  group: 'Identity' },
-  { header: 'Taxpayer CNIC',            key: 'cnic',                width: 18,  group: 'Identity',  align: 'center' },
-  { header: 'CPR Number',               key: 'cprNo',               width: 20,  group: 'Identity',  align: 'center' },
-  { header: 'Car Amount',               key: 'carAmount',           width: 15,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Monthly Car Perk (5%/12)', key: 'monthlyCarBenefit',   width: 22,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Taxable Amount Annual',    key: 'taxableAmountAnnual', width: 22,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Taxable Amount Gross',     key: 'taxableAmountGross',  width: 22,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Annual Tax Amount',        key: 'taxAmountAnnual',     width: 18,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Monthly Tax Amount',       key: 'taxAmountMonthlyTax', width: 18,  group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Tax Period',               key: 'taxPeriod',           width: 12,  group: 'Period',    align: 'center' },
-  { header: 'Payment Date',             key: 'paymentDate',         width: 15,  group: 'Period',    numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'City',                     key: 'city',                width: 15,  group: 'Contact' },
-  { header: 'NTN',                      key: 'ntn',                 width: 15,  group: 'Contact',   align: 'center' },
+  { header: 'S.No', key: 'sNo', width: 8, group: 'Identity', align: 'center' },
+  {
+    header: 'Employee ID',
+    key: 'employeeCode',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Employee Name',
+    key: 'employeeName',
+    width: 25,
+    group: 'Identity',
+  },
+  { header: 'Taxpayer Name', key: 'name', width: 25, group: 'Identity' },
+  {
+    header: 'Taxpayer CNIC',
+    key: 'cnic',
+    width: 18,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'CPR Number',
+    key: 'cprNo',
+    width: 20,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Car Amount',
+    key: 'carAmount',
+    width: 15,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Monthly Car Perk (5%/12)',
+    key: 'monthlyCarBenefit',
+    width: 22,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Taxable Amount Annual',
+    key: 'taxableAmountAnnual',
+    width: 22,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Taxable Amount Gross',
+    key: 'taxableAmountGross',
+    width: 22,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Annual Tax Amount',
+    key: 'taxAmountAnnual',
+    width: 18,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Monthly Tax Amount',
+    key: 'taxAmountMonthlyTax',
+    width: 18,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Tax Period',
+    key: 'taxPeriod',
+    width: 12,
+    group: 'Period',
+    align: 'center',
+  },
+  {
+    header: 'Payment Date',
+    key: 'paymentDate',
+    width: 15,
+    group: 'Period',
+    numFmt: 'dd-mmm-yyyy',
+    align: 'center',
+  },
+  { header: 'City', key: 'city', width: 15, group: 'Contact' },
+  { header: 'NTN', key: 'ntn', width: 15, group: 'Contact', align: 'center' },
 ];
 
 @Processor('cpr-tax-export')
@@ -71,7 +149,17 @@ export class CprTaxExportProcessor {
 
   @Process()
   async handleExport(job: Job<CprTaxExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, search, month, year, months, employeeIds } = job.data;
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      search,
+      month,
+      year,
+      months,
+      employeeIds,
+    } = job.data;
 
     this.logger.log(`[CprTaxExport ${jobId}] Starting for user ${userId}`);
 
@@ -87,7 +175,10 @@ export class CprTaxExportProcessor {
 
       // Filter by employeeIds
       if (employeeIds) {
-        const empIdList = employeeIds.split(',').map((id) => id.trim()).filter(Boolean);
+        const empIdList = employeeIds
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean);
         if (empIdList.length > 0) {
           andClauses.push({ employeeId: { in: empIdList } });
         }
@@ -96,7 +187,10 @@ export class CprTaxExportProcessor {
       // Filter by period
       let periods: string[] = [];
       if (months) {
-        periods = months.split(',').map((m) => m.trim()).filter(Boolean);
+        periods = months
+          .split(',')
+          .map((m) => m.trim())
+          .filter(Boolean);
       } else if (month && year && month !== 'all' && year !== 'all') {
         const monthStr = String(Number(month)).padStart(2, '0');
         const yearStr = String(year);
@@ -112,16 +206,16 @@ export class CprTaxExportProcessor {
         const t = search.trim();
         andClauses.push({
           OR: [
-            { name:  { contains: t, mode: 'insensitive' } },
-            { cnic:  { contains: t, mode: 'insensitive' } },
+            { name: { contains: t, mode: 'insensitive' } },
+            { cnic: { contains: t, mode: 'insensitive' } },
             { cprNo: { contains: t, mode: 'insensitive' } },
-            { city:  { contains: t, mode: 'insensitive' } },
-            { ntn:   { contains: t, mode: 'insensitive' } },
+            { city: { contains: t, mode: 'insensitive' } },
+            { ntn: { contains: t, mode: 'insensitive' } },
             {
               employee: {
                 OR: [
                   { employeeName: { contains: t, mode: 'insensitive' } },
-                  { employeeId:   { contains: t, mode: 'insensitive' } },
+                  { employeeId: { contains: t, mode: 'insensitive' } },
                 ],
               },
             },
@@ -142,7 +236,12 @@ export class CprTaxExportProcessor {
       });
 
       const ws = workbook.addWorksheet('CPR Tax Records', {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
         views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
       });
 
@@ -161,14 +260,18 @@ export class CprTaxExportProcessor {
         const cell = groupRow.getCell(idx + 1);
         const { start } = groups[col.group];
         if (idx + 1 === start) cell.value = col.group.toUpperCase();
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
-        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+        };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       groupRow.height = 22;
@@ -179,15 +282,26 @@ export class CprTaxExportProcessor {
       COLUMNS.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
         const cellVal = col.header;
-        cell.value     = cellVal;
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font      = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
-        cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+        cell.value = cellVal;
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 9,
+        };
+        cell.alignment = {
+          horizontal: col.align ?? 'left',
+          vertical: 'middle',
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       headerRow.height = 20;
@@ -219,44 +333,76 @@ export class CprTaxExportProcessor {
 
         for (const record of chunk) {
           const isAlt = rowIdx % 2 === 1;
-          const carVal = record.carAmount !== null ? Number(record.carAmount) : null;
-          const monthlyCarBenefit = carVal !== null ? (carVal * 0.05) / 12 : null;
+          const carVal =
+            record.carAmount !== null ? Number(record.carAmount) : null;
+          const monthlyCarBenefit =
+            carVal !== null ? (carVal * 0.05) / 12 : null;
 
           const rowData: Record<string, any> = {
-            sNo:                 rowIdx + 1,
-            employeeCode:        record.employee?.employeeId ?? '—',
-            employeeName:        record.employee?.employeeName ?? '—',
-            name:                record.name,
-            cnic:                record.cnic,
-            cprNo:               record.cprNo,
-            carAmount:           carVal,
-            monthlyCarBenefit:   monthlyCarBenefit,
-            taxableAmountAnnual: record.taxableAmountAnnual !== null ? Number(record.taxableAmountAnnual) : null,
-            taxableAmountGross:  record.taxableAmountGross !== null ? Number(record.taxableAmountGross) : null,
-            taxAmountAnnual:     record.taxAmountAnnual !== null ? Number(record.taxAmountAnnual) : null,
-            taxAmountMonthlyTax: record.taxAmountMonthlyTax !== null ? Number(record.taxAmountMonthlyTax) : null,
-            taxPeriod:           record.taxPeriod,
-            paymentDate:         record.paymentDate ? new Date(record.paymentDate) : null,
-            city:                record.city ?? '—',
-            ntn:                 record.ntn ?? '—',
+            sNo: rowIdx + 1,
+            employeeCode: record.employee?.employeeId ?? '—',
+            employeeName: record.employee?.employeeName ?? '—',
+            name: record.name,
+            cnic: record.cnic,
+            cprNo: record.cprNo,
+            carAmount: carVal,
+            monthlyCarBenefit: monthlyCarBenefit,
+            taxableAmountAnnual:
+              record.taxableAmountAnnual !== null
+                ? Number(record.taxableAmountAnnual)
+                : null,
+            taxableAmountGross:
+              record.taxableAmountGross !== null
+                ? Number(record.taxableAmountGross)
+                : null,
+            taxAmountAnnual:
+              record.taxAmountAnnual !== null
+                ? Number(record.taxAmountAnnual)
+                : null,
+            taxAmountMonthlyTax:
+              record.taxAmountMonthlyTax !== null
+                ? Number(record.taxAmountMonthlyTax)
+                : null,
+            taxPeriod: record.taxPeriod,
+            paymentDate: record.paymentDate
+              ? new Date(record.paymentDate)
+              : null,
+            city: record.city ?? '—',
+            ntn: record.ntn ?? '—',
           };
 
           const dataRow = ws.getRow(rowIdx + 3);
           COLUMNS.forEach((col, colIdx) => {
             const cell = dataRow.getCell(colIdx + 1);
-            cell.value     = rowData[col.key] ?? null;
+            cell.value = rowData[col.key] ?? null;
             if (col.numFmt) cell.numFmt = col.numFmt;
-            cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
-            cell.font      = { size: 9 };
-            cell.border    = {
-              top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-              left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` },
+            };
+            cell.font = { size: 9 };
+            cell.border = {
+              top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-              right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
             };
 
-            if (['carAmount', 'monthlyCarBenefit', 'taxableAmountAnnual', 'taxableAmountGross', 'taxAmountAnnual', 'taxAmountMonthlyTax'].includes(col.key)) {
+            if (
+              [
+                'carAmount',
+                'monthlyCarBenefit',
+                'taxableAmountAnnual',
+                'taxableAmountGross',
+                'taxAmountAnnual',
+                'taxAmountMonthlyTax',
+              ].includes(col.key)
+            ) {
               cell.font = { size: 9, color: { argb: `FF${VALUE_FG}` } };
             }
           });
@@ -284,7 +430,9 @@ export class CprTaxExportProcessor {
 
       await job.progress(100);
 
-      this.logger.log(`[CprTaxExport ${jobId}] Finished processing successfully (${rowIdx} rows)`);
+      this.logger.log(
+        `[CprTaxExport ${jobId}] Finished processing successfully (${rowIdx} rows)`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -298,9 +446,11 @@ export class CprTaxExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[CprTaxExport ${jobId}] Failed: ${error.message}`, error.stack);
+      this.logger.error(
+        `[CprTaxExport ${jobId}] Failed: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) {
         try {
           fs.unlinkSync(filePath);

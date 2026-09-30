@@ -21,18 +21,24 @@ export interface ReconciliationExportJobData {
 export class ReconciliationExportProcessor {
   private readonly logger = new Logger(ReconciliationExportProcessor.name);
 
-  constructor(
-    private readonly notificationsService: NotificationsService,
-  ) {}
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   @Process()
   async handleExport(job: Job<ReconciliationExportJobData>): Promise<void> {
     const { jobId, userId, tenantId, tenantDbUrl, locationId, date } = job.data;
 
-    this.logger.log(`[ReconciliationExport ${jobId}] Starting background Excel export for user ${userId}`);
+    this.logger.log(
+      `[ReconciliationExport ${jobId}] Starting background Excel export for user ${userId}`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
-    const sessionService = new PosSessionService(prisma, null as any, null as any, null as any, null as any);
+    const sessionService = new PosSessionService(
+      prisma,
+      null as any,
+      null as any,
+      null as any,
+      null as any,
+    );
 
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
@@ -40,7 +46,10 @@ export class ReconciliationExportProcessor {
 
     try {
       await job.progress(10);
-      const data = await sessionService.getDaywiseReconciliation(locationId, date);
+      const data = await sessionService.getDaywiseReconciliation(
+        locationId,
+        date,
+      );
       await job.progress(30);
 
       const workbook = new ExcelJS.Workbook();
@@ -180,10 +189,20 @@ export class ReconciliationExportProcessor {
       addTableHeader(['Type', 'Amount', '', '', 'From', '']);
       let receivedSubtotal = 0;
       for (const v of data.receivedVouchers) {
-        sheet.addRow([v.type, formatCurrencyCell(v.amount), '', '', v.from || '-', '']);
+        sheet.addRow([
+          v.type,
+          formatCurrencyCell(v.amount),
+          '',
+          '',
+          v.from || '-',
+          '',
+        ]);
         receivedSubtotal += v.amount;
       }
-      const recSubRow = sheet.addRow(['RECEIVED SUBTOTAL', formatCurrencyCell(receivedSubtotal)]);
+      const recSubRow = sheet.addRow([
+        'RECEIVED SUBTOTAL',
+        formatCurrencyCell(receivedSubtotal),
+      ]);
       recSubRow.font = { bold: true };
       recSubRow.eachCell((cell) => (cell.border = BORDER_THIN));
       sheet.addRow([]);
@@ -196,7 +215,10 @@ export class ReconciliationExportProcessor {
         sheet.addRow([r.description, formatCurrencyCell(r.amount)]);
         receivablesSubtotal += r.amount;
       }
-      const receivableSubRow = sheet.addRow(['RECEIVABLE SUBTOTAL', formatCurrencyCell(receivablesSubtotal)]);
+      const receivableSubRow = sheet.addRow([
+        'RECEIVABLE SUBTOTAL',
+        formatCurrencyCell(receivablesSubtotal),
+      ]);
       receivableSubRow.font = { bold: true };
       receivableSubRow.eachCell((cell) => (cell.border = BORDER_THIN));
       sheet.addRow([]);
@@ -204,29 +226,80 @@ export class ReconciliationExportProcessor {
       // 5. Issued
       addSectionHeader('ISSUED VOUCHERS');
       addTableHeader(['Voucher Type', 'Amount', '', '', 'From', 'To']);
-      const issuedExchangeSubtotal = data.issuedVouchers.exchangeAndClaims?.reduce((acc: number, v: any) => acc + v.amount, 0) || 0;
-      const issuedCreditSubtotal = data.issuedVouchers.creditVouchers?.reduce((acc: number, v: any) => acc + v.amount, 0) || 0;
-      const issuedGiftSubtotal = data.issuedVouchers.giftVouchers?.reduce((acc: number, v: any) => acc + v.amount, 0) || 0;
-      const issuedRefundSubtotal = data.issuedVouchers.refundVouchers?.reduce((acc: number, v: any) => acc + v.amount, 0) || 0;
-      const totalIssuedSubtotal = issuedExchangeSubtotal + issuedGiftSubtotal + issuedRefundSubtotal;
+      const issuedExchangeSubtotal =
+        data.issuedVouchers.exchangeAndClaims?.reduce(
+          (acc: number, v: any) => acc + v.amount,
+          0,
+        ) || 0;
+      const issuedCreditSubtotal =
+        data.issuedVouchers.creditVouchers?.reduce(
+          (acc: number, v: any) => acc + v.amount,
+          0,
+        ) || 0;
+      const issuedGiftSubtotal =
+        data.issuedVouchers.giftVouchers?.reduce(
+          (acc: number, v: any) => acc + v.amount,
+          0,
+        ) || 0;
+      const issuedRefundSubtotal =
+        data.issuedVouchers.refundVouchers?.reduce(
+          (acc: number, v: any) => acc + v.amount,
+          0,
+        ) || 0;
+      const totalIssuedSubtotal =
+        issuedExchangeSubtotal + issuedGiftSubtotal + issuedRefundSubtotal;
 
       for (const v of data.issuedVouchers.exchangeAndClaims || []) {
-        sheet.addRow([v.type, formatCurrencyCell(v.amount), '', '', v.from || '-', '']);
+        sheet.addRow([
+          v.type,
+          formatCurrencyCell(v.amount),
+          '',
+          '',
+          v.from || '-',
+          '',
+        ]);
       }
       for (const v of data.issuedVouchers.creditVouchers || []) {
-        sheet.addRow([v.type, formatCurrencyCell(v.amount), '', '', v.from || '-', v.to || '-']);
+        sheet.addRow([
+          v.type,
+          formatCurrencyCell(v.amount),
+          '',
+          '',
+          v.from || '-',
+          v.to || '-',
+        ]);
       }
       for (const v of data.issuedVouchers.giftVouchers || []) {
-        sheet.addRow([v.type, formatCurrencyCell(v.amount), '', '', v.from || '-', v.to || '-']);
+        sheet.addRow([
+          v.type,
+          formatCurrencyCell(v.amount),
+          '',
+          '',
+          v.from || '-',
+          v.to || '-',
+        ]);
       }
       if (data.issuedVouchers.totalGiftVoucherDiscount > 0) {
-        sheet.addRow(['Gift Vouchers Discount', formatCurrencyCell(data.issuedVouchers.totalGiftVoucherDiscount)]);
+        sheet.addRow([
+          'Gift Vouchers Discount',
+          formatCurrencyCell(data.issuedVouchers.totalGiftVoucherDiscount),
+        ]);
       }
       for (const v of data.issuedVouchers.refundVouchers || []) {
-        sheet.addRow([v.type, formatCurrencyCell(v.amount), '', '', v.from || '-', '']);
+        sheet.addRow([
+          v.type,
+          formatCurrencyCell(v.amount),
+          '',
+          '',
+          v.from || '-',
+          '',
+        ]);
       }
 
-      const issuedSubRow = sheet.addRow(['TOTAL ISSUED', formatCurrencyCell(totalIssuedSubtotal)]);
+      const issuedSubRow = sheet.addRow([
+        'TOTAL ISSUED',
+        formatCurrencyCell(totalIssuedSubtotal),
+      ]);
       issuedSubRow.font = { bold: true };
       issuedSubRow.eachCell((cell) => (cell.border = BORDER_THIN));
       sheet.addRow([]);
@@ -241,7 +314,10 @@ export class ReconciliationExportProcessor {
         sheet.addRow([f.type, formatCurrencyCell(f.amount)]);
         fbrSubtotal += f.amount;
       }
-      const fbrSubRow = sheet.addRow(['FBR SUBTOTAL', formatCurrencyCell(fbrSubtotal)]);
+      const fbrSubRow = sheet.addRow([
+        'FBR SUBTOTAL',
+        formatCurrencyCell(fbrSubtotal),
+      ]);
       fbrSubRow.font = { bold: true };
       fbrSubRow.eachCell((cell) => (cell.border = BORDER_THIN));
       sheet.addRow([]);
@@ -249,8 +325,14 @@ export class ReconciliationExportProcessor {
       // 7. Financials
       addSectionHeader('FINANCIALS');
       sheet.addRow(['Sale', formatCurrencyCell(data.financials.sale)]);
-      sheet.addRow(['Sales Return', formatCurrencyCell(data.financials.salesReturn)]);
-      const netSalesRow = sheet.addRow(['NET SALES', formatCurrencyCell(data.financials.netSales)]);
+      sheet.addRow([
+        'Sales Return',
+        formatCurrencyCell(data.financials.salesReturn),
+      ]);
+      const netSalesRow = sheet.addRow([
+        'NET SALES',
+        formatCurrencyCell(data.financials.netSales),
+      ]);
       netSalesRow.font = { bold: true };
       netSalesRow.eachCell((cell) => {
         cell.border = BORDER_THIN;
@@ -265,17 +347,38 @@ export class ReconciliationExportProcessor {
       // 8. Flow summaries
       addSectionHeader('FLOW SUMMARIES');
       sheet.addRow(['CASH FLOW DETAILS']);
-      sheet.addRow(['  Net Cash Sales', formatCurrencyCell(data.cashBreakdown.sale)]);
-      sheet.addRow(['  Cash Gift Vouchers', formatCurrencyCell(data.cashBreakdown.giftVouchers)]);
-      sheet.addRow(['  Refund Vouchers', formatCurrencyCell(-data.cashBreakdown.refundVouchers)]);
-      const totalCashRow = sheet.addRow(['  TOTAL CASH FLOW', formatCurrencyCell(data.cashBreakdown.total)]);
+      sheet.addRow([
+        '  Net Cash Sales',
+        formatCurrencyCell(data.cashBreakdown.sale),
+      ]);
+      sheet.addRow([
+        '  Cash Gift Vouchers',
+        formatCurrencyCell(data.cashBreakdown.giftVouchers),
+      ]);
+      sheet.addRow([
+        '  Refund Vouchers',
+        formatCurrencyCell(-data.cashBreakdown.refundVouchers),
+      ]);
+      const totalCashRow = sheet.addRow([
+        '  TOTAL CASH FLOW',
+        formatCurrencyCell(data.cashBreakdown.total),
+      ]);
       totalCashRow.font = { bold: true };
 
       sheet.addRow([]);
       sheet.addRow(['CARD SALES DETAILS']);
-      sheet.addRow(['  Net Card Sales', formatCurrencyCell(data.cardBreakdown.sale)]);
-      sheet.addRow(['  Card Gift Vouchers', formatCurrencyCell(data.cardBreakdown.giftVouchers)]);
-      const totalCardRow = sheet.addRow(['  TOTAL CARD PAYMENTS', formatCurrencyCell(data.cardBreakdown.total)]);
+      sheet.addRow([
+        '  Net Card Sales',
+        formatCurrencyCell(data.cardBreakdown.sale),
+      ]);
+      sheet.addRow([
+        '  Card Gift Vouchers',
+        formatCurrencyCell(data.cardBreakdown.giftVouchers),
+      ]);
+      const totalCardRow = sheet.addRow([
+        '  TOTAL CARD PAYMENTS',
+        formatCurrencyCell(data.cardBreakdown.total),
+      ]);
       totalCardRow.font = { bold: true };
 
       sheet.eachRow((row) => {
@@ -293,7 +396,9 @@ export class ReconciliationExportProcessor {
       await workbook.xlsx.writeFile(filePath);
       await job.progress(100);
 
-      this.logger.log(`[ReconciliationExport ${jobId}] Finished Excel export successfully`);
+      this.logger.log(
+        `[ReconciliationExport ${jobId}] Finished Excel export successfully`,
+      );
 
       // Notification
       await this.notificationsService.create({
@@ -308,9 +413,11 @@ export class ReconciliationExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[ReconciliationExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[ReconciliationExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.notificationsService.create({

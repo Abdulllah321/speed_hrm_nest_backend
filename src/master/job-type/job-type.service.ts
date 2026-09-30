@@ -4,7 +4,6 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 
-
 @Injectable()
 export class JobTypeService {
   constructor(
@@ -15,15 +14,15 @@ export class JobTypeService {
   async list() {
     const items = await this.prisma.jobType.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.jobType.findFirst({ where: { id,
-        isDeleted: false
-    } });
+    const item = await this.prisma.jobType.findFirst({
+      where: { id, isDeleted: false },
+    });
     if (!item) return { status: false, message: 'Job type not found' };
     return { status: true, data: item };
   }
@@ -146,9 +145,7 @@ export class JobTypeService {
   ) {
     try {
       const existing = await this.prisma.jobType.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const updated = await this.prisma.jobType.update({
         where: { id },
@@ -263,13 +260,12 @@ export class JobTypeService {
   ) {
     try {
       const existing = await this.prisma.jobType.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const removed = await this.prisma.jobType.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const removed = await this.prisma.jobType.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: removed,
@@ -323,8 +319,8 @@ export class JobTypeService {
     try {
       const removed = await this.prisma.jobType.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: ids,

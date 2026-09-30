@@ -34,7 +34,7 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(
     private readonly prismaMaster: PrismaMasterService,
     private readonly encryptionService: EncryptionService,
-  ) { }
+  ) {}
 
   async use(req: TenantRequest, res: ServerResponse, next: () => void) {
     try {
@@ -42,11 +42,14 @@ export class TenantMiddleware implements NestMiddleware {
       const companyIdentifier = this.extractCompanyIdentifier(req);
 
       // If no identifiers provided and it's not an integration endpoint, continue without tenant context
-      if (!tenantIdentifier && !companyIdentifier && !req.url.includes('/api/inventory/stocks-by-center')) {
+      if (
+        !tenantIdentifier &&
+        !companyIdentifier &&
+        !req.url.includes('/api/inventory/stocks-by-center')
+      ) {
         this.logger.debug('No tenant/company context found in request');
         return next();
       }
-
 
       // Check cache first
       const cacheKey = `${tenantIdentifier || 'none'}-${companyIdentifier || 'none'}`;
@@ -115,7 +118,9 @@ export class TenantMiddleware implements NestMiddleware {
       // This prevents the plain password from being stored in the database
       if (company.dbPassword) {
         try {
-          const plainPassword = this.encryptionService.decrypt(company.dbPassword);
+          const plainPassword = this.encryptionService.decrypt(
+            company.dbPassword,
+          );
           const encodedPassword = encodeURIComponent(String(plainPassword));
 
           if (company.dbUser && company.dbHost && company.dbName) {
@@ -128,10 +133,14 @@ export class TenantMiddleware implements NestMiddleware {
             dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public&connection_limit=3&pool_timeout=15`;
             // Mask password in debug log
             const maskedUrl = `postgresql://${encodedUser}:****@${encodedHost}:${port}/${encodedDbName}`;
-            this.logger.debug(`Constructed DB URL for company ${company.id}: ${maskedUrl}`);
+            this.logger.debug(
+              `Constructed DB URL for company ${company.id}: ${maskedUrl}`,
+            );
           }
         } catch (err: any) {
-          this.logger.error(`Failed to decrypt database password for company ${company.id}: ${err.message}`);
+          this.logger.error(
+            `Failed to decrypt database password for company ${company.id}: ${err.message}`,
+          );
           res.statusCode = 500;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ message: 'Database configuration error' }));
@@ -238,13 +247,16 @@ export class TenantMiddleware implements NestMiddleware {
       orderBy: { createdAt: 'asc' },
     });
 
-    if (defaultCompany && defaultCompany.tenant && defaultCompany.tenant.isActive) {
+    if (
+      defaultCompany &&
+      defaultCompany.tenant &&
+      defaultCompany.tenant.isActive
+    ) {
       return defaultCompany as CompanyWithTenant;
     }
 
     return null;
   }
-
 
   /**
    * Attach tenant context to request object

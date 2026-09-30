@@ -24,7 +24,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 @Controller('api/finance/chart-of-accounts')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ChartOfAccountController {
-  constructor(private readonly chartOfAccountService: ChartOfAccountService,) {}
+  constructor(private readonly chartOfAccountService: ChartOfAccountService) {}
 
   @Post()
   @ApiBearerAuth()
@@ -77,7 +77,9 @@ export class ChartOfAccountController {
   @Get(':id/children')
   @ApiBearerAuth()
   @Permissions('erp.finance.chart-of-account.read')
-  @ApiOperation({ summary: 'Get direct child accounts (for tag-account selection)' })
+  @ApiOperation({
+    summary: 'Get direct child accounts (for tag-account selection)',
+  })
   findChildAccounts(@Param('id') id: string) {
     return this.chartOfAccountService.findChildAccounts(id);
   }

@@ -30,7 +30,7 @@ export class SilhouetteService {
 
     const silhouettes = await this.prisma.silhouette.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -60,9 +60,7 @@ export class SilhouetteService {
 
   async getSilhouetteById(id: string) {
     const silhouette = await this.prisma.silhouette.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!silhouette) return { status: false, message: 'Silhouette not found' };
 
@@ -92,14 +90,14 @@ export class SilhouetteService {
       runInBackground(
         'Created silhouettes (${silhouettes.count})',
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        description: `Created silhouettes (${silhouettes.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      }),
+          userId: createdById,
+          action: 'create',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          description: `Created silhouettes (${silhouettes.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
         this.cacheManager.del('silhouettes_all'),
       );
       return {
@@ -119,9 +117,7 @@ export class SilhouetteService {
   ) {
     try {
       const existing = await this.prisma.silhouette.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const silhouette = await this.prisma.silhouette.update({
         where: { id },
@@ -131,18 +127,18 @@ export class SilhouetteService {
       runInBackground(
         'Updated silhouette ${silhouette.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        entityId: id,
-        description: `Updated silhouette ${silhouette.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          entityId: id,
+          description: `Updated silhouette ${silhouette.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('silhouettes_all'),
       );
       return {
@@ -174,16 +170,16 @@ export class SilhouetteService {
       runInBackground(
         'Bulk updated silhouettes (${updated.length})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        description: `Bulk updated silhouettes (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          description: `Bulk updated silhouettes (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('silhouettes_all'),
       );
       return {
@@ -203,21 +199,21 @@ export class SilhouetteService {
     try {
       const result = await this.prisma.silhouette.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk deleted silhouettes (${result.count})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        description: `Bulk deleted silhouettes (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          description: `Bulk deleted silhouettes (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('silhouettes_all'),
       );
       return {
@@ -236,29 +232,27 @@ export class SilhouetteService {
   ) {
     try {
       const existing = await this.prisma.silhouette.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const result = await this.prisma.silhouette.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Deleted silhouette ${existing?.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'silhouettes',
-        entity: 'Silhouette',
-        entityId: id,
-        description: `Deleted silhouette ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'silhouettes',
+          entity: 'Silhouette',
+          entityId: id,
+          description: `Deleted silhouette ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('silhouettes_all'),
       );
       return {

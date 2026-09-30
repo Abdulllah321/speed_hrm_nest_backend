@@ -1,4 +1,13 @@
-import { IsString, IsDateString, IsOptional, IsArray, ValidateNested, IsNumber, IsUUID, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsDateString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+  IsUUID,
+  IsIn,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class CreatePurchaseInvoiceItemDto {
@@ -7,12 +16,12 @@ export class CreatePurchaseInvoiceItemDto {
 
   @IsOptional()
   @IsUUID()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   grnItemId?: string;
 
   @IsOptional()
   @IsUUID()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   landedCostItemId?: string;
 
   @IsOptional()
@@ -51,7 +60,7 @@ export class CreatePurchaseInvoiceDto {
 
   @IsOptional()
   @IsDateString()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   dueDate?: string;
 
   @IsUUID()
@@ -59,17 +68,17 @@ export class CreatePurchaseInvoiceDto {
 
   @IsOptional()
   @IsUUID()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   grnId?: string;
 
   @IsOptional()
   @IsUUID()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   landedCostId?: string;
 
   @IsOptional()
   @IsUUID()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   warehouseId?: string;
 
   @IsOptional()
@@ -97,7 +106,7 @@ export class CreatePurchaseInvoiceDto {
 
   @IsOptional()
   @IsDateString()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   staxEInvoiceDate?: string;
 
   @IsOptional()

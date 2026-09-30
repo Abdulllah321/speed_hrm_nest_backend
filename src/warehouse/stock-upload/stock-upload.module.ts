@@ -11,19 +11,19 @@ import { DatabaseModule } from '../../database/database.module';
 import { UploadModule } from '../../upload/upload.module';
 
 @Module({
-    imports: [
-        DatabaseModule,
-        UploadModule,
-        BullModule.registerQueue({ name: 'stock-upload' }),
-    ],
-    controllers: [StockBulkUploadController],
-    providers: [
-        StockBulkUploadService,
-        StockUploadProcessor,
-        StockUploadCsvParserService,
-        StockUploadValidatorService,
-        UploadEventsService,
-    ],
-    exports: [StockBulkUploadService],
+  imports: [
+    DatabaseModule,
+    UploadModule,
+    BullModule.registerQueue({ name: 'stock-upload' }),
+  ],
+  controllers: [StockBulkUploadController],
+  providers: [
+    StockBulkUploadService,
+    StockUploadProcessor,
+    StockUploadCsvParserService,
+    StockUploadValidatorService,
+    UploadEventsService,
+  ],
+  exports: [StockBulkUploadService],
 })
-export class StockUploadModule { }
+export class StockUploadModule {}

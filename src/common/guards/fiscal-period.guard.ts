@@ -1,4 +1,10 @@
-import { Injectable, CanActivate, ExecutionContext, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 
 @Injectable()
@@ -11,7 +17,12 @@ export class FiscalPeriodGuard implements CanActivate {
     const query = request.query || {};
 
     // Extract target date from payload (postingDate, createdAt, date, asOfDate, etc.)
-    const rawDate = body.postingDate || body.date || body.createdAt || query.date || query.postingDate;
+    const rawDate =
+      body.postingDate ||
+      body.date ||
+      body.createdAt ||
+      query.date ||
+      query.postingDate;
     if (!rawDate) {
       return true; // No explicit date parameter provided, request is valid
     }
@@ -22,7 +33,12 @@ export class FiscalPeriodGuard implements CanActivate {
     }
 
     try {
-      const prisma: PrismaService = request.prisma || PrismaService.getTenantClient(request.user?.tenantId, request.user?.tenantDbUrl);
+      const prisma: PrismaService =
+        request.prisma ||
+        PrismaService.getTenantClient(
+          request.user?.tenantId,
+          request.user?.tenantDbUrl,
+        );
 
       // Check if targetDate falls within any closed FiscalPeriod
       const closedPeriod = await prisma.fiscalPeriod.findFirst({
@@ -34,7 +50,9 @@ export class FiscalPeriodGuard implements CanActivate {
       });
 
       if (closedPeriod) {
-        this.logger.warn(`Blocked posting into closed fiscal period "${closedPeriod.name}" for date ${targetDate.toISOString()}`);
+        this.logger.warn(
+          `Blocked posting into closed fiscal period "${closedPeriod.name}" for date ${targetDate.toISOString()}`,
+        );
         throw new BadRequestException(
           `Cannot create or edit transactions for date ${targetDate.toISOString().split('T')[0]}. Fiscal Period "${closedPeriod.name}" is closed and locked.`,
         );

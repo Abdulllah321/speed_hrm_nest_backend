@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import * as fs from 'fs';
@@ -39,7 +44,8 @@ export class AvailableStockSummaryExportService {
   private readonly cancelledPreviewJobIds = new Set<string>();
 
   constructor(
-    @InjectQueue('available-stock-summary-export') private readonly exportQueue: Queue,
+    @InjectQueue('available-stock-summary-export')
+    private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
     private readonly fiscalClosingService: FiscalYearClosingService,
@@ -54,7 +60,11 @@ export class AvailableStockSummaryExportService {
   }) {
     const jobId = uuidv4();
     const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
-    const relativePath = path.join('uploads', 'exports', `export-${jobId}.${ext}`);
+    const relativePath = path.join(
+      'uploads',
+      'exports',
+      `export-${jobId}.${ext}`,
+    );
     const fullPath = path.join(process.cwd(), relativePath);
 
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -65,7 +75,9 @@ export class AvailableStockSummaryExportService {
       data: {
         id: jobId,
         userId: opts.userId,
-        fileName: opts.fileName || `available-stock-summary-${new Date().toISOString().slice(0, 10)}.${ext}`,
+        fileName:
+          opts.fileName ||
+          `available-stock-summary-${new Date().toISOString().slice(0, 10)}.${ext}`,
         filePath: relativePath,
         moduleName: 'AVAILABLE_STOCK_SUMMARY_REPORT',
         status: 'PENDING',
@@ -74,11 +86,15 @@ export class AvailableStockSummaryExportService {
 
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : this.prisma;
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : this.prisma;
 
-    const mimeType = opts.format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const mimeType =
+      opts.format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
     await this.exportHistoryService.completeAndUploadExport(
       prisma,
@@ -129,8 +145,11 @@ export class AvailableStockSummaryExportService {
             wJob.name === 'generate-report-preview' &&
             wJob.data?.userId === opts.userId
           ) {
-            this.logger.log(`Pruning superseded waiting available stock preview job ${wJob.id} for user ${opts.userId}`);
-            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
+            this.logger.log(
+              `Pruning superseded waiting available stock preview job ${wJob.id} for user ${opts.userId}`,
+            );
+            if (wJob.data?.jobId)
+              this.cancelledPreviewJobIds.add(wJob.data.jobId);
             await wJob.remove();
           }
         }
@@ -141,12 +160,16 @@ export class AvailableStockSummaryExportService {
             aJob.data?.userId === opts.userId
           ) {
             const activeJobId = aJob.data?.jobId;
-            this.logger.log(`Cancelling active running available stock preview job ${activeJobId} for user ${opts.userId}`);
+            this.logger.log(
+              `Cancelling active running available stock preview job ${activeJobId} for user ${opts.userId}`,
+            );
             if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Could not prune available stock preview jobs for user ${opts.userId}: ${err.message}`);
+        this.logger.warn(
+          `Could not prune available stock preview jobs for user ${opts.userId}: ${err.message}`,
+        );
       }
     }
 
@@ -201,7 +224,13 @@ export class AvailableStockSummaryExportService {
   }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
-      return { state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -245,35 +274,40 @@ export class AvailableStockSummaryExportService {
     fs.mkdirSync(previewDir, { recursive: true });
 
     // Clean flat items list to strip heavy Prisma objects and save clean plain key-values
-    const cleanFlatItemsList = (data?.flatItemsList || []).map((entry: any) => ({
-      locationId: entry.locationId ?? null,
-      warehouseId: entry.warehouseId ?? null,
-      locationName: entry.locationName || 'Unknown Location',
-      locationType: entry.locationType || (entry.locationId ? 'OUTLET' : 'WAREHOUSE'),
-      itemId: entry.itemId ?? entry.item?.id ?? '',
-      brand: entry.brand ?? entry.item?.brand?.name ?? 'No Brand',
-      division: entry.division ?? entry.item?.division?.name ?? 'No Division',
-      category: entry.category ?? entry.item?.category?.name ?? 'No Category',
-      gender: entry.gender ?? entry.item?.gender?.name ?? 'No Gender',
-      silhouette: entry.silhouette ?? entry.item?.silhouette?.name ?? 'No Silhouette',
-      sku: entry.sku ?? entry.item?.sku ?? '',
-      articleName: entry.articleName ?? entry.item?.description ?? '',
-      color: entry.color ?? entry.item?.color?.name ?? 'Default',
-      size: entry.size ?? entry.item?.size?.name ?? 'Default',
-      barCode: entry.barCode ?? entry.item?.barCode ?? '',
-      bf: entry.bf ?? 0,
-      inbound: entry.inbound ?? 0,
-      outbound: entry.outbound ?? 0,
-      quantity: entry.quantity ?? entry.metrics?.quantity ?? 0,
-      transit: entry.transit ?? entry.metrics?.transit ?? 0,
-      reserved: entry.reserved ?? entry.metrics?.reserved ?? 0,
-      total: entry.total ?? entry.metrics?.total ?? 0,
-      unitPrice: entry.unitPrice ?? entry.metrics?.unitPrice ?? 0,
-      value: entry.value ?? entry.metrics?.value ?? 0,
-      unitCost: entry.unitCost ?? entry.metrics?.unitCost ?? 0,
-      costingValue: entry.costingValue ?? entry.metrics?.costingValue ?? 0,
-      pendingInvoice: entry.pendingInvoice ?? entry.metrics?.pendingInvoice ?? 0,
-    }));
+    const cleanFlatItemsList = (data?.flatItemsList || []).map(
+      (entry: any) => ({
+        locationId: entry.locationId ?? null,
+        warehouseId: entry.warehouseId ?? null,
+        locationName: entry.locationName || 'Unknown Location',
+        locationType:
+          entry.locationType || (entry.locationId ? 'OUTLET' : 'WAREHOUSE'),
+        itemId: entry.itemId ?? entry.item?.id ?? '',
+        brand: entry.brand ?? entry.item?.brand?.name ?? 'No Brand',
+        division: entry.division ?? entry.item?.division?.name ?? 'No Division',
+        category: entry.category ?? entry.item?.category?.name ?? 'No Category',
+        gender: entry.gender ?? entry.item?.gender?.name ?? 'No Gender',
+        silhouette:
+          entry.silhouette ?? entry.item?.silhouette?.name ?? 'No Silhouette',
+        sku: entry.sku ?? entry.item?.sku ?? '',
+        articleName: entry.articleName ?? entry.item?.description ?? '',
+        color: entry.color ?? entry.item?.color?.name ?? 'Default',
+        size: entry.size ?? entry.item?.size?.name ?? 'Default',
+        barCode: entry.barCode ?? entry.item?.barCode ?? '',
+        bf: entry.bf ?? 0,
+        inbound: entry.inbound ?? 0,
+        outbound: entry.outbound ?? 0,
+        quantity: entry.quantity ?? entry.metrics?.quantity ?? 0,
+        transit: entry.transit ?? entry.metrics?.transit ?? 0,
+        reserved: entry.reserved ?? entry.metrics?.reserved ?? 0,
+        total: entry.total ?? entry.metrics?.total ?? 0,
+        unitPrice: entry.unitPrice ?? entry.metrics?.unitPrice ?? 0,
+        value: entry.value ?? entry.metrics?.value ?? 0,
+        unitCost: entry.unitCost ?? entry.metrics?.unitCost ?? 0,
+        costingValue: entry.costingValue ?? entry.metrics?.costingValue ?? 0,
+        pendingInvoice:
+          entry.pendingInvoice ?? entry.metrics?.pendingInvoice ?? 0,
+      }),
+    );
 
     const payloadToSerialize = {
       root: data.root || [],
@@ -287,15 +321,27 @@ export class AvailableStockSummaryExportService {
     fs.writeFileSync(filePath, gzipped);
 
     // Auto cleanup temp file after 1 hour
-    setTimeout(() => {
-      if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
-      }
-    }, 60 * 60 * 1000);
+    setTimeout(
+      () => {
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      },
+      60 * 60 * 1000,
+    );
   }
 
   getReportPreviewResult(jobId: string): any {
-    const filePath = path.join(process.cwd(), 'uploads', 'previews', `preview-${jobId}.json.gz`);
+    const filePath = path.join(
+      process.cwd(),
+      'uploads',
+      'previews',
+      `preview-${jobId}.json.gz`,
+    );
     if (!fs.existsSync(filePath)) {
       return null;
     }
@@ -304,7 +350,9 @@ export class AvailableStockSummaryExportService {
     return JSON.parse(jsonStr);
   }
 
-  async queueExport(opts: QueueAvailableStockSummaryExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueAvailableStockSummaryExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -355,15 +403,20 @@ export class AvailableStockSummaryExportService {
       },
     );
 
-    this.logger.log(`[AvailableStockSummaryExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, type: ${opts.exportType || 'hierarchical'}, mode: ${opts.reportType || 'merged'}, tenant: ${tenantId})`);
+    this.logger.log(
+      `[AvailableStockSummaryExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format}, type: ${opts.exportType || 'hierarchical'}, mode: ${opts.reportType || 'merged'}, tenant: ${tenantId})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -374,7 +427,9 @@ export class AvailableStockSummaryExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     // Increment download count in ExportHistory
@@ -386,7 +441,9 @@ export class AvailableStockSummaryExportService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export history download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -395,18 +452,27 @@ export class AvailableStockSummaryExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
     let filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      const publicFallback = path.join(process.cwd(), 'public', record.filePath);
+      const publicFallback = path.join(
+        process.cwd(),
+        'public',
+        record.filePath,
+      );
       if (fs.existsSync(publicFallback)) {
         filePath = publicFallback;
       } else {
-        throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+        throw new NotFoundException(
+          'Export file not found. It may have expired or the job is still running.',
+        );
       }
     }
 
@@ -414,12 +480,22 @@ export class AvailableStockSummaryExportService {
 
     const stream = fs.createReadStream(filePath);
     stream.on('error', (err) => {
-      this.logger.error(`[AvailableStockSummaryExport] Stream error: ${err.message}`);
+      this.logger.error(
+        `[AvailableStockSummaryExport] Stream error: ${err.message}`,
+      );
     });
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
@@ -491,16 +567,40 @@ export class AvailableStockSummaryExportService {
       onProgress,
     } = opts;
 
-    const checkCancelled = () => isAborted?.() || (previewJobId && this.isJobCancelled(previewJobId));
+    const checkCancelled = () =>
+      isAborted?.() || (previewJobId && this.isJobCancelled(previewJobId));
 
     if (checkCancelled()) {
-      this.logger.log(`[ReportPreview ${previewJobId}] Computation aborted early as job was cancelled by user.`);
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+      this.logger.log(
+        `[ReportPreview ${previewJobId}] Computation aborted early as job was cancelled by user.`,
+      );
+      return {
+        root: [],
+        grandTotals: this.createEmptyTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+        flatItemsList: [],
+      };
     }
 
-    const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const warehouseWhere = whIds.length > 1 ? { in: whIds } : (whIds.length === 1 ? whIds[0] : undefined);
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const whIds = warehouseId
+      ? warehouseId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const warehouseWhere =
+      whIds.length > 1
+        ? { in: whIds }
+        : whIds.length === 1
+          ? whIds[0]
+          : undefined;
 
     const isSeparate = reportType === 'separate';
 
@@ -534,18 +634,29 @@ export class AvailableStockSummaryExportService {
       return new Date(fyYear, 6, 1, 0, 0, 0, 0);
     };
 
-    const startDate = startStr ? new Date(startStr) : getDefaultFiscalYearStart(now);
+    const startDate = startStr
+      ? new Date(startStr)
+      : getDefaultFiscalYearStart(now);
     const endDate = endStr ? new Date(endStr) : new Date(now);
 
     await onProgress?.(15, 'Loading outlet and warehouse location metadata...');
 
     // Location & Warehouse names lookup for all locations
     const [allLocations, allWarehouses]: [
-      Array<{ id: string; name: string; code: string; warehouseId?: string | null }>,
-      Array<{ id: string; name: string; code: string }>
+      Array<{
+        id: string;
+        name: string;
+        code: string;
+        warehouseId?: string | null;
+      }>,
+      Array<{ id: string; name: string; code: string }>,
     ] = await Promise.all([
-      (prisma as any).location.findMany({ select: { id: true, name: true, code: true, warehouseId: true } }),
-      (prisma as any).warehouse.findMany({ select: { id: true, name: true, code: true } }),
+      (prisma as any).location.findMany({
+        select: { id: true, name: true, code: true, warehouseId: true },
+      }),
+      (prisma as any).warehouse.findMany({
+        select: { id: true, name: true, code: true },
+      }),
     ]);
 
     // Map any passed warehouseId to its dedicated stock-holding location (e.g. C40001 -> WH-C40001)
@@ -553,10 +664,16 @@ export class AvailableStockSummaryExportService {
     const targetWarehouseLocationIds: string[] = [];
     if (whIds.length > 0) {
       for (const whId of whIds) {
-        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whObj = allWarehouses.find(
+          (w) => w.id === whId || w.code === whId,
+        );
         const whCode = whObj?.code || whId;
         const matchingLocs = allLocations.filter(
-          l => l.warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+          (l) =>
+            l.warehouseId === whId ||
+            l.id === whId ||
+            l.code === `WH-${whCode}` ||
+            l.code === whCode,
         );
         for (const ml of matchingLocs) {
           targetLocationIds.push(ml.id);
@@ -566,9 +683,12 @@ export class AvailableStockSummaryExportService {
     }
 
     const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
-    const locationWhere = uniqueTargetLocationIds.length > 1 
-      ? { in: uniqueTargetLocationIds } 
-      : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
+    const locationWhere =
+      uniqueTargetLocationIds.length > 1
+        ? { in: uniqueTargetLocationIds }
+        : uniqueTargetLocationIds.length === 1
+          ? uniqueTargetLocationIds[0]
+          : undefined;
 
     const orConditions: any[] = [];
     if (uniqueTargetLocationIds.length > 0) {
@@ -577,22 +697,35 @@ export class AvailableStockSummaryExportService {
     if (whIds.length > 0) {
       orConditions.push({ warehouseId: { in: whIds } });
     }
-    
-    const locationOrWarehouseWhere = orConditions.length > 0 ? { OR: orConditions } : {};
+
+    const locationOrWarehouseWhere =
+      orConditions.length > 0 ? { OR: orConditions } : {};
 
     const locationNameMap = new Map<string, string>();
     for (const l of allLocations) {
-      if (l.code?.startsWith('WH-') || l.code?.startsWith('C4') || l.code?.startsWith('C3') || l.code?.startsWith('C2') || l.code?.includes('TSDMC')) {
+      if (
+        l.code?.startsWith('WH-') ||
+        l.code?.startsWith('C4') ||
+        l.code?.startsWith('C3') ||
+        l.code?.startsWith('C2') ||
+        l.code?.includes('TSDMC')
+      ) {
         locationNameMap.set(`loc:${l.id}`, `${l.name} (Warehouse)`);
       } else {
         locationNameMap.set(`loc:${l.id}`, `${l.name} (Outlet)`);
       }
     }
-    for (const w of allWarehouses) locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
+    for (const w of allWarehouses)
+      locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
 
     // Resolve nearest Fiscal Opening Snapshot date
-    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, startDate);
-    const queryStartDate = snapshotDate && snapshotDate < startDate ? snapshotDate : undefined;
+    const snapshotDate =
+      await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(
+        prisma,
+        startDate,
+      );
+    const queryStartDate =
+      snapshotDate && snapshotDate < startDate ? snapshotDate : undefined;
 
     await onProgress?.(25, 'Discovering inventory items & stock ledgers...');
 
@@ -607,7 +740,9 @@ export class AvailableStockSummaryExportService {
       prisma.stockLedger.findMany({
         where: {
           ...locationOrWarehouseWhere,
-          createdAt: queryStartDate ? { gte: queryStartDate, lte: endDate } : { lte: endDate },
+          createdAt: queryStartDate
+            ? { gte: queryStartDate, lte: endDate }
+            : { lte: endDate },
         },
         select: { itemId: true },
         distinct: ['itemId'],
@@ -615,43 +750,73 @@ export class AvailableStockSummaryExportService {
     ]);
 
     if (isAborted?.()) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+      return {
+        root: [],
+        grandTotals: this.createEmptyTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+        flatItemsList: [],
+      };
     }
 
-    let uniqueItemIds = [...new Set([
-      ...inventoryItems.map(i => i.itemId),
-      ...ledgerItems.map(l => l.itemId),
-    ])];
+    let uniqueItemIds = [
+      ...new Set([
+        ...inventoryItems.map((i) => i.itemId),
+        ...ledgerItems.map((l) => l.itemId),
+      ]),
+    ];
 
     if (uniqueItemIds.length === 0) {
       const allItemsFallback = await prisma.item.findMany({
         select: { id: true },
         take: 2000,
       });
-      uniqueItemIds = allItemsFallback.map(i => i.id);
+      uniqueItemIds = allItemsFallback.map((i) => i.id);
     }
 
     if (uniqueItemIds.length === 0) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+      return {
+        root: [],
+        grandTotals: this.createEmptyTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+        flatItemsList: [],
+      };
     }
 
-    await onProgress?.(40, 'Fetching product catalog, brands, categories & size details...');
+    await onProgress?.(
+      40,
+      'Fetching product catalog, brands, categories & size details...',
+    );
 
-    const groupByCols: ('itemId' | 'locationId' | 'warehouseId' | 'referenceType')[] = ['itemId', 'locationId', 'warehouseId', 'referenceType'];
+    const groupByCols: (
+      | 'itemId'
+      | 'locationId'
+      | 'warehouseId'
+      | 'referenceType'
+    )[] = ['itemId', 'locationId', 'warehouseId', 'referenceType'];
 
     const toLocOrWhFilters: any[] = [];
     if (locationWhere) toLocOrWhFilters.push({ toLocationId: locationWhere });
     if (targetWarehouseLocationIds.length > 0) {
-      toLocOrWhFilters.push({ toLocationId: { in: targetWarehouseLocationIds } });
+      toLocOrWhFilters.push({
+        toLocationId: { in: targetWarehouseLocationIds },
+      });
     } else if (warehouseWhere) {
       toLocOrWhFilters.push({ toWarehouseId: warehouseWhere });
     }
 
-    const toLocOrWhWhere = toLocOrWhFilters.length > 1
-      ? { OR: toLocOrWhFilters }
-      : (toLocOrWhFilters.length === 1 ? toLocOrWhFilters[0] : {});
+    const toLocOrWhWhere =
+      toLocOrWhFilters.length > 1
+        ? { OR: toLocOrWhFilters }
+        : toLocOrWhFilters.length === 1
+          ? toLocOrWhFilters[0]
+          : {};
 
-    await onProgress?.(45, 'Executing relational JOIN aggregations for stock movements, transit & reserves...');
+    await onProgress?.(
+      45,
+      'Executing relational JOIN aggregations for stock movements, transit & reserves...',
+    );
 
     // Single-batch execution of 6 indexed DB queries bounded strictly by active Fiscal Year
     const [
@@ -669,7 +834,9 @@ export class AvailableStockSummaryExportService {
         by: groupByCols,
         where: {
           ...locationOrWarehouseWhere,
-          createdAt: queryStartDate ? { gte: queryStartDate, lt: startDate } : { lt: startDate },
+          createdAt: queryStartDate
+            ? { gte: queryStartDate, lt: startDate }
+            : { lt: startDate },
         },
         _sum: { qty: true },
       }),
@@ -714,8 +881,25 @@ export class AvailableStockSummaryExportService {
         where: {
           transferRequest: {
             ...toLocOrWhWhere,
-            status: { in: ['PENDING', 'PENDING_CHECKER', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
-            transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+            status: {
+              in: [
+                'PENDING',
+                'PENDING_CHECKER',
+                'SOURCE_APPROVED',
+                'DISPATCHED',
+                'SHIPPED',
+                'IN_TRANSIT',
+                'PARTIALLY_RECEIVED',
+              ],
+            },
+            transferType: {
+              in: [
+                'WAREHOUSE_TO_OUTLET',
+                'OUTLET_TO_OUTLET',
+                'OUTLET_TO_WAREHOUSE',
+                'WAREHOUSE_TO_WAREHOUSE',
+              ],
+            },
           },
         },
         select: {
@@ -731,10 +915,7 @@ export class AvailableStockSummaryExportService {
         by: ['itemId', 'warehouseId'],
         where: {
           ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gte: new Date() } },
-          ],
+          OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
         },
         _sum: { quantity: true },
       }),
@@ -794,18 +975,31 @@ export class AvailableStockSummaryExportService {
     ]);
 
     if (isAborted?.()) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+      return {
+        root: [],
+        grandTotals: this.createEmptyTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+        flatItemsList: [],
+      };
     }
 
     // Collect active item IDs from all aggregated result sets
     const activeItemIdsSet = new Set<string>();
-    for (const r of bfGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
-    for (const r of inRangeOpeningResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
-    for (const r of ledgerEntriesResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
-    for (const r of transitItemsResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
-    for (const r of reserveGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
-    for (const r of pendingInvoiceGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
-    for (const r of salesOrderReserveResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of bfGroupResults)
+      if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of inRangeOpeningResults)
+      if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of ledgerEntriesResults)
+      if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of transitItemsResults)
+      if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of reserveGroupResults)
+      if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of pendingInvoiceGroupResults)
+      if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of salesOrderReserveResults)
+      if (r?.itemId) activeItemIdsSet.add(r.itemId);
 
     if (activeItemIdsSet.size === 0) {
       const inventoryFallback = await prisma.inventoryItem.findMany({
@@ -813,15 +1007,25 @@ export class AvailableStockSummaryExportService {
         select: { itemId: true },
         take: 2000,
       });
-      for (const inv of inventoryFallback) if (inv?.itemId) activeItemIdsSet.add(inv.itemId);
+      for (const inv of inventoryFallback)
+        if (inv?.itemId) activeItemIdsSet.add(inv.itemId);
     }
 
     const activeItemIds = Array.from(activeItemIdsSet).filter(Boolean);
     if (activeItemIds.length === 0 || isAborted?.()) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+      return {
+        root: [],
+        grandTotals: this.createEmptyTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+        flatItemsList: [],
+      };
     }
 
-    await onProgress?.(65, `Joining product catalog, brands, categories & size details for ${activeItemIds.length} active items...`);
+    await onProgress?.(
+      65,
+      `Joining product catalog, brands, categories & size details for ${activeItemIds.length} active items...`,
+    );
 
     // Single joined query on Item table with Brand, Division, Category, Gender, Silhouette, Size, Color relations
     const CHUNK_SIZE = 1000;
@@ -831,13 +1035,10 @@ export class AvailableStockSummaryExportService {
     }
 
     const itemsNested = await Promise.all(
-      itemChunks.map(chunk =>
+      itemChunks.map((chunk) =>
         prisma.item.findMany({
           where: {
-            OR: [
-              { id: { in: chunk } },
-              { itemId: { in: chunk } },
-            ],
+            OR: [{ id: { in: chunk } }, { itemId: { in: chunk } }],
           },
           include: {
             brand: true,
@@ -848,20 +1049,36 @@ export class AvailableStockSummaryExportService {
             size: true,
             color: true,
           },
-        })
-      )
+        }),
+      ),
     );
 
     const items = itemsNested.flat();
     if (items.length === 0 || isAborted?.()) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+      return {
+        root: [],
+        grandTotals: this.createEmptyTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+        flatItemsList: [],
+      };
     }
 
     if (isAborted?.()) {
-      return { root: [], grandTotals: this.createEmptyTotals(), items: [], itemMetricsMap: new Map(), flatItemsList: [] };
+      return {
+        root: [],
+        grandTotals: this.createEmptyTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+        flatItemsList: [],
+      };
     }
 
-    const getLocOrWhKey = (locId?: string | null, whId?: string | null, ref?: string | null) => {
+    const getLocOrWhKey = (
+      locId?: string | null,
+      whId?: string | null,
+      ref?: string | null,
+    ) => {
       if (!isSeparate) return 'all';
       if (locId) return `loc:${locId}`;
       if (whId) {
@@ -874,21 +1091,29 @@ export class AvailableStockSummaryExportService {
     // Populate BF Map
     const bfMap = new Map<string, number>();
     for (const row of bfGroupResults) {
-      const locKey = getLocOrWhKey(row.locationId, row.warehouseId, (row as any).referenceType);
+      const locKey = getLocOrWhKey(
+        row.locationId,
+        row.warehouseId,
+        (row as any).referenceType,
+      );
       const key = `${locKey}_${row.itemId}`;
       bfMap.set(key, (bfMap.get(key) || 0) + Number(row._sum.qty || 0));
     }
 
     // Add In-Range Openings to BF Map
     for (const row of inRangeOpeningResults) {
-      const locKey = getLocOrWhKey(row.locationId, row.warehouseId, (row as any).referenceType);
+      const locKey = getLocOrWhKey(
+        row.locationId,
+        row.warehouseId,
+        (row as any).referenceType,
+      );
       const key = `${locKey}_${row.itemId}`;
       const currentBf = bfMap.get(key) || 0;
       bfMap.set(key, currentBf + Number(row._sum.qty || 0));
     }
 
     // Populate Setting Map
-    const settingMap = new Map(tenantSettingsResults.map(s => [s.itemId, s]));
+    const settingMap = new Map(tenantSettingsResults.map((s) => [s.itemId, s]));
 
     // Populate Ledger Movements and Cost Map
     const ledgerEntries = ledgerEntriesResults;
@@ -906,7 +1131,11 @@ export class AvailableStockSummaryExportService {
       const qty = Number(row.quantity || 0);
       const tr = row.transferRequest;
       const locKey = isSeparate
-        ? (tr.toLocationId ? `loc:${tr.toLocationId}` : (tr.toWarehouseId ? `wh:${tr.toWarehouseId}` : 'unknown'))
+        ? tr.toLocationId
+          ? `loc:${tr.toLocationId}`
+          : tr.toWarehouseId
+            ? `wh:${tr.toWarehouseId}`
+            : 'unknown'
         : 'all';
       const key = `${locKey}_${row.itemId}`;
       transitMap.set(key, (transitMap.get(key) || 0) + qty);
@@ -917,7 +1146,9 @@ export class AvailableStockSummaryExportService {
     for (const row of reserveGroupResults) {
       const qty = Number(row._sum.quantity || 0);
       const locKey = isSeparate
-        ? (row.warehouseId ? `wh:${row.warehouseId}` : 'all')
+        ? row.warehouseId
+          ? `wh:${row.warehouseId}`
+          : 'all'
         : 'all';
       const key = `${locKey}_${row.itemId}`;
       reserveMap.set(key, (reserveMap.get(key) || 0) + qty);
@@ -943,9 +1174,7 @@ export class AvailableStockSummaryExportService {
 
       if (qty > 0) {
         const whId = row.salesOrder.warehouseId;
-        const locKey = isSeparate
-          ? (whId ? `wh:${whId}` : 'all')
-          : 'all';
+        const locKey = isSeparate ? (whId ? `wh:${whId}` : 'all') : 'all';
         const key = `${locKey}_${row.itemId}`;
         reserveMap.set(key, (reserveMap.get(key) || 0) + qty);
 
@@ -961,39 +1190,54 @@ export class AvailableStockSummaryExportService {
     for (const row of pendingInvoiceGroupResults) {
       const qty = Number(row.deliveredQty || 0);
       const whId = row.deliveryChallan?.warehouseId;
-      const locKey = isSeparate
-        ? (whId ? `wh:${whId}` : 'all')
-        : 'all';
+      const locKey = isSeparate ? (whId ? `wh:${whId}` : 'all') : 'all';
       const key = `${locKey}_${row.itemId}`;
       pendingInvoiceMap.set(key, (pendingInvoiceMap.get(key) || 0) + qty);
 
       if (!isSeparate) {
         const allKey = `all_${row.itemId}`;
-        pendingInvoiceMap.set(allKey, (pendingInvoiceMap.get(allKey) || 0) + qty);
+        pendingInvoiceMap.set(
+          allKey,
+          (pendingInvoiceMap.get(allKey) || 0) + qty,
+        );
       }
     }
 
-    const movementMetricsMap = new Map<string, {
-      fromWarehouse: number;
-      fromOutlet: number;
-      toWarehouse: number;
-      toOutlet: number;
-      exchg: number;
-      refund: number;
-      claim: number;
-      sales: number;
-      adj: number;
-    }>();
+    const movementMetricsMap = new Map<
+      string,
+      {
+        fromWarehouse: number;
+        fromOutlet: number;
+        toWarehouse: number;
+        toOutlet: number;
+        exchg: number;
+        refund: number;
+        claim: number;
+        sales: number;
+        adj: number;
+      }
+    >();
 
     for (const entry of ledgerEntries) {
-      const locKey = getLocOrWhKey(entry.locationId, entry.warehouseId, entry.referenceType);
+      const locKey = getLocOrWhKey(
+        entry.locationId,
+        entry.warehouseId,
+        entry.referenceType,
+      );
       const key = `${locKey}_${entry.itemId}`;
 
       let m = movementMetricsMap.get(key);
       if (!m) {
         m = {
-          fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
-          exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
+          fromWarehouse: 0,
+          fromOutlet: 0,
+          toWarehouse: 0,
+          toOutlet: 0,
+          exchg: 0,
+          refund: 0,
+          claim: 0,
+          sales: 0,
+          adj: 0,
         };
         movementMetricsMap.set(key, m);
       }
@@ -1002,10 +1246,19 @@ export class AvailableStockSummaryExportService {
       const ref = entry.referenceType || '';
       const mov = entry.movementType;
 
-      if (mov === MovementType.ADJUSTMENT || ref === 'STOCK_ADJUSTMENT' || ref === 'ADJUSTMENT') {
+      if (
+        mov === MovementType.ADJUSTMENT ||
+        ref === 'STOCK_ADJUSTMENT' ||
+        ref === 'ADJUSTMENT'
+      ) {
         m.adj += qty;
       } else if (qty > 0) {
-        if (ref === 'TRANSFER_REQUEST' || ref === 'TRANSFER_IN' || ref === 'DIRECT_TRANSFER_IN' || ref === 'STOCK_TRANSFER') {
+        if (
+          ref === 'TRANSFER_REQUEST' ||
+          ref === 'TRANSFER_IN' ||
+          ref === 'DIRECT_TRANSFER_IN' ||
+          ref === 'STOCK_TRANSFER'
+        ) {
           m.fromWarehouse += qty;
         } else if (ref === 'OUTLET_TRANSFER_IN') {
           m.fromOutlet += qty;
@@ -1022,11 +1275,29 @@ export class AvailableStockSummaryExportService {
         }
       } else if (qty < 0) {
         const absQty = Math.abs(qty);
-        if (['RETURN_REQUEST', 'CLAIM_RETURN', 'CLAIM_TO_PLM', 'CLAIM_RETURN_REQUEST', 'PURCHASE_RETURN_INV', 'PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC'].includes(ref)) {
+        if (
+          [
+            'RETURN_REQUEST',
+            'CLAIM_RETURN',
+            'CLAIM_TO_PLM',
+            'CLAIM_RETURN_REQUEST',
+            'PURCHASE_RETURN_INV',
+            'PURCHASE_RETURN',
+            'PURCHASE_RETURN_GRN',
+            'PURCHASE_RETURN_LC',
+          ].includes(ref)
+        ) {
           m.toWarehouse += absQty;
         } else if (['OUTLET_TRANSFER_OUT', 'DELIVERY_CHALLAN'].includes(ref)) {
           m.toOutlet += absQty;
-        } else if (['TRANSFER_OUT', 'STN', 'STOCK_TRANSFER_NOTE', 'DIRECT_TRANSFER_OUT'].includes(ref)) {
+        } else if (
+          [
+            'TRANSFER_OUT',
+            'STN',
+            'STOCK_TRANSFER_NOTE',
+            'DIRECT_TRANSFER_OUT',
+          ].includes(ref)
+        ) {
           m.toOutlet += absQty;
         } else if (['POS_SALE', 'POS_EXCHANGE_OUT'].includes(ref)) {
           m.sales += absQty;
@@ -1042,7 +1313,8 @@ export class AvailableStockSummaryExportService {
       locKeysSet.add('all');
     } else {
       for (const k of bfMap.keys()) locKeysSet.add(k.split('_')[0]);
-      for (const k of movementMetricsMap.keys()) locKeysSet.add(k.split('_')[0]);
+      for (const k of movementMetricsMap.keys())
+        locKeysSet.add(k.split('_')[0]);
       for (const k of transitMap.keys()) locKeysSet.add(k.split('_')[0]);
       for (const k of reserveMap.keys()) locKeysSet.add(k.split('_')[0]);
       for (const inv of inventoryItems) {
@@ -1051,23 +1323,26 @@ export class AvailableStockSummaryExportService {
       }
     }
 
-    const activeLocKeys = [...locKeysSet].filter(k => k !== 'unknown');
+    const activeLocKeys = [...locKeysSet].filter((k) => k !== 'unknown');
     if (activeLocKeys.length === 0 && isSeparate) {
       activeLocKeys.push('all');
     }
 
     const root: any[] = [];
-    const itemMetricsMap = new Map<string, {
-      quantity: number;
-      transit: number;
-      reserved: number;
-      pendingInvoice: number;
-      total: number;
-      unitPrice: number;
-      value: number;
-      unitCost: number;
-      costingValue: number;
-    }>();
+    const itemMetricsMap = new Map<
+      string,
+      {
+        quantity: number;
+        transit: number;
+        reserved: number;
+        pendingInvoice: number;
+        total: number;
+        unitPrice: number;
+        value: number;
+        unitCost: number;
+        costingValue: number;
+      }
+    >();
 
     const flatItemsList: any[] = [];
 
@@ -1083,7 +1358,8 @@ export class AvailableStockSummaryExportService {
 
     for (const locKey of activeLocKeys) {
       const locationName = isSeparate
-        ? (locationNameMap.get(locKey) || (locKey.startsWith('loc:') ? 'Outlet Store' : 'Warehouse'))
+        ? locationNameMap.get(locKey) ||
+          (locKey.startsWith('loc:') ? 'Outlet Store' : 'Warehouse')
         : 'All Selected Outlets / Warehouses';
 
       for (const item of items) {
@@ -1091,19 +1367,39 @@ export class AvailableStockSummaryExportService {
         const altMapKey = item.itemId ? `${locKey}_${item.itemId}` : mapKey;
 
         const bf = (bfMap.get(mapKey) ?? bfMap.get(altMapKey)) || 0;
-        const transit = (transitMap.get(mapKey) ?? transitMap.get(altMapKey)) || 0;
-        const reserved = (reserveMap.get(mapKey) ?? reserveMap.get(altMapKey)) || 0;
-        const pendingInvoice = (pendingInvoiceMap.get(mapKey) ?? pendingInvoiceMap.get(altMapKey)) || 0;
-        const m = (movementMetricsMap.get(mapKey) ?? movementMetricsMap.get(altMapKey)) || {
-          fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
-          exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
+        const transit =
+          (transitMap.get(mapKey) ?? transitMap.get(altMapKey)) || 0;
+        const reserved =
+          (reserveMap.get(mapKey) ?? reserveMap.get(altMapKey)) || 0;
+        const pendingInvoice =
+          (pendingInvoiceMap.get(mapKey) ?? pendingInvoiceMap.get(altMapKey)) ||
+          0;
+        const m = (movementMetricsMap.get(mapKey) ??
+          movementMetricsMap.get(altMapKey)) || {
+          fromWarehouse: 0,
+          fromOutlet: 0,
+          toWarehouse: 0,
+          toOutlet: 0,
+          exchg: 0,
+          refund: 0,
+          claim: 0,
+          sales: 0,
+          adj: 0,
         };
 
         const totalTrfIn = m.fromWarehouse + m.fromOutlet;
         const totalTrfOut = m.toWarehouse + m.toOutlet;
-        
+
         // When DC is created, it decreases physical stock via toOutlet (DELIVERY_CHALLAN)
-        const physicalStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
+        const physicalStock =
+          bf +
+          totalTrfIn -
+          totalTrfOut +
+          m.exchg +
+          m.refund +
+          m.claim -
+          m.sales +
+          m.adj;
 
         // Balance needs to include pendingInvoice so it doesn't officially leave stock until Invoiced
         const balance = physicalStock + transit + pendingInvoice;
@@ -1112,22 +1408,33 @@ export class AvailableStockSummaryExportService {
         const availableStock = balance - transit - reserved - pendingInvoice;
 
         // In separate mode, skip item entries with 0 stock across all fields for this specific location
-        if (isSeparate && availableStock === 0 && transit === 0 && reserved === 0 && balance === 0 && pendingInvoice === 0) {
+        if (
+          isSeparate &&
+          availableStock === 0 &&
+          transit === 0 &&
+          reserved === 0 &&
+          balance === 0 &&
+          pendingInvoice === 0
+        ) {
           continue;
         }
 
-        const setting = settingMap.get(item.id) || (item.itemId ? settingMap.get(item.itemId) : undefined);
-        let unitPrice = Number(item.unitPrice || 0);
+        const setting =
+          settingMap.get(item.id) ||
+          (item.itemId ? settingMap.get(item.itemId) : undefined);
+        const unitPrice = Number(item.unitPrice || 0);
 
         let unitCost = Number(item.unitCost || 0);
         if (unitCost === 0) {
           unitCost = Number(
             setting?.averageCost ||
-            setting?.standardCost ||
-            item.fob ||
-            latestLedgerCostMap.get(item.id) ||
-            (item.itemId ? latestLedgerCostMap.get(item.itemId) : undefined) ||
-            0
+              setting?.standardCost ||
+              item.fob ||
+              latestLedgerCostMap.get(item.id) ||
+              (item.itemId
+                ? latestLedgerCostMap.get(item.itemId)
+                : undefined) ||
+              0,
           );
         }
 
@@ -1148,8 +1455,12 @@ export class AvailableStockSummaryExportService {
 
         itemMetricsMap.set(mapKey, variantMetrics);
         flatItemsList.push({
-          locationId: locKey.startsWith('loc:') ? locKey.replace('loc:', '') : null,
-          warehouseId: locKey.startsWith('wh:') ? locKey.replace('wh:', '') : null,
+          locationId: locKey.startsWith('loc:')
+            ? locKey.replace('loc:', '')
+            : null,
+          warehouseId: locKey.startsWith('wh:')
+            ? locKey.replace('wh:', '')
+            : null,
           locationName,
           locationType: locKey.startsWith('loc:') ? 'OUTLET' : 'WAREHOUSE',
           itemId: item.id,
@@ -1164,8 +1475,18 @@ export class AvailableStockSummaryExportService {
           size: item.size?.name ?? 'Default',
           barCode: item.barCode ?? '',
           bf,
-          inbound: m.fromWarehouse + m.fromOutlet + m.exchg + m.refund + m.claim + (m.adj > 0 ? m.adj : 0),
-          outbound: m.toWarehouse + m.toOutlet + m.sales + (m.adj < 0 ? Math.abs(m.adj) : 0),
+          inbound:
+            m.fromWarehouse +
+            m.fromOutlet +
+            m.exchg +
+            m.refund +
+            m.claim +
+            (m.adj > 0 ? m.adj : 0),
+          outbound:
+            m.toWarehouse +
+            m.toOutlet +
+            m.sales +
+            (m.adj < 0 ? Math.abs(m.adj) : 0),
           quantity: availableStock,
           transit,
           reserved,
@@ -1183,7 +1504,7 @@ export class AvailableStockSummaryExportService {
         for (let i = 0; i < levels.length; i++) {
           const levelName = levels[i];
           let nodeVal = '';
-          let extraFields: any = {};
+          const extraFields: any = {};
 
           if (levelName === 'location') {
             nodeVal = locationName;
@@ -1207,7 +1528,9 @@ export class AvailableStockSummaryExportService {
             extraFields.size = item.size?.name || 'Default';
           }
 
-          let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+          let existingNode = currentLevelNodes.find(
+            (n) => n.level === levelName && n.value === nodeVal,
+          );
           if (!existingNode) {
             existingNode = {
               level: levelName,

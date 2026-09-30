@@ -22,37 +22,37 @@ import { ExportHistoryModule } from '../../warehouse/export-history/export-histo
 import { UploadModule } from '../../upload/upload.module';
 
 @Module({
-    imports: [
-        DatabaseModule,
-        ExportHistoryModule,
-        UploadModule,
-        BullModule.registerQueue(
-            { name: 'item-upload' },
-            { name: 'item-export' },
-            { name: 'item-update-upload' },
-        ),
-    ],
-    controllers: [
-        ItemController,
-        ItemBulkUploadController,
-        ItemUpdateBulkUploadController,
-        ItemExportController,
-    ],
-    providers: [
-        ItemService,
-        ItemBulkUploadService,
-        ItemUpdateBulkUploadService,
-        UploadProcessor,
-        ItemUpdateUploadProcessor,
-        CsvParserService,
-        ItemUpdateCsvParserService,
-        MasterDataService,
-        ItemValidatorService,
-        ItemUpdateValidatorService,
-        UploadEventsService,
-        ItemExportService,
-        ItemExportProcessor,
-    ],
-    exports: [ItemService],
+  imports: [
+    DatabaseModule,
+    ExportHistoryModule,
+    UploadModule,
+    BullModule.registerQueue(
+      { name: 'item-upload' },
+      { name: 'item-export' },
+      { name: 'item-update-upload' },
+    ),
+  ],
+  controllers: [
+    ItemController,
+    ItemBulkUploadController,
+    ItemUpdateBulkUploadController,
+    ItemExportController,
+  ],
+  providers: [
+    ItemService,
+    ItemBulkUploadService,
+    ItemUpdateBulkUploadService,
+    UploadProcessor,
+    ItemUpdateUploadProcessor,
+    CsvParserService,
+    ItemUpdateCsvParserService,
+    MasterDataService,
+    ItemValidatorService,
+    ItemUpdateValidatorService,
+    UploadEventsService,
+    ItemExportService,
+    ItemExportProcessor,
+  ],
+  exports: [ItemService],
 })
-export class ItemModule { }
+export class ItemModule {}

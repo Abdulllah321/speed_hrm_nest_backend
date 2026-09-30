@@ -7,7 +7,7 @@ import { CreateChargeTypeDto } from './dto/charge-type.dto';
 @ApiTags('Landed Cost')
 @Controller('api/landed-cost')
 export class LandedCostController {
-  constructor(private readonly service: LandedCostService,) { }
+  constructor(private readonly service: LandedCostService) {}
 
   @Post()
   @ApiOperation({
@@ -37,7 +37,11 @@ export class LandedCostController {
   @ApiOperation({
     summary: 'Post Landed Cost with charges',
   })
-  post(@Body() dto: { grnId: string; charges: { accountId: string; amount: number }[] }, @Req() req: any) {
+  post(
+    @Body()
+    dto: { grnId: string; charges: { accountId: string; amount: number }[] },
+    @Req() req: any,
+  ) {
     return this.service.post(dto, {
       userId: req.user?.id,
       ipAddress: req.ip,

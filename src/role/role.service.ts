@@ -17,7 +17,10 @@ export class RoleService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createRoleDto: CreateRoleDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createRoleDto: CreateRoleDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prismaMaster.role.findUnique({
         where: { name: createRoleDto.name },
@@ -121,7 +124,11 @@ export class RoleService {
     return role;
   }
 
-  async update(id: string, updateRoleDto: UpdateRoleDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateRoleDto: UpdateRoleDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const role = await this.prismaMaster.role.findUnique({ where: { id } });
       if (!role) {
@@ -198,7 +205,10 @@ export class RoleService {
     }
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const role = await this.prismaMaster.role.findUnique({
         where: { id },

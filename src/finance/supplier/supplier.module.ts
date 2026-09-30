@@ -12,16 +12,10 @@ import { NotificationsModule } from '../../notifications/notifications.module';
   imports: [
     PrismaModule,
     NotificationsModule,
-    BullModule.registerQueue(
-      { name: 'supplier-export' },
-    ),
+    BullModule.registerQueue({ name: 'supplier-export' }),
   ],
   controllers: [SupplierController, SupplierExportController],
-  providers: [
-    SupplierService,
-    SupplierExportService,
-    SupplierExportProcessor,
-  ],
+  providers: [SupplierService, SupplierExportService, SupplierExportProcessor],
   exports: [SupplierService],
 })
 export class SupplierModule {}

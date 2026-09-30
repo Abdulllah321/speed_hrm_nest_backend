@@ -9,7 +9,7 @@ export class AttendanceRequestQueryService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   private async resolveApproverUserId(args: {
     level: {
@@ -178,9 +178,9 @@ export class AttendanceRequestQueryService {
     // Fetch department and designation for mapping from Master DB
     const department = query.department
       ? await this.prisma.department.findUnique({
-        where: { id: query.department },
-        include: { subDepartments: true },
-      })
+          where: { id: query.department },
+          include: { subDepartments: true },
+        })
       : null;
 
     const subDepartment =
@@ -190,8 +190,8 @@ export class AttendanceRequestQueryService {
 
     const designation = query.employee?.designationId
       ? await this.prisma.designation.findUnique({
-        where: { id: query.employee.designationId },
-      })
+          where: { id: query.employee.designationId },
+        })
       : null;
 
     return {
@@ -361,11 +361,11 @@ export class AttendanceRequestQueryService {
         status: true,
         data: createdWithEmployee
           ? {
-            ...createdWithEmployee,
-            employeeId:
-              createdWithEmployee.employee?.employeeId ||
-              createdWithEmployee.employeeId,
-          }
+              ...createdWithEmployee,
+              employeeId:
+                createdWithEmployee.employee?.employeeId ||
+                createdWithEmployee.employeeId,
+            }
           : created,
       };
     } catch (error: any) {
@@ -476,11 +476,11 @@ export class AttendanceRequestQueryService {
         status: true,
         data: updatedWithEmployee
           ? {
-            ...updatedWithEmployee,
-            employeeId:
-              updatedWithEmployee.employee?.employeeId ||
-              updatedWithEmployee.employeeId,
-          }
+              ...updatedWithEmployee,
+              employeeId:
+                updatedWithEmployee.employee?.employeeId ||
+                updatedWithEmployee.employeeId,
+            }
           : updated,
       };
     } catch (error: any) {

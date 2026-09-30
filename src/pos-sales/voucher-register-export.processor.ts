@@ -36,8 +36,20 @@ const COLUMNS = [
   { header: 'Issued Outlet', key: 'outletName', width: 24 },
   { header: 'Base / Source Inv #', key: 'baseCashMemo', width: 24 },
   { header: 'Valid Till', key: 'validTill', width: 16 },
-  { header: 'Discount (Rs.)', key: 'discountAmount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Amount (Rs.)', key: 'faceValue', width: 18, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Discount (Rs.)',
+    key: 'discountAmount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Amount (Rs.)',
+    key: 'faceValue',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Settled In Inv #', key: 'settledInCashMemo', width: 24 },
   { header: 'Settled Date Time', key: 'settledDateTime', width: 20 },
   { header: 'Status', key: 'status', width: 14, align: 'center' },
@@ -60,7 +72,9 @@ export class VoucherRegisterExportProcessor {
           () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
@@ -82,13 +96,17 @@ export class VoucherRegisterExportProcessor {
       format,
       search,
     } = job.data;
-    this.logger.log(`[VoucherRegisterExport ${jobId}] Starting ${format.toUpperCase()} export (outstanding: ${isOutstandingOnly})`);
+    this.logger.log(
+      `[VoucherRegisterExport ${jobId}] Starting ${format.toUpperCase()} export (outstanding: ${isOutstandingOnly})`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
-    const prefix = isOutstandingOnly ? 'voucher-outstanding-preview' : 'voucher-register-report';
+    const prefix = isOutstandingOnly
+      ? 'voucher-outstanding-preview'
+      : 'voucher-register-report';
     const fileName = `${prefix}-${new Date().toISOString().slice(0, 10)}.${ext}`;
     const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
@@ -116,7 +134,10 @@ export class VoucherRegisterExportProcessor {
 
       await job.progress(90);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma as any,
@@ -138,17 +159,25 @@ export class VoucherRegisterExportProcessor {
         }),
       );
     } catch (err: any) {
-      this.logger.error(`[VoucherRegisterExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[VoucherRegisterExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       try {
         await this.exportHistoryService.failExport(prisma as any, jobId);
       } catch (e: any) {
-        this.logger.error(`Failed to update export history status to FAILED for job ${jobId}`);
+        this.logger.error(
+          `Failed to update export history status to FAILED for job ${jobId}`,
+        );
       }
       throw err;
     }
   }
 
-  private async generateExcel(filePath: string, reportData: any): Promise<void> {
+  private async generateExcel(
+    filePath: string,
+    reportData: any,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -181,7 +210,10 @@ export class VoucherRegisterExportProcessor {
       };
       cell.font = { bold: true, color: { argb: 'FFFFFF' }, size: 10 };
       cell.border = borderThin;
-      cell.alignment = { vertical: 'middle', horizontal: (COLUMNS[c - 1].align as any) || 'left' };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: (COLUMNS[c - 1].align as any) || 'left',
+      };
     }
     headerRow.commit();
 
@@ -234,7 +266,11 @@ export class VoucherRegisterExportProcessor {
     for (let c = 1; c <= COLUMNS.length; c++) {
       const cell = summaryRow.getCell(c);
       cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' },
+      };
       cell.border = borderThin;
       const col = COLUMNS[c - 1];
       if (col.align) cell.alignment = { horizontal: col.align as any };
@@ -246,9 +282,17 @@ export class VoucherRegisterExportProcessor {
   }
 
   private async generatePdf(filePath: string, reportData: any): Promise<void> {
-    const launchArgs = process.platform === 'linux'
-      ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
-      : [];
+    const launchArgs =
+      process.platform === 'linux'
+        ? [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+          ]
+        : [];
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -368,6 +412,8 @@ export class VoucherRegisterExportProcessor {
 
 function runInBackground(promise: Promise<any>) {
   promise.catch((err) => {
-    Logger.error(`[VoucherRegisterExportProcessor] Background error: ${err?.message || err}`);
+    Logger.error(
+      `[VoucherRegisterExportProcessor] Background error: ${err?.message || err}`,
+    );
   });
 }

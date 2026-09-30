@@ -7,12 +7,12 @@ import { BaseBulkUploadService } from '../../common/services/base-bulk-upload.se
 
 @Injectable()
 export class ItemUpdateBulkUploadService extends BaseBulkUploadService {
-    constructor(
-        @InjectQueue('item-update-upload') uploadQueue: Queue,
-        prisma: PrismaService,
-        eventsService: UploadEventsService,
-    ) {
-        // Pass queue, prisma, eventsService, and uploadType identifier to base class
-        super(uploadQueue, prisma, eventsService, 'item-update');
-    }
+  constructor(
+    @InjectQueue('item-update-upload') uploadQueue: Queue,
+    prisma: PrismaService,
+    eventsService: UploadEventsService,
+  ) {
+    // Pass queue, prisma, eventsService, and uploadType identifier to base class
+    super(uploadQueue, prisma, eventsService, 'item-update');
+  }
 }

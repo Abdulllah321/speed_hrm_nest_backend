@@ -16,16 +16,14 @@ export class DeductionHeadService {
   async list() {
     const items = await this.prisma.deductionHead.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
     const item = await this.prisma.deductionHead.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Deduction head not found' };
     return { status: true, data: item };
@@ -40,39 +38,38 @@ export class DeductionHeadService {
       const created = await this.prisma.deductionHead.create({
         data: { name, status: status || 'active', createdById: ctx.userId },
       });
-      
+
       const response = { status: true, data: created };
       runInBackground(
         'Create Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        entityId: created.id,
-        description: `Created deduction head ${name}`,
-        newValues: JSON.stringify({ name, status: status || 'active' }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'create',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          entityId: created.id,
+          description: `Created deduction head ${name}`,
+          newValues: JSON.stringify({ name, status: status || 'active' }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
-      
       runInBackground(
         'Failed to create deduction head',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        description: 'Failed to create deduction head',
-        errorMessage: error?.message,
-        newValues: JSON.stringify({ name, status: status || 'active' }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
+          action: 'create',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          description: 'Failed to create deduction head',
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ name, status: status || 'active' }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
         }),
       );
       return { status: false, message: 'Failed to create deduction head' };
@@ -97,33 +94,32 @@ export class DeductionHeadService {
         'Bulk Create Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        description: `Bulk created deduction heads (${result.count})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'create',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          description: `Bulk created deduction heads (${result.count})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Deduction heads created successfully' };
     } catch (error: any) {
-      
       runInBackground(
         'Failed bulk create deduction heads',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        description: 'Failed bulk create deduction heads',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'create',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          description: 'Failed bulk create deduction heads',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to create deduction heads' };
     }
@@ -137,9 +133,7 @@ export class DeductionHeadService {
   ) {
     try {
       const existing = await this.prisma.deductionHead.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const updateData: { name: string; status?: string } = { name };
       if (status !== undefined) updateData.status = status;
@@ -152,36 +146,35 @@ export class DeductionHeadService {
         'Update Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        entityId: id,
-        description: `Updated deduction head ${name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(updateData),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'update',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          entityId: id,
+          description: `Updated deduction head ${name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(updateData),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
-      
       runInBackground(
         'Failed to update deduction head',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        entityId: id,
-        description: 'Failed to update deduction head',
-        errorMessage: error?.message,
-        newValues: JSON.stringify({ name, status }),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'update',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          entityId: id,
+          description: 'Failed to update deduction head',
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ name, status }),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to update deduction head' };
     }
@@ -203,38 +196,40 @@ export class DeductionHeadService {
           data: updateData,
         });
       }
-      const response = { status: true, message: 'Operation completed successfully' };
+      const response = {
+        status: true,
+        message: 'Operation completed successfully',
+      };
       runInBackground(
         'Bulk Update Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        description: `Bulk updated deduction heads (${items.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'update',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          description: `Bulk updated deduction heads (${items.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
-      
       runInBackground(
         'Failed bulk update deduction heads',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        description: 'Failed bulk update deduction heads',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'update',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          description: 'Failed bulk update deduction heads',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to update deduction heads' };
     }
@@ -245,51 +240,52 @@ export class DeductionHeadService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'deductionHead', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'deductionHead',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.deductionHead.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const removed = await this.prisma.deductionHead.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        entityId: id,
-        description: `Deleted deduction head ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          entityId: id,
+          description: `Deleted deduction head ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
-      
       runInBackground(
         'Failed to delete deduction head',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        entityId: id,
-        description: 'Failed to delete deduction head',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'delete',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          entityId: id,
+          description: 'Failed to delete deduction head',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to delete deduction head' };
     }
@@ -302,28 +298,32 @@ export class DeductionHeadService {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'deductionHead', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'deductionHead',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const removed = await this.prisma.deductionHead.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       runInBackground(
         'Bulk Delete Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        description: `Bulk deleted deduction heads (${removed.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          description: `Bulk deleted deduction heads (${removed.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
@@ -331,16 +331,16 @@ export class DeductionHeadService {
         'Failed bulk delete deduction heads (Failure Log)',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'deduction-heads',
-        entity: 'DeductionHead',
-        description: 'Failed bulk delete deduction heads',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'delete',
+          module: 'deduction-heads',
+          entity: 'DeductionHead',
+          description: 'Failed bulk delete deduction heads',
+          errorMessage: error?.message,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to delete deduction heads' };
     }

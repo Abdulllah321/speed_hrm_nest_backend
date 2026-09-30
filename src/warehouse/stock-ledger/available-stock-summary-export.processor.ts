@@ -34,20 +34,37 @@ export interface AvailableStockSummaryExportJobData {
 }
 
 const COLUMNS = [
-  { header: 'GPC / Category / Product', key: 'sku', width: 35, align: 'left' as const },
+  {
+    header: 'GPC / Category / Product',
+    key: 'sku',
+    width: 35,
+    align: 'left' as const,
+  },
   { header: 'Size', key: 'size', width: 10, align: 'center' as const },
   { header: 'Color', key: 'color', width: 14, align: 'center' as const },
   { header: 'Quantity', key: 'quantity', width: 14, align: 'right' as const },
   { header: 'In Transit', key: 'transit', width: 12, align: 'right' as const },
-  { header: 'Stock Reserved', key: 'reserved', width: 14, align: 'right' as const },
+  {
+    header: 'Stock Reserved',
+    key: 'reserved',
+    width: 14,
+    align: 'right' as const,
+  },
   { header: 'Total', key: 'total', width: 14, align: 'right' as const },
-  { header: 'Selling Price', key: 'unitPrice', width: 14, align: 'right' as const },
+  {
+    header: 'Selling Price',
+    key: 'unitPrice',
+    width: 14,
+    align: 'right' as const,
+  },
   { header: 'Value (Rs.)', key: 'value', width: 18, align: 'right' as const },
 ];
 
 @Processor('available-stock-summary-export')
 export class AvailableStockSummaryExportProcessor {
-  private readonly logger = new Logger(AvailableStockSummaryExportProcessor.name);
+  private readonly logger = new Logger(
+    AvailableStockSummaryExportProcessor.name,
+  );
 
   constructor(
     private readonly notificationsService: NotificationsService,
@@ -58,52 +75,94 @@ export class AvailableStockSummaryExportProcessor {
   @Process('generate-report-preview')
   async handleReportPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
-    this.logger.log(`[ReportPreview ${jobId}] Starting background preview computation`);
+    this.logger.log(
+      `[ReportPreview ${jobId}] Starting background preview computation`,
+    );
     try {
-      await job.progress({ percent: 5, message: 'Worker thread started. Connecting to database...' });
-      const prisma = (tenantId && tenantDbUrl)
-        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-        : new PrismaService({ tenantId, tenantDbUrl } as any);
+      await job.progress({
+        percent: 5,
+        message: 'Worker thread started. Connecting to database...',
+      });
+      const prisma =
+        tenantId && tenantDbUrl
+          ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+          : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      const data = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
-        prisma,
-        {
-          ...opts,
-          previewJobId: jobId,
-          onProgress: async (percent: number, message: string) => {
-            await job.progress({ percent, message });
+      const data =
+        await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
+          prisma,
+          {
+            ...opts,
+            previewJobId: jobId,
+            onProgress: async (percent: number, message: string) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
       if (this.availableStockSummaryService.isJobCancelled(jobId)) {
-        this.logger.log(`[ReportPreview ${jobId}] Job was cancelled by user. Skipping result save.`);
+        this.logger.log(
+          `[ReportPreview ${jobId}] Job was cancelled by user. Skipping result save.`,
+        );
         return;
       }
 
-      await job.progress({ percent: 90, message: 'Compressing report payload & caching result...' });
+      await job.progress({
+        percent: 90,
+        message: 'Compressing report payload & caching result...',
+      });
       this.availableStockSummaryService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({ percent: 100, message: 'Report computation complete!' });
-      this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
+      await job.progress({
+        percent: 100,
+        message: 'Report computation complete!',
+      });
+      this.logger.log(
+        `[ReportPreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[ReportPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[ReportPreview ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
 
   @Process({ concurrency: 1 })
-  async handleExport(job: Job<AvailableStockSummaryExportJobData>): Promise<void> {
+  async handleExport(
+    job: Job<AvailableStockSummaryExportJobData>,
+  ): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, startDate: startStr, endDate: endStr, format, exportType,
-      reportType, summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant,
-      includeCosting
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      warehouseId,
+      startDate: startStr,
+      endDate: endStr,
+      format,
+      exportType,
+      reportType,
+      summaryOnly,
+      showBrand,
+      showDivision,
+      showCategory,
+      showGender,
+      showSilhouette,
+      showArticle,
+      showVariant,
+      includeCosting,
     } = job.data;
-    this.logger.log(`[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}, mode: ${reportType || 'merged'}) export for user ${userId}`);
+    this.logger.log(
+      `[AvailableStockSummaryExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}, mode: ${reportType || 'merged'}) export for user ${userId}`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
@@ -112,8 +171,18 @@ export class AvailableStockSummaryExportProcessor {
     try {
       await job.progress(10);
 
-      const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-      const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const locIds = locationId
+        ? locationId
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      const whIds = warehouseId
+        ? warehouseId
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
 
       const nameParts: string[] = [];
       if (whIds.length > 0) {
@@ -122,7 +191,9 @@ export class AvailableStockSummaryExportProcessor {
           select: { name: true },
         });
         if (warehouses.length > 0) {
-          nameParts.push(`Warehouses: ${warehouses.map(w => w.name).join(', ')}`);
+          nameParts.push(
+            `Warehouses: ${warehouses.map((w) => w.name).join(', ')}`,
+          );
         }
       }
       if (locIds.length > 0) {
@@ -131,65 +202,85 @@ export class AvailableStockSummaryExportProcessor {
           select: { name: true },
         });
         if (locations.length > 0) {
-          nameParts.push(`Outlets: ${locations.map(l => l.name).join(', ')}`);
+          nameParts.push(`Outlets: ${locations.map((l) => l.name).join(', ')}`);
         }
       }
-      const locationName = nameParts.length > 0 ? nameParts.join(' | ') : 'All Warehouses & Locations';
+      const locationName =
+        nameParts.length > 0
+          ? nameParts.join(' | ')
+          : 'All Warehouses & Locations';
 
       const now = new Date();
-      const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+      const startDate = startStr
+        ? new Date(startStr)
+        : new Date(now.getFullYear(), now.getMonth(), 1);
       const endDate = endStr ? new Date(endStr) : new Date(now);
 
       await job.progress(25);
 
       let reportData: any = null;
       if ((job.data as any).previewJobId) {
-        reportData = this.availableStockSummaryService.getReportPreviewResult((job.data as any).previewJobId);
+        reportData = this.availableStockSummaryService.getReportPreviewResult(
+          (job.data as any).previewJobId,
+        );
         if (reportData) {
-          this.logger.log(`[AvailableStockSummaryExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`);
+          this.logger.log(
+            `[AvailableStockSummaryExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`,
+          );
         }
       }
 
       if (!reportData) {
-        reportData = await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
-          prisma,
-          {
-            locationId,
-            warehouseId,
-            startDate: startStr,
-            endDate: endStr,
-            reportType,
-            summaryOnly,
-            showBrand,
-            showDivision,
-            showCategory,
-            showGender,
-            showSilhouette,
-            showArticle,
-            showVariant,
-          }
-        );
+        reportData =
+          await this.availableStockSummaryService.generateAvailableStockSummaryReportDataInternal(
+            prisma,
+            {
+              locationId,
+              warehouseId,
+              startDate: startStr,
+              endDate: endStr,
+              reportType,
+              summaryOnly,
+              showBrand,
+              showDivision,
+              showCategory,
+              showGender,
+              showSilhouette,
+              showArticle,
+              showVariant,
+            },
+          );
       }
 
-      const { root, grandTotals, items, itemMetricsMap, flatItemsList } = reportData;
+      const { root, grandTotals, items, itemMetricsMap, flatItemsList } =
+        reportData;
 
       await job.progress(60);
 
       if (format === 'pdf') {
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(root, locationName, fromDateStr, toDateStr, grandTotals, !!summaryOnly, !!includeCosting);
+        const html = this.buildPdfHtml(
+          root,
+          locationName,
+          fromDateStr,
+          toDateStr,
+          grandTotals,
+          !!summaryOnly,
+          !!includeCosting,
+        );
 
-        const launchArgs = process.platform === 'linux'
-          ? [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--no-first-run',
-              '--no-zygote',
-            ]
-          : [];
+        const launchArgs =
+          process.platform === 'linux'
+            ? [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+              ]
+            : [];
 
         const browser = await puppeteer.launch({
           headless: true,
@@ -215,11 +306,18 @@ export class AvailableStockSummaryExportProcessor {
             pdfBuffer = await page.pdf({
               format: 'A4',
               landscape: true,
-              margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+              margin: {
+                top: '15mm',
+                bottom: '15mm',
+                left: '10mm',
+                right: '10mm',
+              },
               printBackground: true,
               displayHeaderFooter: true,
-              headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Pvt.) Limited | Available Stock Summary</div>',
-              footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+              headerTemplate:
+                '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Pvt.) Limited | Available Stock Summary</div>',
+              footerTemplate:
+                '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
             });
           } finally {
             clearInterval(progressInterval);
@@ -230,7 +328,14 @@ export class AvailableStockSummaryExportProcessor {
           await browser.close();
         }
       } else if (format === 'xlsx' && exportType === 'flat') {
-        await this.writeFlatWorkbook(filePath, items || [], itemMetricsMap || new Map(), grandTotals, !!includeCosting, flatItemsList || []);
+        await this.writeFlatWorkbook(
+          filePath,
+          items || [],
+          itemMetricsMap || new Map(),
+          grandTotals,
+          !!includeCosting,
+          flatItemsList || [],
+        );
       } else {
         // XLSX Export using ExcelJS stream WorkbookWriter (Hierarchical)
         const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
@@ -242,26 +347,47 @@ export class AvailableStockSummaryExportProcessor {
         const colsToUse = [...COLUMNS];
         if (includeCosting) {
           colsToUse.push(
-            { header: 'Unit Cost', key: 'unitCost', width: 14, align: 'right' as const },
-            { header: 'Unit Value', key: 'costingValue', width: 18, align: 'right' as const }
+            {
+              header: 'Unit Cost',
+              key: 'unitCost',
+              width: 14,
+              align: 'right' as const,
+            },
+            {
+              header: 'Unit Value',
+              key: 'costingValue',
+              width: 18,
+              align: 'right' as const,
+            },
           );
         }
 
         const ws = workbook.addWorksheet('Available Stock Summary', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true },
+          pageSetup: {
+            paperSize: 9,
+            orientation: 'landscape',
+            fitToPage: true,
+          },
           views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
         });
 
-        ws.columns = colsToUse.map(c => ({ key: c.key, width: c.width }));
+        ws.columns = colsToUse.map((c) => ({ key: c.key, width: c.width }));
 
         // 1. Column headers
         const headerRow = ws.getRow(1);
         colsToUse.forEach((col, idx) => {
           const cell = headerRow.getCell(idx + 1);
           cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF334155' },
+          };
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-          cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+          cell.alignment = {
+            horizontal: col.align ?? 'left',
+            vertical: 'middle',
+          };
           cell.border = {
             top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
             left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -279,29 +405,90 @@ export class AvailableStockSummaryExportProcessor {
           right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
         };
 
-        const rightAlign = { horizontal: 'right' as const, vertical: 'middle' as const };
-        const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const };
-        const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
+        const rightAlign = {
+          horizontal: 'right' as const,
+          vertical: 'middle' as const,
+        };
+        const leftAlign = {
+          horizontal: 'left' as const,
+          vertical: 'middle' as const,
+        };
+        const centerAlign = {
+          horizontal: 'center' as const,
+          vertical: 'middle' as const,
+        };
 
-        const LEVEL_EXCEL_STYLES: Record<string, {
-          fgColor: string;
-          fontColor: string;
-          fontSize: number;
-          indent: number;
-          prefix: string;
-        }> = {
-          location: { fgColor: 'FF0F172A', fontColor: 'FFFFD700', fontSize: 11, indent: 0, prefix: '' },
-          brand: { fgColor: 'FF1E293B', fontColor: 'FF93C5FD', fontSize: 10, indent: 1, prefix: 'BRAND: ' },
-          division: { fgColor: 'FF334155', fontColor: 'FFCBD5E1', fontSize: 9.5, indent: 2, prefix: 'DIVISION: ' },
-          category: { fgColor: 'FF475569', fontColor: 'FFFFFFFF', fontSize: 9, indent: 3, prefix: 'CATEGORY: ' },
-          gender: { fgColor: 'FF64748B', fontColor: 'FFFFFFFF', fontSize: 9, indent: 4, prefix: 'GENDER: ' },
-          silhouette: { fgColor: 'FF94A3B8', fontColor: 'FFFFFFFF', fontSize: 9, indent: 5, prefix: 'SILHOUETTE: ' },
-          article: { fgColor: 'FFF1F5F9', fontColor: 'FF0F172A', fontSize: 9, indent: 6, prefix: 'SKU: ' },
-          variant: { fgColor: 'FFFFFFFF', fontColor: 'FF334155', fontSize: 8.5, indent: 7, prefix: '' },
+        const LEVEL_EXCEL_STYLES: Record<
+          string,
+          {
+            fgColor: string;
+            fontColor: string;
+            fontSize: number;
+            indent: number;
+            prefix: string;
+          }
+        > = {
+          location: {
+            fgColor: 'FF0F172A',
+            fontColor: 'FFFFD700',
+            fontSize: 11,
+            indent: 0,
+            prefix: '',
+          },
+          brand: {
+            fgColor: 'FF1E293B',
+            fontColor: 'FF93C5FD',
+            fontSize: 10,
+            indent: 1,
+            prefix: 'BRAND: ',
+          },
+          division: {
+            fgColor: 'FF334155',
+            fontColor: 'FFCBD5E1',
+            fontSize: 9.5,
+            indent: 2,
+            prefix: 'DIVISION: ',
+          },
+          category: {
+            fgColor: 'FF475569',
+            fontColor: 'FFFFFFFF',
+            fontSize: 9,
+            indent: 3,
+            prefix: 'CATEGORY: ',
+          },
+          gender: {
+            fgColor: 'FF64748B',
+            fontColor: 'FFFFFFFF',
+            fontSize: 9,
+            indent: 4,
+            prefix: 'GENDER: ',
+          },
+          silhouette: {
+            fgColor: 'FF94A3B8',
+            fontColor: 'FFFFFFFF',
+            fontSize: 9,
+            indent: 5,
+            prefix: 'SILHOUETTE: ',
+          },
+          article: {
+            fgColor: 'FFF1F5F9',
+            fontColor: 'FF0F172A',
+            fontSize: 9,
+            indent: 6,
+            prefix: 'SKU: ',
+          },
+          variant: {
+            fgColor: 'FFFFFFFF',
+            fontColor: 'FF334155',
+            fontSize: 8.5,
+            indent: 7,
+            prefix: '',
+          },
         };
 
         const processNode = (node: any) => {
-          const style = LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
+          const style =
+            LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
           const totals = node.totals;
 
           let label = node.value || '';
@@ -315,24 +502,44 @@ export class AvailableStockSummaryExportProcessor {
 
           const rowData: any = {
             sku: '  '.repeat(style.indent) + label,
-            size: node.level === 'variant' ? node.size : (node.level === 'article' ? 'ALL SIZES' : ''),
-            color: node.level === 'variant' ? node.color : (node.level === 'article' ? 'ALL COLORS' : ''),
+            size:
+              node.level === 'variant'
+                ? node.size
+                : node.level === 'article'
+                  ? 'ALL SIZES'
+                  : '',
+            color:
+              node.level === 'variant'
+                ? node.color
+                : node.level === 'article'
+                  ? 'ALL COLORS'
+                  : '',
             quantity: totals.quantity,
             transit: totals.transit,
             reserved: totals.reserved,
             total: totals.total,
-            unitPrice: (node.level === 'article' || node.level === 'variant') ? totals.unitPrice : '',
+            unitPrice:
+              node.level === 'article' || node.level === 'variant'
+                ? totals.unitPrice
+                : '',
             value: totals.value,
           };
           if (includeCosting) {
-            rowData.unitCost = (node.level === 'article' || node.level === 'variant') ? totals.unitCost : '';
+            rowData.unitCost =
+              node.level === 'article' || node.level === 'variant'
+                ? totals.unitCost
+                : '';
             rowData.costingValue = totals.costingValue;
           }
 
           const row = ws.addRow(rowData);
 
           row.eachCell((cell, colNum) => {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: style.fgColor } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: style.fgColor },
+            };
             cell.font = {
               bold: node.level !== 'variant',
               color: { argb: style.fontColor },
@@ -390,7 +597,11 @@ export class AvailableStockSummaryExportProcessor {
             left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
             right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
           };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE2E8F0' },
+          };
           cell.alignment = colNum <= 3 ? leftAlign : rightAlign;
 
           if (colNum >= 4 && typeof cell.value === 'number') {
@@ -405,10 +616,14 @@ export class AvailableStockSummaryExportProcessor {
 
       await job.progress(95);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const fileName = format === 'pdf'
-        ? `available-stock-summary-${new Date().toISOString().slice(0, 10)}.pdf`
-        : `available-stock-summary-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const fileName =
+        format === 'pdf'
+          ? `available-stock-summary-${new Date().toISOString().slice(0, 10)}.pdf`
+          : `available-stock-summary-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma,
@@ -429,9 +644,14 @@ export class AvailableStockSummaryExportProcessor {
       });
 
       await job.progress(100);
-      this.logger.log(`[AvailableStockSummaryExport ${jobId}] Finished processing successfully`);
+      this.logger.log(
+        `[AvailableStockSummaryExport ${jobId}] Finished processing successfully`,
+      );
     } catch (err) {
-      this.logger.error(`[AvailableStockSummaryExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[AvailableStockSummaryExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     }
@@ -452,29 +672,89 @@ export class AvailableStockSummaryExportProcessor {
     });
 
     const FLAT_COLUMNS = [
-      { header: 'Location / Warehouse', key: 'locationName', width: 28, align: 'left' as const },
+      {
+        header: 'Location / Warehouse',
+        key: 'locationName',
+        width: 28,
+        align: 'left' as const,
+      },
       { header: 'Brand', key: 'brand', width: 16, align: 'left' as const },
-      { header: 'Division', key: 'division', width: 14, align: 'left' as const },
-      { header: 'Category', key: 'category', width: 18, align: 'left' as const },
+      {
+        header: 'Division',
+        key: 'division',
+        width: 14,
+        align: 'left' as const,
+      },
+      {
+        header: 'Category',
+        key: 'category',
+        width: 18,
+        align: 'left' as const,
+      },
       { header: 'Gender', key: 'gender', width: 12, align: 'left' as const },
-      { header: 'Silhouette', key: 'silhouette', width: 14, align: 'left' as const },
+      {
+        header: 'Silhouette',
+        key: 'silhouette',
+        width: 14,
+        align: 'left' as const,
+      },
       { header: 'SKU', key: 'sku', width: 14, align: 'left' as const },
-      { header: 'Article Name', key: 'articleName', width: 28, align: 'left' as const },
+      {
+        header: 'Article Name',
+        key: 'articleName',
+        width: 28,
+        align: 'left' as const,
+      },
       { header: 'Color', key: 'color', width: 14, align: 'left' as const },
       { header: 'Size', key: 'size', width: 8, align: 'center' as const },
       { header: 'Barcode', key: 'barCode', width: 16, align: 'left' as const },
-      { header: 'Quantity', key: 'quantity', width: 12, align: 'right' as const },
-      { header: 'In Transit', key: 'transit', width: 12, align: 'right' as const },
-      { header: 'Stock Reserved', key: 'reserved', width: 14, align: 'right' as const },
+      {
+        header: 'Quantity',
+        key: 'quantity',
+        width: 12,
+        align: 'right' as const,
+      },
+      {
+        header: 'In Transit',
+        key: 'transit',
+        width: 12,
+        align: 'right' as const,
+      },
+      {
+        header: 'Stock Reserved',
+        key: 'reserved',
+        width: 14,
+        align: 'right' as const,
+      },
       { header: 'Total', key: 'total', width: 14, align: 'right' as const },
-      { header: 'Selling Price', key: 'unitPrice', width: 14, align: 'right' as const },
-      { header: 'Value (Rs.)', key: 'value', width: 18, align: 'right' as const },
+      {
+        header: 'Selling Price',
+        key: 'unitPrice',
+        width: 14,
+        align: 'right' as const,
+      },
+      {
+        header: 'Value (Rs.)',
+        key: 'value',
+        width: 18,
+        align: 'right' as const,
+      },
     ];
 
     if (includeCosting) {
       FLAT_COLUMNS.push(
-        { header: 'Unit Cost', key: 'unitCost', width: 14, align: 'right' as const },
-        { header: 'Unit Value', key: 'costingValue', width: 18, align: 'right' as const },
+        {
+          header: 'Unit Cost',
+          key: 'unitCost',
+          width: 14,
+          align: 'right' as const,
+        },
+        {
+          header: 'Unit Value',
+          key: 'costingValue',
+          width: 18,
+          align: 'right' as const,
+        },
       );
     }
 
@@ -483,14 +763,18 @@ export class AvailableStockSummaryExportProcessor {
       views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
     });
 
-    ws.columns = FLAT_COLUMNS.map(c => ({ key: c.key, width: c.width }));
+    ws.columns = FLAT_COLUMNS.map((c) => ({ key: c.key, width: c.width }));
 
     // 1. Column headers
     const headerRow = ws.getRow(1);
     FLAT_COLUMNS.forEach((col, idx) => {
       const cell = headerRow.getCell(idx + 1);
       cell.value = col.header;
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF334155' },
+      };
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
       cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
       cell.border = {
@@ -510,16 +794,31 @@ export class AvailableStockSummaryExportProcessor {
       right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
     };
 
-    const rightAlign = { horizontal: 'right' as const, vertical: 'middle' as const };
-    const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const };
-    const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
+    const rightAlign = {
+      horizontal: 'right' as const,
+      vertical: 'middle' as const,
+    };
+    const leftAlign = {
+      horizontal: 'left' as const,
+      vertical: 'middle' as const,
+    };
+    const centerAlign = {
+      horizontal: 'center' as const,
+      vertical: 'middle' as const,
+    };
 
-    const rowsToExport = (flatItemsList && flatItemsList.length > 0)
-      ? flatItemsList
-      : items.map(item => ({ locationName: 'All Selected Outlets / Warehouses', item, metrics: itemMetricsMap?.get(item.id) }));
+    const rowsToExport =
+      flatItemsList && flatItemsList.length > 0
+        ? flatItemsList
+        : items.map((item) => ({
+            locationName: 'All Selected Outlets / Warehouses',
+            item,
+            metrics: itemMetricsMap?.get(item.id),
+          }));
 
     for (const entry of rowsToExport) {
-      const locationName = entry.locationName || 'All Selected Outlets / Warehouses';
+      const locationName =
+        entry.locationName || 'All Selected Outlets / Warehouses';
       const item = entry.item || {};
       const metrics = entry.metrics || entry;
 
@@ -529,7 +828,8 @@ export class AvailableStockSummaryExportProcessor {
         division: entry.division ?? item.division?.name ?? 'No Division',
         category: entry.category ?? item.category?.name ?? 'No Category',
         gender: entry.gender ?? item.gender?.name ?? 'No Gender',
-        silhouette: entry.silhouette ?? item.silhouette?.name ?? 'No Silhouette',
+        silhouette:
+          entry.silhouette ?? item.silhouette?.name ?? 'No Silhouette',
         sku: entry.sku ?? item.sku ?? '',
         articleName: entry.articleName ?? item.description ?? '',
         color: entry.color ?? item.color?.name ?? 'Default',
@@ -554,7 +854,8 @@ export class AvailableStockSummaryExportProcessor {
         const cell = row.getCell(colNum);
         cell.font = { size: 9, color: { argb: 'FF1E293B' } };
         cell.border = borderThin;
-        cell.alignment = colNum === 9 ? centerAlign : (colNum <= 10 ? leftAlign : rightAlign);
+        cell.alignment =
+          colNum === 9 ? centerAlign : colNum <= 10 ? leftAlign : rightAlign;
 
         if (colNum >= 11 && typeof cell.value === 'number') {
           cell.numFmt = '#,##0';
@@ -568,7 +869,15 @@ export class AvailableStockSummaryExportProcessor {
     if (grandTotals) {
       const totalRowData: any = {
         brand: 'GRAND TOTAL',
-        division: '', category: '', gender: '', silhouette: '', sku: '', articleName: '', color: '', size: '', barCode: '',
+        division: '',
+        category: '',
+        gender: '',
+        silhouette: '',
+        sku: '',
+        articleName: '',
+        color: '',
+        size: '',
+        barCode: '',
         quantity: grandTotals.quantity,
         transit: grandTotals.transit,
         reserved: grandTotals.reserved,
@@ -591,7 +900,11 @@ export class AvailableStockSummaryExportProcessor {
           left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
           right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
         };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE2E8F0' },
+        };
         cell.alignment = colNum <= 10 ? leftAlign : rightAlign;
 
         if (colNum >= 11 && typeof cell.value === 'number') {
@@ -615,28 +928,55 @@ export class AvailableStockSummaryExportProcessor {
     includeCosting: boolean,
   ): string {
     let rowsHtml = '';
-    const formatVal = (val: number) => val === 0 ? '-' : val.toLocaleString();
+    const formatVal = (val: number) => (val === 0 ? '-' : val.toLocaleString());
 
-    const LEVEL_PDF_STYLES: Record<string, {
-      className: string;
-      indentStyles: string;
-      prefix: string;
-    }> = {
+    const LEVEL_PDF_STYLES: Record<
+      string,
+      {
+        className: string;
+        indentStyles: string;
+        prefix: string;
+      }
+    > = {
       brand: { className: 'brand-row', indentStyles: '', prefix: 'BRAND: ' },
-      division: { className: 'division-row', indentStyles: 'padding-left: 10px;', prefix: 'DIVISION: ' },
-      category: { className: 'category-row', indentStyles: 'padding-left: 20px;', prefix: 'CATEGORY: ' },
-      gender: { className: 'gender-row', indentStyles: 'padding-left: 30px;', prefix: 'GENDER: ' },
-      silhouette: { className: 'silhouette-row', indentStyles: 'padding-left: 40px;', prefix: 'SILHOUETTE: ' },
-      article: { className: 'article-row', indentStyles: 'padding-left: 50px;', prefix: 'SKU: ' },
-      variant: { className: 'variant-row', indentStyles: 'padding-left: 60px;', prefix: '' },
+      division: {
+        className: 'division-row',
+        indentStyles: 'padding-left: 10px;',
+        prefix: 'DIVISION: ',
+      },
+      category: {
+        className: 'category-row',
+        indentStyles: 'padding-left: 20px;',
+        prefix: 'CATEGORY: ',
+      },
+      gender: {
+        className: 'gender-row',
+        indentStyles: 'padding-left: 30px;',
+        prefix: 'GENDER: ',
+      },
+      silhouette: {
+        className: 'silhouette-row',
+        indentStyles: 'padding-left: 40px;',
+        prefix: 'SILHOUETTE: ',
+      },
+      article: {
+        className: 'article-row',
+        indentStyles: 'padding-left: 50px;',
+        prefix: 'SKU: ',
+      },
+      variant: {
+        className: 'variant-row',
+        indentStyles: 'padding-left: 60px;',
+        prefix: '',
+      },
     };
 
     const buildHtmlRows = (node: any): void => {
       const style = LEVEL_PDF_STYLES[node.level] || LEVEL_PDF_STYLES.brand;
       const val = node.totals;
-      
+
       if (node.level === 'article') {
-        const costCells = includeCosting 
+        const costCells = includeCosting
           ? `<td class="num">${formatVal(val.unitCost)}</td>
              <td class="num highlight-val">${formatVal(val.costingValue)}</td>`
           : '';
@@ -655,7 +995,7 @@ export class AvailableStockSummaryExportProcessor {
           </tr>
         `;
       } else if (node.level === 'variant') {
-        const costCells = includeCosting 
+        const costCells = includeCosting
           ? `<td class="num">-</td>
              <td class="num highlight-val">${formatVal(val.costingValue)}</td>`
           : '';
@@ -674,7 +1014,7 @@ export class AvailableStockSummaryExportProcessor {
           </tr>
         `;
       } else {
-        const costCells = includeCosting 
+        const costCells = includeCosting
           ? `<td class="num">-</td>
              <td class="num highlight-val">${formatVal(val.costingValue)}</td>`
           : '';
@@ -691,7 +1031,7 @@ export class AvailableStockSummaryExportProcessor {
           </tr>
         `;
       }
-      
+
       if (node.children && node.children.length > 0) {
         for (const child of node.children) {
           buildHtmlRows(child);

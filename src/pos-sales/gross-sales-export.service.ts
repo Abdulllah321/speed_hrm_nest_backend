@@ -244,7 +244,11 @@ export interface QueueGrossSalesExportOptions {
 @Injectable()
 export class GrossSalesExportService {
   private readonly logger = new Logger(GrossSalesExportService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
+  private readonly previewStorageDir = path.join(
+    process.cwd(),
+    'uploads',
+    'report-previews',
+  );
 
   constructor(
     @InjectQueue('gross-sales-export') private readonly exportQueue: Queue,
@@ -308,7 +312,9 @@ export class GrossSalesExportService {
       },
     );
 
-    this.logger.log(`[GrossSalesReturnReport] Queued preview job ${jobId} for user ${opts.userId}`);
+    this.logger.log(
+      `[GrossSalesReturnReport] Queued preview job ${jobId} for user ${opts.userId}`,
+    );
     return { jobId };
   }
 
@@ -362,7 +368,9 @@ export class GrossSalesExportService {
       },
     );
 
-    this.logger.log(`[GrossSalesSummaryReport] Queued preview job ${jobId} for user ${opts.userId}`);
+    this.logger.log(
+      `[GrossSalesSummaryReport] Queued preview job ${jobId} for user ${opts.userId}`,
+    );
     return { jobId };
   }
 
@@ -375,11 +383,19 @@ export class GrossSalesExportService {
     waitingCount: number;
     failedReason?: string;
   }> {
-    const job = await this.exportQueue.getJob(`preview-${jobId}`) ||
-      await this.exportQueue.getJob(`preview-summary-${jobId}`) ||
-      await this.exportQueue.getJob(jobId);
+    const job =
+      (await this.exportQueue.getJob(`preview-${jobId}`)) ||
+      (await this.exportQueue.getJob(`preview-summary-${jobId}`)) ||
+      (await this.exportQueue.getJob(jobId));
     if (!job) {
-      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        status: 'unknown',
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -420,23 +436,38 @@ export class GrossSalesExportService {
   }
 
   getPreviewFilePath(jobId: string): string {
-    const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `gross-sales-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) return jsonPath;
-    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `gross-sales-preview-${jobId}.ndjson.gz`,
+    );
     if (fs.existsSync(ndjsonPath)) return ndjsonPath;
-    const oldReturnPath = path.join(this.previewStorageDir, `gross-sales-return-preview-${jobId}.json.gz`);
+    const oldReturnPath = path.join(
+      this.previewStorageDir,
+      `gross-sales-return-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(oldReturnPath)) return oldReturnPath;
     return jsonPath;
   }
 
   getPreviewNdjsonFilePath(jobId: string): string {
-    return path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+    return path.join(
+      this.previewStorageDir,
+      `gross-sales-preview-${jobId}.ndjson.gz`,
+    );
   }
 
   async saveReportPreviewResult(jobId: string, result: any): Promise<void> {
     // 1. Save compressed preview JSON directly (capped to 5,000 records for instant <5ms frontend preview loading)
     try {
-      const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+      const jsonPath = path.join(
+        this.previewStorageDir,
+        `gross-sales-preview-${jobId}.json.gz`,
+      );
       const previewResult = {
         ...result,
         flatItems: (result.flatItems || []).slice(0, 5000),
@@ -446,7 +477,9 @@ export class GrossSalesExportService {
       const compressedJson = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
       await fs.promises.writeFile(jsonPath, compressedJson);
     } catch (err: any) {
-      this.logger.warn(`Failed to save compressed preview JSON for ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Failed to save compressed preview JSON for ${jobId}: ${err.message}`,
+      );
     }
 
     // 2. Also stream complete un-truncated NDJSON to disk for streaming Excel export (stream-preview-excel)
@@ -472,16 +505,17 @@ export class GrossSalesExportService {
           const isReturn = Array.isArray(result.returns);
 
           // Line 1: Meta header
-          const metaLine = JSON.stringify({
-            type: 'meta',
-            reportType: result.reportType,
-            dateRange: result.dateRange,
-            locationNames: result.locationNames,
-            locations: result.locations,
-            totalCategories: isSummary ? result.categories.length : undefined,
-            totalReturns: isReturn ? result.returns.length : undefined,
-            totalRecords: (result.flatItems || []).length,
-          }) + '\n';
+          const metaLine =
+            JSON.stringify({
+              type: 'meta',
+              reportType: result.reportType,
+              dateRange: result.dateRange,
+              locationNames: result.locationNames,
+              locations: result.locations,
+              totalCategories: isSummary ? result.categories.length : undefined,
+              totalReturns: isReturn ? result.returns.length : undefined,
+              totalRecords: (result.flatItems || []).length,
+            }) + '\n';
           await safeWrite(metaLine);
 
           // Line 2..N: Records chunked into batches
@@ -490,12 +524,13 @@ export class GrossSalesExportService {
             const categories = result.categories || [];
             for (let i = 0; i < categories.length; i += CHUNK) {
               const slice = categories.slice(i, i + CHUNK);
-              const chunkLine = JSON.stringify({
-                type: 'categories',
-                startIndex: i,
-                count: slice.length,
-                categories: slice,
-              }) + '\n';
+              const chunkLine =
+                JSON.stringify({
+                  type: 'categories',
+                  startIndex: i,
+                  count: slice.length,
+                  categories: slice,
+                }) + '\n';
               await safeWrite(chunkLine);
               await new Promise((res) => setImmediate(res));
             }
@@ -503,12 +538,13 @@ export class GrossSalesExportService {
             const returns = result.returns || [];
             for (let i = 0; i < returns.length; i += CHUNK) {
               const slice = returns.slice(i, i + CHUNK);
-              const chunkLine = JSON.stringify({
-                type: 'returns',
-                startIndex: i,
-                count: slice.length,
-                returns: slice,
-              }) + '\n';
+              const chunkLine =
+                JSON.stringify({
+                  type: 'returns',
+                  startIndex: i,
+                  count: slice.length,
+                  returns: slice,
+                }) + '\n';
               await safeWrite(chunkLine);
               await new Promise((res) => setImmediate(res));
             }
@@ -518,23 +554,25 @@ export class GrossSalesExportService {
           const flatItems = result.flatItems || [];
           for (let i = 0; i < flatItems.length; i += 1500) {
             const slice = flatItems.slice(i, i + 1500);
-            const chunkLine = JSON.stringify({
-              type: 'flatItems',
-              startIndex: i,
-              count: slice.length,
-              flatItems: slice,
-            }) + '\n';
+            const chunkLine =
+              JSON.stringify({
+                type: 'flatItems',
+                startIndex: i,
+                count: slice.length,
+                flatItems: slice,
+              }) + '\n';
             await safeWrite(chunkLine);
             await new Promise((res) => setImmediate(res));
           }
 
           // Final Line: Verified Grand Totals
-          const totalsLine = JSON.stringify({
-            type: 'totals',
-            grandTotals: result.grandTotals,
-            totalRecords: flatItems.length,
-            done: true,
-          }) + '\n';
+          const totalsLine =
+            JSON.stringify({
+              type: 'totals',
+              grandTotals: result.grandTotals,
+              totalRecords: flatItems.length,
+              done: true,
+            }) + '\n';
           await safeWrite(totalsLine);
 
           gzip.end();
@@ -548,7 +586,10 @@ export class GrossSalesExportService {
   }
 
   async getReportPreviewResult(jobId: string): Promise<any | null> {
-    const jsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.json.gz`);
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `gross-sales-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) {
       const compressed = await fs.promises.readFile(jsonPath);
       const decompressed = await gunzipAsync(compressed);
@@ -556,7 +597,10 @@ export class GrossSalesExportService {
       return parsed.data || parsed;
     }
 
-    const ndjsonPath = path.join(this.previewStorageDir, `gross-sales-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `gross-sales-preview-${jobId}.ndjson.gz`,
+    );
     if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
@@ -663,7 +707,10 @@ export class GrossSalesExportService {
     const isSeparate = reportType === 'separate';
     const now = new Date();
 
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -691,11 +738,14 @@ export class GrossSalesExportService {
     };
 
     // Determine Pakistan Fiscal Year bounds: July 1 to June 30
-    const getFiscalYearBounds = (fyStr?: string): { start: Date; end: Date } => {
+    const getFiscalYearBounds = (
+      fyStr?: string,
+    ): { start: Date; end: Date } => {
       let startYear: number;
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth(); // 0 = Jan, 6 = July
-      const defaultStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+      const defaultStartYear =
+        currentMonth >= 6 ? currentYear : currentYear - 1;
 
       if (!fyStr || fyStr === 'current') {
         startYear = defaultStartYear;
@@ -736,21 +786,40 @@ export class GrossSalesExportService {
       endDate = now;
     }
 
-    const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
 
-    await onProgress?.(15, 'Loading outlet metadata & cashier user profiles...');
+    await onProgress?.(
+      15,
+      'Loading outlet metadata & cashier user profiles...',
+    );
 
     const [allLocations, cashiersList] = await Promise.all([
       prisma.location.findMany({ select: { id: true, name: true } }),
-      this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
+      this.prismaMaster.user.findMany({
+        select: { id: true, firstName: true, lastName: true },
+      }),
     ]);
 
     const locationMap = new Map<string, string>();
     for (const l of allLocations) locationMap.set(l.id, l.name);
 
     const cashierMap = new Map<string, string>();
-    for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+    for (const u of cashiersList)
+      cashierMap.set(
+        u.id,
+        `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier',
+      );
 
     let locationNames = '';
     if (locIds.length > 0) {
@@ -759,7 +828,10 @@ export class GrossSalesExportService {
     }
     if (!locationNames) locationNames = 'All Outlets (Stores)';
 
-    await onProgress?.(30, 'Querying POS sales return records from database...');
+    await onProgress?.(
+      30,
+      'Querying POS sales return records from database...',
+    );
 
     const posReturnWhere: any = {
       createdAt: { gte: startDate, lte: endDate },
@@ -779,12 +851,17 @@ export class GrossSalesExportService {
       };
     }
     if (paymentModeGroup && paymentModeGroup !== 'all') {
-      posReturnWhere.refundMode = { equals: paymentModeGroup, mode: 'insensitive' };
+      posReturnWhere.refundMode = {
+        equals: paymentModeGroup,
+        mode: 'insensitive',
+      };
     }
     if (minAmount !== undefined || maxAmount !== undefined) {
       posReturnWhere.totalRefundAmount = {};
-      if (minAmount !== undefined) posReturnWhere.totalRefundAmount.gte = Number(minAmount);
-      if (maxAmount !== undefined) posReturnWhere.totalRefundAmount.lte = Number(maxAmount);
+      if (minAmount !== undefined)
+        posReturnWhere.totalRefundAmount.gte = Number(minAmount);
+      if (maxAmount !== undefined)
+        posReturnWhere.totalRefundAmount.lte = Number(maxAmount);
     }
 
     const posReturns = await (prisma as any).posReturn.findMany({
@@ -893,19 +970,46 @@ export class GrossSalesExportService {
       voucherAmount: 0,
     });
 
-    const addTotals = (target: GrossSalesReturnTotals, source: GrossSalesReturnTotals) => {
+    const addTotals = (
+      target: GrossSalesReturnTotals,
+      source: GrossSalesReturnTotals,
+    ) => {
       target.returnCount += source.returnCount;
       target.totalItems += source.totalItems;
-      target.grossAmount = Number((target.grossAmount + source.grossAmount).toFixed(2));
-      target.wostAmount = Number((target.wostAmount + source.wostAmount).toFixed(2));
-      target.discountAmount = Number((target.discountAmount + source.discountAmount).toFixed(2));
-      target.discountWostAmount = Number(((target.discountWostAmount || 0) + (source.discountWostAmount || 0)).toFixed(2));
-      target.amountAfterDiscount = Number(((target.amountAfterDiscount || 0) + (source.amountAfterDiscount || 0)).toFixed(2));
-      target.netAmount = Number((target.netAmount + source.netAmount).toFixed(2));
-      target.taxAmount = Number((target.taxAmount + source.taxAmount).toFixed(2));
-      target.cashAmount = Number(((target.cashAmount || 0) + (source.cashAmount || 0)).toFixed(2));
-      target.cardAmount = Number(((target.cardAmount || 0) + (source.cardAmount || 0)).toFixed(2));
-      target.voucherAmount = Number(((target.voucherAmount || 0) + (source.voucherAmount || 0)).toFixed(2));
+      target.grossAmount = Number(
+        (target.grossAmount + source.grossAmount).toFixed(2),
+      );
+      target.wostAmount = Number(
+        (target.wostAmount + source.wostAmount).toFixed(2),
+      );
+      target.discountAmount = Number(
+        (target.discountAmount + source.discountAmount).toFixed(2),
+      );
+      target.discountWostAmount = Number(
+        (
+          (target.discountWostAmount || 0) + (source.discountWostAmount || 0)
+        ).toFixed(2),
+      );
+      target.amountAfterDiscount = Number(
+        (
+          (target.amountAfterDiscount || 0) + (source.amountAfterDiscount || 0)
+        ).toFixed(2),
+      );
+      target.netAmount = Number(
+        (target.netAmount + source.netAmount).toFixed(2),
+      );
+      target.taxAmount = Number(
+        (target.taxAmount + source.taxAmount).toFixed(2),
+      );
+      target.cashAmount = Number(
+        ((target.cashAmount || 0) + (source.cashAmount || 0)).toFixed(2),
+      );
+      target.cardAmount = Number(
+        ((target.cardAmount || 0) + (source.cardAmount || 0)).toFixed(2),
+      );
+      target.voucherAmount = Number(
+        ((target.voucherAmount || 0) + (source.voucherAmount || 0)).toFixed(2),
+      );
     };
 
     const grandTotals = createEmptyTotals();
@@ -916,18 +1020,28 @@ export class GrossSalesExportService {
     // 1. Process first-class PosReturn records
     for (const ret of posReturns) {
       const sampleLocId = ret.locationId || ret.salesOrder?.locationId;
-      const locName = sampleLocId ? locationMap.get(sampleLocId) || 'Main Outlet' : 'Main Outlet';
+      const locName = sampleLocId
+        ? locationMap.get(sampleLocId) || 'Main Outlet'
+        : 'Main Outlet';
       const locKey = sampleLocId ? `loc:${sampleLocId}` : 'main-outlet';
       const cashierId = ret.cashierUserId || ret.salesOrder?.cashierUserId;
-      const cashierName = cashierId ? cashierMap.get(cashierId) || 'Cashier' : 'Cashier';
+      const cashierName = cashierId
+        ? cashierMap.get(cashierId) || 'Cashier'
+        : 'Cashier';
       const sourceOrder = ret.salesOrder;
-      const cust = ret.customer || ret.originalCustomer || sourceOrder?.customer;
+      const cust =
+        ret.customer || ret.originalCustomer || sourceOrder?.customer;
       const custName = cust?.name || 'Walk-in Customer';
       const custPhone = cust?.contactNo || '-';
-      const payMethod = ret.refundMode || ret.returnType || ret.voucher?.voucherType || 'VOUCHER';
+      const payMethod =
+        ret.refundMode ||
+        ret.returnType ||
+        ret.voucher?.voucherType ||
+        'VOUCHER';
       const fbrInv = sourceOrder?.fbrInvoiceNumber || '-';
       const fbrStatus = sourceOrder?.fbrInvoiceNumber ? 'FBR' : 'NONE';
-      const retNo = ret.returnNumber || (ret.voucher?.code) || `SR-${ret.id.slice(0, 8)}`;
+      const retNo =
+        ret.returnNumber || ret.voucher?.code || `SR-${ret.id.slice(0, 8)}`;
       const orderNo = sourceOrder?.orderNumber || '-';
       const voucher = ret.voucher;
 
@@ -935,11 +1049,15 @@ export class GrossSalesExportService {
         const q = search.toLowerCase();
         const matchesRet = retNo.toLowerCase().includes(q);
         const matchesOrd = orderNo.toLowerCase().includes(q);
-        const matchesCust = custName.toLowerCase().includes(q) || custPhone.includes(q);
-        const matchesItems = ret.items.some((it: any) =>
-          (it.item?.sku && (it.item.sku || '').toLowerCase().includes(q)) ||
-          (it.item?.barCode && (it.item.barCode || '').toLowerCase().includes(q)) ||
-          (it.item?.description && (it.item.description || '').toLowerCase().includes(q))
+        const matchesCust =
+          custName.toLowerCase().includes(q) || custPhone.includes(q);
+        const matchesItems = ret.items.some(
+          (it: any) =>
+            (it.item?.sku && (it.item.sku || '').toLowerCase().includes(q)) ||
+            (it.item?.barCode &&
+              (it.item.barCode || '').toLowerCase().includes(q)) ||
+            (it.item?.description &&
+              (it.item.description || '').toLowerCase().includes(q)),
         );
         if (!matchesRet && !matchesOrd && !matchesCust && !matchesItems) {
           continue;
@@ -958,14 +1076,35 @@ export class GrossSalesExportService {
 
       for (const it of ret.items || []) {
         const qty = Math.abs(Number(it.quantity || 1));
-        const unitPrice = Number(it.originalUnitPrice || it.refundPerUnit || it.originalPaidPerUnit || 0);
-        const unitPriceWost = Number((it.unitPriceWost ? Number(it.unitPriceWost) : unitPrice / 1.18).toFixed(2));
-        const valExcl = Number((it.lineTotalWost ? Number(it.lineTotalWost) : qty * unitPriceWost).toFixed(2));
-        const disc = Number(it.discountPercent ? (unitPrice * qty * Number(it.discountPercent)) / 100 : 0);
-        const discWost = Number((it.discountWost ? Number(it.discountWost) : disc / 1.18).toFixed(2));
+        const unitPrice = Number(
+          it.originalUnitPrice ||
+            it.refundPerUnit ||
+            it.originalPaidPerUnit ||
+            0,
+        );
+        const unitPriceWost = Number(
+          (it.unitPriceWost
+            ? Number(it.unitPriceWost)
+            : unitPrice / 1.18
+          ).toFixed(2),
+        );
+        const valExcl = Number(
+          (it.lineTotalWost
+            ? Number(it.lineTotalWost)
+            : qty * unitPriceWost
+          ).toFixed(2),
+        );
+        const disc = Number(
+          it.discountPercent
+            ? (unitPrice * qty * Number(it.discountPercent)) / 100
+            : 0,
+        );
+        const discWost = Number(
+          (it.discountWost ? Number(it.discountWost) : disc / 1.18).toFixed(2),
+        );
         const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
         const tax = Number(it.taxAmount || 0);
-        const lineTotal = Number(it.lineTotal || (unitPrice * qty - disc + tax));
+        const lineTotal = Number(it.lineTotal || unitPrice * qty - disc + tax);
 
         retTotalQty += qty;
         retGross += unitPrice * qty;
@@ -1036,7 +1175,12 @@ export class GrossSalesExportService {
       const isCard = ret.refundMode === 'CARD';
       const cashRefund = isCash ? totalRefundAmt : 0;
       const cardRefund = isCard ? totalRefundAmt : 0;
-      const voucherIssuedAmt = ret.refundMode === 'VOUCHER' || voucher ? Number(voucher?.faceValue || totalRefundAmt) : ((!isCash && !isCard) ? totalRefundAmt : 0);
+      const voucherIssuedAmt =
+        ret.refundMode === 'VOUCHER' || voucher
+          ? Number(voucher?.faceValue || totalRefundAmt)
+          : !isCash && !isCard
+            ? totalRefundAmt
+            : 0;
 
       const orderTotals: GrossSalesReturnTotals = {
         returnCount: 1,
@@ -1045,7 +1189,9 @@ export class GrossSalesExportService {
         wostAmount: retWost,
         discountAmount: retDisc,
         discountWostAmount: retDiscWost,
-        amountAfterDiscount: Number(Math.max(0, retWost - retDiscWost).toFixed(2)),
+        amountAfterDiscount: Number(
+          Math.max(0, retWost - retDiscWost).toFixed(2),
+        ),
         taxAmount: retTax,
         netAmount: totalRefundAmt,
         cashAmount: cashRefund,
@@ -1059,7 +1205,9 @@ export class GrossSalesExportService {
         id: ret.id,
         returnNumber: retNo,
         orderNumber: orderNo,
-        createdAt: ret.createdAt ? new Date(ret.createdAt).toISOString() : new Date().toISOString(),
+        createdAt: ret.createdAt
+          ? new Date(ret.createdAt).toISOString()
+          : new Date().toISOString(),
         customerName: custName,
         customerPhone: custPhone,
         cashierName,
@@ -1199,7 +1347,9 @@ export class GrossSalesExportService {
       }
 
       const valExcl = Number((approvedAmt / 1.18).toFixed(2));
-      const voucherIssuedAmt = voucher ? Number(voucher.faceValue) : approvedAmt;
+      const voucherIssuedAmt = voucher
+        ? Number(voucher.faceValue)
+        : approvedAmt;
 
       const nodeTotals: GrossSalesReturnTotals = {
         returnCount: 1,
@@ -1219,8 +1369,12 @@ export class GrossSalesExportService {
       addTotals(grandTotals, nodeTotals);
 
       const locId = clm.salesOrder?.locationId;
-      const locName = locId ? locationMap.get(locId) || 'Main Outlet' : 'Main Outlet';
-      const cashierName = clm.salesOrder?.cashierUserId ? cashierMap.get(clm.salesOrder.cashierUserId) || 'Cashier' : 'Cashier';
+      const locName = locId
+        ? locationMap.get(locId) || 'Main Outlet'
+        : 'Main Outlet';
+      const cashierName = clm.salesOrder?.cashierUserId
+        ? cashierMap.get(clm.salesOrder.cashierUserId) || 'Cashier'
+        : 'Cashier';
 
       const retNode: GrossSalesReturnNode = {
         id: clm.id,
@@ -1305,11 +1459,16 @@ export class GrossSalesExportService {
       returns: returnNodes,
       flatItems,
       grandTotals,
-      dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      },
       locationNames,
     };
 
-    console.log(`[generateGrossSalesReturnReportDataInternal] Result contains ${returnNodes.length} returnNodes and ${flatItems.length} flatItems.`);
+    console.log(
+      `[generateGrossSalesReturnReportDataInternal] Result contains ${returnNodes.length} returnNodes and ${flatItems.length} flatItems.`,
+    );
 
     return finalResult;
   }
@@ -1353,7 +1512,10 @@ export class GrossSalesExportService {
     const isSeparate = reportType === 'separate';
     const now = new Date();
 
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -1381,11 +1543,14 @@ export class GrossSalesExportService {
     };
 
     // Determine Pakistan Fiscal Year bounds: July 1 to June 30
-    const getFiscalYearBounds = (fyStr?: string): { start: Date; end: Date } => {
+    const getFiscalYearBounds = (
+      fyStr?: string,
+    ): { start: Date; end: Date } => {
       let startYear: number;
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth(); // 0 = Jan, 6 = July
-      const defaultStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+      const defaultStartYear =
+        currentMonth >= 6 ? currentYear : currentYear - 1;
 
       if (!fyStr || fyStr === 'current') {
         startYear = defaultStartYear;
@@ -1426,12 +1591,24 @@ export class GrossSalesExportService {
       endDate = now;
     }
 
-    const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
 
     await onProgress?.(15, 'Loading outlet metadata & category structures...');
 
-    const allLocations = await prisma.location.findMany({ select: { id: true, name: true } });
+    const allLocations = await prisma.location.findMany({
+      select: { id: true, name: true },
+    });
     const locationMap = new Map<string, string>();
     for (const l of allLocations) locationMap.set(l.id, l.name);
 
@@ -1442,11 +1619,26 @@ export class GrossSalesExportService {
     }
     if (!locationNames) locationNames = 'All Outlets (Stores)';
 
-    await onProgress?.(35, 'Querying POS sales order items for gross sales summary...');
+    await onProgress?.(
+      35,
+      'Querying POS sales order items for gross sales summary...',
+    );
 
     const where: any = {
       orderNumber: { not: { startsWith: 'RET-' } },
-      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
+      status: {
+        notIn: [
+          'hold',
+          'hold_expired',
+          'hold_cancelled',
+          'voided',
+          'cancelled',
+          'VOIDED',
+          'CANCELLED',
+          'draft',
+          'DRAFT',
+        ],
+      },
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -1469,15 +1661,22 @@ export class GrossSalesExportService {
       ];
     }
 
-    await (prisma as any).$executeRawUnsafe(`
+    await (prisma as any)
+      .$executeRawUnsafe(
+        `
       CREATE INDEX IF NOT EXISTS idx_sales_orders_created_at ON sales_orders(created_at);
       CREATE INDEX IF NOT EXISTS idx_sales_orders_loc_created ON sales_orders(location_id, created_at);
-    `).catch(() => { });
+    `,
+      )
+      .catch(() => {});
 
     await onProgress?.(25, 'Counting matching POS sales orders...');
     const totalOrdersCount = await prisma.salesOrder.count({ where });
 
-    await onProgress?.(30, `Found ${totalOrdersCount.toLocaleString()} orders. Building Gross Sales Category matrix...`);
+    await onProgress?.(
+      30,
+      `Found ${totalOrdersCount.toLocaleString()} orders. Building Gross Sales Category matrix...`,
+    );
 
     const createEmptyTotals = (): GrossSalesSummaryTotals => ({
       orderCount: 0,
@@ -1491,14 +1690,19 @@ export class GrossSalesExportService {
       taxAmount: 0,
     });
 
-    const addTotals = (target: GrossSalesSummaryTotals, source: GrossSalesSummaryTotals) => {
+    const addTotals = (
+      target: GrossSalesSummaryTotals,
+      source: GrossSalesSummaryTotals,
+    ) => {
       target.orderCount += source.orderCount;
       target.totalItems += source.totalItems;
       target.grossAmount += source.grossAmount;
       target.wostAmount = (target.wostAmount || 0) + (source.wostAmount || 0);
       target.discountAmount += source.discountAmount;
-      target.discountWostAmount = (target.discountWostAmount || 0) + (source.discountWostAmount || 0);
-      target.amountAfterDiscount = (target.amountAfterDiscount || 0) + (source.amountAfterDiscount || 0);
+      target.discountWostAmount =
+        (target.discountWostAmount || 0) + (source.discountWostAmount || 0);
+      target.amountAfterDiscount =
+        (target.amountAfterDiscount || 0) + (source.amountAfterDiscount || 0);
       target.netAmount += source.netAmount;
       target.taxAmount += source.taxAmount;
     };
@@ -1507,7 +1711,10 @@ export class GrossSalesExportService {
     const flatItemsMap = new Map<string, GrossSalesSummaryFlatRecord>();
 
     // Grouping structure: Category -> CategoryNode
-    const globalCategoryNodesMap = new Map<string, GrossSalesSummaryCategoryNode>();
+    const globalCategoryNodesMap = new Map<
+      string,
+      GrossSalesSummaryCategoryNode
+    >();
     const locationNodesMap = new Map<string, GrossSalesSummaryLocationNode>();
 
     const CHUNK = 3000;
@@ -1544,8 +1751,12 @@ export class GrossSalesExportService {
       if (!chunkOrders.length) break;
 
       for (const order of chunkOrders) {
-        const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
-        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+        const locName = order.locationId
+          ? locationMap.get(order.locationId) || 'Main Outlet'
+          : 'Main Outlet';
+        const locKey = order.locationId
+          ? `loc:${order.locationId}`
+          : 'main-outlet';
 
         let locNode = locationNodesMap.get(locKey);
         if (isSeparate && !locNode) {
@@ -1590,14 +1801,20 @@ export class GrossSalesExportService {
           const valueExcl = priceWost * qty;
 
           const rawDiscAmt = Number(item.discountAmount || 0);
-          const discPct = Number(item.discountPercent || (lineRetailGross > 0 && rawDiscAmt > 0 ? (rawDiscAmt / valueExcl) * 100 : 0));
+          const discPct = Number(
+            item.discountPercent ||
+              (lineRetailGross > 0 && rawDiscAmt > 0
+                ? (rawDiscAmt / valueExcl) * 100
+                : 0),
+          );
 
           let discAmtWost = 0;
           let discAmtRetail = 0;
 
           if (discPct > 0) {
-            discAmtRetail = Math.round((lineRetailGross * (discPct / 100)) * 100) / 100;
-            discAmtWost = Math.round((valueExcl * (discPct / 100)) * 100) / 100;
+            discAmtRetail =
+              Math.round(lineRetailGross * (discPct / 100) * 100) / 100;
+            discAmtWost = Math.round(valueExcl * (discPct / 100) * 100) / 100;
           } else if (rawDiscAmt > 0) {
             discAmtWost = rawDiscAmt;
             discAmtRetail = Math.round(rawDiscAmt * 1.18 * 100) / 100;
@@ -1609,8 +1826,13 @@ export class GrossSalesExportService {
 
           const amountAfterDiscount = Math.max(0, valueExcl - discAmtWost);
           const taxPercent = Number(item.taxPercent || 18);
-          const taxAmount = Number(item.taxAmount || Math.round(amountAfterDiscount * (taxPercent / 100) * 100) / 100);
-          const lineTotal = Number(item.lineTotal || (lineRetailGross - discAmtRetail));
+          const taxAmount = Number(
+            item.taxAmount ||
+              Math.round(amountAfterDiscount * (taxPercent / 100) * 100) / 100,
+          );
+          const lineTotal = Number(
+            item.lineTotal || lineRetailGross - discAmtRetail,
+          );
 
           lineItemCalcs.push({
             item,
@@ -1627,16 +1849,27 @@ export class GrossSalesExportService {
           });
         }
 
-        const totalItemsCount = lineItemCalcs.reduce((acc, i) => acc + i.qty, 0);
+        const totalItemsCount = lineItemCalcs.reduce(
+          (acc, i) => acc + i.qty,
+          0,
+        );
         const orderWost = Number(order.subtotal || 0);
         const orderDiscWost = Number(order.discountAmount || 0);
         const net = Number(order.grandTotal || 0);
         const tax = Number(order.taxAmount || 0);
 
-        const grossWost = orderWost > 0 ? orderWost : (orderComputedWost > 0 ? orderComputedWost : net / 1.18);
-        const retailGross = orderRetailGross > 0 ? orderRetailGross : (grossWost * 1.18);
-        const totalDiscWost = orderDiscWost > 0 ? orderDiscWost : orderComputedDiscWost;
-        const totalDiscRetail = orderRetailDisc > 0 ? orderRetailDisc : (totalDiscWost * 1.18);
+        const grossWost =
+          orderWost > 0
+            ? orderWost
+            : orderComputedWost > 0
+              ? orderComputedWost
+              : net / 1.18;
+        const retailGross =
+          orderRetailGross > 0 ? orderRetailGross : grossWost * 1.18;
+        const totalDiscWost =
+          orderDiscWost > 0 ? orderDiscWost : orderComputedDiscWost;
+        const totalDiscRetail =
+          orderRetailDisc > 0 ? orderRetailDisc : totalDiscWost * 1.18;
         const totalAmtAfterDisc = Math.max(0, grossWost - totalDiscWost);
 
         const orderTotals: GrossSalesSummaryTotals = {
@@ -1657,13 +1890,25 @@ export class GrossSalesExportService {
         }
 
         for (const calc of lineItemCalcs) {
-          const { item, qty, unitPrice, lineRetailGross, valueExcl, discAmtRetail, discAmtWost, amountAfterDiscount, taxAmount, lineTotal } = calc;
+          const {
+            item,
+            qty,
+            unitPrice,
+            lineRetailGross,
+            valueExcl,
+            discAmtRetail,
+            discAmtWost,
+            amountAfterDiscount,
+            taxAmount,
+            lineTotal,
+          } = calc;
 
           const catName = item.item?.category?.name || 'Unassigned Category';
           const brandName = item.item?.brand?.name || 'Default Brand';
           const divisionName = item.item?.division?.name || 'Default Division';
           const genderName = item.item?.gender?.name || 'Default Gender';
-          const silhouetteName = item.item?.silhouette?.name || 'Default Silhouette';
+          const silhouetteName =
+            item.item?.silhouette?.name || 'Default Silhouette';
 
           const lineTotals: GrossSalesSummaryTotals = {
             orderCount: 1,
@@ -1679,7 +1924,8 @@ export class GrossSalesExportService {
 
           const sku = item.item?.sku || item.item?.barCode || 'NO-SKU';
           const barCode = item.item?.barCode || item.item?.sku || '-';
-          const description = item.item?.description || item.item?.sku || 'Article';
+          const description =
+            item.item?.description || item.item?.sku || 'Article';
           const sizeName = item.item?.size?.name || 'Default';
           const colorName = item.item?.color?.name || 'Default';
 
@@ -1717,11 +1963,19 @@ export class GrossSalesExportService {
           }
 
           existingRecord.quantity += qty;
-          existingRecord.wostAmount = Math.round((existingRecord.wostAmount + valueExcl) * 100) / 100;
-          existingRecord.discountAmount = Math.round((existingRecord.discountAmount + discAmtRetail) * 100) / 100;
-          existingRecord.discountWostAmount = Math.round(((existingRecord.discountWostAmount || 0) + discAmtWost) * 100) / 100;
-          existingRecord.taxAmount = Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
-          existingRecord.subTotal = Math.round((existingRecord.subTotal + lineTotal) * 100) / 100;
+          existingRecord.wostAmount =
+            Math.round((existingRecord.wostAmount + valueExcl) * 100) / 100;
+          existingRecord.discountAmount =
+            Math.round((existingRecord.discountAmount + discAmtRetail) * 100) /
+            100;
+          existingRecord.discountWostAmount =
+            Math.round(
+              ((existingRecord.discountWostAmount || 0) + discAmtWost) * 100,
+            ) / 100;
+          existingRecord.taxAmount =
+            Math.round((existingRecord.taxAmount + taxAmount) * 100) / 100;
+          existingRecord.subTotal =
+            Math.round((existingRecord.subTotal + lineTotal) * 100) / 100;
           existingRecord.unitPrice = unitPrice;
 
           // Add to global merged map (accumulate category totals only; line items live exclusively in flatItems)
@@ -1739,7 +1993,9 @@ export class GrossSalesExportService {
 
           // Add to location map if separate
           if (isSeparate && locNode) {
-            let locCat = locNode.categories.find((c) => c.categoryName === catName);
+            let locCat = locNode.categories.find(
+              (c) => c.categoryName === catName,
+            );
             if (!locCat) {
               locCat = {
                 categoryName: catName,
@@ -1755,8 +2011,14 @@ export class GrossSalesExportService {
       }
 
       processedCount += chunkOrders.length;
-      const percent = Math.min(95, Math.round(30 + (processedCount / (totalOrdersCount || 1)) * 65));
-      await onProgress?.(percent, `Processing sales items (${processedCount.toLocaleString()} of ${totalOrdersCount.toLocaleString()} orders)...`);
+      const percent = Math.min(
+        95,
+        Math.round(30 + (processedCount / (totalOrdersCount || 1)) * 65),
+      );
+      await onProgress?.(
+        percent,
+        `Processing sales items (${processedCount.toLocaleString()} of ${totalOrdersCount.toLocaleString()} orders)...`,
+      );
     }
 
     const flatItems = Array.from(flatItemsMap.values());
@@ -1768,7 +2030,10 @@ export class GrossSalesExportService {
       categories: Array.from(globalCategoryNodesMap.values()),
       flatItems,
       grandTotals,
-      dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      },
       locationNames,
     };
   }
@@ -1811,14 +2076,19 @@ export class GrossSalesExportService {
     return { jobId, downloadUrl };
   }
 
-  async queueExport(opts: QueueGrossSalesExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueGrossSalesExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const store = PrismaService.asyncLocalStorage.getStore();
     const tenantId = store?.tenantId ?? this.prisma.getTenantId() ?? '';
     const companyId = store?.companyId ?? tenantId;
     const tenantDbUrl = store?.dbUrl ?? this.prisma.getTenantDbUrl() ?? '';
     const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
-    const prefix = opts.reportType === 'return' ? 'gross-sales-return' : 'gross-sales-summary';
+    const prefix =
+      opts.reportType === 'return'
+        ? 'gross-sales-return'
+        : 'gross-sales-summary';
 
     await this.prisma.exportHistory.create({
       data: {
@@ -1826,7 +2096,10 @@ export class GrossSalesExportService {
         userId: opts.userId,
         fileName: `${prefix}-${new Date().toISOString().slice(0, 10)}.${ext}`,
         filePath: path.join('uploads', 'exports', `export-${jobId}.${ext}`),
-        moduleName: opts.reportType === 'return' ? 'GROSS_SALES_RETURN' : 'GROSS_SALES_SUMMARY',
+        moduleName:
+          opts.reportType === 'return'
+            ? 'GROSS_SALES_RETURN'
+            : 'GROSS_SALES_SUMMARY',
         status: 'PENDING',
       },
     });
@@ -1869,17 +2142,29 @@ export class GrossSalesExportService {
       },
     );
 
-    this.logger.log(`[GrossSalesExport] Queued job ${jobId} for user ${opts.userId} (type: ${opts.reportType}, format: ${opts.format})`);
+    this.logger.log(
+      `[GrossSalesExport] Queued job ${jobId} for user ${opts.userId} (type: ${opts.reportType}, format: ${opts.format})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number; message?: string }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number; message?: string }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
     const rawProg: any = job.progress();
-    const progress = typeof rawProg === 'number' ? rawProg : typeof rawProg === 'object' && rawProg?.percent !== undefined ? Number(rawProg.percent) : 0;
-    const message = typeof rawProg === 'object' && rawProg?.message ? String(rawProg.message) : undefined;
+    const progress =
+      typeof rawProg === 'number'
+        ? rawProg
+        : typeof rawProg === 'object' && rawProg?.percent !== undefined
+          ? Number(rawProg.percent)
+          : 0;
+    const message =
+      typeof rawProg === 'object' && rawProg?.message
+        ? String(rawProg.message)
+        : undefined;
     return { state, progress, message };
   }
 
@@ -1899,16 +2184,24 @@ export class GrossSalesExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
       const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(
+        s3Key,
+        record.fileName,
+      );
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -1921,8 +2214,16 @@ export class GrossSalesExportService {
     const stream = fs.createReadStream(filePath);
     const isPdf = record.fileName.endsWith('.pdf');
 
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
@@ -1940,7 +2241,9 @@ export class GrossSalesExportService {
   ): Promise<void> {
     const filePath = this.getPreviewNdjsonFilePath(jobId);
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Gross sales summary preview result not found or expired');
+      throw new NotFoundException(
+        'Gross sales summary preview result not found or expired',
+      );
     }
 
     const exportType = options.exportType || 'flat';
@@ -1949,12 +2252,21 @@ export class GrossSalesExportService {
 
     const passThrough = new PassThrough();
     if (typeof res.header === 'function') {
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
       res.header('Content-Disposition', `attachment; filename="${fileName}"`);
       res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
@@ -1970,7 +2282,9 @@ export class GrossSalesExportService {
       useSharedStrings: false,
     });
 
-    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Summary Flat' : 'Summary Hierarchy');
+    const sheet = workbook.addWorksheet(
+      exportType === 'flat' ? 'Summary Flat' : 'Summary Hierarchy',
+    );
 
     sheet.columns = [
       { header: 'Outlet / Location', key: 'locationName', width: 22 },
@@ -1996,9 +2310,12 @@ export class GrossSalesExportService {
     ];
 
     const q = (options.search || '').trim().toLowerCase();
-    const locSet = options.locationId && options.locationId !== 'all'
-      ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
-      : null;
+    const locSet =
+      options.locationId && options.locationId !== 'all'
+        ? new Set(
+            options.locationId.split(',').map((s) => s.trim().toLowerCase()),
+          )
+        : null;
 
     let totalQty = 0;
     let totalWost = 0;
@@ -2124,7 +2441,9 @@ export class GrossSalesExportService {
       filePath = this.getPreviewFilePath(jobId);
     }
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Sales return preview result not found or expired');
+      throw new NotFoundException(
+        'Sales return preview result not found or expired',
+      );
     }
 
     const exportType = options.exportType || 'flat';
@@ -2133,12 +2452,21 @@ export class GrossSalesExportService {
 
     const passThrough = new PassThrough();
     if (typeof res.header === 'function') {
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
       res.header('Content-Disposition', `attachment; filename="${fileName}"`);
       res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
@@ -2154,7 +2482,9 @@ export class GrossSalesExportService {
       useSharedStrings: false,
     });
 
-    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Return Flat Items' : 'Return Summary');
+    const sheet = workbook.addWorksheet(
+      exportType === 'flat' ? 'Return Flat Items' : 'Return Summary',
+    );
 
     if (exportType === 'flat') {
       sheet.columns = [
@@ -2204,11 +2534,17 @@ export class GrossSalesExportService {
     }
 
     const q = (options.search || '').trim().toLowerCase();
-    const pMode = options.paymentMode && options.paymentMode !== 'all' ? options.paymentMode.toUpperCase() : null;
+    const pMode =
+      options.paymentMode && options.paymentMode !== 'all'
+        ? options.paymentMode.toUpperCase()
+        : null;
     const isFbrOnly = options.fbrOnly === true;
-    const locSet = options.locationId && options.locationId !== 'all'
-      ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
-      : null;
+    const locSet =
+      options.locationId && options.locationId !== 'all'
+        ? new Set(
+            options.locationId.split(',').map((s) => s.trim().toLowerCase()),
+          )
+        : null;
 
     let totalQty = 0;
     let totalGross = 0;
@@ -2234,8 +2570,15 @@ export class GrossSalesExportService {
                   if (!locSet.has(loc) && !locSet.has(locId)) continue;
                 }
 
-                if (pMode && (item.paymentMethod || '').toUpperCase() !== pMode) continue;
-                if (isFbrOnly && (!item.fbrInvoiceNumber || item.fbrInvoiceNumber === '-' || item.fbrInvoiceNumber.trim() === '')) continue;
+                if (pMode && (item.paymentMethod || '').toUpperCase() !== pMode)
+                  continue;
+                if (
+                  isFbrOnly &&
+                  (!item.fbrInvoiceNumber ||
+                    item.fbrInvoiceNumber === '-' ||
+                    item.fbrInvoiceNumber.trim() === '')
+                )
+                  continue;
 
                 if (q) {
                   const matches =
@@ -2251,7 +2594,9 @@ export class GrossSalesExportService {
                 }
 
                 const qty = Number(item.quantity || 0);
-                const gross = Number(item.returnGrossAmount || (item.unitPrice * qty));
+                const gross = Number(
+                  item.returnGrossAmount || item.unitPrice * qty,
+                );
                 const disc = Number(item.discountAmount || 0);
                 const net = Number(item.returnNetAmount || item.subTotal || 0);
 
@@ -2292,7 +2637,10 @@ export class GrossSalesExportService {
                 row.commit();
               }
             }
-          } else if (exportType === 'hierarchical' && line.includes('"type":"returns"')) {
+          } else if (
+            exportType === 'hierarchical' &&
+            line.includes('"type":"returns"')
+          ) {
             const obj = JSON.parse(line);
             if (Array.isArray(obj.returns)) {
               for (const ret of obj.returns) {
@@ -2302,8 +2650,15 @@ export class GrossSalesExportService {
                   if (!locSet.has(loc) && !locSet.has(locId)) continue;
                 }
 
-                if (pMode && (ret.paymentMethod || '').toUpperCase() !== pMode) continue;
-                if (isFbrOnly && (!ret.fbrInvoiceNumber || ret.fbrInvoiceNumber === '-' || ret.fbrInvoiceNumber.trim() === '')) continue;
+                if (pMode && (ret.paymentMethod || '').toUpperCase() !== pMode)
+                  continue;
+                if (
+                  isFbrOnly &&
+                  (!ret.fbrInvoiceNumber ||
+                    ret.fbrInvoiceNumber === '-' ||
+                    ret.fbrInvoiceNumber.trim() === '')
+                )
+                  continue;
 
                 if (q) {
                   const matches =
@@ -2312,10 +2667,11 @@ export class GrossSalesExportService {
                     (ret.customerName || '').toLowerCase().includes(q) ||
                     (ret.customerPhone || '').toLowerCase().includes(q) ||
                     (ret.cashierName || '').toLowerCase().includes(q) ||
-                    (ret.items || []).some((it: any) =>
-                      (it.sku || '').toLowerCase().includes(q) ||
-                      (it.barCode || '').toLowerCase().includes(q) ||
-                      (it.description || '').toLowerCase().includes(q)
+                    (ret.items || []).some(
+                      (it: any) =>
+                        (it.sku || '').toLowerCase().includes(q) ||
+                        (it.barCode || '').toLowerCase().includes(q) ||
+                        (it.description || '').toLowerCase().includes(q),
                     );
                   if (!matches) continue;
                 }
@@ -2333,7 +2689,12 @@ export class GrossSalesExportService {
                 const row = sheet.addRow({
                   returnNumber: ret.returnNumber,
                   orderNumber: ret.orderNumber,
-                  createdAt: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                  createdAt: ret.createdAt
+                    ? new Date(ret.createdAt)
+                        .toISOString()
+                        .replace('T', ' ')
+                        .slice(0, 19)
+                    : '-',
                   customerName: ret.customerName || 'Walk-in',
                   cashierName: ret.cashierName || '-',
                   paymentMethod: ret.paymentMethod || '-',
@@ -2370,19 +2731,19 @@ export class GrossSalesExportService {
     const summaryRow = sheet.addRow(
       exportType === 'flat'
         ? {
-          locationName: 'FILTERED TOTALS',
-          quantity: totalQty,
-          discountAmount: totalDiscount,
-          returnGrossAmount: totalGross,
-          returnNetAmount: totalNet,
-        }
+            locationName: 'FILTERED TOTALS',
+            quantity: totalQty,
+            discountAmount: totalDiscount,
+            returnGrossAmount: totalGross,
+            returnNetAmount: totalNet,
+          }
         : {
-          returnNumber: 'FILTERED TOTALS',
-          totalItems: totalQty,
-          grossAmount: totalGross,
-          discountAmount: totalDiscount,
-          netAmount: totalNet,
-        }
+            returnNumber: 'FILTERED TOTALS',
+            totalItems: totalQty,
+            grossAmount: totalGross,
+            discountAmount: totalDiscount,
+            netAmount: totalNet,
+          },
     );
     summaryRow.font = { bold: true };
     summaryRow.commit();

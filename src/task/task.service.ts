@@ -16,7 +16,12 @@ import {
   UpdateCommentDto,
 } from './dto/task.dto';
 
-type Ctx = { userId?: string; employeeId?: string; ipAddress?: string; userAgent?: string };
+type Ctx = {
+  userId?: string;
+  employeeId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
 
 @Injectable()
 export class TaskService {
@@ -31,14 +36,28 @@ export class TaskService {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  private async logActivity(taskId: string, actorId: string, action: string, oldValue?: string, newValue?: string) {
+  private async logActivity(
+    taskId: string,
+    actorId: string,
+    action: string,
+    oldValue?: string,
+    newValue?: string,
+  ) {
     await this.prisma.taskActivity.create({
       data: { taskId, actorId, action, oldValue, newValue },
     });
   }
 
-  private async notifyAssignees(taskId: string, title: string, message: string, priority: 'low' | 'normal' | 'high' | 'urgent', excludeUserId?: string) {
-    const assignees = await this.prisma.taskAssignee.findMany({ where: { taskId } });
+  private async notifyAssignees(
+    taskId: string,
+    title: string,
+    message: string,
+    priority: 'low' | 'normal' | 'high' | 'urgent',
+    excludeUserId?: string,
+  ) {
+    const assignees = await this.prisma.taskAssignee.findMany({
+      where: { taskId },
+    });
     const employees = await this.prisma.employee.findMany({
       where: { id: { in: assignees.map((a) => a.employeeId) } },
       select: { id: true, userId: true },
@@ -57,7 +76,9 @@ export class TaskService {
     }
   }
 
-  private async getUserIdForEmployee(employeeId: string): Promise<string | null> {
+  private async getUserIdForEmployee(
+    employeeId: string,
+  ): Promise<string | null> {
     const emp = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       select: { userId: true },
@@ -82,8 +103,10 @@ export class TaskService {
       if (filters.listId) where.listId = filters.listId;
       if (filters.status) where.status = filters.status;
       if (filters.priority) where.priority = filters.priority;
-      if (filters.dueBefore) where.dueDate = { lte: new Date(filters.dueBefore) };
-      if (filters.parentTaskId !== undefined) where.parentTaskId = filters.parentTaskId;
+      if (filters.dueBefore)
+        where.dueDate = { lte: new Date(filters.dueBefore) };
+      if (filters.parentTaskId !== undefined)
+        where.parentTaskId = filters.parentTaskId;
       if (filters.assigneeId) {
         where.assignees = { some: { employeeId: filters.assigneeId } };
       }
@@ -92,14 +115,20 @@ export class TaskService {
         where,
         include: {
           assignees: true,
-          _count: { select: { subtasks: true, comments: true, attachments: true } },
+          _count: {
+            select: { subtasks: true, comments: true, attachments: true },
+          },
         },
         orderBy: [{ position: 'asc' }, { createdAt: 'desc' }],
       });
 
       return { status: true, data: tasks };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list tasks' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to list tasks',
+      };
     }
   }
 
@@ -123,13 +152,18 @@ export class TaskService {
       if (!task) return { status: false, message: 'Task not found' };
       return { status: true, data: task };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to get task' };
+      return {
+        status: false,
+        message: error instanceof Error ? error.message : 'Failed to get task',
+      };
     }
   }
 
   async create(body: CreateTaskDto, ctx: Ctx) {
     try {
-      const list = await this.prisma.taskList.findUnique({ where: { id: body.listId } });
+      const list = await this.prisma.taskList.findUnique({
+        where: { id: body.listId },
+      });
       if (!list) return { status: false, message: 'Task list not found' };
 
       const last = await this.prisma.task.findFirst({
@@ -184,17 +218,31 @@ export class TaskService {
         }
       }
 
-      await this.logActivity(task.id, ctx.userId ?? 'system', 'created', undefined, task.title);
+      await this.logActivity(
+        task.id,
+        ctx.userId ?? 'system',
+        'created',
+        undefined,
+        task.title,
+      );
 
       // If subtask, update parent completion
       if (task.parentTaskId) {
-        await this.logActivity(task.id, ctx.userId ?? 'system', 'subtask_added');
+        await this.logActivity(
+          task.id,
+          ctx.userId ?? 'system',
+          'subtask_added',
+        );
         await this.recalcParentCompletion(task.parentTaskId);
       }
 
       return { status: true, data: task, message: 'Task created successfully' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to create task' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to create task',
+      };
     }
   }
 
@@ -211,10 +259,22 @@ export class TaskService {
 
       // Log specific field changes
       if (body.priority && body.priority !== existing.priority) {
-        await this.logActivity(id, ctx.userId ?? 'system', 'priority_changed', existing.priority, body.priority);
+        await this.logActivity(
+          id,
+          ctx.userId ?? 'system',
+          'priority_changed',
+          existing.priority,
+          body.priority,
+        );
       }
       if (body.dueDate && body.dueDate !== existing.dueDate?.toISOString()) {
-        await this.logActivity(id, ctx.userId ?? 'system', 'due_date_changed', existing.dueDate?.toISOString(), body.dueDate);
+        await this.logActivity(
+          id,
+          ctx.userId ?? 'system',
+          'due_date_changed',
+          existing.dueDate?.toISOString(),
+          body.dueDate,
+        );
       }
 
       runInBackground(
@@ -231,12 +291,20 @@ export class TaskService {
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
           status: 'success',
-        })
+        }),
       );
 
-      return { status: true, data: updated, message: 'Task updated successfully' };
+      return {
+        status: true,
+        data: updated,
+        message: 'Task updated successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update task' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to update task',
+      };
     }
   }
 
@@ -253,7 +321,11 @@ export class TaskService {
 
       return { status: true, message: 'Task deleted successfully' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete task' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to delete task',
+      };
     }
   }
 
@@ -273,7 +345,13 @@ export class TaskService {
 
       const updated = await this.prisma.task.update({ where: { id }, data });
 
-      await this.logActivity(id, ctx.userId ?? 'system', 'status_changed', existing.status, body.status);
+      await this.logActivity(
+        id,
+        ctx.userId ?? 'system',
+        'status_changed',
+        existing.status,
+        body.status,
+      );
 
       // Notify assignees + creator of status change
       await this.notifyAssignees(
@@ -316,7 +394,13 @@ export class TaskService {
 
       return { status: true, data: updated, message: 'Task status updated' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to change task status' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to change task status',
+      };
     }
   }
 
@@ -327,7 +411,9 @@ export class TaskService {
       const task = await this.prisma.task.findUnique({ where: { id } });
       if (!task) return { status: false, message: 'Task not found' };
 
-      const existing = await this.prisma.taskAssignee.findMany({ where: { taskId: id } });
+      const existing = await this.prisma.taskAssignee.findMany({
+        where: { taskId: id },
+      });
       const existingIds = new Set(existing.map((a) => a.employeeId));
       const newIds = new Set(body.assignees.map((a) => a.employeeId));
 
@@ -335,15 +421,25 @@ export class TaskService {
       const toRemove = existing.filter((a) => !newIds.has(a.employeeId));
       if (toRemove.length) {
         await this.prisma.taskAssignee.deleteMany({
-          where: { taskId: id, employeeId: { in: toRemove.map((a) => a.employeeId) } },
+          where: {
+            taskId: id,
+            employeeId: { in: toRemove.map((a) => a.employeeId) },
+          },
         });
         for (const a of toRemove) {
-          await this.logActivity(id, ctx.userId ?? 'system', 'unassigned', a.employeeId);
+          await this.logActivity(
+            id,
+            ctx.userId ?? 'system',
+            'unassigned',
+            a.employeeId,
+          );
         }
       }
 
       // Add new
-      const toAdd = body.assignees.filter((a) => !existingIds.has(a.employeeId));
+      const toAdd = body.assignees.filter(
+        (a) => !existingIds.has(a.employeeId),
+      );
       if (toAdd.length) {
         await this.prisma.taskAssignee.createMany({
           data: toAdd.map((a) => ({
@@ -356,7 +452,13 @@ export class TaskService {
         });
 
         for (const a of toAdd) {
-          await this.logActivity(id, ctx.userId ?? 'system', 'assigned', undefined, a.employeeId);
+          await this.logActivity(
+            id,
+            ctx.userId ?? 'system',
+            'assigned',
+            undefined,
+            a.employeeId,
+          );
           const userId = await this.getUserIdForEmployee(a.employeeId);
           if (userId && userId !== ctx.userId) {
             await this.notifications.create({
@@ -372,16 +474,31 @@ export class TaskService {
         }
       }
 
-      const updated = await this.prisma.taskAssignee.findMany({ where: { taskId: id } });
+      const updated = await this.prisma.taskAssignee.findMany({
+        where: { taskId: id },
+      });
       return { status: true, data: updated, message: 'Assignees updated' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update assignees' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to update assignees',
+      };
     }
   }
 
   // ─── Attachments ──────────────────────────────────────────────────────────────
 
-  async addAttachment(taskId: string, data: { fileName: string; fileUrl: string; fileSize?: number; mimeType?: string }, ctx: Ctx) {
+  async addAttachment(
+    taskId: string,
+    data: {
+      fileName: string;
+      fileUrl: string;
+      fileSize?: number;
+      mimeType?: string;
+    },
+    ctx: Ctx,
+  ) {
     try {
       const task = await this.prisma.task.findUnique({ where: { id: taskId } });
       if (!task) return { status: false, message: 'Task not found' };
@@ -390,23 +507,42 @@ export class TaskService {
         data: { taskId, ...data, uploadedById: ctx.userId },
       });
 
-      await this.logActivity(taskId, ctx.userId ?? 'system', 'attachment_added', undefined, data.fileName);
+      await this.logActivity(
+        taskId,
+        ctx.userId ?? 'system',
+        'attachment_added',
+        undefined,
+        data.fileName,
+      );
 
       return { status: true, data: attachment, message: 'Attachment added' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to add attachment' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to add attachment',
+      };
     }
   }
 
   async removeAttachment(taskId: string, attachId: string) {
     try {
-      const attachment = await this.prisma.taskAttachment.findUnique({ where: { id: attachId } });
-      if (!attachment || attachment.taskId !== taskId) return { status: false, message: 'Attachment not found' };
+      const attachment = await this.prisma.taskAttachment.findUnique({
+        where: { id: attachId },
+      });
+      if (!attachment || attachment.taskId !== taskId)
+        return { status: false, message: 'Attachment not found' };
 
       await this.prisma.taskAttachment.delete({ where: { id: attachId } });
       return { status: true, message: 'Attachment removed' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to remove attachment' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to remove attachment',
+      };
     }
   }
 
@@ -423,7 +559,11 @@ export class TaskService {
       );
       return { status: true, message: 'Tasks reordered' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to reorder tasks' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to reorder tasks',
+      };
     }
   }
 
@@ -447,14 +587,28 @@ export class TaskService {
 
       const grouped = {
         overdue: tasks.filter((t) => t.dueDate && t.dueDate < today),
-        today: tasks.filter((t) => t.dueDate && t.dueDate >= today && t.dueDate < new Date(today.getTime() + 86400000)),
-        thisWeek: tasks.filter((t) => t.dueDate && t.dueDate >= new Date(today.getTime() + 86400000) && t.dueDate <= weekEnd),
+        today: tasks.filter(
+          (t) =>
+            t.dueDate &&
+            t.dueDate >= today &&
+            t.dueDate < new Date(today.getTime() + 86400000),
+        ),
+        thisWeek: tasks.filter(
+          (t) =>
+            t.dueDate &&
+            t.dueDate >= new Date(today.getTime() + 86400000) &&
+            t.dueDate <= weekEnd,
+        ),
         noDueDate: tasks.filter((t) => !t.dueDate),
       };
 
       return { status: true, data: grouped };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to get my tasks' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to get my tasks',
+      };
     }
   }
 
@@ -470,7 +624,13 @@ export class TaskService {
       });
       return { status: true, data: tasks };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to get overdue tasks' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to get overdue tasks',
+      };
     }
   }
 
@@ -485,7 +645,11 @@ export class TaskService {
       });
       return { status: true, data: comments };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list comments' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to list comments',
+      };
     }
   }
 
@@ -503,7 +667,13 @@ export class TaskService {
         },
       });
 
-      await this.logActivity(taskId, ctx.userId ?? 'system', 'commented', undefined, comment.id);
+      await this.logActivity(
+        taskId,
+        ctx.userId ?? 'system',
+        'commented',
+        undefined,
+        comment.id,
+      );
 
       // Notify assignees of new comment (excluding commenter)
       await this.notifyAssignees(
@@ -516,15 +686,25 @@ export class TaskService {
 
       return { status: true, data: comment, message: 'Comment added' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to create comment' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to create comment',
+      };
     }
   }
 
   async updateComment(commentId: string, body: UpdateCommentDto, ctx: Ctx) {
     try {
-      const existing = await this.prisma.taskComment.findUnique({ where: { id: commentId } });
+      const existing = await this.prisma.taskComment.findUnique({
+        where: { id: commentId },
+      });
       if (!existing) return { status: false, message: 'Comment not found' };
-      if (existing.authorId !== ctx.userId) return { status: false, message: 'Not authorized to edit this comment' };
+      if (existing.authorId !== ctx.userId)
+        return {
+          status: false,
+          message: 'Not authorized to edit this comment',
+        };
 
       const updated = await this.prisma.taskComment.update({
         where: { id: commentId },
@@ -533,20 +713,34 @@ export class TaskService {
 
       return { status: true, data: updated, message: 'Comment updated' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update comment' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to update comment',
+      };
     }
   }
 
   async deleteComment(commentId: string, ctx: Ctx) {
     try {
-      const existing = await this.prisma.taskComment.findUnique({ where: { id: commentId } });
+      const existing = await this.prisma.taskComment.findUnique({
+        where: { id: commentId },
+      });
       if (!existing) return { status: false, message: 'Comment not found' };
-      if (existing.authorId !== ctx.userId) return { status: false, message: 'Not authorized to delete this comment' };
+      if (existing.authorId !== ctx.userId)
+        return {
+          status: false,
+          message: 'Not authorized to delete this comment',
+        };
 
       await this.prisma.taskComment.delete({ where: { id: commentId } });
       return { status: true, message: 'Comment deleted' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete comment' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to delete comment',
+      };
     }
   }
 
@@ -560,7 +754,11 @@ export class TaskService {
       });
       return { status: true, data: activities };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list activity' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to list activity',
+      };
     }
   }
 
@@ -584,36 +782,72 @@ export class TaskService {
 
   // ─── Bulk Actions ─────────────────────────────────────────────────────────────
 
-  async bulkAction(body: { taskIds: string[]; action: string; status?: string; priority?: string; assigneeIds?: string[] }, ctx: Ctx) {
+  async bulkAction(
+    body: {
+      taskIds: string[];
+      action: string;
+      status?: string;
+      priority?: string;
+      assigneeIds?: string[];
+    },
+    ctx: Ctx,
+  ) {
     try {
-      if (!body.taskIds?.length) return { status: false, message: 'No task IDs provided' };
+      if (!body.taskIds?.length)
+        return { status: false, message: 'No task IDs provided' };
 
       switch (body.action) {
         case 'change_status': {
-          if (!body.status) return { status: false, message: 'status is required for change_status action' };
+          if (!body.status)
+            return {
+              status: false,
+              message: 'status is required for change_status action',
+            };
           const data: any = { status: body.status, updatedById: ctx.userId };
-          if (body.status === 'done') { data.completedAt = new Date(); data.completionPercentage = 100; }
-          await this.prisma.task.updateMany({ where: { id: { in: body.taskIds } }, data });
+          if (body.status === 'done') {
+            data.completedAt = new Date();
+            data.completionPercentage = 100;
+          }
+          await this.prisma.task.updateMany({
+            where: { id: { in: body.taskIds } },
+            data,
+          });
           // Fire KPI hook for each completed task
           if (body.status === 'done') {
             for (const taskId of body.taskIds) {
-              await this.triggerKpiForAssignees(taskId, ctx).catch(() => undefined);
+              await this.triggerKpiForAssignees(taskId, ctx).catch(
+                () => undefined,
+              );
             }
           }
           break;
         }
         case 'change_priority': {
-          if (!body.priority) return { status: false, message: 'priority is required for change_priority action' };
-          await this.prisma.task.updateMany({ where: { id: { in: body.taskIds } }, data: { priority: body.priority, updatedById: ctx.userId } });
+          if (!body.priority)
+            return {
+              status: false,
+              message: 'priority is required for change_priority action',
+            };
+          await this.prisma.task.updateMany({
+            where: { id: { in: body.taskIds } },
+            data: { priority: body.priority, updatedById: ctx.userId },
+          });
           break;
         }
         case 'reassign': {
-          if (!body.assigneeIds?.length) return { status: false, message: 'assigneeIds required for reassign action' };
+          if (!body.assigneeIds?.length)
+            return {
+              status: false,
+              message: 'assigneeIds required for reassign action',
+            };
           for (const taskId of body.taskIds) {
             await this.prisma.taskAssignee.deleteMany({ where: { taskId } });
             await this.prisma.taskAssignee.createMany({
               data: body.assigneeIds.map((employeeId, i) => ({
-                taskId, employeeId, role: i === 0 ? 'primary' : 'collaborator', assignedById: ctx.userId,
+                taskId,
+                employeeId,
+                role: i === 0 ? 'primary' : 'collaborator',
+                assignedById: ctx.userId,
               })),
               skipDuplicates: true,
             });
@@ -621,21 +855,36 @@ export class TaskService {
           break;
         }
         case 'delete': {
-          await this.prisma.task.deleteMany({ where: { id: { in: body.taskIds } } });
+          await this.prisma.task.deleteMany({
+            where: { id: { in: body.taskIds } },
+          });
           break;
         }
         default:
           return { status: false, message: `Unknown action: ${body.action}` };
       }
 
-      return { status: true, message: `Bulk ${body.action} applied to ${body.taskIds.length} task(s)` };
+      return {
+        status: true,
+        message: `Bulk ${body.action} applied to ${body.taskIds.length} task(s)`,
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Bulk action failed' };
+      return {
+        status: false,
+        message: error instanceof Error ? error.message : 'Bulk action failed',
+      };
     }
   }
 
   // Called by the due-date reminder job
-  async findTasksDueSoon(): Promise<Array<{ id: string; title: string; dueDate: Date; assignees: Array<{ employeeId: string }> }>> {
+  async findTasksDueSoon(): Promise<
+    Array<{
+      id: string;
+      title: string;
+      dueDate: Date;
+      assignees: Array<{ employeeId: string }>;
+    }>
+  > {
     const now = new Date();
     const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -650,22 +899,39 @@ export class TaskService {
   }
 
   async markNotified(taskId: string) {
-    await this.prisma.task.update({ where: { id: taskId }, data: { notifiedAt: new Date() } });
+    await this.prisma.task.update({
+      where: { id: taskId },
+      data: { notifiedAt: new Date() },
+    });
   }
 
   // ─── Task Reviews ─────────────────────────────────────────────────────────────
 
-  async createReview(taskId: string, body: { rating: number; feedback?: string }, ctx: Ctx) {
+  async createReview(
+    taskId: string,
+    body: { rating: number; feedback?: string },
+    ctx: Ctx,
+  ) {
     try {
       const task = await this.prisma.task.findUnique({ where: { id: taskId } });
       if (!task) return { status: false, message: 'Task not found' };
-      if (task.status !== 'done') return { status: false, message: 'Task must be done before it can be reviewed' };
+      if (task.status !== 'done')
+        return {
+          status: false,
+          message: 'Task must be done before it can be reviewed',
+        };
 
-      const existing = await this.prisma.taskReview.findUnique({ where: { taskId } });
+      const existing = await this.prisma.taskReview.findUnique({
+        where: { taskId },
+      });
       if (existing) {
         const updated = await this.prisma.taskReview.update({
           where: { taskId },
-          data: { rating: body.rating, feedback: body.feedback, reviewerId: ctx.userId ?? 'unknown' },
+          data: {
+            rating: body.rating,
+            feedback: body.feedback,
+            reviewerId: ctx.userId ?? 'unknown',
+          },
         });
         // Re-trigger KPI compute after rating update
         await this.triggerKpiForAssignees(taskId, ctx);
@@ -686,17 +952,28 @@ export class TaskService {
 
       return { status: true, data: review, message: 'Review submitted' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to submit review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to submit review',
+      };
     }
   }
 
   async getReview(taskId: string) {
     try {
-      const review = await this.prisma.taskReview.findUnique({ where: { taskId } });
-      if (!review) return { status: false, message: 'No review found for this task' };
+      const review = await this.prisma.taskReview.findUnique({
+        where: { taskId },
+      });
+      if (!review)
+        return { status: false, message: 'No review found for this task' };
       return { status: true, data: review };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to get review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to get review',
+      };
     }
   }
 
@@ -704,7 +981,9 @@ export class TaskService {
 
   private async triggerKpiForAssignees(taskId: string, ctx: Ctx) {
     try {
-      const assignees = await this.prisma.taskAssignee.findMany({ where: { taskId } });
+      const assignees = await this.prisma.taskAssignee.findMany({
+        where: { taskId },
+      });
       if (!assignees.length) return;
 
       const now = new Date();
@@ -712,29 +991,57 @@ export class TaskService {
       const period = `${now.getFullYear()}-${String(month).padStart(2, '0')}`;
       const periodType = 'monthly';
 
-      const taskFormulas = ['task_completion_rate', 'task_quality_score', 'avg_task_completion_hours'];
+      const taskFormulas = [
+        'task_completion_rate',
+        'task_quality_score',
+        'avg_task_completion_hours',
+      ];
 
       const templates = await this.prisma.kpiTemplate.findMany({
-        where: { formula: { in: taskFormulas }, metricType: 'auto', status: 'active' },
+        where: {
+          formula: { in: taskFormulas },
+          metricType: 'auto',
+          status: 'active',
+        },
       });
 
       for (const assignee of assignees) {
         for (const template of templates) {
           if (!template.formula) continue;
-          const metric = await this.kpiCompute.compute(assignee.employeeId, template.formula, period, periodType);
+          const metric = await this.kpiCompute.compute(
+            assignee.employeeId,
+            template.formula,
+            period,
+            periodType,
+          );
           if (!metric) continue;
 
-          const targetValue = template.targetValue ? Number(template.targetValue) : 100;
-          const score = targetValue > 0 ? Math.min(100, (metric.actualValue / targetValue) * 100) : null;
+          const targetValue = template.targetValue
+            ? Number(template.targetValue)
+            : 100;
+          const score =
+            targetValue > 0
+              ? Math.min(100, (metric.actualValue / targetValue) * 100)
+              : null;
 
           const existing = await this.prisma.kpiReview.findUnique({
-            where: { employeeId_kpiTemplateId_period: { employeeId: assignee.employeeId, kpiTemplateId: template.id, period } },
+            where: {
+              employeeId_kpiTemplateId_period: {
+                employeeId: assignee.employeeId,
+                kpiTemplateId: template.id,
+                period,
+              },
+            },
           });
 
           if (existing) {
             await this.prisma.kpiReview.update({
               where: { id: existing.id },
-              data: { actualValue: metric.actualValue, score, updatedById: ctx.userId },
+              data: {
+                actualValue: metric.actualValue,
+                score,
+                updatedById: ctx.userId,
+              },
             });
           } else {
             await this.prisma.kpiReview.create({

@@ -4,7 +4,6 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 
-
 @Injectable()
 export class TaxSlabService {
   constructor(
@@ -15,15 +14,15 @@ export class TaxSlabService {
   async list() {
     const items = await this.prisma.taxSlab.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.taxSlab.findFirst({ where: { id,
-        isDeleted: false
-    } });
+    const item = await this.prisma.taxSlab.findFirst({
+      where: { id, isDeleted: false },
+    });
     if (!item) return { status: false, message: 'Tax slab not found' };
     return { status: true, data: item };
   }
@@ -68,7 +67,11 @@ export class TaxSlabService {
         }),
       );
 
-      return { status: true, data: created, message: 'Tax slab created successfully' };
+      return {
+        status: true,
+        data: created,
+        message: 'Tax slab created successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to create tax slab',
@@ -130,7 +133,11 @@ export class TaxSlabService {
         }),
       );
 
-      return { status: true, data: res, message: 'Tax slabs created successfully' };
+      return {
+        status: true,
+        data: res,
+        message: 'Tax slabs created successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed bulk create tax slabs',
@@ -165,9 +172,7 @@ export class TaxSlabService {
   ) {
     try {
       const existing = await this.prisma.taxSlab.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Tax slab not found' };
 
@@ -178,7 +183,9 @@ export class TaxSlabService {
           minAmount: (body.minAmount ?? (existing as any).minAmount) as any,
           maxAmount: (body.maxAmount ?? (existing as any).maxAmount) as any,
           rate: (body.rate ?? (existing as any).rate) as any,
-          fixedAmount: (body.fixedAmount !== undefined ? body.fixedAmount : (existing as any).fixedAmount ?? 0) as any,
+          fixedAmount: (body.fixedAmount !== undefined
+            ? body.fixedAmount
+            : ((existing as any).fixedAmount ?? 0)) as any,
           status: body.status ?? existing.status,
         },
       });
@@ -200,7 +207,11 @@ export class TaxSlabService {
         }),
       );
 
-      return { status: true, data: updated, message: 'Tax slab updated successfully' };
+      return {
+        status: true,
+        data: updated,
+        message: 'Tax slab updated successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to update tax slab',
@@ -228,15 +239,14 @@ export class TaxSlabService {
   ) {
     try {
       const existing = await this.prisma.taxSlab.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Tax slab not found' };
 
-      await this.prisma.taxSlab.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      await this.prisma.taxSlab.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         `Deleted tax slab ${existing.name}`,
@@ -287,9 +297,7 @@ export class TaxSlabService {
     for (const id of ids) {
       try {
         const existing = await this.prisma.taxSlab.findFirst({
-          where: { id,
-              isDeleted: false
-        },
+          where: { id, isDeleted: false },
         });
 
         if (!existing) {
@@ -297,8 +305,9 @@ export class TaxSlabService {
           continue;
         }
 
-        await this.prisma.taxSlab.update({ where: { id },
-            data: { isDeleted: true, deletedAt: new Date() }
+        await this.prisma.taxSlab.update({
+          where: { id },
+          data: { isDeleted: true, deletedAt: new Date() },
         });
 
         runInBackground(

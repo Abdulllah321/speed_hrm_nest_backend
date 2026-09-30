@@ -10,7 +10,7 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('stock-operation')
 export class StockOperationController {
-  constructor(private readonly stockMovementService: StockMovementService,) {}
+  constructor(private readonly stockMovementService: StockMovementService) {}
 
   @Post('move')
   @Permissions('pos.stock.move')

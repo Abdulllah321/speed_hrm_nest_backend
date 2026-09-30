@@ -1,6 +1,13 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateSalesReturnDto, SalesReturnSourceType } from './dto/create-sales-return.dto';
+import {
+  CreateSalesReturnDto,
+  SalesReturnSourceType,
+} from './dto/create-sales-return.dto';
 import { UpdateSalesReturnDto } from './dto/update-sales-return.dto';
 import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
 import { AccountingService } from '../../finance/accounting/accounting.service';
@@ -8,7 +15,10 @@ import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance
 import { JournalVoucherService } from '../../finance/journal-voucher/journal-voucher.service';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
-import { generateNextJvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
+import {
+  generateNextJvNumber,
+  generateNextFolioNumber,
+} from '../../common/utils/voucher-number.util';
 
 @Injectable()
 export class SalesReturnService {
@@ -20,14 +30,18 @@ export class SalesReturnService {
     private readonly journalVoucherService: JournalVoucherService,
   ) {}
 
-  async create(createDto: CreateSalesReturnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createDto: CreateSalesReturnDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       await this.validateSourceDocument(createDto);
 
       const { nextReturnNumber } = await this.getNextReturnNumber();
       const returnNumber = nextReturnNumber;
 
-      const { subtotal, taxAmount, totalAmount } = await this.calculateTotals(createDto);
+      const { subtotal, taxAmount, totalAmount } =
+        await this.calculateTotals(createDto);
 
       const created = await this.prisma.salesReturn.create({
         data: {
@@ -39,9 +53,11 @@ export class SalesReturnService {
           warehouseId: createDto.warehouseId,
           // finalWarehouseId: if provided and differs from warehouseId, 3 stock ledger entries are
           // created on approval (INBOUND at warehouseId, OUTBOUND from warehouseId, INBOUND at finalWarehouseId)
-          finalWarehouseId: createDto.finalWarehouseId && createDto.finalWarehouseId !== createDto.warehouseId
-            ? createDto.finalWarehouseId
-            : null,
+          finalWarehouseId:
+            createDto.finalWarehouseId &&
+            createDto.finalWarehouseId !== createDto.warehouseId
+              ? createDto.finalWarehouseId
+              : null,
           returnType: createDto.returnType || 'DEFECTIVE',
           reason: createDto.reason,
           notes: createDto.notes,
@@ -50,7 +66,7 @@ export class SalesReturnService {
           taxAmount,
           totalAmount,
           items: {
-            create: createDto.items.map(item => ({
+            create: createDto.items.map((item) => ({
               sourceItemType: item.sourceItemType,
               deliveryChallanItemId: item.deliveryChallanItemId,
               salesInvoiceItemId: item.salesInvoiceItemId,
@@ -200,7 +216,11 @@ export class SalesReturnService {
     return salesReturn;
   }
 
-  async update(id: string, updateDto: UpdateSalesReturnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdateSalesReturnDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existingReturn = await this.findOne(id);
 
@@ -208,7 +228,8 @@ export class SalesReturnService {
         throw new BadRequestException('Only DRAFT returns can be updated');
       }
 
-      const { subtotal, taxAmount, totalAmount } = await this.calculateTotals(updateDto);
+      const { subtotal, taxAmount, totalAmount } =
+        await this.calculateTotals(updateDto);
 
       const updateData: any = {
         subtotal,
@@ -220,12 +241,13 @@ export class SalesReturnService {
       if (updateDto.warehouseId) updateData.warehouseId = updateDto.warehouseId;
       if (updateDto.reason !== undefined) updateData.reason = updateDto.reason;
       if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
-      if (updateDto.staxEInvoiceNumber !== undefined) updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber;
+      if (updateDto.staxEInvoiceNumber !== undefined)
+        updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber;
 
       if (updateDto.items && updateDto.items.length > 0) {
         updateData.items = {
           deleteMany: {},
-          create: updateDto.items.map(item => ({
+          create: updateDto.items.map((item) => ({
             sourceItemType: item.sourceItemType,
             deliveryChallanItemId: item.deliveryChallanItemId,
             salesInvoiceItemId: item.salesInvoiceItemId,
@@ -289,7 +311,12 @@ export class SalesReturnService {
     }
   }
 
-  async updateStatus(id: string, status: string, approvedBy?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async updateStatus(
+    id: string,
+    status: string,
+    approvedBy?: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesReturn = await this.findOne(id);
 
@@ -304,7 +331,10 @@ export class SalesReturnService {
         try {
           await this.autoGenerateJournalVoucher(salesReturn, ctx);
         } catch (jvError) {
-          console.error('Failed to auto-generate Journal Voucher for Sales Return:', jvError);
+          console.error(
+            'Failed to auto-generate Journal Voucher for Sales Return:',
+            jvError,
+          );
         }
       }
 
@@ -312,8 +342,10 @@ export class SalesReturnService {
         where: { id },
         data: {
           status,
-          approvedBy: status === 'APPROVED' ? approvedBy : salesReturn.approvedBy,
-          approvedAt: status === 'APPROVED' ? new Date() : salesReturn.approvedAt,
+          approvedBy:
+            status === 'APPROVED' ? approvedBy : salesReturn.approvedBy,
+          approvedAt:
+            status === 'APPROVED' ? new Date() : salesReturn.approvedAt,
         },
       });
 
@@ -355,7 +387,10 @@ export class SalesReturnService {
     }
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesReturn = await this.findOne(id);
 
@@ -425,11 +460,11 @@ export class SalesReturnService {
               where: {
                 salesReturn: {
                   status: {
-                    not: 'REJECTED'
-                  }
-                }
-              }
-            }
+                    not: 'REJECTED',
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -437,24 +472,27 @@ export class SalesReturnService {
     });
 
     return invoices
-      .map(invoice => {
+      .map((invoice) => {
         const filteredItems = invoice.items
-          .map(item => {
-            const returnedQty = item.salesReturnItems.reduce((sum, ri) => sum + Number(ri.returnQty), 0);
+          .map((item) => {
+            const returnedQty = item.salesReturnItems.reduce(
+              (sum, ri) => sum + Number(ri.returnQty),
+              0,
+            );
             const availableQty = Number(item.quantity) - returnedQty;
             return {
               ...item,
               quantity: availableQty,
             };
           })
-          .filter(item => item.quantity > 0);
-          
+          .filter((item) => item.quantity > 0);
+
         return {
           ...invoice,
           items: filteredItems,
         };
       })
-      .filter(invoice => invoice.items.length > 0);
+      .filter((invoice) => invoice.items.length > 0);
   }
 
   async getEligibleChallans() {
@@ -475,11 +513,11 @@ export class SalesReturnService {
               where: {
                 salesReturn: {
                   status: {
-                    not: 'REJECTED'
-                  }
-                }
-              }
-            }
+                    not: 'REJECTED',
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -487,10 +525,13 @@ export class SalesReturnService {
     });
 
     return challans
-      .map(challan => {
+      .map((challan) => {
         const filteredItems = challan.items
-          .map(item => {
-            const returnedQty = item.salesReturnItems.reduce((sum, ri) => sum + Number(ri.returnQty), 0);
+          .map((item) => {
+            const returnedQty = item.salesReturnItems.reduce(
+              (sum, ri) => sum + Number(ri.returnQty),
+              0,
+            );
             const availableQty = Number(item.deliveredQty) - returnedQty;
             return {
               ...item,
@@ -498,14 +539,14 @@ export class SalesReturnService {
               quantity: availableQty, // Alias for frontend
             };
           })
-          .filter(item => item.deliveredQty > 0);
-          
+          .filter((item) => item.deliveredQty > 0);
+
         return {
           ...challan,
           items: filteredItems,
         };
       })
-      .filter(challan => challan.items.length > 0);
+      .filter((challan) => challan.items.length > 0);
   }
 
   async getNextReturnNumber() {
@@ -514,7 +555,7 @@ export class SalesReturnService {
     const currentMonth = now.getMonth();
     const startY = currentMonth >= 6 ? currentYear : currentYear - 1;
     const fyStr = `${String(startY).slice(-2)}-${String(startY + 1).slice(-2)}`;
-    
+
     const prefix = `SR-${fyStr}`;
 
     const lastReturn = await this.prisma.salesReturn.findFirst({
@@ -529,15 +570,22 @@ export class SalesReturnService {
       return { nextReturnNumber: `${prefix}-0001` };
     }
 
-    const lastSeq = parseInt(lastReturn.returnNumber.split('-').pop() || '0', 10);
+    const lastSeq = parseInt(
+      lastReturn.returnNumber.split('-').pop() || '0',
+      10,
+    );
     const nextNum = isNaN(lastSeq) ? 1 : lastSeq + 1;
-    return { nextReturnNumber: `${prefix}-${nextNum.toString().padStart(4, '0')}` };
+    return {
+      nextReturnNumber: `${prefix}-${nextNum.toString().padStart(4, '0')}`,
+    };
   }
 
   private async validateSourceDocument(createDto: CreateSalesReturnDto) {
     if (createDto.sourceType === SalesReturnSourceType.INVOICE) {
       if (!createDto.salesInvoiceId) {
-        throw new BadRequestException('Sales Invoice ID is required for INVOICE return');
+        throw new BadRequestException(
+          'Sales Invoice ID is required for INVOICE return',
+        );
       }
       const invoice = await this.prisma.eRPSalesInvoice.findUnique({
         where: { id: createDto.salesInvoiceId },
@@ -545,9 +593,13 @@ export class SalesReturnService {
       if (!invoice) {
         throw new NotFoundException('Sales Invoice not found');
       }
-    } else if (createDto.sourceType === SalesReturnSourceType.DELIVERY_CHALLAN) {
+    } else if (
+      createDto.sourceType === SalesReturnSourceType.DELIVERY_CHALLAN
+    ) {
       if (!createDto.deliveryChallanId) {
-        throw new BadRequestException('Delivery Challan ID is required for DELIVERY_CHALLAN return');
+        throw new BadRequestException(
+          'Delivery Challan ID is required for DELIVERY_CHALLAN return',
+        );
       }
       const dc = await this.prisma.deliveryChallan.findUnique({
         where: { id: createDto.deliveryChallanId },
@@ -563,20 +615,23 @@ export class SalesReturnService {
     let taxAmount = 0;
     let totalAmount = 0;
 
-    const roundToTwo = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
+    const roundToTwo = (num: number) =>
+      Math.round((num + Number.EPSILON) * 100) / 100;
 
     if (dto.items && dto.items.length > 0) {
       for (const itemDto of dto.items) {
-        const item = await this.prisma.item.findUnique({ where: { id: itemDto.itemId } });
+        const item = await this.prisma.item.findUnique({
+          where: { id: itemDto.itemId },
+        });
         let rate = Number(item?.taxRate1 || 18);
-        
+
         let originalItemDiscount = 0;
         let originalItemQty = 1;
 
         if (itemDto.salesInvoiceItemId) {
           const invItem = await this.prisma.eRPSalesInvoiceItem.findUnique({
             where: { id: itemDto.salesInvoiceItemId },
-            include: { item: true }
+            include: { item: true },
           });
           if (invItem) {
             rate = Number(invItem.item?.taxRate1 || rate);
@@ -588,7 +643,8 @@ export class SalesReturnService {
         const returnQty = Number(itemDto.returnQty || 0);
         const unitPrice = Number(itemDto.unitPrice || 0);
 
-        const discountPerUnit = originalItemQty > 0 ? (originalItemDiscount / originalItemQty) : 0;
+        const discountPerUnit =
+          originalItemQty > 0 ? originalItemDiscount / originalItemQty : 0;
         const itemDiscount = discountPerUnit * returnQty;
 
         const wostUnitPrice = unitPrice / (1 + rate / 100);
@@ -615,7 +671,9 @@ export class SalesReturnService {
       where: { referenceId: salesReturn.id },
     });
     if (stockLedgerExists) {
-      console.log(`Inventory adjustment already processed for Sales Return ${salesReturn.returnNumber}. Skipping.`);
+      console.log(
+        `Inventory adjustment already processed for Sales Return ${salesReturn.returnNumber}. Skipping.`,
+      );
       return;
     }
 
@@ -624,16 +682,19 @@ export class SalesReturnService {
       !!salesReturn.finalWarehouseId &&
       salesReturn.finalWarehouseId !== salesReturn.warehouseId;
 
-    const referenceType = salesReturn.sourceType === 'DELIVERY_CHALLAN'
-      ? 'SALES_RETURN_DC'
-      : 'SALES_RETURN_INV';
+    const referenceType =
+      salesReturn.sourceType === 'DELIVERY_CHALLAN'
+        ? 'SALES_RETURN_DC'
+        : 'SALES_RETURN_INV';
 
     // Validate warehouses up-front
     const returnWarehouse = await this.prisma.warehouse.findUnique({
       where: { id: salesReturn.warehouseId },
     });
     if (!returnWarehouse) {
-      throw new Error(`Return warehouse with ID ${salesReturn.warehouseId} does not exist`);
+      throw new Error(
+        `Return warehouse with ID ${salesReturn.warehouseId} does not exist`,
+      );
     }
 
     let finalWarehouse: any = null;
@@ -642,7 +703,9 @@ export class SalesReturnService {
         where: { id: salesReturn.finalWarehouseId },
       });
       if (!finalWarehouse) {
-        throw new Error(`Final destination warehouse with ID ${salesReturn.finalWarehouseId} does not exist`);
+        throw new Error(
+          `Final destination warehouse with ID ${salesReturn.finalWarehouseId} does not exist`,
+        );
       }
     }
 
@@ -744,7 +807,9 @@ export class SalesReturnService {
       where: { salesReturnId: salesReturn.id },
     });
     if (creditNoteExists) {
-      console.log(`Financial adjustment already processed for Sales Return ${salesReturn.returnNumber}. Skipping.`);
+      console.log(
+        `Financial adjustment already processed for Sales Return ${salesReturn.returnNumber}. Skipping.`,
+      );
       return creditNoteExists;
     }
 
@@ -753,7 +818,10 @@ export class SalesReturnService {
       salesInvoice = await this.prisma.eRPSalesInvoice.findUnique({
         where: { id: salesReturn.salesInvoiceId },
       });
-    } else if (salesReturn.sourceType === 'DELIVERY_CHALLAN' && salesReturn.deliveryChallanId) {
+    } else if (
+      salesReturn.sourceType === 'DELIVERY_CHALLAN' &&
+      salesReturn.deliveryChallanId
+    ) {
       salesInvoice = await this.prisma.eRPSalesInvoice.findFirst({
         where: {
           deliveryChallanId: salesReturn.deliveryChallanId,
@@ -780,7 +848,10 @@ export class SalesReturnService {
 
       let nextCnSeq = 1;
       if (lastCreditNote?.creditNoteNo) {
-        const lastSeq = parseInt(lastCreditNote.creditNoteNo.split('-').pop() || '0', 10);
+        const lastSeq = parseInt(
+          lastCreditNote.creditNoteNo.split('-').pop() || '0',
+          10,
+        );
         if (!isNaN(lastSeq)) {
           nextCnSeq = lastSeq + 1;
         }
@@ -814,14 +885,25 @@ export class SalesReturnService {
 
       // 3. Update ERPSalesInvoice if associated
       if (salesInvoice) {
-        const newReturnAmount = Number(salesInvoice.returnAmount || 0) + totalAmount;
-        const newBalanceAmount = Math.max(0, Number(salesInvoice.grandTotal) - Number(salesInvoice.paidAmount) - newReturnAmount);
+        const newReturnAmount =
+          Number(salesInvoice.returnAmount || 0) + totalAmount;
+        const newBalanceAmount = Math.max(
+          0,
+          Number(salesInvoice.grandTotal) -
+            Number(salesInvoice.paidAmount) -
+            newReturnAmount,
+        );
         await tx.eRPSalesInvoice.update({
           where: { id: salesInvoice.id },
           data: {
             returnAmount: newReturnAmount,
             balanceAmount: newBalanceAmount,
-            paymentStatus: newBalanceAmount <= 0.01 ? 'FULLY_PAID' : (Number(salesInvoice.paidAmount) > 0 ? 'PARTIALLY_PAID' : 'UNPAID'),
+            paymentStatus:
+              newBalanceAmount <= 0.01
+                ? 'FULLY_PAID'
+                : Number(salesInvoice.paidAmount) > 0
+                  ? 'PARTIALLY_PAID'
+                  : 'UNPAID',
           },
         });
       }
@@ -830,7 +912,10 @@ export class SalesReturnService {
     });
   }
 
-  private async autoGenerateJournalVoucher(salesReturn: any, ctx?: { userId?: string }) {
+  private async autoGenerateJournalVoucher(
+    salesReturn: any,
+    ctx?: { userId?: string },
+  ) {
     const existingJV = await this.prisma.journalVoucher.findFirst({
       where: {
         description: {
@@ -839,7 +924,9 @@ export class SalesReturnService {
       },
     });
     if (existingJV) {
-      console.log(`Journal Voucher already generated for Sales Return ${salesReturn.returnNumber}. Skipping.`);
+      console.log(
+        `Journal Voucher already generated for Sales Return ${salesReturn.returnNumber}. Skipping.`,
+      );
       return;
     }
 
@@ -847,20 +934,39 @@ export class SalesReturnService {
     const sequentialJvNo = await generateNextJvNumber(this.prisma, jvDate);
     const sequentialFolio = await generateNextFolioNumber(this.prisma, jvDate);
 
-    const roundToTwo = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
+    const roundToTwo = (num: number) =>
+      Math.round((num + Number.EPSILON) * 100) / 100;
 
-    const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const monthNames = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
     const returnMonth = monthNames[jvDate.getMonth()];
     const returnYearTwoDigit = jvDate.getFullYear().toString().slice(-2);
     const periodStr = `M/O ${returnMonth}'${returnYearTwoDigit}, CO`;
 
     // Helper to resolve parent COA and its tag child C00001
-    const getAccountWithTag = async (parentCode: string, tagCode: string = 'C00001') => {
+    const getAccountWithTag = async (
+      parentCode: string,
+      tagCode: string = 'C00001',
+    ) => {
       const parent = await this.prisma.chartOfAccount.findFirst({
         where: { code: parentCode },
       });
       if (!parent) {
-        throw new BadRequestException(`Chart of Account with code "${parentCode}" not found.`);
+        throw new BadRequestException(
+          `Chart of Account with code "${parentCode}" not found.`,
+        );
       }
       const tag = await this.prisma.chartOfAccount.findFirst({
         where: {
@@ -873,26 +979,46 @@ export class SalesReturnService {
 
     const detailsData: any[] = [];
     const invoiceNo = salesReturn.salesInvoice?.invoiceNo || '';
-    const challanNo = salesReturn.salesInvoice?.deliveryChallan?.challanNo || salesReturn.deliveryChallan?.challanNo || '';
+    const challanNo =
+      salesReturn.salesInvoice?.deliveryChallan?.challanNo ||
+      salesReturn.deliveryChallan?.challanNo ||
+      '';
 
     // Calculate tax rate groups from return items
-    const taxRateGroups: { [taxRate: number]: { grossValueExclTax: number; discountAmount: number; taxableAmount: number; taxAmount: number } } = {};
+    const taxRateGroups: {
+      [taxRate: number]: {
+        grossValueExclTax: number;
+        discountAmount: number;
+        taxableAmount: number;
+        taxAmount: number;
+      };
+    } = {};
 
     for (const returnItem of salesReturn.items) {
       const originalInvoiceItem = returnItem.salesInvoiceItem;
-      const rate = Number(returnItem.item?.taxRate1 || originalInvoiceItem?.item?.taxRate1 || 18);
+      const rate = Number(
+        returnItem.item?.taxRate1 || originalInvoiceItem?.item?.taxRate1 || 18,
+      );
 
       if (!taxRateGroups[rate]) {
-        taxRateGroups[rate] = { grossValueExclTax: 0, discountAmount: 0, taxableAmount: 0, taxAmount: 0 };
+        taxRateGroups[rate] = {
+          grossValueExclTax: 0,
+          discountAmount: 0,
+          taxableAmount: 0,
+          taxAmount: 0,
+        };
       }
 
       const returnQty = Number(returnItem.returnQty || 0);
-      const unitPrice = Number(returnItem.unitPrice || originalInvoiceItem?.salePrice || 0);
+      const unitPrice = Number(
+        returnItem.unitPrice || originalInvoiceItem?.salePrice || 0,
+      );
 
       // Base margin discount proportion
       const originalItemQty = Number(originalInvoiceItem?.quantity || 1);
       const originalItemDiscount = Number(originalInvoiceItem?.discount || 0);
-      const discountPerUnit = originalItemQty > 0 ? (originalItemDiscount / originalItemQty) : 0;
+      const discountPerUnit =
+        originalItemQty > 0 ? originalItemDiscount / originalItemQty : 0;
       const itemDiscount = roundToTwo(discountPerUnit * returnQty);
 
       // Gross value without sales tax (WOST)
@@ -931,7 +1057,8 @@ export class SalesReturnService {
 
     // 2. Line: 31070001 SALES TAX CURRENT ACCOUNT (Debit: Total Sales Tax Amount)
     const totalTaxAmount = roundToTwo(
-      Object.values(taxRateGroups).reduce((sum, g) => sum + g.taxAmount, 0) || Number(salesReturn.taxAmount || 0)
+      Object.values(taxRateGroups).reduce((sum, g) => sum + g.taxAmount, 0) ||
+        Number(salesReturn.taxAmount || 0),
     );
     if (totalTaxAmount > 0) {
       const staxCurAcc = await getAccountWithTag('31070001', 'C00001');
@@ -949,7 +1076,10 @@ export class SalesReturnService {
 
     // 3. Line: 40010014 WHOLE SALES RETURN-CONTROL A/C (Credit: Total Return Value Incl Sales Tax)
     const totalReturnValueInclTax = roundToTwo(
-      Object.values(taxRateGroups).reduce((sum, g) => sum + (g.taxableAmount + g.taxAmount), 0) || Number(salesReturn.totalAmount)
+      Object.values(taxRateGroups).reduce(
+        (sum, g) => sum + (g.taxableAmount + g.taxAmount),
+        0,
+      ) || Number(salesReturn.totalAmount),
     );
     if (totalReturnValueInclTax > 0) {
       const controlAcc = await getAccountWithTag('40010014', 'C00001');
@@ -1001,12 +1131,16 @@ export class SalesReturnService {
     }
 
     // Balance check and adjustment for micro-penny rounding if any
-    const totalDebit = roundToTwo(detailsData.reduce((sum, d) => sum + Number(d.debit || 0), 0));
-    const totalCredit = roundToTwo(detailsData.reduce((sum, d) => sum + Number(d.credit || 0), 0));
+    const totalDebit = roundToTwo(
+      detailsData.reduce((sum, d) => sum + Number(d.debit || 0), 0),
+    );
+    const totalCredit = roundToTwo(
+      detailsData.reduce((sum, d) => sum + Number(d.credit || 0), 0),
+    );
     const diff = roundToTwo(totalDebit - totalCredit);
 
     if (diff !== 0 && detailsData.length > 0) {
-      const controlLine = detailsData.find(d => d.credit > 0);
+      const controlLine = detailsData.find((d) => d.credit > 0);
       if (controlLine) {
         controlLine.credit = roundToTwo(controlLine.credit + diff);
       }
@@ -1022,7 +1156,7 @@ export class SalesReturnService {
         status: 'pending_check',
         makerId: ctx?.userId,
         details: {
-          create: detailsData.map(d => ({
+          create: detailsData.map((d) => ({
             accountId: d.accountId,
             tagAccountId: d.tagAccountId,
             debit: d.debit,

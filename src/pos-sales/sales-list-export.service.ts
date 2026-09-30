@@ -275,7 +275,11 @@ export interface QueueSalesListExportOptions {
 @Injectable()
 export class SalesListExportService {
   private readonly logger = new Logger(SalesListExportService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
+  private readonly previewStorageDir = path.join(
+    process.cwd(),
+    'uploads',
+    'report-previews',
+  );
 
   constructor(
     @InjectQueue('sales-list-export') private readonly exportQueue: Queue,
@@ -325,23 +329,35 @@ export class SalesListExportService {
         ]);
 
         for (const wJob of waitingJobs) {
-          if (wJob.data?.userId === opts.userId && wJob.name === 'generate-sales-list-preview') {
+          if (
+            wJob.data?.userId === opts.userId &&
+            wJob.name === 'generate-sales-list-preview'
+          ) {
             if (wJob.data?.jobId) {
-              await this.previewCleanupService.deletePreviewByJobId(wJob.data.jobId);
+              await this.previewCleanupService.deletePreviewByJobId(
+                wJob.data.jobId,
+              );
             }
             await wJob.remove();
           }
         }
         for (const aJob of activeJobs) {
-          if (aJob.data?.userId === opts.userId && aJob.name === 'generate-sales-list-preview') {
+          if (
+            aJob.data?.userId === opts.userId &&
+            aJob.name === 'generate-sales-list-preview'
+          ) {
             this.cancelledPreviewJobIds.add(aJob.data?.jobId);
             if (aJob.data?.jobId) {
-              await this.previewCleanupService.deletePreviewByJobId(aJob.data.jobId);
+              await this.previewCleanupService.deletePreviewByJobId(
+                aJob.data.jobId,
+              );
             }
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Failed cleaning up obsolete preview jobs: ${err.message}`);
+        this.logger.warn(
+          `Failed cleaning up obsolete preview jobs: ${err.message}`,
+        );
       }
     }
 
@@ -374,7 +390,9 @@ export class SalesListExportService {
       },
     );
 
-    this.logger.log(`[SalesListReport] Queued preview job ${jobId} for user ${opts.userId}`);
+    this.logger.log(
+      `[SalesListReport] Queued preview job ${jobId} for user ${opts.userId}`,
+    );
     return { jobId };
   }
 
@@ -387,9 +405,18 @@ export class SalesListExportService {
     waitingCount: number;
     failedReason?: string;
   }> {
-    const job = await this.exportQueue.getJob(`preview-${jobId}`) || await this.exportQueue.getJob(jobId);
+    const job =
+      (await this.exportQueue.getJob(`preview-${jobId}`)) ||
+      (await this.exportQueue.getJob(jobId));
     if (!job) {
-      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        status: 'unknown',
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -414,7 +441,10 @@ export class SalesListExportService {
       ]);
       waitingCount = waiting.length;
       const allJobs = [...active, ...waiting];
-      const idx = allJobs.findIndex((j) => j.id?.toString() === `preview-${jobId}` || j.id?.toString() === jobId);
+      const idx = allJobs.findIndex(
+        (j) =>
+          j.id?.toString() === `preview-${jobId}` || j.id?.toString() === jobId,
+      );
       queuePosition = idx >= 0 ? idx + 1 : 1;
     }
 
@@ -430,30 +460,53 @@ export class SalesListExportService {
   }
 
   getPreviewFilePath(jobId: string): string {
-    const jsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `sales-list-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) return jsonPath;
-    const ndjsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `sales-list-preview-${jobId}.ndjson.gz`,
+    );
     if (fs.existsSync(ndjsonPath)) return ndjsonPath;
     return jsonPath;
   }
 
   getPreviewNdjsonFilePath(jobId: string): string {
-    return path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
+    return path.join(
+      this.previewStorageDir,
+      `sales-list-preview-${jobId}.ndjson.gz`,
+    );
   }
 
-  async saveReportPreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
-    const jsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+  async saveReportPreviewResult(
+    jobId: string,
+    result: SalesListReportResult,
+  ): Promise<void> {
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `sales-list-preview-${jobId}.json.gz`,
+    );
     const jsonStr = JSON.stringify(result);
     const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
     await fs.promises.writeFile(jsonPath, compressed);
   }
 
-  async savePreviewResult(jobId: string, result: SalesListReportResult): Promise<void> {
+  async savePreviewResult(
+    jobId: string,
+    result: SalesListReportResult,
+  ): Promise<void> {
     return this.saveReportPreviewResult(jobId, result);
   }
 
-  async getReportPreviewResult(jobId: string): Promise<SalesListReportResult | null> {
-    const jsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
+  async getReportPreviewResult(
+    jobId: string,
+  ): Promise<SalesListReportResult | null> {
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `sales-list-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) {
       const compressed = await fs.promises.readFile(jsonPath);
       const decompressed = await gunzipAsync(compressed);
@@ -461,7 +514,10 @@ export class SalesListExportService {
       return parsed.data || parsed;
     }
 
-    const ndjsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `sales-list-preview-${jobId}.ndjson.gz`,
+    );
     if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
@@ -576,7 +632,10 @@ export class SalesListExportService {
     const isSeparate = reportType === 'separate';
     const now = new Date();
 
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -598,11 +657,14 @@ export class SalesListExportService {
     };
 
     // Determine Pakistan Fiscal Year bounds: July 1 to June 30
-    const getFiscalYearBounds = (fyStr?: string): { start: Date; end: Date } => {
+    const getFiscalYearBounds = (
+      fyStr?: string,
+    ): { start: Date; end: Date } => {
       let startYear: number;
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth(); // 0 = Jan, 6 = July
-      const defaultStartYear = currentMonth >= 6 ? currentYear : currentYear - 1;
+      const defaultStartYear =
+        currentMonth >= 6 ? currentYear : currentYear - 1;
 
       if (!fyStr || fyStr === 'current' || fyStr === 'current_fiscal') {
         startYear = defaultStartYear;
@@ -643,24 +705,46 @@ export class SalesListExportService {
       endDate = now;
     }
 
-    const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
 
-    await onProgress?.(15, 'Loading outlet metadata & cashier user profiles...');
+    await onProgress?.(
+      15,
+      'Loading outlet metadata & cashier user profiles...',
+    );
 
-    const [allLocations, cashiersList, allSizes, allColors, allMerchants] = await Promise.all([
-      prisma.location.findMany({ select: { id: true, name: true } }),
-      this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
-      prisma.size.findMany({ select: { id: true, name: true } }),
-      prisma.color.findMany({ select: { id: true, name: true } }),
-      prisma.merchantConfig.findMany({ select: { id: true, bankName: true, description: true } }),
-    ]);
+    const [allLocations, cashiersList, allSizes, allColors, allMerchants] =
+      await Promise.all([
+        prisma.location.findMany({ select: { id: true, name: true } }),
+        this.prismaMaster.user.findMany({
+          select: { id: true, firstName: true, lastName: true },
+        }),
+        prisma.size.findMany({ select: { id: true, name: true } }),
+        prisma.color.findMany({ select: { id: true, name: true } }),
+        prisma.merchantConfig.findMany({
+          select: { id: true, bankName: true, description: true },
+        }),
+      ]);
 
     const locationMap = new Map<string, string>();
     for (const l of allLocations) locationMap.set(l.id, l.name);
 
     const cashierMap = new Map<string, string>();
-    for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+    for (const u of cashiersList)
+      cashierMap.set(
+        u.id,
+        `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier',
+      );
 
     const sizeMap = new Map<string, string>();
     for (const s of allSizes) sizeMap.set(s.id, s.name);
@@ -670,7 +754,11 @@ export class SalesListExportService {
 
     const merchantMap = new Map<string, string>();
     for (const m of allMerchants) {
-      const label = m.bankName || (m.description ? m.description.split('|')[1]?.trim() || m.description : '');
+      const label =
+        m.bankName ||
+        (m.description
+          ? m.description.split('|')[1]?.trim() || m.description
+          : '');
       merchantMap.set(m.id, label);
     }
 
@@ -683,7 +771,19 @@ export class SalesListExportService {
 
     const where: any = {
       orderNumber: { not: { startsWith: 'RET-' } },
-      status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
+      status: {
+        notIn: [
+          'hold',
+          'hold_expired',
+          'hold_cancelled',
+          'voided',
+          'cancelled',
+          'VOIDED',
+          'CANCELLED',
+          'draft',
+          'DRAFT',
+        ],
+      },
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -710,7 +810,6 @@ export class SalesListExportService {
         { customer: { contactNo: { contains: s, mode: 'insensitive' } } },
       ];
     }
-
 
     await onProgress?.(25, 'Counting matching sales orders...');
     const totalOrdersCount = await prisma.salesOrder.count({ where });
@@ -747,10 +846,23 @@ export class SalesListExportService {
       target.orderCount += source.orderCount;
       target.totalItems += source.totalItems;
       target.grossAmount += source.grossAmount;
-      target.wostAmount = (target.wostAmount || 0) + (source.wostAmount || (source.grossAmount ? source.grossAmount / 1.18 : 0));
+      target.wostAmount =
+        (target.wostAmount || 0) +
+        (source.wostAmount ||
+          (source.grossAmount ? source.grossAmount / 1.18 : 0));
       target.discountAmount += source.discountAmount;
-      target.discountWostAmount = (target.discountWostAmount || 0) + (source.discountWostAmount || (source.discountAmount ? source.discountAmount / 1.18 : 0));
-      target.amountAfterDiscount = (target.amountAfterDiscount || 0) + (source.amountAfterDiscount || Math.max(0, (source.wostAmount || source.grossAmount / 1.18) - (source.discountWostAmount || source.discountAmount / 1.18)));
+      target.discountWostAmount =
+        (target.discountWostAmount || 0) +
+        (source.discountWostAmount ||
+          (source.discountAmount ? source.discountAmount / 1.18 : 0));
+      target.amountAfterDiscount =
+        (target.amountAfterDiscount || 0) +
+        (source.amountAfterDiscount ||
+          Math.max(
+            0,
+            (source.wostAmount || source.grossAmount / 1.18) -
+              (source.discountWostAmount || source.discountAmount / 1.18),
+          ));
       target.netAmount += source.netAmount;
       target.taxAmount += source.taxAmount;
       target.paidAmount += source.paidAmount;
@@ -776,19 +888,24 @@ export class SalesListExportService {
       orderIssued: any[],
     ): { invNode: SalesListInvoiceNode; orderTotals: SalesListTotals } => {
       const notesStr = order.notes || '';
-      let cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
+      let cashierName = order.cashierUserId
+        ? cashierMap.get(order.cashierUserId) || 'Cashier'
+        : 'Cashier';
       if (cashierName === 'Cashier' && notesStr) {
         const spMatch = notesStr.match(/(?:SalesPerson|Cashier):\s*([^|\]]+)/i);
         if (spMatch) cashierName = spMatch[1].trim();
       }
       let custName = order.customer?.name || 'Walk-in Customer';
       if (custName === 'Walk-in Customer' && notesStr) {
-        const custMatch = notesStr.match(/(?:Customer|CustomerName):\s*([^|\]]+)/i);
+        const custMatch = notesStr.match(
+          /(?:Customer|CustomerName):\s*([^|\]]+)/i,
+        );
         if (custMatch) custName = custMatch[1].trim();
       }
       const custPhone = order.customer?.contactNo || '-';
       const custCnic = order.customer?.cnicNo || undefined;
-      const custCode = order.customer?.traderId || order.customer?.subCode || undefined;
+      const custCode =
+        order.customer?.traderId || order.customer?.subCode || undefined;
       const payMethod = (order.paymentMethod || 'CASH').toUpperCase();
       const fbrInv = order.fbrInvoiceNumber || '-';
       const fbrStatus = order.fbrStatus || 'NONE';
@@ -819,18 +936,26 @@ export class SalesListExportService {
       let rewMatch = false;
 
       if (notesStr) {
-        const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*(-?[\d.]+)/i);
+        const balanceMatch = notesStr.match(
+          /\[Credit Sale\] Balance:\s*(-?[\d.]+)/i,
+        );
         if (balanceMatch) balance = Number(balanceMatch[1]);
 
-        const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+        const cashRetMatch = notesStr.match(
+          /\[Cash Return\] Amount:\s*([\d.]+)/i,
+        );
         if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
 
         if (cashSale === 0) {
-          const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+          const cashMatch =
+            notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) ||
+            notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
           if (cashMatch) cashSale = Number(cashMatch[1]);
         }
         if (cardSale === 0) {
-          const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+          const cardMatch =
+            notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) ||
+            notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
           if (cardMatch) cardSale = Number(cardMatch[1]);
         }
 
@@ -846,7 +971,9 @@ export class SalesListExportService {
           clmMatch = true;
         }
 
-        const corp = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+        const corp = notesStr.match(
+          /\[Corporate Voucher\] Amount:\s*([\d.]+)/i,
+        );
         if (corp) {
           giftVoucherCorporate = Number(corp[1]);
           corpMatch = true;
@@ -858,7 +985,9 @@ export class SalesListExportService {
           giftMatch = true;
         }
 
-        const rew = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+        const rew =
+          notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) ||
+          notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
         if (rew) {
           rewardVoucherAmount = Number(rew[1]);
           rewMatch = true;
@@ -871,16 +1000,32 @@ export class SalesListExportService {
         }
       }
 
-      if (balance === 0 && (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account' || order.paymentMethod === 'credit')) {
+      if (
+        balance === 0 &&
+        (order.paymentMethod === 'credit_account' ||
+          order.tenderType === 'credit_account' ||
+          order.paymentMethod === 'credit')
+      ) {
         balance = Number(order.grandTotal);
       }
-      if (rewardVoucherAmount === 0 && (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher')) {
+      if (
+        rewardVoucherAmount === 0 &&
+        (order.paymentMethod === 'reward_voucher' ||
+          order.tenderType === 'reward_voucher')
+      ) {
         rewardVoucherAmount = Number(order.grandTotal);
       }
 
-      let creditSale = balance > 0 ? balance : ((order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account' || order.paymentMethod === 'credit') ? Number(order.grandTotal) : 0);
+      let creditSale =
+        balance > 0
+          ? balance
+          : order.paymentMethod === 'credit_account' ||
+              order.tenderType === 'credit_account' ||
+              order.paymentMethod === 'credit'
+            ? Number(order.grandTotal)
+            : 0;
 
-      for (const red of (order.voucherRedemptions || [])) {
+      for (const red of order.voucherRedemptions || []) {
         const type = red.voucher?.voucherType;
         const amt = Number(red.amountUsed);
 
@@ -899,7 +1044,13 @@ export class SalesListExportService {
         }
       }
 
-      const totalRedeemedVoucher = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
+      const totalRedeemedVoucher =
+        giftVoucherAmount +
+        creditVoucherAmount +
+        exchangeVoucherAmount +
+        claimVoucherAmount +
+        giftVoucherCorporate +
+        rewardVoucherAmount;
       const orderVoucherAmt = Number(order.voucherAmount || 0);
       if (orderVoucherAmt > totalRedeemedVoucher && notesStr) {
         const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
@@ -920,7 +1071,9 @@ export class SalesListExportService {
 
       let creditVoucherIssuedAmount = 0;
       if (notesStr) {
-        const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+        const issuedMatch = notesStr.match(
+          /\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i,
+        );
         if (issuedMatch) {
           creditVoucherIssuedAmount = Number(issuedMatch[1]);
         }
@@ -934,10 +1087,20 @@ export class SalesListExportService {
         }
       }
 
-      const totalTenders = cashSale + cardSale + giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount + creditSale;
+      const totalTenders =
+        cashSale +
+        cardSale +
+        giftVoucherAmount +
+        creditVoucherAmount +
+        exchangeVoucherAmount +
+        claimVoucherAmount +
+        giftVoucherCorporate +
+        rewardVoucherAmount +
+        creditSale;
       if (totalTenders === 0) {
         if (payMethod.includes('CASH')) cashSale = paid;
-        else if (payMethod.includes('CARD') || payMethod.includes('BANK')) cardSale = paid;
+        else if (payMethod.includes('CARD') || payMethod.includes('BANK'))
+          cardSale = paid;
         else if (payMethod.includes('CREDIT')) {
           creditSale = paid;
         } else if (payMethod.includes('VOUCHER')) {
@@ -947,10 +1110,16 @@ export class SalesListExportService {
         }
       }
 
-      let cashAmt = cashSale;
-      let cardAmt = cardSale;
-      let walletAmt = giftVoucherAmount + creditVoucherAmount + exchangeVoucherAmount + claimVoucherAmount + giftVoucherCorporate + rewardVoucherAmount;
-      let creditAmt = creditSale;
+      const cashAmt = cashSale;
+      const cardAmt = cardSale;
+      const walletAmt =
+        giftVoucherAmount +
+        creditVoucherAmount +
+        exchangeVoucherAmount +
+        claimVoucherAmount +
+        giftVoucherCorporate +
+        rewardVoucherAmount;
+      const creditAmt = creditSale;
 
       // Line Items with full discount & WOST calculations
       const overrideDiscountNotes: string[] = [];
@@ -961,87 +1130,123 @@ export class SalesListExportService {
       let orderComputedWost = 0;
       let orderComputedDiscWost = 0;
 
-      const lineItems: SalesListLineItem[] = (order.items || []).map((item: any) => {
-        const unitPrice = Number(item.unitPrice || 0);
-        const qty = Number(item.quantity || 0);
-        const lineRetailGross = unitPrice * qty;
-        orderRetailGross += lineRetailGross;
+      const lineItems: SalesListLineItem[] = (order.items || []).map(
+        (item: any) => {
+          const unitPrice = Number(item.unitPrice || 0);
+          const qty = Number(item.quantity || 0);
+          const lineRetailGross = unitPrice * qty;
+          orderRetailGross += lineRetailGross;
 
-        const priceWost = unitPrice / 1.18;
-        const valueExcl = priceWost * qty;
+          const priceWost = unitPrice / 1.18;
+          const valueExcl = priceWost * qty;
 
-        const rawDiscAmt = Number(item.discountAmount || 0);
-        const discPct = Number(item.discountPercent || (lineRetailGross > 0 && rawDiscAmt > 0 ? (rawDiscAmt / valueExcl) * 100 : 0));
+          const rawDiscAmt = Number(item.discountAmount || 0);
+          const discPct = Number(
+            item.discountPercent ||
+              (lineRetailGross > 0 && rawDiscAmt > 0
+                ? (rawDiscAmt / valueExcl) * 100
+                : 0),
+          );
 
-        let discAmtWost = 0;
-        let discAmtRetail = 0;
+          let discAmtWost = 0;
+          let discAmtRetail = 0;
 
-        if (discPct > 0) {
-          discAmtRetail = Math.round((lineRetailGross * (discPct / 100)) * 100) / 100;
-          discAmtWost = Math.round((valueExcl * (discPct / 100)) * 100) / 100;
-        } else if (rawDiscAmt > 0) {
-          discAmtWost = rawDiscAmt;
-          discAmtRetail = Math.round(rawDiscAmt * 1.18 * 100) / 100;
-        }
+          if (discPct > 0) {
+            discAmtRetail =
+              Math.round(lineRetailGross * (discPct / 100) * 100) / 100;
+            discAmtWost = Math.round(valueExcl * (discPct / 100) * 100) / 100;
+          } else if (rawDiscAmt > 0) {
+            discAmtWost = rawDiscAmt;
+            discAmtRetail = Math.round(rawDiscAmt * 1.18 * 100) / 100;
+          }
 
-        orderRetailDisc += discAmtRetail;
-        orderComputedWost += valueExcl;
-        orderComputedDiscWost += discAmtWost;
+          orderRetailDisc += discAmtRetail;
+          orderComputedWost += valueExcl;
+          orderComputedDiscWost += discAmtWost;
 
-        const overrideDiscPct = item.overrideDiscountPercent !== null && item.overrideDiscountPercent !== undefined ? Number(item.overrideDiscountPercent) : undefined;
-        const overrideDiscNote = item.overrideDiscountNote || undefined;
-        const hasOverride = (overrideDiscPct !== undefined && overrideDiscPct > 0) || Boolean(overrideDiscNote);
+          const overrideDiscPct =
+            item.overrideDiscountPercent !== null &&
+            item.overrideDiscountPercent !== undefined
+              ? Number(item.overrideDiscountPercent)
+              : undefined;
+          const overrideDiscNote = item.overrideDiscountNote || undefined;
+          const hasOverride =
+            (overrideDiscPct !== undefined && overrideDiscPct > 0) ||
+            Boolean(overrideDiscNote);
 
-        if (hasOverride) {
-          overrideDiscountItemsCount++;
-          if (overrideDiscNote) overrideDiscountNotes.push(overrideDiscNote);
-          if (overrideDiscPct !== undefined) overrideDiscountPercents.push(overrideDiscPct);
-        }
+          if (hasOverride) {
+            overrideDiscountItemsCount++;
+            if (overrideDiscNote) overrideDiscountNotes.push(overrideDiscNote);
+            if (overrideDiscPct !== undefined)
+              overrideDiscountPercents.push(overrideDiscPct);
+          }
 
-        const amountAfterDiscount = Math.max(0, valueExcl - discAmtWost);
-        const taxPercent = Number(item.taxPercent || 18);
-        const taxAmount = Number(item.taxAmount || Math.round(amountAfterDiscount * (taxPercent / 100) * 100) / 100);
-        const lineTotal = Number(item.lineTotal || (lineRetailGross - discAmtRetail));
-        const valueIncl = lineTotal;
+          const amountAfterDiscount = Math.max(0, valueExcl - discAmtWost);
+          const taxPercent = Number(item.taxPercent || 18);
+          const taxAmount = Number(
+            item.taxAmount ||
+              Math.round(amountAfterDiscount * (taxPercent / 100) * 100) / 100,
+          );
+          const lineTotal = Number(
+            item.lineTotal || lineRetailGross - discAmtRetail,
+          );
+          const valueIncl = lineTotal;
 
-        return {
-          id: item.id,
-          orderNumber: order.orderNumber,
-          sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
-          barCode: item.item?.barCode || item.item?.sku || '-',
-          description: item.item?.description || item.item?.sku || 'Article',
-          sizeName: (item.item?.sizeId && sizeMap.get(item.item.sizeId)) || 'Default',
-          colorName: (item.item?.colorId && colorMap.get(item.item.colorId)) || 'Default',
-          quantity: qty,
-          unitPrice,
-          priceWost,
-          valueExcl,
-          discountPercent: discPct,
-          discountAmount: discAmtRetail,
-          discountAmountWost: discAmtWost,
-          amountAfterDiscount,
-          hasOverrideDiscount: hasOverride,
-          overrideDiscountPercent: overrideDiscPct,
-          overrideDiscountNote: overrideDiscNote,
-          taxPercent,
-          taxAmount,
-          lineTotal,
-          subTotal: lineTotal,
-          valueIncl,
-        };
-      });
+          return {
+            id: item.id,
+            orderNumber: order.orderNumber,
+            sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
+            barCode: item.item?.barCode || item.item?.sku || '-',
+            description: item.item?.description || item.item?.sku || 'Article',
+            sizeName:
+              (item.item?.sizeId && sizeMap.get(item.item.sizeId)) || 'Default',
+            colorName:
+              (item.item?.colorId && colorMap.get(item.item.colorId)) ||
+              'Default',
+            quantity: qty,
+            unitPrice,
+            priceWost,
+            valueExcl,
+            discountPercent: discPct,
+            discountAmount: discAmtRetail,
+            discountAmountWost: discAmtWost,
+            amountAfterDiscount,
+            hasOverrideDiscount: hasOverride,
+            overrideDiscountPercent: overrideDiscPct,
+            overrideDiscountNote: overrideDiscNote,
+            taxPercent,
+            taxAmount,
+            lineTotal,
+            subTotal: lineTotal,
+            valueIncl,
+          };
+        },
+      );
 
       const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
 
-      const grossWost = orderWost > 0 ? orderWost : (orderComputedWost > 0 ? orderComputedWost : net / 1.18);
-      const retailGross = orderRetailGross > 0 ? orderRetailGross : (grossWost * 1.18);
-      const totalDiscWost = orderDiscWost > 0 ? orderDiscWost : orderComputedDiscWost;
-      const totalDiscRetail = orderRetailDisc > 0 ? orderRetailDisc : (totalDiscWost * 1.18);
+      const grossWost =
+        orderWost > 0
+          ? orderWost
+          : orderComputedWost > 0
+            ? orderComputedWost
+            : net / 1.18;
+      const retailGross =
+        orderRetailGross > 0 ? orderRetailGross : grossWost * 1.18;
+      const totalDiscWost =
+        orderDiscWost > 0 ? orderDiscWost : orderComputedDiscWost;
+      const totalDiscRetail =
+        orderRetailDisc > 0 ? orderRetailDisc : totalDiscWost * 1.18;
       const totalAmtAfterDisc = Math.max(0, grossWost - totalDiscWost);
 
-      let merchantName = (order.merchantId && merchantMap.get(order.merchantId)) || order.merchant?.bankName || '-';
+      let merchantName =
+        (order.merchantId && merchantMap.get(order.merchantId)) ||
+        order.merchant?.bankName ||
+        '-';
       if ((merchantName === '-' || !merchantName) && notesStr) {
-        const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],(]+)/i);
+        const merchMatch = notesStr.match(
+          /(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],(]+)/i,
+        );
         if (merchMatch) merchantName = merchMatch[1].trim();
       }
       merchantName = merchantName || '-';
@@ -1078,11 +1283,15 @@ export class SalesListExportService {
       let cardInfo: CardTenderInfo | undefined;
       if (cardSale > 0) {
         let cardholderName: string | undefined;
-        const chMatch = notesStr.match(/(?:Cardholder|Card\s*Name|Holder):\s*([^|\],]+)/i);
+        const chMatch = notesStr.match(
+          /(?:Cardholder|Card\s*Name|Holder):\s*([^|\],]+)/i,
+        );
         if (chMatch) cardholderName = chMatch[1].trim();
 
         let cardLast4: string | undefined;
-        const cMatch = notesStr.match(/(?:Card|Last4|CardLast4|Card#):\s*(?:\*{4})?(\d{4})/i);
+        const cMatch = notesStr.match(
+          /(?:Card|Last4|CardLast4|Card#):\s*(?:\*{4})?(\d{4})/i,
+        );
         if (cMatch) {
           cardLast4 = cMatch[1];
         } else {
@@ -1091,7 +1300,9 @@ export class SalesListExportService {
         }
 
         let authId: string | undefined;
-        const authMatch = notesStr.match(/(?:Slip|Auth|AuthID|Approval|ApprovalCode):\s*([A-Za-z0-9]+)/i);
+        const authMatch = notesStr.match(
+          /(?:Slip|Auth|AuthID|Approval|ApprovalCode):\s*([A-Za-z0-9]+)/i,
+        );
         if (authMatch) {
           authId = authMatch[1];
         } else {
@@ -1115,7 +1326,11 @@ export class SalesListExportService {
 
       // Voucher Tender Lists
       const giftVouchersList: VoucherTenderInfo[] = [];
-      const giftReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'GIFT' || r.voucher?.voucherType === 'OUTLET_GIFT');
+      const giftReds = (order.voucherRedemptions || []).filter(
+        (r: any) =>
+          r.voucher?.voucherType === 'GIFT' ||
+          r.voucher?.voucherType === 'OUTLET_GIFT',
+      );
       for (const gr of giftReds) {
         giftVouchersList.push({
           code: gr.voucher?.code || 'GFT-VOUCHER',
@@ -1136,7 +1351,9 @@ export class SalesListExportService {
       }
 
       const exchangeVouchersList: VoucherTenderInfo[] = [];
-      const exReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'EXCHANGE');
+      const exReds = (order.voucherRedemptions || []).filter(
+        (r: any) => r.voucher?.voucherType === 'EXCHANGE',
+      );
       for (const er of exReds) {
         exchangeVouchersList.push({
           code: er.voucher?.code || 'EXC-VOUCHER',
@@ -1154,7 +1371,9 @@ export class SalesListExportService {
       }
 
       const claimVouchersList: VoucherTenderInfo[] = [];
-      const clmReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'CLAIM');
+      const clmReds = (order.voucherRedemptions || []).filter(
+        (r: any) => r.voucher?.voucherType === 'CLAIM',
+      );
       for (const cr of clmReds) {
         claimVouchersList.push({
           code: cr.voucher?.code || 'CLM-VOUCHER',
@@ -1172,7 +1391,11 @@ export class SalesListExportService {
       }
 
       const creditVouchersList: VoucherTenderInfo[] = [];
-      const credReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'CREDIT' || r.voucher?.voucherType === 'REFUND');
+      const credReds = (order.voucherRedemptions || []).filter(
+        (r: any) =>
+          r.voucher?.voucherType === 'CREDIT' ||
+          r.voucher?.voucherType === 'REFUND',
+      );
       for (const cr of credReds) {
         creditVouchersList.push({
           code: cr.voucher?.code || 'CRD-VOUCHER',
@@ -1190,7 +1413,9 @@ export class SalesListExportService {
       }
 
       const corporateVouchersList: VoucherTenderInfo[] = [];
-      const corpReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'CORPORATE');
+      const corpReds = (order.voucherRedemptions || []).filter(
+        (r: any) => r.voucher?.voucherType === 'CORPORATE',
+      );
       for (const cr of corpReds) {
         corporateVouchersList.push({
           code: cr.voucher?.code || 'CORP-VOUCHER',
@@ -1208,7 +1433,9 @@ export class SalesListExportService {
       }
 
       const rewardVouchersList: VoucherTenderInfo[] = [];
-      const rewReds = (order.voucherRedemptions || []).filter((r: any) => r.voucher?.voucherType === 'REWARD');
+      const rewReds = (order.voucherRedemptions || []).filter(
+        (r: any) => r.voucher?.voucherType === 'REWARD',
+      );
       for (const rr of rewReds) {
         rewardVouchersList.push({
           code: rr.voucher?.code || 'REWARD-VOUCHER',
@@ -1218,7 +1445,9 @@ export class SalesListExportService {
         });
       }
       if (rewardVouchersList.length === 0 && rewardVoucherAmount > 0) {
-        const rewNotesMatch = notesStr.match(/\[Reward Voucher\]\s*([^|\],]+)/i);
+        const rewNotesMatch = notesStr.match(
+          /\[Reward Voucher\]\s*([^|\],]+)/i,
+        );
         rewardVouchersList.push({
           code: 'REWARD-VOUCHER',
           amount: rewardVoucherAmount,
@@ -1226,11 +1455,15 @@ export class SalesListExportService {
         });
       }
 
-      const creditSaleInfo = creditSale > 0 ? {
-        customerName: custName !== 'Walk-in Customer' ? custName : undefined,
-        customerPhone: custPhone !== '-' ? custPhone : undefined,
-        balance: creditSale,
-      } : undefined;
+      const creditSaleInfo =
+        creditSale > 0
+          ? {
+              customerName:
+                custName !== 'Walk-in Customer' ? custName : undefined,
+              customerPhone: custPhone !== '-' ? custPhone : undefined,
+              balance: creditSale,
+            }
+          : undefined;
 
       const creditIssuedList: VoucherTenderInfo[] = [];
       for (const iv of orderIssued) {
@@ -1248,32 +1481,53 @@ export class SalesListExportService {
         });
       }
 
-      const cashReturnInfo = cashReturn > 0 ? {
-        amount: cashReturn,
-        reason: 'Cash returned during invoice settlement',
-      } : undefined;
+      const cashReturnInfo =
+        cashReturn > 0
+          ? {
+              amount: cashReturn,
+              reason: 'Cash returned during invoice settlement',
+            }
+          : undefined;
 
       const tenderDetails: SalesListTenderDetails = {
         card: cardInfo,
-        giftVouchers: giftVouchersList.length > 0 ? giftVouchersList : undefined,
-        exchangeVouchers: exchangeVouchersList.length > 0 ? exchangeVouchersList : undefined,
-        claimVouchers: claimVouchersList.length > 0 ? claimVouchersList : undefined,
-        creditVouchers: creditVouchersList.length > 0 ? creditVouchersList : undefined,
-        corporateVouchers: corporateVouchersList.length > 0 ? corporateVouchersList : undefined,
-        rewardVouchers: rewardVouchersList.length > 0 ? rewardVouchersList : undefined,
+        giftVouchers:
+          giftVouchersList.length > 0 ? giftVouchersList : undefined,
+        exchangeVouchers:
+          exchangeVouchersList.length > 0 ? exchangeVouchersList : undefined,
+        claimVouchers:
+          claimVouchersList.length > 0 ? claimVouchersList : undefined,
+        creditVouchers:
+          creditVouchersList.length > 0 ? creditVouchersList : undefined,
+        corporateVouchers:
+          corporateVouchersList.length > 0 ? corporateVouchersList : undefined,
+        rewardVouchers:
+          rewardVouchersList.length > 0 ? rewardVouchersList : undefined,
         creditSale: creditSaleInfo,
-        creditIssued: creditIssuedList.length > 0 ? creditIssuedList : undefined,
+        creditIssued:
+          creditIssuedList.length > 0 ? creditIssuedList : undefined,
         cashReturn: cashReturnInfo,
       };
 
       // Rich Discount Details
-      const manualDiscountPercent = order.globalDiscountPercent ? Number(order.globalDiscountPercent) : undefined;
-      const manualDiscountAmount = order.globalDiscountAmount ? Number(order.globalDiscountAmount) : undefined;
-      const manualDiscountNote = order.manualDiscountNote || undefined;
-      const hasManualDiscount = Boolean(manualDiscountNote || manualDiscountPercent || manualDiscountAmount);
-      const manualDiscountType: 'PERCENT' | 'FLAT_PKR' | 'MIXED' | undefined = hasManualDiscount
-        ? (manualDiscountPercent && manualDiscountAmount ? 'MIXED' : manualDiscountPercent ? 'PERCENT' : 'FLAT_PKR')
+      const manualDiscountPercent = order.globalDiscountPercent
+        ? Number(order.globalDiscountPercent)
         : undefined;
+      const manualDiscountAmount = order.globalDiscountAmount
+        ? Number(order.globalDiscountAmount)
+        : undefined;
+      const manualDiscountNote = order.manualDiscountNote || undefined;
+      const hasManualDiscount = Boolean(
+        manualDiscountNote || manualDiscountPercent || manualDiscountAmount,
+      );
+      const manualDiscountType: 'PERCENT' | 'FLAT_PKR' | 'MIXED' | undefined =
+        hasManualDiscount
+          ? manualDiscountPercent && manualDiscountAmount
+            ? 'MIXED'
+            : manualDiscountPercent
+              ? 'PERCENT'
+              : 'FLAT_PKR'
+          : undefined;
 
       let alliance: any = undefined;
       if (order.alliance) {
@@ -1308,8 +1562,12 @@ export class SalesListExportService {
       const discountDetails: SalesListDiscountDetails = {
         hasOverrideDiscount: overrideDiscountItemsCount > 0,
         overrideDiscountItemsCount,
-        overrideDiscountNotes: overrideDiscountNotes.length > 0 ? overrideDiscountNotes : undefined,
-        overrideDiscountPercents: overrideDiscountPercents.length > 0 ? overrideDiscountPercents : undefined,
+        overrideDiscountNotes:
+          overrideDiscountNotes.length > 0 ? overrideDiscountNotes : undefined,
+        overrideDiscountPercents:
+          overrideDiscountPercents.length > 0
+            ? overrideDiscountPercents
+            : undefined,
         hasManualDiscount,
         manualDiscountType,
         manualDiscountPercent,
@@ -1333,7 +1591,10 @@ export class SalesListExportService {
         email: order.customer?.email || undefined,
       };
 
-      const locName = (order.locationId && locationMap.get(order.locationId)) || order.location?.name || 'All Locations';
+      const locName =
+        (order.locationId && locationMap.get(order.locationId)) ||
+        order.location?.name ||
+        'All Locations';
 
       const invNode: SalesListInvoiceNode = {
         id: order.id,
@@ -1391,14 +1652,18 @@ export class SalesListExportService {
       });
 
       // Line 1: Meta header written immediately
-      const metaLine = JSON.stringify({
-        type: 'meta',
-        reportType,
-        dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
-        locationNames,
-        locations: allLocations,
-        totalInvoices: totalOrdersCount,
-      }) + '\n';
+      const metaLine =
+        JSON.stringify({
+          type: 'meta',
+          reportType,
+          dateRange: {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+          },
+          locationNames,
+          locations: allLocations,
+          totalInvoices: totalOrdersCount,
+        }) + '\n';
       await safeWrite(metaLine);
     }
 
@@ -1409,7 +1674,10 @@ export class SalesListExportService {
       const CHUNK = 2500;
 
       while (true) {
-        if (opts.isAborted?.() || (opts.previewJobId && this.isJobCancelled(opts.previewJobId))) {
+        if (
+          opts.isAborted?.() ||
+          (opts.previewJobId && this.isJobCancelled(opts.previewJobId))
+        ) {
           if (gzipStream) {
             gzipStream.destroy();
           }
@@ -1442,12 +1710,39 @@ export class SalesListExportService {
             notes: true,
             merchantId: true,
             merchant: { select: { bankName: true, description: true } },
-            alliance: { select: { partnerName: true, code: true, discountPercent: true, description: true } },
-            promo: { select: { name: true, code: true, type: true, value: true } },
-            coupon: { select: { code: true, description: true, discountType: true, discountValue: true } },
+            alliance: {
+              select: {
+                partnerName: true,
+                code: true,
+                discountPercent: true,
+                description: true,
+              },
+            },
+            promo: {
+              select: { name: true, code: true, type: true, value: true },
+            },
+            coupon: {
+              select: {
+                code: true,
+                description: true,
+                discountType: true,
+                discountValue: true,
+              },
+            },
             fbrInvoiceNumber: true,
             fbrStatus: true,
-            customer: { select: { id: true, name: true, contactNo: true, traderId: true, subCode: true, cnicNo: true, address: true, email: true } },
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                contactNo: true,
+                traderId: true,
+                subCode: true,
+                cnicNo: true,
+                address: true,
+                email: true,
+              },
+            },
             voucherRedemptions: {
               select: {
                 amountUsed: true,
@@ -1501,13 +1796,20 @@ export class SalesListExportService {
           const { invNode, orderTotals } = transformSingleOrder(order, []);
           addTotals(grandTotals, orderTotals);
 
-          const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+          const locKey = order.locationId
+            ? `loc:${order.locationId}`
+            : 'main-outlet';
           let locNode = locationNodesMap.get(locKey);
           if (!locNode) {
             locNode = {
               locationKey: locKey,
               locationId: order.locationId || undefined,
-              locationName: invNode.locationName || (order.locationId ? locationMap.get(order.locationId) : undefined) || 'Main Outlet',
+              locationName:
+                invNode.locationName ||
+                (order.locationId
+                  ? locationMap.get(order.locationId)
+                  : undefined) ||
+                'Main Outlet',
               invoices: [],
               totals: createEmptyTotals(),
             };
@@ -1530,22 +1832,32 @@ export class SalesListExportService {
           const SUB_CHUNK = 250;
           for (let sub = 0; sub < chunkInvoiceNodes.length; sub += SUB_CHUNK) {
             const batch = chunkInvoiceNodes.slice(sub, sub + SUB_CHUNK);
-            const chunkLine = JSON.stringify({
-              type: 'invoices',
-              startIndex: processedOrders + sub,
-              count: batch.length,
-              invoices: batch,
-            }) + '\n';
+            const chunkLine =
+              JSON.stringify({
+                type: 'invoices',
+                startIndex: processedOrders + sub,
+                count: batch.length,
+                invoices: batch,
+              }) + '\n';
             await safeWrite(chunkLine);
           }
           chunkInvoiceNodes.length = 0; // Discard immediately from memory
         }
 
         processedOrders += chunkOrders.length;
-        const pct = Math.min(95, Math.round(25 + (processedOrders / totalOrdersCount) * 70));
-        if (pct - lastReportedPct >= 2 || processedOrders === totalOrdersCount) {
+        const pct = Math.min(
+          95,
+          Math.round(25 + (processedOrders / totalOrdersCount) * 70),
+        );
+        if (
+          pct - lastReportedPct >= 2 ||
+          processedOrders === totalOrdersCount
+        ) {
           lastReportedPct = pct;
-          await onProgress?.(pct, `Processed ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} invoices (${pct}%)...`);
+          await onProgress?.(
+            pct,
+            `Processed ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} invoices (${pct}%)...`,
+          );
         }
         await new Promise((res) => setImmediate(res));
 
@@ -1555,12 +1867,13 @@ export class SalesListExportService {
 
     if (isDirectDiskStream && gzipStream) {
       // Final Line: Verified Grand Totals
-      const totalsLine = JSON.stringify({
-        type: 'totals',
-        grandTotals,
-        totalInvoices: totalOrdersCount,
-        done: true,
-      }) + '\n';
+      const totalsLine =
+        JSON.stringify({
+          type: 'totals',
+          grandTotals,
+          totalInvoices: totalOrdersCount,
+          done: true,
+        }) + '\n';
       await safeWrite(totalsLine);
 
       gzipStream.end();
@@ -1575,7 +1888,10 @@ export class SalesListExportService {
       invoices: inMemoryInvoices,
       flatItems: [],
       grandTotals,
-      dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      },
       locationNames,
     };
   }
@@ -1618,7 +1934,9 @@ export class SalesListExportService {
     return { jobId, downloadUrl };
   }
 
-  async queueExport(opts: QueueSalesListExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueSalesListExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -1663,17 +1981,29 @@ export class SalesListExportService {
       },
     );
 
-    this.logger.log(`[SalesListExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[SalesListExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number; message?: string }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number; message?: string }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
     const rawProg: any = job.progress();
-    const progress = typeof rawProg === 'number' ? rawProg : typeof rawProg === 'object' && rawProg?.percent !== undefined ? Number(rawProg.percent) : 0;
-    const message = typeof rawProg === 'object' && rawProg?.message ? String(rawProg.message) : undefined;
+    const progress =
+      typeof rawProg === 'number'
+        ? rawProg
+        : typeof rawProg === 'object' && rawProg?.percent !== undefined
+          ? Number(rawProg.percent)
+          : 0;
+    const message =
+      typeof rawProg === 'object' && rawProg?.message
+        ? String(rawProg.message)
+        : undefined;
     return { state, progress, message };
   }
 
@@ -1684,7 +2014,9 @@ export class SalesListExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     try {
@@ -1695,23 +2027,33 @@ export class SalesListExportService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export history download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
       const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(
+        s3Key,
+        record.fileName,
+      );
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
     const filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
     const stat = fs.statSync(filePath);
@@ -1722,8 +2064,16 @@ export class SalesListExportService {
     });
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
@@ -1742,15 +2092,20 @@ export class SalesListExportService {
     res: any,
   ): Promise<void> {
     const ndjsonPath = this.getPreviewNdjsonFilePath(jobId);
-    const jsonPath = path.join(this.previewStorageDir, `sales-list-preview-${jobId}.json.gz`);
-    
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `sales-list-preview-${jobId}.json.gz`,
+    );
+
     let targetFilePath = '';
     if (fs.existsSync(ndjsonPath)) {
       targetFilePath = ndjsonPath;
     } else if (fs.existsSync(jsonPath)) {
       targetFilePath = jsonPath;
     } else {
-      throw new NotFoundException('Sales list preview result not found or expired');
+      throw new NotFoundException(
+        'Sales list preview result not found or expired',
+      );
     }
 
     const exportType = options.exportType || 'flat';
@@ -1759,12 +2114,21 @@ export class SalesListExportService {
 
     const passThrough = new PassThrough();
     if (typeof res.header === 'function') {
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
       res.header('Content-Disposition', `attachment; filename="${fileName}"`);
       res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
@@ -1780,7 +2144,9 @@ export class SalesListExportService {
       useSharedStrings: false,
     });
 
-    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Flat Items' : 'Invoices');
+    const sheet = workbook.addWorksheet(
+      exportType === 'flat' ? 'Flat Items' : 'Invoices',
+    );
 
     if (exportType === 'flat') {
       sheet.columns = [
@@ -1809,7 +2175,11 @@ export class SalesListExportService {
         { header: 'Discount %', key: 'discountPercent', width: 11 },
         { header: 'Discount', key: 'discountAmount', width: 12 },
         { header: 'Discount WOST', key: 'discountAmountWost', width: 13 },
-        { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18 },
+        {
+          header: 'Amount After Discount',
+          key: 'amountAfterDiscount',
+          width: 18,
+        },
         { header: 'Sales Tax', key: 'taxAmount', width: 12 },
         { header: 'Value Incl. (SubTotal)', key: 'subTotal', width: 18 },
         { header: 'Cash Sale', key: 'cashSale', width: 14 },
@@ -1821,7 +2191,11 @@ export class SalesListExportService {
         { header: 'Exchange Voucher', key: 'exchangeVoucherAmount', width: 16 },
         { header: 'Claim Voucher', key: 'claimVoucherAmount', width: 14 },
         { header: 'Corporate Voucher', key: 'giftVoucherCorporate', width: 16 },
-        { header: 'Credit Issued', key: 'creditVoucherIssuedAmount', width: 14 },
+        {
+          header: 'Credit Issued',
+          key: 'creditVoucherIssuedAmount',
+          width: 14,
+        },
         { header: 'Reward Voucher', key: 'rewardVoucherAmount', width: 14 },
         { header: 'Override Note', key: 'overrideDiscountNote', width: 20 },
         { header: 'Manual Disc Note', key: 'manualDiscountNote', width: 20 },
@@ -1855,7 +2229,11 @@ export class SalesListExportService {
         { header: 'Value Excl.', key: 'valueExcl', width: 14 },
         { header: 'Discount', key: 'discountTotal', width: 14 },
         { header: 'Discount WOST', key: 'discountWost', width: 14 },
-        { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18 },
+        {
+          header: 'Amount After Discount',
+          key: 'amountAfterDiscount',
+          width: 18,
+        },
         { header: 'Sales Tax', key: 'salesTax', width: 12 },
         { header: 'Value Incl. (Net Revenue)', key: 'netTotal', width: 18 },
         { header: 'Cash Sale', key: 'tenderCash', width: 12 },
@@ -1866,7 +2244,11 @@ export class SalesListExportService {
         { header: 'Credit Voucher', key: 'tenderCreditVoucher', width: 14 },
         { header: 'Exchange Voucher', key: 'tenderExchangeVoucher', width: 16 },
         { header: 'Claim Voucher', key: 'tenderClaimVoucher', width: 14 },
-        { header: 'Corporate Voucher', key: 'tenderCorporateVoucher', width: 18 },
+        {
+          header: 'Corporate Voucher',
+          key: 'tenderCorporateVoucher',
+          width: 18,
+        },
         { header: 'Credit Issued', key: 'creditVoucherIssued', width: 14 },
         { header: 'Reward Voucher', key: 'tenderRewardVoucher', width: 15 },
       ];
@@ -1874,14 +2256,21 @@ export class SalesListExportService {
 
     // Filter Predicates
     const q = (options.search || '').trim().toLowerCase();
-    const pMode = options.paymentMode && options.paymentMode !== 'all' ? options.paymentMode.toUpperCase() : null;
+    const pMode =
+      options.paymentMode && options.paymentMode !== 'all'
+        ? options.paymentMode.toUpperCase()
+        : null;
     const isFbrOnly = options.fbrOnly === true;
-    const locSet = options.locationId && options.locationId !== 'all'
-      ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
-      : null;
-    const cashierFilter = options.cashierId && options.cashierId !== 'all'
-      ? options.cashierId.trim().toLowerCase()
-      : null;
+    const locSet =
+      options.locationId && options.locationId !== 'all'
+        ? new Set(
+            options.locationId.split(',').map((s) => s.trim().toLowerCase()),
+          )
+        : null;
+    const cashierFilter =
+      options.cashierId && options.cashierId !== 'all'
+        ? options.cashierId.trim().toLowerCase()
+        : null;
 
     let totalQty = 0;
     let totalValExcl = 0;
@@ -1914,7 +2303,7 @@ export class SalesListExportService {
       try {
         const parsed = JSON.parse(line);
         let invoicesToProcess: any[] = [];
-        
+
         if (parsed.type === 'invoices' && Array.isArray(parsed.invoices)) {
           invoicesToProcess = parsed.invoices;
         } else if (Array.isArray(parsed.invoices)) {
@@ -1941,9 +2330,16 @@ export class SalesListExportService {
             if (cId !== cashierFilter && cName !== cashierFilter) continue;
           }
           // Payment mode filter
-          if (pMode && (inv.paymentMethod || '').toUpperCase() !== pMode) continue;
+          if (pMode && (inv.paymentMethod || '').toUpperCase() !== pMode)
+            continue;
           // FBR Only
-          if (isFbrOnly && (!inv.fbrInvoiceNumber || inv.fbrInvoiceNumber === '-' || inv.fbrInvoiceNumber.trim() === '')) continue;
+          if (
+            isFbrOnly &&
+            (!inv.fbrInvoiceNumber ||
+              inv.fbrInvoiceNumber === '-' ||
+              inv.fbrInvoiceNumber.trim() === '')
+          )
+            continue;
           // Search query
           if (q) {
             const matchesHeader =
@@ -1954,10 +2350,11 @@ export class SalesListExportService {
               (inv.cashierName || '').toLowerCase().includes(q) ||
               (inv.fbrInvoiceNumber || '').toLowerCase().includes(q);
 
-            const matchesItems = (inv.items || []).some((it: any) =>
-              (it.sku || '').toLowerCase().includes(q) ||
-              (it.barCode || '').toLowerCase().includes(q) ||
-              (it.description || '').toLowerCase().includes(q)
+            const matchesItems = (inv.items || []).some(
+              (it: any) =>
+                (it.sku || '').toLowerCase().includes(q) ||
+                (it.barCode || '').toLowerCase().includes(q) ||
+                (it.description || '').toLowerCase().includes(q),
             );
 
             if (!matchesHeader && !matchesItems) continue;
@@ -1974,58 +2371,106 @@ export class SalesListExportService {
             ...(inv.tenderDetails?.corporateVouchers || []),
             ...(inv.tenderDetails?.rewardVouchers || []),
           ];
-          const voucherCodesStr = allVouchers.map((v) => `${v.code} (Rs. ${Number(v.amount || 0).toLocaleString()})`).join(', ');
+          const voucherCodesStr = allVouchers
+            .map(
+              (v) =>
+                `${v.code} (Rs. ${Number(v.amount || 0).toLocaleString()})`,
+            )
+            .join(', ');
 
           // Extract card summary string
           const card = inv.tenderDetails?.card;
-          const cardDetailsStr = card ? `${card.merchant || inv.merchant || 'Card'} ${card.cardLast4 ? `**** ${card.cardLast4}` : ''} ${card.authId ? `Slip: ${card.authId}` : ''}`.trim() : '-';
+          const cardDetailsStr = card
+            ? `${card.merchant || inv.merchant || 'Card'} ${card.cardLast4 ? `**** ${card.cardLast4}` : ''} ${card.authId ? `Slip: ${card.authId}` : ''}`.trim()
+            : '-';
 
           // Extract discount summary notes
           const discNotesArr: string[] = [];
           if (inv.discountDetails?.overrideDiscountNotes?.length) {
-            discNotesArr.push(`Override: ${inv.discountDetails.overrideDiscountNotes.join(', ')}`);
+            discNotesArr.push(
+              `Override: ${inv.discountDetails.overrideDiscountNotes.join(', ')}`,
+            );
           }
           if (inv.discountDetails?.manualDiscountNote) {
-            discNotesArr.push(`Manual: ${inv.discountDetails.manualDiscountNote} (${inv.discountDetails.manualDiscountType || 'Flat'})`);
+            discNotesArr.push(
+              `Manual: ${inv.discountDetails.manualDiscountNote} (${inv.discountDetails.manualDiscountType || 'Flat'})`,
+            );
           }
           if (inv.discountDetails?.alliance) {
-            discNotesArr.push(`Alliance: ${inv.discountDetails.alliance.partnerName} (${inv.discountDetails.alliance.discountPercent}%)`);
+            discNotesArr.push(
+              `Alliance: ${inv.discountDetails.alliance.partnerName} (${inv.discountDetails.alliance.discountPercent}%)`,
+            );
           }
           if (inv.discountDetails?.promo) {
-            discNotesArr.push(`Promo: ${inv.discountDetails.promo.name} (${inv.discountDetails.promo.code})`);
+            discNotesArr.push(
+              `Promo: ${inv.discountDetails.promo.name} (${inv.discountDetails.promo.code})`,
+            );
           }
           if (inv.discountDetails?.coupon) {
             discNotesArr.push(`Coupon: ${inv.discountDetails.coupon.code}`);
           }
-          const discNotesStr = discNotesArr.join(' | ') || (t.discountAmount ? 'Line Discounts' : '-');
+          const discNotesStr =
+            discNotesArr.join(' | ') ||
+            (t.discountAmount ? 'Line Discounts' : '-');
 
           if (exportType === 'flat') {
-            const items = inv.items && inv.items.length > 0 ? inv.items : [{
-              sku: '-',
-              barCode: '-',
-              description: 'Invoice Summary',
-              quantity: t.totalItems || 1,
-              unitPrice: (t.grossAmount || (t.wostAmount ? t.wostAmount * 1.18 : 0)),
-              priceWost: (t.wostAmount || (t.grossAmount ? t.grossAmount / 1.18 : 0)),
-              valueExcl: (t.wostAmount || (t.grossAmount ? t.grossAmount / 1.18 : 0)),
-              discountAmount: t.discountAmount || 0,
-              discountAmountWost: t.discountWostAmount || 0,
-              amountAfterDiscount: t.amountAfterDiscount || 0,
-              taxAmount: t.taxAmount || 0,
-              lineTotal: t.netAmount || 0,
-              valueIncl: t.netAmount || 0,
-            }];
+            const items =
+              inv.items && inv.items.length > 0
+                ? inv.items
+                : [
+                    {
+                      sku: '-',
+                      barCode: '-',
+                      description: 'Invoice Summary',
+                      quantity: t.totalItems || 1,
+                      unitPrice:
+                        t.grossAmount ||
+                        (t.wostAmount ? t.wostAmount * 1.18 : 0),
+                      priceWost:
+                        t.wostAmount ||
+                        (t.grossAmount ? t.grossAmount / 1.18 : 0),
+                      valueExcl:
+                        t.wostAmount ||
+                        (t.grossAmount ? t.grossAmount / 1.18 : 0),
+                      discountAmount: t.discountAmount || 0,
+                      discountAmountWost: t.discountWostAmount || 0,
+                      amountAfterDiscount: t.amountAfterDiscount || 0,
+                      taxAmount: t.taxAmount || 0,
+                      lineTotal: t.netAmount || 0,
+                      valueIncl: t.netAmount || 0,
+                    },
+                  ];
 
             for (const item of items) {
               const qty = Number(item.quantity || 0);
               const unitPrice = Number(item.unitPrice || 0);
-              const unitPriceWost = item.priceWost !== undefined ? item.priceWost : (unitPrice / 1.18);
-              const valExcl = Number((item.valueExcl !== undefined ? item.valueExcl : qty * unitPriceWost).toFixed(2));
+              const unitPriceWost =
+                item.priceWost !== undefined
+                  ? item.priceWost
+                  : unitPrice / 1.18;
+              const valExcl = Number(
+                (item.valueExcl !== undefined
+                  ? item.valueExcl
+                  : qty * unitPriceWost
+                ).toFixed(2),
+              );
               const disc = Number(item.discountAmount || 0);
-              const discWost = Number((item.discountAmountWost !== undefined ? item.discountAmountWost : (disc / 1.18)).toFixed(2));
-              const amtAfterDisc = Number((item.amountAfterDiscount !== undefined ? item.amountAfterDiscount : Math.max(0, valExcl - discWost)).toFixed(2));
+              const discWost = Number(
+                (item.discountAmountWost !== undefined
+                  ? item.discountAmountWost
+                  : disc / 1.18
+                ).toFixed(2),
+              );
+              const amtAfterDisc = Number(
+                (item.amountAfterDiscount !== undefined
+                  ? item.amountAfterDiscount
+                  : Math.max(0, valExcl - discWost)
+                ).toFixed(2),
+              );
               const tax = Number(item.taxAmount || 0);
-              const subTotal = Number(item.lineTotal || item.subTotal || (unitPrice * qty - disc + tax));
+              const subTotal = Number(
+                item.lineTotal || item.subTotal || unitPrice * qty - disc + tax,
+              );
 
               totalQty += qty;
               totalValExcl += valExcl;
@@ -2049,7 +2494,12 @@ export class SalesListExportService {
               const row = sheet.addRow({
                 locationName: inv.locationName || '-',
                 orderNumber: inv.orderNumber,
-                orderDate: inv.createdAt ? new Date(inv.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                orderDate: inv.createdAt
+                  ? new Date(inv.createdAt)
+                      .toISOString()
+                      .replace('T', ' ')
+                      .slice(0, 19)
+                  : '-',
                 cashierName: inv.cashierName || '-',
                 customerName: inv.customerName || 'Walk-in',
                 customerPhone: inv.customerPhone || '-',
@@ -2084,13 +2534,26 @@ export class SalesListExportService {
                 exchangeVoucherAmount: Number(t.exchangeVoucherAmount || 0),
                 claimVoucherAmount: Number(t.claimVoucherAmount || 0),
                 giftVoucherCorporate: Number(t.giftVoucherCorporate || 0),
-                creditVoucherIssuedAmount: Number(t.creditVoucherIssuedAmount || 0),
+                creditVoucherIssuedAmount: Number(
+                  t.creditVoucherIssuedAmount || 0,
+                ),
                 rewardVoucherAmount: Number(t.rewardVoucherAmount || 0),
-                overrideDiscountNote: item.overrideDiscountNote || (item.overrideDiscountPercent ? `${item.overrideDiscountPercent}% Override` : '-'),
-                manualDiscountNote: inv.discountDetails?.manualDiscountNote || '-',
-                manualDiscountType: inv.discountDetails?.manualDiscountType || '-',
-                alliancePartner: inv.discountDetails?.alliance ? `${inv.discountDetails.alliance.partnerName} (${inv.discountDetails.alliance.discountPercent}%)` : '-',
-                promoCoupon: inv.discountDetails?.coupon?.code || inv.discountDetails?.promo?.code || '-',
+                overrideDiscountNote:
+                  item.overrideDiscountNote ||
+                  (item.overrideDiscountPercent
+                    ? `${item.overrideDiscountPercent}% Override`
+                    : '-'),
+                manualDiscountNote:
+                  inv.discountDetails?.manualDiscountNote || '-',
+                manualDiscountType:
+                  inv.discountDetails?.manualDiscountType || '-',
+                alliancePartner: inv.discountDetails?.alliance
+                  ? `${inv.discountDetails.alliance.partnerName} (${inv.discountDetails.alliance.discountPercent}%)`
+                  : '-',
+                promoCoupon:
+                  inv.discountDetails?.coupon?.code ||
+                  inv.discountDetails?.promo?.code ||
+                  '-',
                 voucherCodes: voucherCodesStr || '-',
                 cardDetails: cardDetailsStr,
               });
@@ -2100,11 +2563,27 @@ export class SalesListExportService {
             const qty = Number(t.totalItems || 0);
             const gross = Number(t.grossAmount || 0);
             const unitPriceAvg = qty > 0 ? Number((gross / qty).toFixed(2)) : 0;
-            const valExcl = Number((t.wostAmount !== undefined ? t.wostAmount : (gross / 1.18)).toFixed(2));
-            const unitPriceWost = qty > 0 ? Number((valExcl / qty).toFixed(2)) : 0;
+            const valExcl = Number(
+              (t.wostAmount !== undefined
+                ? t.wostAmount
+                : gross / 1.18
+              ).toFixed(2),
+            );
+            const unitPriceWost =
+              qty > 0 ? Number((valExcl / qty).toFixed(2)) : 0;
             const disc = Number(t.discountAmount || 0);
-            const discWost = Number((t.discountWostAmount !== undefined ? t.discountWostAmount : (inv.discountDetails?.wostDiscount || disc / 1.18)).toFixed(2));
-            const amtAfterDisc = Number((t.amountAfterDiscount !== undefined ? t.amountAfterDiscount : Math.max(0, valExcl - discWost)).toFixed(2));
+            const discWost = Number(
+              (t.discountWostAmount !== undefined
+                ? t.discountWostAmount
+                : inv.discountDetails?.wostDiscount || disc / 1.18
+              ).toFixed(2),
+            );
+            const amtAfterDisc = Number(
+              (t.amountAfterDiscount !== undefined
+                ? t.amountAfterDiscount
+                : Math.max(0, valExcl - discWost)
+              ).toFixed(2),
+            );
             const tax = Number(t.taxAmount || 0);
             const net = Number(t.netAmount || 0);
 
@@ -2129,7 +2608,12 @@ export class SalesListExportService {
 
             const row = sheet.addRow({
               invoiceNo: inv.orderNumber,
-              date: inv.createdAt ? new Date(inv.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+              date: inv.createdAt
+                ? new Date(inv.createdAt)
+                    .toISOString()
+                    .replace('T', ' ')
+                    .slice(0, 19)
+                : '-',
               customer: inv.customerName || 'Walk-in',
               phone: inv.customerPhone || '-',
               cnic: inv.customerCnic || '-',
@@ -2140,8 +2624,13 @@ export class SalesListExportService {
               fbr: inv.fbrInvoiceNumber || '-',
               orderNotes: inv.notes || '-',
               discountNotes: discNotesStr,
-              alliancePartner: inv.discountDetails?.alliance ? `${inv.discountDetails.alliance.partnerName} (${inv.discountDetails.alliance.discountPercent}%)` : '-',
-              promoCoupon: inv.discountDetails?.coupon?.code || inv.discountDetails?.promo?.code || '-',
+              alliancePartner: inv.discountDetails?.alliance
+                ? `${inv.discountDetails.alliance.partnerName} (${inv.discountDetails.alliance.discountPercent}%)`
+                : '-',
+              promoCoupon:
+                inv.discountDetails?.coupon?.code ||
+                inv.discountDetails?.promo?.code ||
+                '-',
               vouchersList: voucherCodesStr || '-',
               tenderCardDetails: cardDetailsStr,
               quantity: qty,
@@ -2205,8 +2694,12 @@ export class SalesListExportService {
       const summaryRow = sheet.addRow({
         invoiceNo: 'GRAND TOTAL',
         quantity: totalQty,
-        unitPriceAvg: totalQty > 0 ? Number(((totalValExcl * 1.18) / totalQty).toFixed(2)) : 0,
-        unitPriceWost: totalQty > 0 ? Number((totalValExcl / totalQty).toFixed(2)) : 0,
+        unitPriceAvg:
+          totalQty > 0
+            ? Number(((totalValExcl * 1.18) / totalQty).toFixed(2))
+            : 0,
+        unitPriceWost:
+          totalQty > 0 ? Number((totalValExcl / totalQty).toFixed(2)) : 0,
         valueExcl: totalValExcl,
         discountTotal: totalDiscount,
         discountWost: totalDiscWost,

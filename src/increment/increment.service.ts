@@ -23,10 +23,7 @@ export class IncrementService {
   ) {
     const increments = await tx.increment.findMany({
       where: { employeeId, status: 'active' },
-      orderBy: [
-        { promotionDate: 'desc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ promotionDate: 'desc' }, { createdAt: 'desc' }],
     });
 
     if (increments.length > 0) {
@@ -35,16 +32,24 @@ export class IncrementService {
         where: { id: employeeId },
         data: {
           employeeSalary: latestIncrement.salary,
-          ...(latestIncrement.employeeGradeId ? { employeeGradeId: latestIncrement.employeeGradeId } : {}),
-          ...(latestIncrement.designationId ? { designationId: latestIncrement.designationId } : {}),
+          ...(latestIncrement.employeeGradeId
+            ? { employeeGradeId: latestIncrement.employeeGradeId }
+            : {}),
+          ...(latestIncrement.designationId
+            ? { designationId: latestIncrement.designationId }
+            : {}),
         },
       });
     } else if (fallbackIncrement) {
       const salary = Number(fallbackIncrement.salary);
       const type = fallbackIncrement.incrementType;
       const method = fallbackIncrement.incrementMethod;
-      const amount = fallbackIncrement.incrementAmount ? Number(fallbackIncrement.incrementAmount) : 0;
-      const percent = fallbackIncrement.incrementPercentage ? Number(fallbackIncrement.incrementPercentage) : 0;
+      const amount = fallbackIncrement.incrementAmount
+        ? Number(fallbackIncrement.incrementAmount)
+        : 0;
+      const percent = fallbackIncrement.incrementPercentage
+        ? Number(fallbackIncrement.incrementPercentage)
+        : 0;
 
       let previousSalary = salary;
       if (type === 'Increment') {
@@ -460,9 +465,13 @@ export class IncrementService {
         const createdIncrements: any[] = [];
 
         for (const incrementItem of body.increments) {
-          const emp = empLookup.get(incrementItem.employeeId.trim().toLowerCase())!;
+          const emp = empLookup.get(
+            incrementItem.employeeId.trim().toLowerCase(),
+          )!;
           const grade = incrementItem.employeeGradeId
-            ? gradeLookup.get(incrementItem.employeeGradeId.trim().toLowerCase())
+            ? gradeLookup.get(
+                incrementItem.employeeGradeId.trim().toLowerCase(),
+              )
             : null;
           const desig = incrementItem.designationId
             ? desigLookup.get(incrementItem.designationId.trim().toLowerCase())
@@ -578,7 +587,7 @@ export class IncrementService {
         runInBackground(
           'Create Increments',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'create',
             module: 'increment',
             entity: 'Increment',
@@ -706,7 +715,7 @@ export class IncrementService {
         runInBackground(
           'Update Increment',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'update',
             module: 'increment',
             entity: 'Increment',
@@ -753,14 +762,12 @@ export class IncrementService {
         await this.syncEmployeeSalary(existing.employeeId, tx, existing);
       });
 
-      
-
       // Log activity
       if (ctx.userId) {
         runInBackground(
           'Delete Increment',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'delete',
             module: 'increment',
             entity: 'Increment',

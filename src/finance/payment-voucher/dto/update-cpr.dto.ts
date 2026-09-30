@@ -1,5 +1,11 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CprDetailUpdateDto {
@@ -8,7 +14,10 @@ export class CprDetailUpdateDto {
   @IsNotEmpty()
   id: string;
 
-  @ApiProperty({ description: 'The CPR number to set or clear', required: false })
+  @ApiProperty({
+    description: 'The CPR number to set or clear',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   cprNo?: string | null;

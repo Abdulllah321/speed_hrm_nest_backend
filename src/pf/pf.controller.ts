@@ -28,7 +28,7 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @ApiTags('Provident Fund')
 @Controller('api/pf')
 export class PFController {
-  constructor(private readonly pfService: PFService,) {}
+  constructor(private readonly pfService: PFService) {}
 
   @Get('employees')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -105,4 +105,3 @@ export class PFController {
     return this.pfService.approvePFWithdrawal(id, approvedById);
   }
 }
-

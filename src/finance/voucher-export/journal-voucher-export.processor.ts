@@ -23,12 +23,12 @@ export interface JvExportJobData {
 // ── Colour palette ────────────────────────────────────────────────────────────
 const SUBHEADER_BG = '1E3A5F';
 const SUBHEADER_FG = 'F1F5F9';
-const ALT_ROW_BG   = 'F0F4F8';
+const ALT_ROW_BG = 'F0F4F8';
 const BORDER_COLOR = 'CBD5E1';
 
 const GROUP_COLORS: Record<string, string> = {
   Voucher: '1A3A5C',
-  Detail:  '1E4D2B',
+  Detail: '1E4D2B',
   Amounts: '7C3A00',
 };
 
@@ -41,23 +41,91 @@ const COLUMNS: {
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
   // Voucher
-  { header: 'JV No',            key: 'jvNo',           width: 18, group: 'Voucher', align: 'center' },
-  { header: 'JV Date',          key: 'jvDate',         width: 14, group: 'Voucher', numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'Folio',            key: 'folio',          width: 10, group: 'Voucher', align: 'center' },
-  { header: 'Status',           key: 'status',         width: 11, group: 'Voucher', align: 'center' },
-  { header: 'Description',      key: 'description',    width: 36, group: 'Voucher' },
+  {
+    header: 'JV No',
+    key: 'jvNo',
+    width: 18,
+    group: 'Voucher',
+    align: 'center',
+  },
+  {
+    header: 'JV Date',
+    key: 'jvDate',
+    width: 14,
+    group: 'Voucher',
+    numFmt: 'dd-mmm-yyyy',
+    align: 'center',
+  },
+  {
+    header: 'Folio',
+    key: 'folio',
+    width: 10,
+    group: 'Voucher',
+    align: 'center',
+  },
+  {
+    header: 'Status',
+    key: 'status',
+    width: 11,
+    group: 'Voucher',
+    align: 'center',
+  },
+  { header: 'Description', key: 'description', width: 36, group: 'Voucher' },
   // Detail
-  { header: 'Line #',           key: 'lineNo',         width: 8,  group: 'Detail',  align: 'center' },
-  { header: 'Account Code',     key: 'accountCode',    width: 16, group: 'Detail',  align: 'center' },
-  { header: 'Account Name',     key: 'accountName',    width: 30, group: 'Detail' },
-  { header: 'Tag Account Code', key: 'tagAccountCode', width: 16, group: 'Detail',  align: 'center' },
-  { header: 'Tag Account Name', key: 'tagAccountName', width: 24, group: 'Detail' },
-  { header: 'Narration',        key: 'narration',      width: 34, group: 'Detail' },
-  { header: 'Ref Bill No',      key: 'refBillNo',      width: 18, group: 'Detail' },
-  { header: 'Tax Type',         key: 'taxType',        width: 12, group: 'Detail',  align: 'center' },
+  {
+    header: 'Line #',
+    key: 'lineNo',
+    width: 8,
+    group: 'Detail',
+    align: 'center',
+  },
+  {
+    header: 'Account Code',
+    key: 'accountCode',
+    width: 16,
+    group: 'Detail',
+    align: 'center',
+  },
+  { header: 'Account Name', key: 'accountName', width: 30, group: 'Detail' },
+  {
+    header: 'Tag Account Code',
+    key: 'tagAccountCode',
+    width: 16,
+    group: 'Detail',
+    align: 'center',
+  },
+  {
+    header: 'Tag Account Name',
+    key: 'tagAccountName',
+    width: 24,
+    group: 'Detail',
+  },
+  { header: 'Narration', key: 'narration', width: 34, group: 'Detail' },
+  { header: 'Ref Bill No', key: 'refBillNo', width: 18, group: 'Detail' },
+  {
+    header: 'Tax Type',
+    key: 'taxType',
+    width: 12,
+    group: 'Detail',
+    align: 'center',
+  },
   // Amounts
-  { header: 'Debit',            key: 'debit',          width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Credit',           key: 'credit',         width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
+  {
+    header: 'Debit',
+    key: 'debit',
+    width: 16,
+    group: 'Amounts',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Credit',
+    key: 'credit',
+    width: 16,
+    group: 'Amounts',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
 ];
 
 @Processor('journal-voucher-export')
@@ -68,7 +136,18 @@ export class JournalVoucherExportProcessor {
 
   @Process()
   async handleExport(job: Job<JvExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, status, dateFrom, dateTo, accountId, search, ids } = job.data;
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      status,
+      dateFrom,
+      dateTo,
+      accountId,
+      search,
+      ids,
+    } = job.data;
 
     this.logger.log(`[JvExport ${jobId}] Starting for user ${userId}`);
 
@@ -81,17 +160,20 @@ export class JournalVoucherExportProcessor {
     try {
       // ── Build WHERE ────────────────────────────────────────────────────────
       const andClauses: any[] = [];
-      if (ids && ids.length > 0)       andClauses.push({ id: { in: ids } });
+      if (ids && ids.length > 0) andClauses.push({ id: { in: ids } });
       if (status && status !== 'all') andClauses.push({ status });
       if (dateFrom || dateTo) {
         const dateFilter: any = {};
         if (dateFrom) dateFilter.gte = new Date(dateFrom);
-        if (dateTo)   dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+        if (dateTo)
+          dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
         andClauses.push({ jvDate: dateFilter });
       }
       if (accountId && accountId !== 'all') {
         andClauses.push({
-          details: { some: { OR: [{ accountId }, { tagAccountId: accountId }] } },
+          details: {
+            some: { OR: [{ accountId }, { tagAccountId: accountId }] },
+          },
         });
       }
       if (search && search.trim() !== '') {
@@ -101,12 +183,36 @@ export class JournalVoucherExportProcessor {
             { jvNo: { contains: term, mode: 'insensitive' } },
             { description: { contains: term, mode: 'insensitive' } },
             { folio: { contains: term, mode: 'insensitive' } },
-            { details: { some: { OR: [
-              { narration: { contains: term, mode: 'insensitive' } },
-              { refBillNo: { contains: term, mode: 'insensitive' } },
-              { account: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
-              { tagAccount: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
-            ] } } },
+            {
+              details: {
+                some: {
+                  OR: [
+                    { narration: { contains: term, mode: 'insensitive' } },
+                    { refBillNo: { contains: term, mode: 'insensitive' } },
+                    {
+                      account: {
+                        is: {
+                          OR: [
+                            { code: { contains: term, mode: 'insensitive' } },
+                            { name: { contains: term, mode: 'insensitive' } },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      tagAccount: {
+                        is: {
+                          OR: [
+                            { code: { contains: term, mode: 'insensitive' } },
+                            { name: { contains: term, mode: 'insensitive' } },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
           ],
         });
       }
@@ -123,7 +229,12 @@ export class JournalVoucherExportProcessor {
       });
 
       const ws = workbook.addWorksheet('Journal Vouchers', {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
         views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
       });
 
@@ -142,14 +253,18 @@ export class JournalVoucherExportProcessor {
         const cell = groupRow.getCell(idx + 1);
         const { start } = groups[col.group];
         if (idx + 1 === start) cell.value = col.group.toUpperCase();
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
-        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+        };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       groupRow.height = 22;
@@ -159,15 +274,26 @@ export class JournalVoucherExportProcessor {
       const headerRow = ws.getRow(2);
       COLUMNS.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
-        cell.value     = col.header;
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font      = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
-        cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+        cell.value = col.header;
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 9,
+        };
+        cell.alignment = {
+          horizontal: col.align ?? 'left',
+          vertical: 'middle',
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       headerRow.height = 20;
@@ -187,7 +313,7 @@ export class JournalVoucherExportProcessor {
           include: {
             details: {
               include: {
-                account:    { select: { code: true, name: true } },
+                account: { select: { code: true, name: true } },
                 tagAccount: { select: { code: true, name: true } },
               },
             },
@@ -204,34 +330,49 @@ export class JournalVoucherExportProcessor {
             const isApproved = jv.status === 'approved';
 
             const rowData: Record<string, any> = {
-              jvNo:           dIdx === 0 ? jv.jvNo : '',
-              jvDate:         dIdx === 0 ? new Date(jv.jvDate) : null,
-              folio:          dIdx === 0 ? (jv.folio ?? '') : '',
-              status:         dIdx === 0 ? jv.status.toUpperCase() : '',
-              description:    dIdx === 0 ? (jv.description ?? '') : '',
-              lineNo:         detail ? dIdx + 1 : '',
-              accountCode:    detail?.account?.code    ?? '',
-              accountName:    detail?.account?.name    ?? '',
+              jvNo: dIdx === 0 ? jv.jvNo : '',
+              jvDate: dIdx === 0 ? new Date(jv.jvDate) : null,
+              folio: dIdx === 0 ? (jv.folio ?? '') : '',
+              status: dIdx === 0 ? jv.status.toUpperCase() : '',
+              description: dIdx === 0 ? (jv.description ?? '') : '',
+              lineNo: detail ? dIdx + 1 : '',
+              accountCode: detail?.account?.code ?? '',
+              accountName: detail?.account?.name ?? '',
               tagAccountCode: detail?.tagAccount?.code ?? '',
               tagAccountName: detail?.tagAccount?.name ?? '',
-              narration:      detail?.narration        ?? '',
-              refBillNo:      detail?.refBillNo        ?? '',
-              taxType:        detail?.taxType          ?? '',
-              debit:          detail ? Number(detail.debit)  : null,
-              credit:         detail ? Number(detail.credit) : null,
+              narration: detail?.narration ?? '',
+              refBillNo: detail?.refBillNo ?? '',
+              taxType: detail?.taxType ?? '',
+              debit: detail ? Number(detail.debit) : null,
+              credit: detail ? Number(detail.credit) : null,
             };
 
             const dataRow = ws.getRow(rowIdx + 3);
             COLUMNS.forEach((col, colIdx) => {
               const cell = dataRow.getCell(colIdx + 1);
-              cell.value     = rowData[col.key] ?? null;
-              if (col.numFmt && rowData[col.key] !== null && rowData[col.key] !== '')
+              cell.value = rowData[col.key] ?? null;
+              if (
+                col.numFmt &&
+                rowData[col.key] !== null &&
+                rowData[col.key] !== ''
+              )
                 cell.numFmt = col.numFmt;
-              cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-              cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+              cell.alignment = {
+                horizontal: col.align ?? 'left',
+                vertical: 'middle',
+              };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` },
+              };
 
               if (col.key === 'status') {
-                cell.font = { bold: true, size: 9, color: { argb: isApproved ? 'FF15803D' : 'FFB45309' } };
+                cell.font = {
+                  bold: true,
+                  size: 9,
+                  color: { argb: isApproved ? 'FF15803D' : 'FFB45309' },
+                };
               } else if (col.key === 'debit') {
                 cell.font = { size: 9, color: { argb: 'FF1D4ED8' } };
               } else if (col.key === 'credit') {
@@ -241,10 +382,10 @@ export class JournalVoucherExportProcessor {
               }
 
               cell.border = {
-                top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
                 bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
               };
             });
 
@@ -256,38 +397,61 @@ export class JournalVoucherExportProcessor {
 
         processedVouchers += chunk.length;
 
-        const pct = total > 0 ? Math.round((processedVouchers / total) * 95) : 50;
+        const pct =
+          total > 0 ? Math.round((processedVouchers / total) * 95) : 50;
         await job.progress(pct);
         await new Promise((r) => setImmediate(r));
       }
 
       // ── Summary sheet ──────────────────────────────────────────────────────
       const summary = workbook.addWorksheet('Summary');
-      summary.columns = [{ key: 'label', width: 28 }, { key: 'value', width: 24 }];
+      summary.columns = [
+        { key: 'label', width: 28 },
+        { key: 'value', width: 24 },
+      ];
       const titleRow = summary.getRow(1);
-      titleRow.getCell(1).value     = 'Journal Voucher Export Summary';
-      titleRow.getCell(1).font      = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
-      titleRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-      titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).value = 'Journal Voucher Export Summary';
+      titleRow.getCell(1).font = {
+        bold: true,
+        size: 14,
+        color: { argb: 'FF1E293B' },
+      };
+      titleRow.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+      titleRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       titleRow.height = 28;
       titleRow.commit();
 
       const summaryRows = [
-        ['Export Date',    new Date().toLocaleString('en-PK')],
+        ['Export Date', new Date().toLocaleString('en-PK')],
         ['Total Vouchers', processedVouchers],
-        ['Total Rows',     rowIdx],
-        ['Status Filter',  status ?? '(all)'],
-        ['Date From',      dateFrom ?? '(all)'],
-        ['Date To',        dateTo   ?? '(all)'],
+        ['Total Rows', rowIdx],
+        ['Status Filter', status ?? '(all)'],
+        ['Date From', dateFrom ?? '(all)'],
+        ['Date To', dateTo ?? '(all)'],
       ];
       summaryRows.forEach(([label, value], idx) => {
         const r = summary.getRow(idx + 2);
         r.getCell(1).value = label;
-        r.getCell(1).font  = { bold: true, size: 10 };
-        r.getCell(1).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(1).font = { bold: true, size: 10 };
+        r.getCell(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.getCell(2).value = value;
-        r.getCell(2).font  = { size: 10 };
-        r.getCell(2).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(2).font = { size: 10 };
+        r.getCell(2).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.height = 18;
         r.commit();
       });
@@ -295,7 +459,9 @@ export class JournalVoucherExportProcessor {
       await workbook.commit();
       await job.progress(100);
 
-      this.logger.log(`[JvExport ${jobId}] File written (${processedVouchers} vouchers, ${rowIdx} rows)`);
+      this.logger.log(
+        `[JvExport ${jobId}] File written (${processedVouchers} vouchers, ${rowIdx} rows)`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -309,9 +475,11 @@ export class JournalVoucherExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[JvExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[JvExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.notificationsService.create({

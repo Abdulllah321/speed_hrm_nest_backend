@@ -199,8 +199,11 @@ export class CostOfSalesExportService {
             wJob.name === 'generate-cost-of-sales-preview' &&
             wJob.data?.userId === opts.userId
           ) {
-            this.logger.log(`Pruning superseded waiting cost-of-sales preview job ${wJob.id}`);
-            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
+            this.logger.log(
+              `Pruning superseded waiting cost-of-sales preview job ${wJob.id}`,
+            );
+            if (wJob.data?.jobId)
+              this.cancelledPreviewJobIds.add(wJob.data.jobId);
             await wJob.remove();
           }
         }
@@ -211,12 +214,16 @@ export class CostOfSalesExportService {
             aJob.data?.userId === opts.userId
           ) {
             const activeJobId = aJob.data?.jobId;
-            this.logger.log(`Cancelling active cost-of-sales preview job ${activeJobId}`);
+            this.logger.log(
+              `Cancelling active cost-of-sales preview job ${activeJobId}`,
+            );
             if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Could not prune cost-of-sales preview jobs: ${err.message}`);
+        this.logger.warn(
+          `Could not prune cost-of-sales preview jobs: ${err.message}`,
+        );
       }
     }
 
@@ -268,7 +275,14 @@ export class CostOfSalesExportService {
   }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
-      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        status: 'unknown',
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -314,18 +328,33 @@ export class CostOfSalesExportService {
 
     const jsonStr = JSON.stringify(data);
     const gzipped = zlib.gzipSync(jsonStr);
-    const filePath = path.join(previewDir, `cost-of-sales-preview-${jobId}.json.gz`);
+    const filePath = path.join(
+      previewDir,
+      `cost-of-sales-preview-${jobId}.json.gz`,
+    );
     fs.writeFileSync(filePath, gzipped);
 
-    setTimeout(() => {
-      if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
-      }
-    }, 60 * 60 * 1000);
+    setTimeout(
+      () => {
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      },
+      60 * 60 * 1000,
+    );
   }
 
   getReportPreviewResult(jobId: string): any {
-    const filePath = path.join(process.cwd(), 'uploads', 'previews', `cost-of-sales-preview-${jobId}.json.gz`);
+    const filePath = path.join(
+      process.cwd(),
+      'uploads',
+      'previews',
+      `cost-of-sales-preview-${jobId}.json.gz`,
+    );
     if (!fs.existsSync(filePath)) {
       return null;
     }
@@ -369,7 +398,10 @@ export class CostOfSalesExportService {
 
     const now = new Date();
 
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -379,7 +411,7 @@ export class CostOfSalesExportService {
           return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
         }
       }
-      
+
       if (dateStr.includes('T') || dateStr.includes('Z')) {
         const d = new Date(dateStr);
         if (isEndOfDay && !dateStr.includes('T23:59:59')) {
@@ -387,7 +419,7 @@ export class CostOfSalesExportService {
         }
         return d;
       }
-      
+
       const timePart = isEndOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
       return new Date(`${dateStr}${timePart}`);
     };
@@ -411,7 +443,9 @@ export class CostOfSalesExportService {
     }
 
     const whereReturns: any = {
-      referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'POS_VOID'] },
+      referenceType: {
+        in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'POS_VOID'],
+      },
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -457,9 +491,18 @@ export class CostOfSalesExportService {
       whereDeliveryChallans.item = searchFilter;
     }
 
-    await onProgress?.(30, 'Fetching stock sales, wholesale dispatches, returns & valuation costs...');
+    await onProgress?.(
+      30,
+      'Fetching stock sales, wholesale dispatches, returns & valuation costs...',
+    );
 
-    const [posSalesLedgerEntries, returnLedgerEntries, dcLedgerEntries, valuationLedgers, locations] = await Promise.all([
+    const [
+      posSalesLedgerEntries,
+      returnLedgerEntries,
+      dcLedgerEntries,
+      valuationLedgers,
+      locations,
+    ] = await Promise.all([
       (prisma as any).stockLedger.findMany({
         where: whereSalesLedger,
         select: {
@@ -550,7 +593,14 @@ export class CostOfSalesExportService {
       (prisma as any).stockLedger.findMany({
         where: {
           ...(locationId && locationId.trim() !== '' && locationId !== 'all'
-            ? { locationId: { in: locationId.split(',').map((s: string) => s.trim()).filter(Boolean) } }
+            ? {
+                locationId: {
+                  in: locationId
+                    .split(',')
+                    .map((s: string) => s.trim())
+                    .filter(Boolean),
+                },
+              }
             : {}),
           createdAt: { gte: startDate, lte: endDate },
         },
@@ -598,7 +648,11 @@ export class CostOfSalesExportService {
 
         const isInboundPurchase =
           entry.movementType === 'INBOUND' &&
-          (ref === 'LANDED_COST' || ref === 'GRN' || ref === 'PURCHASE' || ref.startsWith('GRN') || ref.startsWith('PURCHASE'));
+          (ref === 'LANDED_COST' ||
+            ref === 'GRN' ||
+            ref === 'PURCHASE' ||
+            ref.startsWith('GRN') ||
+            ref.startsWith('PURCHASE'));
 
         if (entryCost === 0 && !isInboundPurchase) {
           entryCost = runningWac;
@@ -625,23 +679,39 @@ export class CostOfSalesExportService {
 
         const isPosSalesReturn =
           !isTransfer &&
-          (['POS_RETURN', 'POS_EXCHANGE_IN', 'POS_REFUND', 'POS_VOID', 'SALES_RETURN'].includes(ref) ||
+          ([
+            'POS_RETURN',
+            'POS_EXCHANGE_IN',
+            'POS_REFUND',
+            'POS_VOID',
+            'SALES_RETURN',
+          ].includes(ref) ||
             ref.startsWith('POS_RETURN') ||
             ref.startsWith('SALES_RETURN'));
 
-        const isPurchaseReturn =
-          ['PURCHASE_RETURN', 'PURCHASE_RETURN_GRN', 'PURCHASE_RETURN_LC', 'PURCHASE_RETURN_INV', 'PRN'].includes(ref);
+        const isPurchaseReturn = [
+          'PURCHASE_RETURN',
+          'PURCHASE_RETURN_GRN',
+          'PURCHASE_RETURN_LC',
+          'PURCHASE_RETURN_INV',
+          'PRN',
+        ].includes(ref);
 
         if (isOpening) {
           periodOpeningQty += entryQty;
           periodOpeningVal += entryQty * entryCost;
           qtyBalance += entryQty;
           if (qtyBalance > 0) runningWac = periodOpeningVal / periodOpeningQty;
-        } else if (isInboundPurchase || (entry.movementType === 'INBOUND' && !isTransfer && !isPosSalesReturn)) {
+        } else if (
+          isInboundPurchase ||
+          (entry.movementType === 'INBOUND' && !isTransfer && !isPosSalesReturn)
+        ) {
           purchaseQty += entryQty;
           purchaseVal += entryQty * entryCost;
           const newQty = qtyBalance + entryQty;
-          if (newQty > 0) runningWac = ((qtyBalance * runningWac) + (entryQty * entryCost)) / newQty;
+          if (newQty > 0)
+            runningWac =
+              (qtyBalance * runningWac + entryQty * entryCost) / newQty;
           qtyBalance += entryQty;
         } else if (isPurchaseReturn) {
           const absQty = Math.abs(entryQty);
@@ -655,18 +725,24 @@ export class CostOfSalesExportService {
 
       const finalOpeningQty = periodOpeningQty;
       const finalOpeningVal = periodOpeningVal;
-      const finalOpeningWac = finalOpeningQty > 0 ? finalOpeningVal / finalOpeningQty : 0;
+      const finalOpeningWac =
+        finalOpeningQty > 0 ? finalOpeningVal / finalOpeningQty : 0;
 
       const availableQty = finalOpeningQty + purchaseQty - purchaseRetQty;
       const availableVal = finalOpeningVal + purchaseVal - purchaseRetVal;
-      const availableCost = availableQty > 0 ? availableVal / availableQty : finalOpeningWac;
+      const availableCost =
+        availableQty > 0 ? availableVal / availableQty : finalOpeningWac;
 
       if (availableCost > 0) {
         itemCostMap.set(itemId, availableCost);
       }
     }
 
-    const returnRefIds = [...new Set(returnLedgerEntries.map((e: any) => e.referenceId).filter(Boolean))] as string[];
+    const returnRefIds = [
+      ...new Set(
+        returnLedgerEntries.map((e: any) => e.referenceId).filter(Boolean),
+      ),
+    ] as string[];
     const [returnVouchers, returnPosReturns] = await Promise.all([
       returnRefIds.length
         ? await (prisma as any).voucher.findMany({
@@ -684,7 +760,11 @@ export class CostOfSalesExportService {
         : [],
     ]);
 
-    const sourceOrderIds = [...new Set(returnVouchers.map((v: any) => v.sourceOrderId).filter(Boolean))] as string[];
+    const sourceOrderIds = [
+      ...new Set(
+        returnVouchers.map((v: any) => v.sourceOrderId).filter(Boolean),
+      ),
+    ] as string[];
     const sourceOrders = sourceOrderIds.length
       ? await prisma.salesOrder.findMany({
           where: { id: { in: sourceOrderIds } },
@@ -699,7 +779,9 @@ export class CostOfSalesExportService {
     for (const v of returnVouchers) {
       voucherMap.set(v.id, {
         ...v,
-        sourceOrder: v.sourceOrderId ? sourceOrderMap.get(v.sourceOrderId) : null,
+        sourceOrder: v.sourceOrderId
+          ? sourceOrderMap.get(v.sourceOrderId)
+          : null,
       });
     }
     for (const pr of returnPosReturns) {
@@ -711,9 +793,14 @@ export class CostOfSalesExportService {
       });
     }
 
-    const locationMap = new Map<string, string>(locations.map((l) => [l.id, l.name]));
+    const locationMap = new Map<string, string>(
+      locations.map((l) => [l.id, l.name]),
+    );
 
-    await onProgress?.(65, 'Building Net Cost of Sales tree & calculating gross profit metrics...');
+    await onProgress?.(
+      65,
+      'Building Net Cost of Sales tree & calculating gross profit metrics...',
+    );
 
     const brandsList: CostOfSalesBrandNode[] = [];
     const flatItemsList: CostOfSalesFlatRecord[] = [];
@@ -727,30 +814,42 @@ export class CostOfSalesExportService {
       grossProfit: number;
       profitMargin: number;
     }) => {
-      tot.avgUnitCost = tot.quantity !== 0 ? Math.round((tot.totalCost / Math.abs(tot.quantity)) * 100) / 100 : 0;
-      tot.grossProfit = Math.round((tot.totalRevenue - tot.totalCost) * 100) / 100;
-      tot.profitMargin = tot.totalRevenue !== 0 ? Math.round((tot.grossProfit / tot.totalRevenue) * 10000) / 100 : 0;
+      tot.avgUnitCost =
+        tot.quantity !== 0
+          ? Math.round((tot.totalCost / Math.abs(tot.quantity)) * 100) / 100
+          : 0;
+      tot.grossProfit =
+        Math.round((tot.totalRevenue - tot.totalCost) * 100) / 100;
+      tot.profitMargin =
+        tot.totalRevenue !== 0
+          ? Math.round((tot.grossProfit / tot.totalRevenue) * 10000) / 100
+          : 0;
     };
 
     // 1. Process POS Sales Movements from StockLedger (Gross POS Sales)
     for (const sle of posSalesLedgerEntries) {
       if (!sle.item) continue;
-      const locName = (sle.locationId && locationMap.get(sle.locationId)) || 'Main Location';
+      const locName =
+        (sle.locationId && locationMap.get(sle.locationId)) || 'Main Location';
       locationsSet.add(sle.locationId || 'default');
 
       const qty = Math.abs(Number(sle.qty || 1));
-      const unitCost = itemCostMap.get(sle.item.id) ?? Number(sle.item.unitCost || 0);
+      const unitCost =
+        itemCostMap.get(sle.item.id) ?? Number(sle.item.unitCost || 0);
       const totalCost = Math.round(qty * unitCost * 100) / 100;
 
       const rawRate = Number(sle.rate || 0);
       const unitPrice = rawRate > 0 ? rawRate : Number(sle.item.unitPrice || 0);
       const taxPercent = 18;
       const taxDivisor = 1 + taxPercent / 100;
-      const wostPerUnit = rawRate > 0 ? rawRate : (unitPrice / taxDivisor);
+      const wostPerUnit = rawRate > 0 ? rawRate : unitPrice / taxDivisor;
       const totalRevenue = Math.round(wostPerUnit * qty * 100) / 100;
 
       const grossProfit = Math.round((totalRevenue - totalCost) * 100) / 100;
-      const profitMargin = totalRevenue !== 0 ? Math.round((grossProfit / totalRevenue) * 10000) / 100 : 0;
+      const profitMargin =
+        totalRevenue !== 0
+          ? Math.round((grossProfit / totalRevenue) * 10000) / 100
+          : 0;
 
       const brandName = sle.item.brand?.name || 'Unassigned Brand';
       const brandId = sle.item.brand?.id || 'brand-unassigned';
@@ -802,7 +901,14 @@ export class CostOfSalesExportService {
           brandId,
           brandName,
           divisions: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         brandsList.push(brandNode);
       }
@@ -814,7 +920,14 @@ export class CostOfSalesExportService {
           divisionId: divId,
           divisionName: divName,
           genders: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         brandNode.divisions.push(divNode);
       }
@@ -826,7 +939,14 @@ export class CostOfSalesExportService {
           genderId,
           genderName,
           categories: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         divNode.genders.push(genderNode);
       }
@@ -838,7 +958,14 @@ export class CostOfSalesExportService {
           categoryId: catId,
           categoryName: catName,
           products: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         genderNode.categories.push(catNode);
       }
@@ -851,13 +978,23 @@ export class CostOfSalesExportService {
           description: desc,
           productLabel: desc,
           sizes: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         catNode.products.push(prodNode);
       }
 
       // 6. Variant Level
-      let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
+      let sizeItem = prodNode.sizes.find(
+        (s) =>
+          s.size === sizeName && s.color === colorName && s.barCode === barCode,
+      );
       if (!sizeItem) {
         sizeItem = {
           id: `pos-${sle.id}`,
@@ -876,40 +1013,59 @@ export class CostOfSalesExportService {
       }
 
       sizeItem.quantity += qty;
-      sizeItem.totalCost = Math.round((sizeItem.totalCost + totalCost) * 100) / 100;
-      sizeItem.totalRevenue = Math.round((sizeItem.totalRevenue + totalRevenue) * 100) / 100;
-      sizeItem.grossProfit = Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
-      sizeItem.profitMargin = sizeItem.totalRevenue !== 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
+      sizeItem.totalCost =
+        Math.round((sizeItem.totalCost + totalCost) * 100) / 100;
+      sizeItem.totalRevenue =
+        Math.round((sizeItem.totalRevenue + totalRevenue) * 100) / 100;
+      sizeItem.grossProfit =
+        Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
+      sizeItem.profitMargin =
+        sizeItem.totalRevenue !== 0
+          ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) /
+            100
+          : 0;
 
       prodNode.totals.quantity += qty;
-      prodNode.totals.totalCost = Math.round((prodNode.totals.totalCost + totalCost) * 100) / 100;
-      prodNode.totals.totalRevenue = Math.round((prodNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      prodNode.totals.totalCost =
+        Math.round((prodNode.totals.totalCost + totalCost) * 100) / 100;
+      prodNode.totals.totalRevenue =
+        Math.round((prodNode.totals.totalRevenue + totalRevenue) * 100) / 100;
 
       catNode.totals.quantity += qty;
-      catNode.totals.totalCost = Math.round((catNode.totals.totalCost + totalCost) * 100) / 100;
-      catNode.totals.totalRevenue = Math.round((catNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      catNode.totals.totalCost =
+        Math.round((catNode.totals.totalCost + totalCost) * 100) / 100;
+      catNode.totals.totalRevenue =
+        Math.round((catNode.totals.totalRevenue + totalRevenue) * 100) / 100;
 
       genderNode.totals.quantity += qty;
-      genderNode.totals.totalCost = Math.round((genderNode.totals.totalCost + totalCost) * 100) / 100;
-      genderNode.totals.totalRevenue = Math.round((genderNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      genderNode.totals.totalCost =
+        Math.round((genderNode.totals.totalCost + totalCost) * 100) / 100;
+      genderNode.totals.totalRevenue =
+        Math.round((genderNode.totals.totalRevenue + totalRevenue) * 100) / 100;
 
       divNode.totals.quantity += qty;
-      divNode.totals.totalCost = Math.round((divNode.totals.totalCost + totalCost) * 100) / 100;
-      divNode.totals.totalRevenue = Math.round((divNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      divNode.totals.totalCost =
+        Math.round((divNode.totals.totalCost + totalCost) * 100) / 100;
+      divNode.totals.totalRevenue =
+        Math.round((divNode.totals.totalRevenue + totalRevenue) * 100) / 100;
 
       brandNode.totals.quantity += qty;
-      brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
-      brandNode.totals.totalRevenue = Math.round((brandNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      brandNode.totals.totalCost =
+        Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
+      brandNode.totals.totalRevenue =
+        Math.round((brandNode.totals.totalRevenue + totalRevenue) * 100) / 100;
     }
 
     // 2. Process Delivery Challans (Wholesale Sales)
     for (const dc of dcLedgerEntries) {
       if (!dc.item) continue;
-      const locName = (dc.locationId && locationMap.get(dc.locationId)) || 'Main Location';
+      const locName =
+        (dc.locationId && locationMap.get(dc.locationId)) || 'Main Location';
       locationsSet.add(dc.locationId || 'default');
 
       const qty = Math.abs(Number(dc.qty || 1));
-      const unitCost = itemCostMap.get(dc.item.id) ?? Number(dc.item.unitCost || 0);
+      const unitCost =
+        itemCostMap.get(dc.item.id) ?? Number(dc.item.unitCost || 0);
       const totalCost = Math.round(qty * unitCost * 100) / 100;
       const unitPrice = Number(dc.rate || dc.item.unitPrice || 0);
 
@@ -919,7 +1075,10 @@ export class CostOfSalesExportService {
       const totalRevenue = Math.round(wostPerUnit * qty * 100) / 100;
 
       const grossProfit = Math.round((totalRevenue - totalCost) * 100) / 100;
-      const profitMargin = totalRevenue !== 0 ? Math.round((grossProfit / totalRevenue) * 10000) / 100 : 0;
+      const profitMargin =
+        totalRevenue !== 0
+          ? Math.round((grossProfit / totalRevenue) * 10000) / 100
+          : 0;
 
       const brandName = dc.item.brand?.name || 'Unassigned Brand';
       const brandId = dc.item.brand?.id || 'brand-unassigned';
@@ -965,7 +1124,14 @@ export class CostOfSalesExportService {
           brandId,
           brandName,
           divisions: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         brandsList.push(brandNode);
       }
@@ -977,7 +1143,14 @@ export class CostOfSalesExportService {
           divisionId: divId,
           divisionName: divName,
           genders: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         brandNode.divisions.push(divNode);
       }
@@ -989,7 +1162,14 @@ export class CostOfSalesExportService {
           genderId,
           genderName,
           categories: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         divNode.genders.push(genderNode);
       }
@@ -1001,7 +1181,14 @@ export class CostOfSalesExportService {
           categoryId: catId,
           categoryName: catName,
           products: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         genderNode.categories.push(catNode);
       }
@@ -1014,13 +1201,23 @@ export class CostOfSalesExportService {
           description: desc,
           productLabel: desc,
           sizes: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         catNode.products.push(prodNode);
       }
 
       // 6. Variant Level
-      let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
+      let sizeItem = prodNode.sizes.find(
+        (s) =>
+          s.size === sizeName && s.color === colorName && s.barCode === barCode,
+      );
       if (!sizeItem) {
         sizeItem = {
           id: `dc-${dc.id}`,
@@ -1039,49 +1236,81 @@ export class CostOfSalesExportService {
       }
 
       sizeItem.quantity += qty;
-      sizeItem.totalCost = Math.round((sizeItem.totalCost + totalCost) * 100) / 100;
-      sizeItem.totalRevenue = Math.round((sizeItem.totalRevenue + totalRevenue) * 100) / 100;
-      sizeItem.grossProfit = Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
-      sizeItem.profitMargin = sizeItem.totalRevenue !== 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
+      sizeItem.totalCost =
+        Math.round((sizeItem.totalCost + totalCost) * 100) / 100;
+      sizeItem.totalRevenue =
+        Math.round((sizeItem.totalRevenue + totalRevenue) * 100) / 100;
+      sizeItem.grossProfit =
+        Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
+      sizeItem.profitMargin =
+        sizeItem.totalRevenue !== 0
+          ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) /
+            100
+          : 0;
 
       prodNode.totals.quantity += qty;
-      prodNode.totals.totalCost = Math.round((prodNode.totals.totalCost + totalCost) * 100) / 100;
-      prodNode.totals.totalRevenue = Math.round((prodNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      prodNode.totals.totalCost =
+        Math.round((prodNode.totals.totalCost + totalCost) * 100) / 100;
+      prodNode.totals.totalRevenue =
+        Math.round((prodNode.totals.totalRevenue + totalRevenue) * 100) / 100;
 
       catNode.totals.quantity += qty;
-      catNode.totals.totalCost = Math.round((catNode.totals.totalCost + totalCost) * 100) / 100;
-      catNode.totals.totalRevenue = Math.round((catNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      catNode.totals.totalCost =
+        Math.round((catNode.totals.totalCost + totalCost) * 100) / 100;
+      catNode.totals.totalRevenue =
+        Math.round((catNode.totals.totalRevenue + totalRevenue) * 100) / 100;
 
       genderNode.totals.quantity += qty;
-      genderNode.totals.totalCost = Math.round((genderNode.totals.totalCost + totalCost) * 100) / 100;
-      genderNode.totals.totalRevenue = Math.round((genderNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      genderNode.totals.totalCost =
+        Math.round((genderNode.totals.totalCost + totalCost) * 100) / 100;
+      genderNode.totals.totalRevenue =
+        Math.round((genderNode.totals.totalRevenue + totalRevenue) * 100) / 100;
 
       divNode.totals.quantity += qty;
-      divNode.totals.totalCost = Math.round((divNode.totals.totalCost + totalCost) * 100) / 100;
-      divNode.totals.totalRevenue = Math.round((divNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      divNode.totals.totalCost =
+        Math.round((divNode.totals.totalCost + totalCost) * 100) / 100;
+      divNode.totals.totalRevenue =
+        Math.round((divNode.totals.totalRevenue + totalRevenue) * 100) / 100;
 
       brandNode.totals.quantity += qty;
-      brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
-      brandNode.totals.totalRevenue = Math.round((brandNode.totals.totalRevenue + totalRevenue) * 100) / 100;
+      brandNode.totals.totalCost =
+        Math.round((brandNode.totals.totalCost + totalCost) * 100) / 100;
+      brandNode.totals.totalRevenue =
+        Math.round((brandNode.totals.totalRevenue + totalRevenue) * 100) / 100;
     }
 
     // 3. Deduct Sales Returns from StockLedger (Sales Returns)
     for (const entry of returnLedgerEntries) {
       if (!entry.item) continue;
-      const locName = (entry.locationId && locationMap.get(entry.locationId)) || 'Main Location';
+      const locName =
+        (entry.locationId && locationMap.get(entry.locationId)) ||
+        'Main Location';
       locationsSet.add(entry.locationId || 'default');
 
       const voucher = voucherMap.get(entry.referenceId);
-      const matchedPrItem = voucher?.posReturn?.items?.find((oi: any) => oi.itemId === entry.itemId);
-      const originalOi = matchedPrItem || voucher?.sourceOrder?.items?.find((oi: any) => oi.itemId === entry.itemId);
+      const matchedPrItem = voucher?.posReturn?.items?.find(
+        (oi: any) => oi.itemId === entry.itemId,
+      );
+      const originalOi =
+        matchedPrItem ||
+        voucher?.sourceOrder?.items?.find(
+          (oi: any) => oi.itemId === entry.itemId,
+        );
 
       const retQty = Math.abs(Number(entry.qty || 1));
       const netQty = -retQty;
-      const unitCost = itemCostMap.get(entry.item.id) ?? Number(entry.item.unitCost || 0);
+      const unitCost =
+        itemCostMap.get(entry.item.id) ?? Number(entry.item.unitCost || 0);
       const netCost = -Math.round(retQty * unitCost * 100) / 100;
 
-      const unitPrice = originalOi ? Number(originalOi.unitPrice || 0) : Number(entry.item.unitPrice || 0);
-      const taxPercent = originalOi ? Number((originalOi as any).taxPercent || (originalOi as any).taxRate || 0) : 18;
+      const unitPrice = originalOi
+        ? Number(originalOi.unitPrice || 0)
+        : Number(entry.item.unitPrice || 0);
+      const taxPercent = originalOi
+        ? Number(
+            (originalOi as any).taxPercent || (originalOi as any).taxRate || 0,
+          )
+        : 18;
       const calculatedTaxPct = taxPercent > 0 ? taxPercent : 18;
       const taxDivisor = 1 + calculatedTaxPct / 100;
       const wostPerUnit = unitPrice / taxDivisor;
@@ -1126,7 +1355,10 @@ export class CostOfSalesExportService {
         unitPrice,
         totalRevenue: netRevenue,
         grossProfit: Math.round((netRevenue - netCost) * 100) / 100,
-        profitMargin: netRevenue !== 0 ? Math.round(((netRevenue - netCost) / netRevenue) * 10000) / 100 : 0,
+        profitMargin:
+          netRevenue !== 0
+            ? Math.round(((netRevenue - netCost) / netRevenue) * 10000) / 100
+            : 0,
       });
 
       // 1. Brand Level
@@ -1136,7 +1368,14 @@ export class CostOfSalesExportService {
           brandId,
           brandName,
           divisions: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         brandsList.push(brandNode);
       }
@@ -1148,7 +1387,14 @@ export class CostOfSalesExportService {
           divisionId: divId,
           divisionName: divName,
           genders: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         brandNode.divisions.push(divNode);
       }
@@ -1160,7 +1406,14 @@ export class CostOfSalesExportService {
           genderId,
           genderName,
           categories: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         divNode.genders.push(genderNode);
       }
@@ -1172,7 +1425,14 @@ export class CostOfSalesExportService {
           categoryId: catId,
           categoryName: catName,
           products: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         genderNode.categories.push(catNode);
       }
@@ -1185,13 +1445,23 @@ export class CostOfSalesExportService {
           description: desc,
           productLabel: desc,
           sizes: [],
-          totals: { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+          totals: {
+            quantity: 0,
+            totalCost: 0,
+            avgUnitCost: 0,
+            totalRevenue: 0,
+            grossProfit: 0,
+            profitMargin: 0,
+          },
         };
         catNode.products.push(prodNode);
       }
 
       // 6. Variant Level
-      let sizeItem = prodNode.sizes.find((s) => s.size === sizeName && s.color === colorName && s.barCode === barCode);
+      let sizeItem = prodNode.sizes.find(
+        (s) =>
+          s.size === sizeName && s.color === colorName && s.barCode === barCode,
+      );
       if (!sizeItem) {
         sizeItem = {
           id: `ret-${entry.id}`,
@@ -1210,30 +1480,47 @@ export class CostOfSalesExportService {
       }
 
       sizeItem.quantity += netQty;
-      sizeItem.totalCost = Math.round((sizeItem.totalCost + netCost) * 100) / 100;
-      sizeItem.totalRevenue = Math.round((sizeItem.totalRevenue + netRevenue) * 100) / 100;
-      sizeItem.grossProfit = Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
-      sizeItem.profitMargin = sizeItem.totalRevenue !== 0 ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) / 100 : 0;
+      sizeItem.totalCost =
+        Math.round((sizeItem.totalCost + netCost) * 100) / 100;
+      sizeItem.totalRevenue =
+        Math.round((sizeItem.totalRevenue + netRevenue) * 100) / 100;
+      sizeItem.grossProfit =
+        Math.round((sizeItem.totalRevenue - sizeItem.totalCost) * 100) / 100;
+      sizeItem.profitMargin =
+        sizeItem.totalRevenue !== 0
+          ? Math.round((sizeItem.grossProfit / sizeItem.totalRevenue) * 10000) /
+            100
+          : 0;
 
       prodNode.totals.quantity += netQty;
-      prodNode.totals.totalCost = Math.round((prodNode.totals.totalCost + netCost) * 100) / 100;
-      prodNode.totals.totalRevenue = Math.round((prodNode.totals.totalRevenue + netRevenue) * 100) / 100;
+      prodNode.totals.totalCost =
+        Math.round((prodNode.totals.totalCost + netCost) * 100) / 100;
+      prodNode.totals.totalRevenue =
+        Math.round((prodNode.totals.totalRevenue + netRevenue) * 100) / 100;
 
       catNode.totals.quantity += netQty;
-      catNode.totals.totalCost = Math.round((catNode.totals.totalCost + netCost) * 100) / 100;
-      catNode.totals.totalRevenue = Math.round((catNode.totals.totalRevenue + netRevenue) * 100) / 100;
+      catNode.totals.totalCost =
+        Math.round((catNode.totals.totalCost + netCost) * 100) / 100;
+      catNode.totals.totalRevenue =
+        Math.round((catNode.totals.totalRevenue + netRevenue) * 100) / 100;
 
       genderNode.totals.quantity += netQty;
-      genderNode.totals.totalCost = Math.round((genderNode.totals.totalCost + netCost) * 100) / 100;
-      genderNode.totals.totalRevenue = Math.round((genderNode.totals.totalRevenue + netRevenue) * 100) / 100;
+      genderNode.totals.totalCost =
+        Math.round((genderNode.totals.totalCost + netCost) * 100) / 100;
+      genderNode.totals.totalRevenue =
+        Math.round((genderNode.totals.totalRevenue + netRevenue) * 100) / 100;
 
       divNode.totals.quantity += netQty;
-      divNode.totals.totalCost = Math.round((divNode.totals.totalCost + netCost) * 100) / 100;
-      divNode.totals.totalRevenue = Math.round((divNode.totals.totalRevenue + netRevenue) * 100) / 100;
+      divNode.totals.totalCost =
+        Math.round((divNode.totals.totalCost + netCost) * 100) / 100;
+      divNode.totals.totalRevenue =
+        Math.round((divNode.totals.totalRevenue + netRevenue) * 100) / 100;
 
       brandNode.totals.quantity += netQty;
-      brandNode.totals.totalCost = Math.round((brandNode.totals.totalCost + netCost) * 100) / 100;
-      brandNode.totals.totalRevenue = Math.round((brandNode.totals.totalRevenue + netRevenue) * 100) / 100;
+      brandNode.totals.totalCost =
+        Math.round((brandNode.totals.totalCost + netCost) * 100) / 100;
+      brandNode.totals.totalRevenue =
+        Math.round((brandNode.totals.totalRevenue + netRevenue) * 100) / 100;
     }
 
     await onProgress?.(85, 'Finalizing node metrics & grand totals...');
@@ -1261,7 +1548,14 @@ export class CostOfSalesExportService {
         acc.totalRevenue += b.totals.totalRevenue;
         return acc;
       },
-      { quantity: 0, totalCost: 0, avgUnitCost: 0, totalRevenue: 0, grossProfit: 0, profitMargin: 0 },
+      {
+        quantity: 0,
+        totalCost: 0,
+        avgUnitCost: 0,
+        totalRevenue: 0,
+        grossProfit: 0,
+        profitMargin: 0,
+      },
     );
     calculateTotals(grandTotals);
 
@@ -1278,7 +1572,9 @@ export class CostOfSalesExportService {
     };
   }
 
-  async queueExport(opts: QueueCostOfSalesExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueCostOfSalesExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -1318,7 +1614,9 @@ export class CostOfSalesExportService {
       },
     );
 
-    this.logger.log(`[CostOfSalesExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[CostOfSalesExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
@@ -1341,7 +1639,11 @@ export class CostOfSalesExportService {
         id: jobId,
         userId: opts.userId,
         fileName: opts.fileName,
-        filePath: path.join('uploads', 'exports', `client-export-${jobId}.${ext}`),
+        filePath: path.join(
+          'uploads',
+          'exports',
+          `client-export-${jobId}.${ext}`,
+        ),
         moduleName: 'COST_OF_SALES_REPORT',
         status: 'PENDING',
       },
@@ -1357,7 +1659,9 @@ export class CostOfSalesExportService {
       );
       return { jobId, s3Url };
     } catch (err: any) {
-      this.logger.warn(`Failed S3 upload for client export ${jobId}: ${err.message}. Ephemeral file saved locally.`);
+      this.logger.warn(
+        `Failed S3 upload for client export ${jobId}: ${err.message}. Ephemeral file saved locally.`,
+      );
       await this.prisma.exportHistory.update({
         where: { id: jobId },
         data: { status: 'COMPLETED' },
@@ -1366,11 +1670,14 @@ export class CostOfSalesExportService {
     }
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -1390,7 +1697,9 @@ export class CostOfSalesExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -1399,7 +1708,10 @@ export class CostOfSalesExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -1412,8 +1724,16 @@ export class CostOfSalesExportService {
     const stream = fs.createReadStream(filePath);
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

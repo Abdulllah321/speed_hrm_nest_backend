@@ -44,7 +44,10 @@ export class UnitOfMeasurementController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create units of measurement in bulk' })
   @ApiBody({ type: [CreateUnitOfMeasurementDto] })
-  async createBulk(@Body() body: { items: CreateUnitOfMeasurementDto[] }, @Req() req) {
+  async createBulk(
+    @Body() body: { items: CreateUnitOfMeasurementDto[] },
+    @Req() req,
+  ) {
     return this.service.createBulk(body.items || [], req.user.userId);
   }
 

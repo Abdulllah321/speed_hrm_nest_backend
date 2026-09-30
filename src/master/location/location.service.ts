@@ -117,7 +117,13 @@ export class LocationService {
     if (item?.warehouseId) {
       const warehouse = await this.prisma.warehouse.findFirst({
         where: { id: item.warehouseId, isDeleted: false },
-        select: { id: true, name: true, code: true, type: true, isActive: true },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          type: true,
+          isActive: true,
+        },
       });
       item.warehouse = warehouse;
     }
@@ -126,7 +132,19 @@ export class LocationService {
   }
 
   async create(
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string; centerId?: string; isStockLocation?: boolean; brandIds?: string[] },
+    body: {
+      name: string;
+      code?: string;
+      address?: string;
+      cityId?: string;
+      status?: string;
+      companyId?: string;
+      cashGLCode?: string;
+      shortCode?: string;
+      centerId?: string;
+      isStockLocation?: boolean;
+      brandIds?: string[];
+    },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -142,7 +160,8 @@ export class LocationService {
           cashGLCode: body.cashGLCode || null,
           shortCode: body.shortCode?.trim() || generateShortCode(body.name),
           centerId: body.centerId?.trim() || null,
-          isStockLocation: body.isStockLocation !== undefined ? body.isStockLocation : true,
+          isStockLocation:
+            body.isStockLocation !== undefined ? body.isStockLocation : true,
           locationBrands: body.brandIds?.length
             ? {
                 create: body.brandIds.map((brandId) => ({ brandId })),
@@ -198,7 +217,19 @@ export class LocationService {
 
   async update(
     id: string,
-    body: { name: string; code?: string; address?: string; cityId?: string; status?: string; companyId?: string; cashGLCode?: string; shortCode?: string; centerId?: string; isStockLocation?: boolean; brandIds?: string[] },
+    body: {
+      name: string;
+      code?: string;
+      address?: string;
+      cityId?: string;
+      status?: string;
+      companyId?: string;
+      cashGLCode?: string;
+      shortCode?: string;
+      centerId?: string;
+      isStockLocation?: boolean;
+      brandIds?: string[];
+    },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -228,25 +259,30 @@ export class LocationService {
             body.code !== undefined && body.code?.trim()
               ? body.code.trim()
               : existing.code,
-          address:
-            body.address !== undefined ? body.address : existing.address,
+          address: body.address !== undefined ? body.address : existing.address,
           cityId:
             body.cityId !== undefined
               ? body.cityId?.trim() || null
               : existing.cityId,
           companyId: body.companyId ?? existing.companyId,
           status: body.status ?? existing.status ?? 'active',
-          cashGLCode: body.cashGLCode !== undefined ? body.cashGLCode : existing.cashGLCode,
+          cashGLCode:
+            body.cashGLCode !== undefined
+              ? body.cashGLCode
+              : existing.cashGLCode,
           shortCode:
             body.shortCode !== undefined
-              ? body.shortCode?.trim() || generateShortCode(body.name ?? existing.name ?? '')
+              ? body.shortCode?.trim() ||
+                generateShortCode(body.name ?? existing.name ?? '')
               : existing.shortCode,
           centerId:
             body.centerId !== undefined
-              ? (body.centerId?.trim() || null)
+              ? body.centerId?.trim() || null
               : existing.centerId,
           isStockLocation:
-            body.isStockLocation !== undefined ? body.isStockLocation : existing.isStockLocation,
+            body.isStockLocation !== undefined
+              ? body.isStockLocation
+              : existing.isStockLocation,
         },
         include: {
           locationBrands: {
@@ -326,22 +362,46 @@ export class LocationService {
       if (!existing) {
         return { status: false, message: 'Location not found' };
       }
-      
+
       const updated = await this.prisma.location.update({
         where: { id },
         data: {
           phone: body.phone !== undefined ? body.phone : existing.phone,
-          latitude: body.latitude !== undefined ? body.latitude : existing.latitude,
-          longitude: body.longitude !== undefined ? body.longitude : existing.longitude,
-          geoFenceEnabled: body.geoFenceEnabled !== undefined ? body.geoFenceEnabled : existing.geoFenceEnabled,
-          geoFenceRadius: body.geoFenceRadius !== undefined ? body.geoFenceRadius : existing.geoFenceRadius,
-          ipWhitelist: body.ipWhitelist !== undefined ? body.ipWhitelist : existing.ipWhitelist,
-          ipWhitelistEnabled: body.ipWhitelistEnabled !== undefined ? body.ipWhitelistEnabled : existing.ipWhitelistEnabled,
-          fbrBposId: body.fbrBposId !== undefined ? body.fbrBposId : existing.fbrBposId,
-          fbrBearerToken: body.fbrBearerToken !== undefined ? body.fbrBearerToken : existing.fbrBearerToken,
+          latitude:
+            body.latitude !== undefined ? body.latitude : existing.latitude,
+          longitude:
+            body.longitude !== undefined ? body.longitude : existing.longitude,
+          geoFenceEnabled:
+            body.geoFenceEnabled !== undefined
+              ? body.geoFenceEnabled
+              : existing.geoFenceEnabled,
+          geoFenceRadius:
+            body.geoFenceRadius !== undefined
+              ? body.geoFenceRadius
+              : existing.geoFenceRadius,
+          ipWhitelist:
+            body.ipWhitelist !== undefined
+              ? body.ipWhitelist
+              : existing.ipWhitelist,
+          ipWhitelistEnabled:
+            body.ipWhitelistEnabled !== undefined
+              ? body.ipWhitelistEnabled
+              : existing.ipWhitelistEnabled,
+          fbrBposId:
+            body.fbrBposId !== undefined ? body.fbrBposId : existing.fbrBposId,
+          fbrBearerToken:
+            body.fbrBearerToken !== undefined
+              ? body.fbrBearerToken
+              : existing.fbrBearerToken,
           fbrNtn: body.fbrNtn !== undefined ? body.fbrNtn : existing.fbrNtn,
-          fbrSellerName: body.fbrSellerName !== undefined ? body.fbrSellerName : existing.fbrSellerName,
-          fbrEnabled: body.fbrEnabled !== undefined ? body.fbrEnabled : existing.fbrEnabled,
+          fbrSellerName:
+            body.fbrSellerName !== undefined
+              ? body.fbrSellerName
+              : existing.fbrSellerName,
+          fbrEnabled:
+            body.fbrEnabled !== undefined
+              ? body.fbrEnabled
+              : existing.fbrEnabled,
         },
       });
 
@@ -382,7 +442,10 @@ export class LocationService {
       );
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to update location other info',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to update location other info',
       };
     }
   }
@@ -392,18 +455,20 @@ export class LocationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'location', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'location',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.location.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const removed = await this.prisma.location.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Location',
@@ -471,7 +536,11 @@ export class LocationService {
         })),
         skipDuplicates: true,
       });
-      const response = { status: true, message: 'Locations created', data: result };
+      const response = {
+        status: true,
+        message: 'Locations created',
+        data: result,
+      };
       runInBackground(
         'Bulk Create Locations',
         this.activityLogs.log({
@@ -537,7 +606,10 @@ export class LocationService {
           });
           if (i.brandIds.length > 0) {
             await this.prisma.locationBrand.createMany({
-              data: i.brandIds.map((brandId) => ({ locationId: i.id, brandId })),
+              data: i.brandIds.map((brandId) => ({
+                locationId: i.id,
+                brandId,
+              })),
             });
           }
         }
@@ -556,17 +628,21 @@ export class LocationService {
                 ? i.cityId?.trim() || null
                 : existing?.cityId,
             status: i.status ?? existing?.status ?? 'active',
-            cashGLCode: i.cashGLCode !== undefined ? i.cashGLCode : existing?.cashGLCode,
+            cashGLCode:
+              i.cashGLCode !== undefined ? i.cashGLCode : existing?.cashGLCode,
             shortCode:
               i.shortCode !== undefined
-                ? i.shortCode?.trim() || generateShortCode(i.name ?? existing?.name ?? '')
+                ? i.shortCode?.trim() ||
+                  generateShortCode(i.name ?? existing?.name ?? '')
                 : existing?.shortCode,
             centerId:
               i.centerId !== undefined
-                ? (i.centerId?.trim() || null)
+                ? i.centerId?.trim() || null
                 : existing?.centerId,
             isStockLocation:
-              i.isStockLocation !== undefined ? i.isStockLocation : existing?.isStockLocation,
+              i.isStockLocation !== undefined
+                ? i.isStockLocation
+                : existing?.isStockLocation,
           },
         });
       }
@@ -614,20 +690,26 @@ export class LocationService {
       return { status: false, message: 'No locations to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'location', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'location',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const existing = await this.prisma.location.findMany({
-        where: { id: { in: ids },
-            isDeleted: false
-        },
+        where: { id: { in: ids }, isDeleted: false },
       });
       const result = await this.prisma.location.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
-      const response = { status: true, message: 'Locations deleted', data: result };
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
+      const response = {
+        status: true,
+        message: 'Locations deleted',
+        data: result,
+      };
       runInBackground(
         'Bulk Delete Locations',
         this.activityLogs.log({
@@ -672,7 +754,7 @@ export class LocationService {
           status: 'active',
           latitude: { not: null },
           longitude: { not: null },
-            isDeleted: false
+          isDeleted: false,
         },
         select: {
           id: true,
@@ -684,18 +766,28 @@ export class LocationService {
       });
 
       if (locations.length === 0) {
-        return { status: false, message: 'No locations with coordinates found' };
+        return {
+          status: false,
+          message: 'No locations with coordinates found',
+        };
       }
 
       // Haversine formula to calculate distance
-      const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const calculateDistance = (
+        lat1: number,
+        lon1: number,
+        lat2: number,
+        lon2: number,
+      ): number => {
         const R = 6371; // Earth's radius in kilometers
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
         const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
       };
@@ -706,7 +798,7 @@ export class LocationService {
         latitude,
         longitude,
         Number(locations[0].latitude),
-        Number(locations[0].longitude)
+        Number(locations[0].longitude),
       );
 
       for (let i = 1; i < locations.length; i++) {
@@ -714,7 +806,7 @@ export class LocationService {
           latitude,
           longitude,
           Number(locations[i].latitude),
-          Number(locations[i].longitude)
+          Number(locations[i].longitude),
         );
         if (distance < minDistance) {
           minDistance = distance;

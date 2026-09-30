@@ -31,7 +31,12 @@ export class UserPreferencesService {
     }
   }
 
-  async upsert(userId: string, key: string, value: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async upsert(
+    userId: string,
+    key: string,
+    value: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const preference = await this.prismaMaster.userPreference.upsert({
         where: {

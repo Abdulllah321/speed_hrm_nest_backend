@@ -28,13 +28,15 @@ export class DeliveryNoteExportService {
     private readonly uploadService: UploadService,
   ) {}
 
-  async queueExport(opts: QueueDeliveryNoteExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueDeliveryNoteExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const reportType = opts.reportType || 'detailed';
     const fileName = `delivery-notes-${reportType}-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     // Read tenant credentials from the live request context
-    const tenantId    = this.prisma.getTenantId()    ?? '';
+    const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
     // Register PENDING status in ExportHistory per architecture rules
@@ -44,7 +46,10 @@ export class DeliveryNoteExportService {
         userId: opts.userId,
         fileName,
         filePath: path.join('uploads', 'exports', `export-${jobId}.xlsx`),
-        moduleName: reportType === 'summary' ? 'DELIVERY_NOTE_SUMMARY_EXPORT' : 'DELIVERY_NOTE_DETAILED_EXPORT',
+        moduleName:
+          reportType === 'summary'
+            ? 'DELIVERY_NOTE_SUMMARY_EXPORT'
+            : 'DELIVERY_NOTE_DETAILED_EXPORT',
         status: 'PENDING',
       },
     });
@@ -56,12 +61,12 @@ export class DeliveryNoteExportService {
         tenantId,
         tenantDbUrl,
         reportType,
-        warehouseId:  opts.warehouseId,
-        status:       opts.status,
+        warehouseId: opts.warehouseId,
+        status: opts.status,
         transferType: opts.transferType,
-        search:       opts.search,
-        dateFrom:     opts.dateFrom,
-        dateTo:       opts.dateTo,
+        search: opts.search,
+        dateFrom: opts.dateFrom,
+        dateTo: opts.dateTo,
       },
       {
         jobId,
@@ -72,15 +77,20 @@ export class DeliveryNoteExportService {
       },
     );
 
-    this.logger.log(`[DeliveryNoteExport] Queued ${reportType} export job ${jobId} for user ${opts.userId}`);
+    this.logger.log(
+      `[DeliveryNoteExport] Queued ${reportType} export job ${jobId} for user ${opts.userId}`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
-    const state    = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const state = await job.getState();
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -100,7 +110,9 @@ export class DeliveryNoteExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -109,20 +121,31 @@ export class DeliveryNoteExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
     const filePath = path.join(process.cwd(), record.filePath);
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
     const stat = fs.statSync(filePath);
     const stream = fs.createReadStream(filePath);
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

@@ -1,6 +1,12 @@
 import { PrismaMasterService } from '../database/prisma-master.service';
 import { ActivityLogsGateway } from './activity-logs.gateway';
-import { forwardRef, Inject, Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  OnModuleInit,
+  Logger,
+} from '@nestjs/common';
 import { BackgroundJobEmitter } from '../common/utils/run-in-background.util';
 
 @Injectable()
@@ -14,8 +20,11 @@ export class ActivityLogsService implements OnModuleInit {
 
   onModuleInit() {
     BackgroundJobEmitter.on('jobFailed', (data) => {
-      this.log(data).catch(err => {
-        this.logger.error('Failed to write background job failure to activity logs', err);
+      this.log(data).catch((err) => {
+        this.logger.error(
+          'Failed to write background job failure to activity logs',
+          err,
+        );
       });
     });
   }

@@ -108,10 +108,7 @@ export class MasterDeleteGuardService {
           prisma.employee.count({ where: { designationId: id } }),
           prisma.employeeRejoiningHistory.count({
             where: {
-              OR: [
-                { previousDesignationId: id },
-                { newDesignationId: id },
-              ],
+              OR: [{ previousDesignationId: id }, { newDesignationId: id }],
             },
           }),
         ]);
@@ -231,19 +228,13 @@ export class MasterDeleteGuardService {
         ]);
 
       case 'gender':
-        return this.anyCount([
-          prisma.item.count({ where: { genderId: id } }),
-        ]);
+        return this.anyCount([prisma.item.count({ where: { genderId: id } })]);
 
       case 'color':
-        return this.anyCount([
-          prisma.item.count({ where: { colorId: id } }),
-        ]);
+        return this.anyCount([prisma.item.count({ where: { colorId: id } })]);
 
       case 'size':
-        return this.anyCount([
-          prisma.item.count({ where: { sizeId: id } }),
-        ]);
+        return this.anyCount([prisma.item.count({ where: { sizeId: id } })]);
 
       case 'silhouette':
         return this.anyCount([
@@ -256,19 +247,13 @@ export class MasterDeleteGuardService {
         ]);
 
       case 'segment':
-        return this.anyCount([
-          prisma.item.count({ where: { segmentId: id } }),
-        ]);
+        return this.anyCount([prisma.item.count({ where: { segmentId: id } })]);
 
       case 'season':
-        return this.anyCount([
-          prisma.item.count({ where: { seasonId: id } }),
-        ]);
+        return this.anyCount([prisma.item.count({ where: { seasonId: id } })]);
 
       case 'hsCode':
-        return this.anyCount([
-          prisma.item.count({ where: { hsCodeId: id } }),
-        ]);
+        return this.anyCount([prisma.item.count({ where: { hsCodeId: id } })]);
 
       case 'pos':
         return this.anyCount([

@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, Patch, UseGuards, Req, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Patch,
+  UseGuards,
+  Req,
+  Logger,
+} from '@nestjs/common';
 import { GrnService } from './grn.service';
 import { CreateGrnDto } from './dto/grn.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
@@ -12,7 +22,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 export class GrnController {
   private readonly logger = new Logger(GrnController.name);
 
-  constructor(private readonly grnService: GrnService,) {}
+  constructor(private readonly grnService: GrnService) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new GRN and update stock' })
@@ -20,7 +30,7 @@ export class GrnController {
   async create(@Body() createDto: CreateGrnDto, @Req() req: any) {
     this.logger.log(`GRN creation request received`);
     this.logger.debug(`Request payload: ${JSON.stringify(createDto)}`);
-    
+
     try {
       const result = await this.grnService.create(createDto, {
         userId: req.user?.id,
@@ -51,8 +61,16 @@ export class GrnController {
 
   @Patch(':id/status')
   @ApiOperation({ summary: 'Update GRN status' })
-  @Permissions('erp.procurement.grn.update', 'erp.procurement.grn.check', 'erp.procurement.grn.authorize')
-  updateStatus(@Param('id') id: string, @Body('status') status: string, @Req() req: any) {
+  @Permissions(
+    'erp.procurement.grn.update',
+    'erp.procurement.grn.check',
+    'erp.procurement.grn.authorize',
+  )
+  updateStatus(
+    @Param('id') id: string,
+    @Body('status') status: string,
+    @Req() req: any,
+  ) {
     return this.grnService.updateStatus(id, status, {
       userId: req.user?.id,
       ipAddress: req.ip,

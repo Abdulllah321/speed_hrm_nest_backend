@@ -52,35 +52,167 @@ const COLUMNS = [
   { header: 'Division', key: 'division', width: 14, group: 'General' },
   { header: 'ItemName', key: 'itemName', width: 28, group: 'General' },
   { header: 'SKU', key: 'sku', width: 14, group: 'General' },
-  { header: 'Size', key: 'size', width: 8, group: 'General', align: 'center' as const },
-  
-  { header: 'Unit', key: 'openingQty', width: 10, group: 'Opening Stock', align: 'right' as const },
-  { header: 'Cost', key: 'openingCost', width: 11, group: 'Opening Stock', align: 'right' as const },
-  { header: 'Value', key: 'openingValue', width: 13, group: 'Opening Stock', align: 'right' as const },
-  
-  { header: 'Unit', key: 'purchaseQty', width: 10, group: 'Purchases', align: 'right' as const },
-  { header: 'Cost', key: 'purchaseCost', width: 11, group: 'Purchases', align: 'right' as const },
-  { header: 'Value', key: 'purchaseValue', width: 13, group: 'Purchases', align: 'right' as const },
-  
-  { header: 'Unit', key: 'purchaseRetQty', width: 10, group: 'Purchases Return', align: 'right' as const },
-  { header: 'Cost', key: 'purchaseRetCost', width: 11, group: 'Purchases Return', align: 'right' as const },
-  { header: 'Value', key: 'purchaseRetValue', width: 13, group: 'Purchases Return', align: 'right' as const },
-  
-  { header: 'Unit', key: 'availableQty', width: 10, group: 'Available', align: 'right' as const },
-  { header: 'Cost', key: 'availableCost', width: 11, group: 'Available', align: 'right' as const },
-  { header: 'Value', key: 'availableValue', width: 13, group: 'Available', align: 'right' as const },
-  
-  { header: 'Unit', key: 'salesQty', width: 10, group: 'Net Sale', align: 'right' as const },
-  { header: 'Cost', key: 'salesCost', width: 11, group: 'Net Sale', align: 'right' as const },
-  { header: 'Value', key: 'salesValue', width: 13, group: 'Net Sale', align: 'right' as const },
-  
-  { header: 'Unit', key: 'adjQty', width: 10, group: 'Adjustment', align: 'right' as const },
-  { header: 'Cost', key: 'adjCost', width: 11, group: 'Adjustment', align: 'right' as const },
-  { header: 'Value', key: 'adjValue', width: 13, group: 'Adjustment', align: 'right' as const },
-  
-  { header: 'Unit', key: 'closingQty', width: 10, group: 'Closing balance', align: 'right' as const },
-  { header: 'Cost', key: 'closingCost', width: 11, group: 'Closing balance', align: 'right' as const },
-  { header: 'Value', key: 'closingValue', width: 13, group: 'Closing balance', align: 'right' as const },
+  {
+    header: 'Size',
+    key: 'size',
+    width: 8,
+    group: 'General',
+    align: 'center' as const,
+  },
+
+  {
+    header: 'Unit',
+    key: 'openingQty',
+    width: 10,
+    group: 'Opening Stock',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'openingCost',
+    width: 11,
+    group: 'Opening Stock',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'openingValue',
+    width: 13,
+    group: 'Opening Stock',
+    align: 'right' as const,
+  },
+
+  {
+    header: 'Unit',
+    key: 'purchaseQty',
+    width: 10,
+    group: 'Purchases',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'purchaseCost',
+    width: 11,
+    group: 'Purchases',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'purchaseValue',
+    width: 13,
+    group: 'Purchases',
+    align: 'right' as const,
+  },
+
+  {
+    header: 'Unit',
+    key: 'purchaseRetQty',
+    width: 10,
+    group: 'Purchases Return',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'purchaseRetCost',
+    width: 11,
+    group: 'Purchases Return',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'purchaseRetValue',
+    width: 13,
+    group: 'Purchases Return',
+    align: 'right' as const,
+  },
+
+  {
+    header: 'Unit',
+    key: 'availableQty',
+    width: 10,
+    group: 'Available',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'availableCost',
+    width: 11,
+    group: 'Available',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'availableValue',
+    width: 13,
+    group: 'Available',
+    align: 'right' as const,
+  },
+
+  {
+    header: 'Unit',
+    key: 'salesQty',
+    width: 10,
+    group: 'Net Sale',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'salesCost',
+    width: 11,
+    group: 'Net Sale',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'salesValue',
+    width: 13,
+    group: 'Net Sale',
+    align: 'right' as const,
+  },
+
+  {
+    header: 'Unit',
+    key: 'adjQty',
+    width: 10,
+    group: 'Adjustment',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'adjCost',
+    width: 11,
+    group: 'Adjustment',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'adjValue',
+    width: 13,
+    group: 'Adjustment',
+    align: 'right' as const,
+  },
+
+  {
+    header: 'Unit',
+    key: 'closingQty',
+    width: 10,
+    group: 'Closing balance',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'closingCost',
+    width: 11,
+    group: 'Closing balance',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'closingValue',
+    width: 13,
+    group: 'Closing balance',
+    align: 'right' as const,
+  },
 ];
 
 const FLAT_COLUMNS = [
@@ -92,36 +224,168 @@ const FLAT_COLUMNS = [
   { header: 'SKU', key: 'sku', width: 14, group: 'General' },
   { header: 'Article Name', key: 'articleName', width: 28, group: 'General' },
   { header: 'Color', key: 'color', width: 14, group: 'General' },
-  { header: 'Size', key: 'size', width: 8, group: 'General', align: 'center' as const },
+  {
+    header: 'Size',
+    key: 'size',
+    width: 8,
+    group: 'General',
+    align: 'center' as const,
+  },
   { header: 'Barcode', key: 'barCode', width: 16, group: 'General' },
 
-  { header: 'Unit', key: 'openingQty', width: 10, group: 'Opening Stock', align: 'right' as const },
-  { header: 'Cost', key: 'openingCost', width: 11, group: 'Opening Stock', align: 'right' as const },
-  { header: 'Value', key: 'openingValue', width: 13, group: 'Opening Stock', align: 'right' as const },
+  {
+    header: 'Unit',
+    key: 'openingQty',
+    width: 10,
+    group: 'Opening Stock',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'openingCost',
+    width: 11,
+    group: 'Opening Stock',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'openingValue',
+    width: 13,
+    group: 'Opening Stock',
+    align: 'right' as const,
+  },
 
-  { header: 'Unit', key: 'purchaseQty', width: 10, group: 'Purchases', align: 'right' as const },
-  { header: 'Cost', key: 'purchaseCost', width: 11, group: 'Purchases', align: 'right' as const },
-  { header: 'Value', key: 'purchaseValue', width: 13, group: 'Purchases', align: 'right' as const },
+  {
+    header: 'Unit',
+    key: 'purchaseQty',
+    width: 10,
+    group: 'Purchases',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'purchaseCost',
+    width: 11,
+    group: 'Purchases',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'purchaseValue',
+    width: 13,
+    group: 'Purchases',
+    align: 'right' as const,
+  },
 
-  { header: 'Unit', key: 'purchaseRetQty', width: 10, group: 'Purchases Return', align: 'right' as const },
-  { header: 'Cost', key: 'purchaseRetCost', width: 11, group: 'Purchases Return', align: 'right' as const },
-  { header: 'Value', key: 'purchaseRetValue', width: 13, group: 'Purchases Return', align: 'right' as const },
+  {
+    header: 'Unit',
+    key: 'purchaseRetQty',
+    width: 10,
+    group: 'Purchases Return',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'purchaseRetCost',
+    width: 11,
+    group: 'Purchases Return',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'purchaseRetValue',
+    width: 13,
+    group: 'Purchases Return',
+    align: 'right' as const,
+  },
 
-  { header: 'Unit', key: 'availableQty', width: 10, group: 'Available', align: 'right' as const },
-  { header: 'Cost', key: 'availableCost', width: 11, group: 'Available', align: 'right' as const },
-  { header: 'Value', key: 'availableValue', width: 13, group: 'Available', align: 'right' as const },
+  {
+    header: 'Unit',
+    key: 'availableQty',
+    width: 10,
+    group: 'Available',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'availableCost',
+    width: 11,
+    group: 'Available',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'availableValue',
+    width: 13,
+    group: 'Available',
+    align: 'right' as const,
+  },
 
-  { header: 'Unit', key: 'salesQty', width: 10, group: 'Net Sale', align: 'right' as const },
-  { header: 'Cost', key: 'salesCost', width: 11, group: 'Net Sale', align: 'right' as const },
-  { header: 'Value', key: 'salesValue', width: 13, group: 'Net Sale', align: 'right' as const },
+  {
+    header: 'Unit',
+    key: 'salesQty',
+    width: 10,
+    group: 'Net Sale',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'salesCost',
+    width: 11,
+    group: 'Net Sale',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'salesValue',
+    width: 13,
+    group: 'Net Sale',
+    align: 'right' as const,
+  },
 
-  { header: 'Unit', key: 'adjQty', width: 10, group: 'Adjustment', align: 'right' as const },
-  { header: 'Cost', key: 'adjCost', width: 11, group: 'Adjustment', align: 'right' as const },
-  { header: 'Value', key: 'adjValue', width: 13, group: 'Adjustment', align: 'right' as const },
+  {
+    header: 'Unit',
+    key: 'adjQty',
+    width: 10,
+    group: 'Adjustment',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'adjCost',
+    width: 11,
+    group: 'Adjustment',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'adjValue',
+    width: 13,
+    group: 'Adjustment',
+    align: 'right' as const,
+  },
 
-  { header: 'Unit', key: 'closingQty', width: 10, group: 'Closing balance', align: 'right' as const },
-  { header: 'Cost', key: 'closingCost', width: 11, group: 'Closing balance', align: 'right' as const },
-  { header: 'Value', key: 'closingValue', width: 13, group: 'Closing balance', align: 'right' as const },
+  {
+    header: 'Unit',
+    key: 'closingQty',
+    width: 10,
+    group: 'Closing balance',
+    align: 'right' as const,
+  },
+  {
+    header: 'Cost',
+    key: 'closingCost',
+    width: 11,
+    group: 'Closing balance',
+    align: 'right' as const,
+  },
+  {
+    header: 'Value',
+    key: 'closingValue',
+    width: 13,
+    group: 'Closing balance',
+    align: 'right' as const,
+  },
 ];
 
 @Processor('stock-valuation-export')
@@ -141,12 +405,16 @@ export class StockValuationExportProcessor {
           'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
           (err: any) => {
             if (!err) {
-              logger.log('Chromium dependencies verified/installed successfully.');
+              logger.log(
+                'Chromium dependencies verified/installed successfully.',
+              );
             }
-          }
+          },
         );
       } catch (e: any) {
-        this.logger.warn(`Error trying to run chromium dependencies installer: ${e.message}`);
+        this.logger.warn(
+          `Error trying to run chromium dependencies installer: ${e.message}`,
+        );
       }
     }
   }
@@ -154,36 +422,56 @@ export class StockValuationExportProcessor {
   @Process('generate-valuation-preview')
   async handleValuationPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
-    this.logger.log(`[ValuationPreview ${jobId}] Starting background valuation preview computation`);
+    this.logger.log(
+      `[ValuationPreview ${jobId}] Starting background valuation preview computation`,
+    );
     try {
-      await job.progress({ percent: 5, message: 'Worker thread active. Connecting to database...' });
-      const prisma = (tenantId && tenantDbUrl)
-        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-        : new PrismaService({ tenantId, tenantDbUrl } as any);
+      await job.progress({
+        percent: 5,
+        message: 'Worker thread active. Connecting to database...',
+      });
+      const prisma =
+        tenantId && tenantDbUrl
+          ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+          : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      const data = await this.stockValuationExportService.generateValuationReportDataInternal(
-        prisma,
-        {
-          ...opts,
-          previewJobId: jobId,
-          onProgress: async (percent: number, message: string) => {
-            await job.progress({ percent, message });
+      const data =
+        await this.stockValuationExportService.generateValuationReportDataInternal(
+          prisma,
+          {
+            ...opts,
+            previewJobId: jobId,
+            onProgress: async (percent: number, message: string) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
       if (this.stockValuationExportService.isJobCancelled(jobId)) {
-        this.logger.log(`[ValuationPreview ${jobId}] Job was cancelled by user. Skipping result save.`);
+        this.logger.log(
+          `[ValuationPreview ${jobId}] Job was cancelled by user. Skipping result save.`,
+        );
         return;
       }
 
-      await job.progress({ percent: 90, message: 'Compressing report payload & caching valuation preview...' });
+      await job.progress({
+        percent: 90,
+        message: 'Compressing report payload & caching valuation preview...',
+      });
       this.stockValuationExportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({ percent: 100, message: 'Stock valuation report computation complete!' });
-      this.logger.log(`[ValuationPreview ${jobId}] Successfully generated and saved valuation preview result`);
+      await job.progress({
+        percent: 100,
+        message: 'Stock valuation report computation complete!',
+      });
+      this.logger.log(
+        `[ValuationPreview ${jobId}] Successfully generated and saved valuation preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[ValuationPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[ValuationPreview ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
@@ -191,15 +479,38 @@ export class StockValuationExportProcessor {
   @Process({ concurrency: 1 })
   async handleExport(job: Job<StockValuationExportJobData>): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, format, exportType,
-      filterBrands, filterDivisions, filterCategories, filterGenders, filterSilhouettes, searchText,
-      summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate: startStr,
+      endDate: endStr,
+      format,
+      exportType,
+      filterBrands,
+      filterDivisions,
+      filterCategories,
+      filterGenders,
+      filterSilhouettes,
+      searchText,
+      summaryOnly,
+      showBrand,
+      showDivision,
+      showCategory,
+      showGender,
+      showSilhouette,
+      showArticle,
+      showVariant,
     } = job.data;
-    this.logger.log(`[StockValuationExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export for user ${userId}`);
+    this.logger.log(
+      `[StockValuationExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export for user ${userId}`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
@@ -218,39 +529,49 @@ export class StockValuationExportProcessor {
       }
 
       const now = new Date();
-      const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+      const startDate = startStr
+        ? new Date(startStr)
+        : new Date(now.getFullYear(), now.getMonth(), 1);
       const endDate = endStr ? new Date(endStr) : new Date(now);
 
       await job.progress(20);
 
       let reportData: any = null;
       if ((job.data as any).previewJobId) {
-        reportData = this.stockValuationExportService.getReportPreviewResult((job.data as any).previewJobId);
+        reportData = this.stockValuationExportService.getReportPreviewResult(
+          (job.data as any).previewJobId,
+        );
         if (reportData) {
-          this.logger.log(`[StockValuationExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`);
+          this.logger.log(
+            `[StockValuationExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`,
+          );
         }
       }
 
       if (!reportData) {
-        reportData = await this.stockValuationExportService.generateValuationReportDataInternal(prisma, {
-          locationId,
-          startDate: startStr,
-          endDate: endStr,
-          filterBrands,
-          filterDivisions,
-          filterCategories,
-          filterGenders,
-          filterSilhouettes,
-          searchText,
-          summaryOnly,
-          showBrand,
-          showDivision,
-          showCategory,
-          showGender,
-          showSilhouette,
-          showArticle,
-          showVariant,
-        });
+        reportData =
+          await this.stockValuationExportService.generateValuationReportDataInternal(
+            prisma,
+            {
+              locationId,
+              startDate: startStr,
+              endDate: endStr,
+              filterBrands,
+              filterDivisions,
+              filterCategories,
+              filterGenders,
+              filterSilhouettes,
+              searchText,
+              summaryOnly,
+              showBrand,
+              showDivision,
+              showCategory,
+              showGender,
+              showSilhouette,
+              showArticle,
+              showVariant,
+            },
+          );
       }
 
       const { root, grandTotals, items, itemMetricsMap } = reportData;
@@ -270,18 +591,26 @@ export class StockValuationExportProcessor {
       if (format === 'pdf') {
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(root, locationName, fromDateStr, toDateStr, grandTotals, !!summaryOnly);
+        const html = this.buildPdfHtml(
+          root,
+          locationName,
+          fromDateStr,
+          toDateStr,
+          grandTotals,
+          !!summaryOnly,
+        );
 
-        const launchArgs = process.platform === 'linux'
-          ? [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--no-first-run',
-              '--no-zygote',
-            ]
-          : [];
+        const launchArgs =
+          process.platform === 'linux'
+            ? [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+              ]
+            : [];
 
         const browser = await puppeteer.launch({
           headless: true,
@@ -308,11 +637,18 @@ export class StockValuationExportProcessor {
             pdfBuffer = await page.pdf({
               format: 'A3',
               landscape: true,
-              margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+              margin: {
+                top: '15mm',
+                bottom: '15mm',
+                left: '10mm',
+                right: '10mm',
+              },
               printBackground: true,
               displayHeaderFooter: true,
-              headerTemplate: '<div style="font-size: 8px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Private) Limited | Stock Valuation Report</div>',
-              footerTemplate: '<div style="font-size: 8px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+              headerTemplate:
+                '<div style="font-size: 8px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Private) Limited | Stock Valuation Report</div>',
+              footerTemplate:
+                '<div style="font-size: 8px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
             });
           } finally {
             clearInterval(progressInterval);
@@ -324,267 +660,378 @@ export class StockValuationExportProcessor {
         }
       } else {
         if (format === 'xlsx' && exportType === 'flat') {
-          await this.writeFlatWorkbook(filePath, items || [], itemMetricsMap || new Map(), grandTotals);
+          await this.writeFlatWorkbook(
+            filePath,
+            items || [],
+            itemMetricsMap || new Map(),
+            grandTotals,
+          );
         } else if (format === 'xlsx') {
           // Excel Format Export
           const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-          filename: filePath,
-          useStyles: true,
-          useSharedStrings: false,
-        });
-
-        const ws = workbook.addWorksheet('Stock Valuation Report', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
-          views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
-        });
-
-        ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
-
-        // 1. Group Header bands
-        const groups: Record<string, { start: number; end: number }> = {};
-        COLUMNS.forEach((col, idx) => {
-          const n = idx + 1;
-          if (!groups[col.group]) groups[col.group] = { start: n, end: n };
-          else groups[col.group].end = n;
-        });
-
-        const groupRow = ws.getRow(1);
-        COLUMNS.forEach((col, idx) => {
-          const cell = groupRow.getCell(idx + 1);
-          const { start } = groups[col.group];
-          if (idx + 1 === start) cell.value = col.group.toUpperCase();
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
-          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-          cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-            left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-            bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-            right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-          };
-        });
-        groupRow.height = 24;
-        groupRow.commit();
-
-        // 2. Main Columns headers
-        const headerRow = ws.getRow(2);
-        COLUMNS.forEach((col, idx) => {
-          const cell = headerRow.getCell(idx + 1);
-          cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
-          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-          cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-            left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-            bottom: { style: 'medium', color: { argb: 'FF1E293B' } },
-            right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-          };
-        });
-        headerRow.height = 24;
-        headerRow.commit();
-
-        const borderThin = {
-          top: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          bottom: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-        };
-
-        const rightAlign = { horizontal: 'right' as const, vertical: 'middle' as const };
-        const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const };
-        const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
-
-        const LEVEL_EXCEL_STYLES: Record<string, {
-          bgHex: string;
-          fgHex: string;
-          fontSize: number;
-          bold: boolean;
-          indent: number;
-          prefix: string;
-        }> = {
-          brand: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: 'BRAND: ' },
-          division: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: 'DIVISION: ' },
-          category: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: 'CATEGORY: ' },
-          gender: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: 'GENDER: ' },
-          silhouette: { bgHex: '94A3B8', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: 'SILHOUETTE: ' },
-          article: { bgHex: 'F1F5F9', fgHex: '1E293B', fontSize: 9, bold: true, indent: 10, prefix: 'SKU: ' },
-          variant: { bgHex: 'FFFFFF', fgHex: '475569', fontSize: 9, bold: false, indent: 12, prefix: '' },
-        };
-
-        const writeNodeToExcel = (node: any) => {
-          const style = LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
-          
-          let conceptVal = '';
-          let divisionVal = '';
-          let itemNameVal = '';
-          let skuVal = '';
-          let sizeVal = '';
-
-          const displayLabel = ' '.repeat(style.indent) + (style.prefix ? style.prefix : '') + node.value.toUpperCase();
-
-          if (node.level === 'brand') {
-            conceptVal = displayLabel;
-          } else if (node.level === 'division') {
-            divisionVal = displayLabel;
-          } else if (node.level === 'article') {
-            skuVal = node.sku;
-            itemNameVal = node.articleName;
-          } else if (node.level === 'variant') {
-            skuVal = node.barCode || node.sku;
-            itemNameVal = ' '.repeat(style.indent) + `Variant: ${node.color || 'Default'}`;
-            sizeVal = node.size;
-          } else {
-            conceptVal = displayLabel;
-          }
-          
-          const row = ws.addRow({
-            concept: conceptVal,
-            division: divisionVal,
-            itemName: itemNameVal,
-            sku: skuVal,
-            size: sizeVal,
-            
-            openingQty: node.totals.openingQty,
-            openingCost: node.totals.openingCost,
-            openingValue: node.totals.openingValue,
-            
-            purchaseQty: node.totals.purchaseQty,
-            purchaseCost: node.totals.purchaseCost,
-            purchaseValue: node.totals.purchaseValue,
-            
-            purchaseRetQty: node.totals.purchaseRetQty,
-            purchaseRetCost: node.totals.purchaseRetCost,
-            purchaseRetValue: node.totals.purchaseRetValue,
-            
-            availableQty: node.totals.availableQty,
-            availableCost: node.totals.availableCost,
-            availableValue: node.totals.availableValue,
-            
-            salesQty: node.totals.salesQty,
-            salesCost: node.totals.salesCost,
-            salesValue: node.totals.salesValue,
-            
-            adjQty: node.totals.adjQty,
-            adjCost: node.totals.adjCost,
-            adjValue: node.totals.adjValue,
-            
-            closingQty: node.totals.closingQty,
-            closingCost: node.totals.closingCost,
-            closingValue: node.totals.closingValue,
+            filename: filePath,
+            useStyles: true,
+            useSharedStrings: false,
           });
-          
-          for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
-            const cell = row.getCell(colNum);
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
-            cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
-            cell.border = borderThin;
-            cell.alignment = colNum === 5 
-              ? centerAlign 
-              : (colNum <= 4 ? leftAlign : rightAlign);
 
-            // Format numbers nicely, display dash for 0
+          const ws = workbook.addWorksheet('Stock Valuation Report', {
+            pageSetup: {
+              paperSize: 9,
+              orientation: 'landscape',
+              fitToPage: true,
+              fitToWidth: 1,
+            },
+            views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
+          });
+
+          ws.columns = COLUMNS.map((c) => ({ key: c.key, width: c.width }));
+
+          // 1. Group Header bands
+          const groups: Record<string, { start: number; end: number }> = {};
+          COLUMNS.forEach((col, idx) => {
+            const n = idx + 1;
+            if (!groups[col.group]) groups[col.group] = { start: n, end: n };
+            else groups[col.group].end = n;
+          });
+
+          const groupRow = ws.getRow(1);
+          COLUMNS.forEach((col, idx) => {
+            const cell = groupRow.getCell(idx + 1);
+            const { start } = groups[col.group];
+            if (idx + 1 === start) cell.value = col.group.toUpperCase();
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+            };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+              left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+              bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+              right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+            };
+          });
+          groupRow.height = 24;
+          groupRow.commit();
+
+          // 2. Main Columns headers
+          const headerRow = ws.getRow(2);
+          COLUMNS.forEach((col, idx) => {
+            const cell = headerRow.getCell(idx + 1);
+            cell.value = col.header;
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FF334155' },
+            };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+              left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+              bottom: { style: 'medium', color: { argb: 'FF1E293B' } },
+              right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+            };
+          });
+          headerRow.height = 24;
+          headerRow.commit();
+
+          const borderThin = {
+            top: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+            bottom: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+            right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+          };
+
+          const rightAlign = {
+            horizontal: 'right' as const,
+            vertical: 'middle' as const,
+          };
+          const leftAlign = {
+            horizontal: 'left' as const,
+            vertical: 'middle' as const,
+          };
+          const centerAlign = {
+            horizontal: 'center' as const,
+            vertical: 'middle' as const,
+          };
+
+          const LEVEL_EXCEL_STYLES: Record<
+            string,
+            {
+              bgHex: string;
+              fgHex: string;
+              fontSize: number;
+              bold: boolean;
+              indent: number;
+              prefix: string;
+            }
+          > = {
+            brand: {
+              bgHex: '1E293B',
+              fgHex: 'FFFFFF',
+              fontSize: 10,
+              bold: true,
+              indent: 0,
+              prefix: 'BRAND: ',
+            },
+            division: {
+              bgHex: '334155',
+              fgHex: 'FFFFFF',
+              fontSize: 9.5,
+              bold: true,
+              indent: 2,
+              prefix: 'DIVISION: ',
+            },
+            category: {
+              bgHex: '475569',
+              fgHex: 'FFFFFF',
+              fontSize: 9,
+              bold: true,
+              indent: 4,
+              prefix: 'CATEGORY: ',
+            },
+            gender: {
+              bgHex: '64748B',
+              fgHex: 'FFFFFF',
+              fontSize: 9,
+              bold: true,
+              indent: 6,
+              prefix: 'GENDER: ',
+            },
+            silhouette: {
+              bgHex: '94A3B8',
+              fgHex: 'FFFFFF',
+              fontSize: 9,
+              bold: true,
+              indent: 8,
+              prefix: 'SILHOUETTE: ',
+            },
+            article: {
+              bgHex: 'F1F5F9',
+              fgHex: '1E293B',
+              fontSize: 9,
+              bold: true,
+              indent: 10,
+              prefix: 'SKU: ',
+            },
+            variant: {
+              bgHex: 'FFFFFF',
+              fgHex: '475569',
+              fontSize: 9,
+              bold: false,
+              indent: 12,
+              prefix: '',
+            },
+          };
+
+          const writeNodeToExcel = (node: any) => {
+            const style =
+              LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
+
+            let conceptVal = '';
+            let divisionVal = '';
+            let itemNameVal = '';
+            let skuVal = '';
+            let sizeVal = '';
+
+            const displayLabel =
+              ' '.repeat(style.indent) +
+              (style.prefix ? style.prefix : '') +
+              node.value.toUpperCase();
+
+            if (node.level === 'brand') {
+              conceptVal = displayLabel;
+            } else if (node.level === 'division') {
+              divisionVal = displayLabel;
+            } else if (node.level === 'article') {
+              skuVal = node.sku;
+              itemNameVal = node.articleName;
+            } else if (node.level === 'variant') {
+              skuVal = node.barCode || node.sku;
+              itemNameVal =
+                ' '.repeat(style.indent) +
+                `Variant: ${node.color || 'Default'}`;
+              sizeVal = node.size;
+            } else {
+              conceptVal = displayLabel;
+            }
+
+            const row = ws.addRow({
+              concept: conceptVal,
+              division: divisionVal,
+              itemName: itemNameVal,
+              sku: skuVal,
+              size: sizeVal,
+
+              openingQty: node.totals.openingQty,
+              openingCost: node.totals.openingCost,
+              openingValue: node.totals.openingValue,
+
+              purchaseQty: node.totals.purchaseQty,
+              purchaseCost: node.totals.purchaseCost,
+              purchaseValue: node.totals.purchaseValue,
+
+              purchaseRetQty: node.totals.purchaseRetQty,
+              purchaseRetCost: node.totals.purchaseRetCost,
+              purchaseRetValue: node.totals.purchaseRetValue,
+
+              availableQty: node.totals.availableQty,
+              availableCost: node.totals.availableCost,
+              availableValue: node.totals.availableValue,
+
+              salesQty: node.totals.salesQty,
+              salesCost: node.totals.salesCost,
+              salesValue: node.totals.salesValue,
+
+              adjQty: node.totals.adjQty,
+              adjCost: node.totals.adjCost,
+              adjValue: node.totals.adjValue,
+
+              closingQty: node.totals.closingQty,
+              closingCost: node.totals.closingCost,
+              closingValue: node.totals.closingValue,
+            });
+
+            for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
+              const cell = row.getCell(colNum);
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: `FF${style.bgHex}` },
+              };
+              cell.font = {
+                bold: style.bold,
+                size: style.fontSize,
+                color: { argb: `FF${style.fgHex}` },
+              };
+              cell.border = borderThin;
+              cell.alignment =
+                colNum === 5
+                  ? centerAlign
+                  : colNum <= 4
+                    ? leftAlign
+                    : rightAlign;
+
+              // Format numbers nicely, display dash for 0
+              if (colNum >= 6) {
+                const val = cell.value;
+                if (typeof val === 'number') {
+                  if (val === 0) {
+                    cell.value = '-';
+                    cell.alignment = rightAlign;
+                  } else {
+                    // If it's a Cost or Value column (indexes: 7,8, 10,11, 13,14, 16,17, 19,20, 22,23, 25,26)
+                    const isCostOrVal = [
+                      7, 8, 10, 11, 13, 14, 16, 17, 19, 20, 22, 23, 25, 26,
+                    ].includes(colNum);
+                    cell.numFmt = isCostOrVal ? '#,##0.00' : '#,##0';
+                  }
+                }
+              }
+            }
+            row.height = node.level === 'variant' ? 18 : 20;
+            row.commit();
+
+            if (node.children && node.children.length > 0) {
+              for (const child of node.children) {
+                writeNodeToExcel(child);
+              }
+            }
+          };
+
+          for (const rootNode of root) {
+            writeNodeToExcel(rootNode);
+          }
+
+          // Add GRAND TOTALS Row at bottom of Excel
+          const totalRow = ws.addRow({
+            concept: 'GRAND TOTAL',
+            division: '',
+            itemName: '',
+            sku: '',
+            size: '',
+
+            openingQty: grandTotals.openingQty,
+            openingCost: grandTotals.openingCost,
+            openingValue: grandTotals.openingValue,
+
+            purchaseQty: grandTotals.purchaseQty,
+            purchaseCost: grandTotals.purchaseCost,
+            purchaseValue: grandTotals.purchaseValue,
+
+            purchaseRetQty: grandTotals.purchaseRetQty,
+            purchaseRetCost: grandTotals.purchaseRetCost,
+            purchaseRetValue: grandTotals.purchaseRetValue,
+
+            availableQty: grandTotals.availableQty,
+            availableCost: grandTotals.availableCost,
+            availableValue: grandTotals.availableValue,
+
+            salesQty: grandTotals.salesQty,
+            salesCost: grandTotals.salesCost,
+            salesValue: grandTotals.salesValue,
+
+            adjQty: grandTotals.adjQty,
+            adjCost: grandTotals.adjCost,
+            adjValue: grandTotals.adjValue,
+
+            closingQty: grandTotals.closingQty,
+            closingCost: grandTotals.closingCost,
+            closingValue: grandTotals.closingValue,
+          });
+
+          totalRow.eachCell((cell, colNum) => {
+            cell.font = { bold: true, size: 10, color: { argb: 'FF000000' } };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF000000' } },
+              bottom: { style: 'double', color: { argb: 'FF000000' } },
+              left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+              right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFE2E8F0' },
+            };
+            cell.alignment = colNum <= 5 ? leftAlign : rightAlign;
+
             if (colNum >= 6) {
               const val = cell.value;
               if (typeof val === 'number') {
                 if (val === 0) {
                   cell.value = '-';
-                  cell.alignment = rightAlign;
                 } else {
-                  // If it's a Cost or Value column (indexes: 7,8, 10,11, 13,14, 16,17, 19,20, 22,23, 25,26)
-                  const isCostOrVal = [7, 8, 10, 11, 13, 14, 16, 17, 19, 20, 22, 23, 25, 26].includes(colNum);
+                  const isCostOrVal = [
+                    7, 8, 10, 11, 13, 14, 16, 17, 19, 20, 22, 23, 25, 26,
+                  ].includes(colNum);
                   cell.numFmt = isCostOrVal ? '#,##0.00' : '#,##0';
                 }
               }
             }
-          }
-          row.height = node.level === 'variant' ? 18 : 20;
-          row.commit();
-          
-          if (node.children && node.children.length > 0) {
-            for (const child of node.children) {
-              writeNodeToExcel(child);
-            }
-          }
-        };
+          });
+          totalRow.height = 24;
+          totalRow.commit();
 
-        for (const rootNode of root) {
-          writeNodeToExcel(rootNode);
+          await workbook.commit();
         }
-
-        // Add GRAND TOTALS Row at bottom of Excel
-        const totalRow = ws.addRow({
-          concept: 'GRAND TOTAL',
-          division: '',
-          itemName: '',
-          sku: '',
-          size: '',
-          
-          openingQty: grandTotals.openingQty,
-          openingCost: grandTotals.openingCost,
-          openingValue: grandTotals.openingValue,
-          
-          purchaseQty: grandTotals.purchaseQty,
-          purchaseCost: grandTotals.purchaseCost,
-          purchaseValue: grandTotals.purchaseValue,
-          
-          purchaseRetQty: grandTotals.purchaseRetQty,
-          purchaseRetCost: grandTotals.purchaseRetCost,
-          purchaseRetValue: grandTotals.purchaseRetValue,
-          
-          availableQty: grandTotals.availableQty,
-          availableCost: grandTotals.availableCost,
-          availableValue: grandTotals.availableValue,
-          
-          salesQty: grandTotals.salesQty,
-          salesCost: grandTotals.salesCost,
-          salesValue: grandTotals.salesValue,
-          
-          adjQty: grandTotals.adjQty,
-          adjCost: grandTotals.adjCost,
-          adjValue: grandTotals.adjValue,
-          
-          closingQty: grandTotals.closingQty,
-          closingCost: grandTotals.closingCost,
-          closingValue: grandTotals.closingValue,
-        });
-
-        totalRow.eachCell((cell, colNum) => {
-          cell.font = { bold: true, size: 10, color: { argb: 'FF000000' } };
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FF000000' } },
-            bottom: { style: 'double', color: { argb: 'FF000000' } },
-            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-          cell.alignment = colNum <= 5 ? leftAlign : rightAlign;
-
-          if (colNum >= 6) {
-            const val = cell.value;
-            if (typeof val === 'number') {
-              if (val === 0) {
-                cell.value = '-';
-              } else {
-                const isCostOrVal = [7, 8, 10, 11, 13, 14, 16, 17, 19, 20, 22, 23, 25, 26].includes(colNum);
-                cell.numFmt = isCostOrVal ? '#,##0.00' : '#,##0';
-              }
-            }
-          }
-        });
-        totalRow.height = 24;
-        totalRow.commit();
-
-        await workbook.commit();
       }
-    }
 
       await job.progress(95);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const fileName = format === 'pdf'
-        ? `stock-valuation-report-${new Date().toISOString().slice(0, 10)}.pdf`
-        : `stock-valuation-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const fileName =
+        format === 'pdf'
+          ? `stock-valuation-report-${new Date().toISOString().slice(0, 10)}.pdf`
+          : `stock-valuation-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma,
@@ -606,9 +1053,14 @@ export class StockValuationExportProcessor {
       });
 
       await job.progress(100);
-      this.logger.log(`[StockValuationExport ${jobId}] Finished processing ${format.toUpperCase()} successfully`);
+      this.logger.log(
+        `[StockValuationExport ${jobId}] Finished processing ${format.toUpperCase()} successfully`,
+      );
     } catch (err) {
-      this.logger.error(`[StockValuationExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[StockValuationExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     } finally {
@@ -627,34 +1079,67 @@ export class StockValuationExportProcessor {
     let rowsHtml = '';
     const formatVal = (val: number, isCostOrVal = false) => {
       if (val === 0) return '-';
-      return isCostOrVal ? val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : val.toLocaleString();
+      return isCostOrVal
+        ? val.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })
+        : val.toLocaleString();
     };
 
-    const LEVEL_PDF_STYLES: Record<string, {
-      className: string;
-      indentStyles: string;
-      prefix: string;
-    }> = {
+    const LEVEL_PDF_STYLES: Record<
+      string,
+      {
+        className: string;
+        indentStyles: string;
+        prefix: string;
+      }
+    > = {
       brand: { className: 'brand-row', indentStyles: '', prefix: 'BRAND: ' },
-      division: { className: 'division-row', indentStyles: 'padding-left: 10px;', prefix: 'DIVISION: ' },
-      category: { className: 'category-row', indentStyles: 'padding-left: 20px;', prefix: 'CATEGORY: ' },
-      gender: { className: 'gender-row', indentStyles: 'padding-left: 30px;', prefix: 'GENDER: ' },
-      silhouette: { className: 'silhouette-row', indentStyles: 'padding-left: 40px;', prefix: 'SILHOUETTE: ' },
-      article: { className: 'article-row', indentStyles: 'padding-left: 50px;', prefix: 'SKU: ' },
-      variant: { className: 'variant-row', indentStyles: 'padding-left: 60px;', prefix: '' },
+      division: {
+        className: 'division-row',
+        indentStyles: 'padding-left: 10px;',
+        prefix: 'DIVISION: ',
+      },
+      category: {
+        className: 'category-row',
+        indentStyles: 'padding-left: 20px;',
+        prefix: 'CATEGORY: ',
+      },
+      gender: {
+        className: 'gender-row',
+        indentStyles: 'padding-left: 30px;',
+        prefix: 'GENDER: ',
+      },
+      silhouette: {
+        className: 'silhouette-row',
+        indentStyles: 'padding-left: 40px;',
+        prefix: 'SILHOUETTE: ',
+      },
+      article: {
+        className: 'article-row',
+        indentStyles: 'padding-left: 50px;',
+        prefix: 'SKU: ',
+      },
+      variant: {
+        className: 'variant-row',
+        indentStyles: 'padding-left: 60px;',
+        prefix: '',
+      },
     };
 
     const buildHtmlRows = (node: any): string => {
       const style = LEVEL_PDF_STYLES[node.level] || LEVEL_PDF_STYLES.brand;
       let html = '';
-      
+
       let conceptVal = '';
       let divisionVal = '';
       let itemNameVal = '';
       let skuVal = '';
       let sizeVal = '';
 
-      const label = (style.prefix ? style.prefix : '') + node.value.toUpperCase();
+      const label =
+        (style.prefix ? style.prefix : '') + node.value.toUpperCase();
 
       if (node.level === 'brand') {
         conceptVal = label;
@@ -708,7 +1193,7 @@ export class StockValuationExportProcessor {
           <td class="num highlight-closing font-bold">${formatVal(node.totals.closingValue, true)}</td>
         </tr>
       `;
-      
+
       if (node.children && node.children.length > 0) {
         for (const child of node.children) {
           html += buildHtmlRows(child);
@@ -981,13 +1466,20 @@ export class StockValuationExportProcessor {
   }
 
   private async writeEmptyWorkbook(filePath: string): Promise<void> {
-    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ filename: filePath });
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      filename: filePath,
+    });
     const ws = workbook.addWorksheet('No Data');
     ws.addRow(['No stock movements found for the selected store/dates.']);
     await workbook.commit();
   }
 
-  private async writeEmptyPdf(filePath: string, store: string, start: Date, end: Date): Promise<void> {
+  private async writeEmptyPdf(
+    filePath: string,
+    store: string,
+    start: Date,
+    end: Date,
+  ): Promise<void> {
     const html = `
       <html>
       <body>
@@ -1024,7 +1516,7 @@ export class StockValuationExportProcessor {
       views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
     });
 
-    ws.columns = FLAT_COLUMNS.map(c => ({ key: c.key, width: c.width }));
+    ws.columns = FLAT_COLUMNS.map((c) => ({ key: c.key, width: c.width }));
 
     // 1. Group Header band (Row 1)
     const groups: Record<string, { start: number; end: number }> = {};
@@ -1039,7 +1531,11 @@ export class StockValuationExportProcessor {
       const cell = groupRow.getCell(idx + 1);
       const { start } = groups[col.group];
       if (idx + 1 === start) cell.value = col.group.toUpperCase();
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+      };
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border = {
@@ -1057,7 +1553,11 @@ export class StockValuationExportProcessor {
     FLAT_COLUMNS.forEach((col, idx) => {
       const cell = headerRow.getCell(idx + 1);
       cell.value = col.header;
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF334155' },
+      };
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
       cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
       cell.border = {
@@ -1077,19 +1577,42 @@ export class StockValuationExportProcessor {
       right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
     };
 
-    const rightAlign = { horizontal: 'right' as const, vertical: 'middle' as const };
-    const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const };
-    const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
+    const rightAlign = {
+      horizontal: 'right' as const,
+      vertical: 'middle' as const,
+    };
+    const leftAlign = {
+      horizontal: 'left' as const,
+      vertical: 'middle' as const,
+    };
+    const centerAlign = {
+      horizontal: 'center' as const,
+      vertical: 'middle' as const,
+    };
 
     for (const item of items) {
       const metrics = itemMetricsMap?.get(item.id) || {
-        openingQty: 0, openingCost: 0, openingValue: 0,
-        purchaseQty: 0, purchaseCost: 0, purchaseValue: 0,
-        purchaseRetQty: 0, purchaseRetCost: 0, purchaseRetValue: 0,
-        availableQty: 0, availableCost: 0, availableValue: 0,
-        salesQty: 0, salesCost: 0, salesValue: 0,
-        adjQty: 0, adjCost: 0, adjValue: 0,
-        closingQty: 0, closingCost: 0, closingValue: 0,
+        openingQty: 0,
+        openingCost: 0,
+        openingValue: 0,
+        purchaseQty: 0,
+        purchaseCost: 0,
+        purchaseValue: 0,
+        purchaseRetQty: 0,
+        purchaseRetCost: 0,
+        purchaseRetValue: 0,
+        availableQty: 0,
+        availableCost: 0,
+        availableValue: 0,
+        salesQty: 0,
+        salesCost: 0,
+        salesValue: 0,
+        adjQty: 0,
+        adjCost: 0,
+        adjValue: 0,
+        closingQty: 0,
+        closingCost: 0,
+        closingValue: 0,
       };
 
       const row = ws.addRow({
@@ -1137,7 +1660,8 @@ export class StockValuationExportProcessor {
         const cell = row.getCell(colNum);
         cell.font = { size: 9, color: { argb: 'FF1E293B' } };
         cell.border = borderThin;
-        cell.alignment = colNum === 9 ? centerAlign : (colNum <= 10 ? leftAlign : rightAlign);
+        cell.alignment =
+          colNum === 9 ? centerAlign : colNum <= 10 ? leftAlign : rightAlign;
 
         if (colNum >= 11) {
           const val = cell.value;
@@ -1146,7 +1670,9 @@ export class StockValuationExportProcessor {
               cell.value = '-';
               cell.alignment = rightAlign;
             } else {
-              const isCostOrVal = [12, 13, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 30, 31].includes(colNum);
+              const isCostOrVal = [
+                12, 13, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 30, 31,
+              ].includes(colNum);
               cell.numFmt = isCostOrVal ? '#,##0.00' : '#,##0';
             }
           }
@@ -1160,7 +1686,15 @@ export class StockValuationExportProcessor {
     if (grandTotals) {
       const totalRow = ws.addRow({
         brand: 'GRAND TOTAL',
-        division: '', category: '', gender: '', silhouette: '', sku: '', articleName: '', color: '', size: '', barCode: '',
+        division: '',
+        category: '',
+        gender: '',
+        silhouette: '',
+        sku: '',
+        articleName: '',
+        color: '',
+        size: '',
+        barCode: '',
         openingQty: grandTotals.openingQty,
         openingCost: grandTotals.openingCost,
         openingValue: grandTotals.openingValue,
@@ -1192,7 +1726,11 @@ export class StockValuationExportProcessor {
           left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
           right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
         };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE2E8F0' },
+        };
         cell.alignment = colNum <= 10 ? leftAlign : rightAlign;
 
         if (colNum >= 11) {
@@ -1201,7 +1739,9 @@ export class StockValuationExportProcessor {
             if (val === 0) {
               cell.value = '-';
             } else {
-              const isCostOrVal = [12, 13, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 30, 31].includes(colNum);
+              const isCostOrVal = [
+                12, 13, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 30, 31,
+              ].includes(colNum);
               cell.numFmt = isCostOrVal ? '#,##0.00' : '#,##0';
             }
           }

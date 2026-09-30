@@ -17,7 +17,7 @@ export class LandedCostService {
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   /**
    * Generates the next sequential Landed Cost number for the current fiscal year.
@@ -148,7 +148,10 @@ export class LandedCostService {
     return weightedAvg;
   }
 
-  async create(dto: CreateLandedCostDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    dto: CreateLandedCostDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const grn = await this.prisma.goodsReceiptNote.findUnique({
         where: { id: dto.grnId },
@@ -214,187 +217,196 @@ export class LandedCostService {
       // Generate Landed Cost Number
       const landedCostNumber = await this.generateLcNumber();
 
-      const landedCost = await this.prisma.$transaction(async (tx) => {
-        // 2) Create Landed Cost Header and Items
-        const landedCost = await tx.landedCost.create({
-          data: {
-            landedCostNumber,
-            date: new Date(),
-            grnId: dto.grnId,
-            purchaseOrderId: po?.id,
-            supplierId: dto.supplierId,
-            lcNo: dto.lcNo,
-            blNo: dto.blNo,
-            blDate: dto.blDate ? new Date(dto.blDate) : null,
-            countryOfOrigin: dto.countryOfOrigin,
-            gdNo: dto.gdNo,
-            season: dto.season,
-            category: dto.category,
-            shippingInvoiceNo: dto.shippingInvoiceNo,
-            currency: dto.currency,
-            exchangeRate: dto.exchangeRate,
-            status: 'SUBMITTED',
-            items: {
-              create: resolvedItems.map((item) => ({
-                itemId: item.itemId,
-                sku: item.sku,
-                description: item.description,
-                hsCode: item.hsCode,
-                qty: item.qty,
-                unitFob: item.unitFob,
-                invoiceForeign: item.qty * item.unitFob,
-                freightForeign: item.freightForeign,
-                exchangeRate: dto.exchangeRate,
-                invoicePKR: item.qty * item.unitFob * dto.exchangeRate,
-                insuranceCharges: item.insuranceCharges,
-                landingCharges: item.landingCharges,
-                assessableValue: item.assessableValue,
-                customsDutyRate: (item as any).customsDutyRate || 0,
-                customsDutyAmount: (item as any).customsDutyAmount || 0,
-                regulatoryDutyRate: (item as any).regulatoryDutyRate || 0,
-                regulatoryDutyAmount: (item as any).regulatoryDutyAmount || 0,
-                additionalCustomsDutyRate: (item as any).additionalCustomsDutyRate || 0,
-                additionalCustomsDutyAmount: (item as any).additionalCustomsDutyAmount || 0,
-                salesTaxRate: (item as any).salesTaxRate || 0,
-                salesTaxAmount: (item as any).salesTaxAmount || 0,
-                additionalSalesTaxRate: (item as any).additionalSalesTaxRate || 0,
-                additionalSalesTaxAmount: (item as any).additionalSalesTaxAmount || 0,
-                incomeTaxRate: (item as any).incomeTaxRate || 0,
-                incomeTaxAmount: (item as any).incomeTaxAmount || 0,
-                exciseChargesAmount: (item as any).exciseChargesAmount || 0,
-                unitCostPKR: item.normalizedUnitCostPKR,
-                totalCostPKR: item.totalCostPKR,
-                // MIS Proportional Breakdown
-                misFreightUSD: item.misFreightUSD || 0,
-                misFreightPKR: item.misFreightPKR || 0,
-                misDoThcPKR: item.misDoThcPKR || 0,
-                misBankPKR: item.misBankPKR || 0,
-                misInsurancePKR: item.misInsurancePKR || 0,
-                misClgFwdPKR: item.misClgFwdPKR || 0,
-                totalOtherCharges:
-                  (item.misFreightPKR || 0) +
-                  (item.misDoThcPKR || 0) +
-                  (item.misBankPKR || 0) +
-                  (item.misInsurancePKR || 0) +
-                  (item.misClgFwdPKR || 0),
-                // MIS Metadata Snapshot
-                misFreightInvNo: item.misFreightInvNo,
-                misFreightDate: item.misFreightDate,
-                misDoThcPoNo: item.misDoThcPoNo,
-                misDoThcDate: item.misDoThcDate,
-                misInsurancePolicyNo: item.misInsurancePolicyNo,
-                misClgFwdBillNo: item.misClgFwdBillNo,
-              })),
+      const landedCost = await this.prisma.$transaction(
+        async (tx) => {
+          // 2) Create Landed Cost Header and Items
+          const landedCost = await tx.landedCost.create({
+            data: {
+              landedCostNumber,
+              date: new Date(),
+              grnId: dto.grnId,
+              purchaseOrderId: po?.id,
+              supplierId: dto.supplierId,
+              lcNo: dto.lcNo,
+              blNo: dto.blNo,
+              blDate: dto.blDate ? new Date(dto.blDate) : null,
+              countryOfOrigin: dto.countryOfOrigin,
+              gdNo: dto.gdNo,
+              season: dto.season,
+              category: dto.category,
+              shippingInvoiceNo: dto.shippingInvoiceNo,
+              currency: dto.currency,
+              exchangeRate: dto.exchangeRate,
+              status: 'SUBMITTED',
+              items: {
+                create: resolvedItems.map((item) => ({
+                  itemId: item.itemId,
+                  sku: item.sku,
+                  description: item.description,
+                  hsCode: item.hsCode,
+                  qty: item.qty,
+                  unitFob: item.unitFob,
+                  invoiceForeign: item.qty * item.unitFob,
+                  freightForeign: item.freightForeign,
+                  exchangeRate: dto.exchangeRate,
+                  invoicePKR: item.qty * item.unitFob * dto.exchangeRate,
+                  insuranceCharges: item.insuranceCharges,
+                  landingCharges: item.landingCharges,
+                  assessableValue: item.assessableValue,
+                  customsDutyRate: (item as any).customsDutyRate || 0,
+                  customsDutyAmount: (item as any).customsDutyAmount || 0,
+                  regulatoryDutyRate: (item as any).regulatoryDutyRate || 0,
+                  regulatoryDutyAmount: (item as any).regulatoryDutyAmount || 0,
+                  additionalCustomsDutyRate:
+                    (item as any).additionalCustomsDutyRate || 0,
+                  additionalCustomsDutyAmount:
+                    (item as any).additionalCustomsDutyAmount || 0,
+                  salesTaxRate: (item as any).salesTaxRate || 0,
+                  salesTaxAmount: (item as any).salesTaxAmount || 0,
+                  additionalSalesTaxRate:
+                    (item as any).additionalSalesTaxRate || 0,
+                  additionalSalesTaxAmount:
+                    (item as any).additionalSalesTaxAmount || 0,
+                  incomeTaxRate: (item as any).incomeTaxRate || 0,
+                  incomeTaxAmount: (item as any).incomeTaxAmount || 0,
+                  exciseChargesAmount: (item as any).exciseChargesAmount || 0,
+                  unitCostPKR: item.normalizedUnitCostPKR,
+                  totalCostPKR: item.totalCostPKR,
+                  // MIS Proportional Breakdown
+                  misFreightUSD: item.misFreightUSD || 0,
+                  misFreightPKR: item.misFreightPKR || 0,
+                  misDoThcPKR: item.misDoThcPKR || 0,
+                  misBankPKR: item.misBankPKR || 0,
+                  misInsurancePKR: item.misInsurancePKR || 0,
+                  misClgFwdPKR: item.misClgFwdPKR || 0,
+                  totalOtherCharges:
+                    (item.misFreightPKR || 0) +
+                    (item.misDoThcPKR || 0) +
+                    (item.misBankPKR || 0) +
+                    (item.misInsurancePKR || 0) +
+                    (item.misClgFwdPKR || 0),
+                  // MIS Metadata Snapshot
+                  misFreightInvNo: item.misFreightInvNo,
+                  misFreightDate: item.misFreightDate,
+                  misDoThcPoNo: item.misDoThcPoNo,
+                  misDoThcDate: item.misDoThcDate,
+                  misInsurancePolicyNo: item.misInsurancePolicyNo,
+                  misClgFwdBillNo: item.misClgFwdBillNo,
+                })),
+              },
             },
-          },
-          include: { items: true },
-        });
+            include: { items: true },
+          });
 
-        // Calculate totals for header update (optional but good for denormalization)
-        let totalQuantity = 0;
-        let totalInvoiceForeign = 0;
-        let totalInvoicePKR = 0;
-        let totalLandedCost = 0;
+          // Calculate totals for header update (optional but good for denormalization)
+          let totalQuantity = 0;
+          let totalInvoiceForeign = 0;
+          let totalInvoicePKR = 0;
+          let totalLandedCost = 0;
 
-        for (const item of resolvedItems) {
-          totalQuantity += item.qty;
-          totalInvoiceForeign += item.qty * item.unitFob;
-          totalInvoicePKR += item.qty * item.unitFob * dto.exchangeRate;
-          totalLandedCost += item.totalCostPKR || (item.qty * item.normalizedUnitCostPKR.toNumber());
-        }
+          for (const item of resolvedItems) {
+            totalQuantity += item.qty;
+            totalInvoiceForeign += item.qty * item.unitFob;
+            totalInvoicePKR += item.qty * item.unitFob * dto.exchangeRate;
+            totalLandedCost +=
+              item.totalCostPKR ||
+              item.qty * item.normalizedUnitCostPKR.toNumber();
+          }
 
-        await tx.landedCost.update({
-          where: { id: landedCost.id },
-          data: {
-            totalQuantity,
-            totalInvoiceForeign,
-            totalInvoicePKR,
-            totalLandedCost,
-            // MIS Totals Snapshot (Header)
-            freightUSD: dto.freightUSD || 0,
-            freightExRate: dto.freightExRate || 1,
-            freightPKR: dto.freightPKR || 0,
-            freightInvNo: dto.freightInvNo,
-            freightDate: dto.freightDate,
-            doThcCharges: dto.doThcCharges || 0,
-            doThcPoNo: dto.doThcPoNo,
-            doThcDate: dto.doThcDate,
-            bankCharges: dto.bankCharges || 0,
-            insuranceChargesH: dto.insuranceChargesH || 0,
-            insurancePolicyNo: dto.insurancePolicyNo,
-            clgFwdCharges: dto.clgFwdCharges || 0,
-            clgFwdBillNo: dto.clgFwdBillNo,
-          },
-        });
-
-        // 3) Update Stock Ledger for each item with the new Landed Cost
-        for (const item of resolvedItems) {
-          // The itemId is already resolved to a valid UUID in Step 1
-          const itemRecord = { id: item.itemId };
-          const weightedAvgRate = await this.calculateAndApplyWeightedAverage(
-            tx,
-            itemRecord.id,
-            grn.warehouseId,
-            new Prisma.Decimal(item.qty),
-            item.normalizedUnitCostPKR,
-          );
-
-          await this.stockLedgerService.createEntry(
-            {
-              itemId: itemRecord.id,
-              warehouseId: grn.warehouseId,
-              qty: Number(item.qty),
-              movementType: MovementType.INBOUND,
-              referenceType: 'LANDED_COST',
-              referenceId: landedCost.id,
-              rate: item.normalizedUnitCostPKR,
-            },
-            tx,
-          );
-
-          // Update InventoryItem (warehouse stock)
-          const existingStock = await tx.inventoryItem.findFirst({
-            where: {
-              warehouseId: grn.warehouseId,
-              locationId: null, // Warehouse stock
-              itemId: itemRecord.id,
-              status: 'AVAILABLE',
+          await tx.landedCost.update({
+            where: { id: landedCost.id },
+            data: {
+              totalQuantity,
+              totalInvoiceForeign,
+              totalInvoicePKR,
+              totalLandedCost,
+              // MIS Totals Snapshot (Header)
+              freightUSD: dto.freightUSD || 0,
+              freightExRate: dto.freightExRate || 1,
+              freightPKR: dto.freightPKR || 0,
+              freightInvNo: dto.freightInvNo,
+              freightDate: dto.freightDate,
+              doThcCharges: dto.doThcCharges || 0,
+              doThcPoNo: dto.doThcPoNo,
+              doThcDate: dto.doThcDate,
+              bankCharges: dto.bankCharges || 0,
+              insuranceChargesH: dto.insuranceChargesH || 0,
+              insurancePolicyNo: dto.insurancePolicyNo,
+              clgFwdCharges: dto.clgFwdCharges || 0,
+              clgFwdBillNo: dto.clgFwdBillNo,
             },
           });
 
-          if (existingStock) {
-            // Update existing warehouse stock
-            await tx.inventoryItem.update({
-              where: { id: existingStock.id },
-              data: { 
-                quantity: { increment: new Prisma.Decimal(item.qty) }
-              },
-            });
-          } else {
-            // Create new warehouse stock entry
-            await tx.inventoryItem.create({
-              data: {
-                warehouseId: grn.warehouseId,
-                locationId: null, // NULL = warehouse stock
+          // 3) Update Stock Ledger for each item with the new Landed Cost
+          for (const item of resolvedItems) {
+            // The itemId is already resolved to a valid UUID in Step 1
+            const itemRecord = { id: item.itemId };
+            const weightedAvgRate = await this.calculateAndApplyWeightedAverage(
+              tx,
+              itemRecord.id,
+              grn.warehouseId,
+              new Prisma.Decimal(item.qty),
+              item.normalizedUnitCostPKR,
+            );
+
+            await this.stockLedgerService.createEntry(
+              {
                 itemId: itemRecord.id,
-                quantity: new Prisma.Decimal(item.qty),
+                warehouseId: grn.warehouseId,
+                qty: Number(item.qty),
+                movementType: MovementType.INBOUND,
+                referenceType: 'LANDED_COST',
+                referenceId: landedCost.id,
+                rate: item.normalizedUnitCostPKR,
+              },
+              tx,
+            );
+
+            // Update InventoryItem (warehouse stock)
+            const existingStock = await tx.inventoryItem.findFirst({
+              where: {
+                warehouseId: grn.warehouseId,
+                locationId: null, // Warehouse stock
+                itemId: itemRecord.id,
                 status: 'AVAILABLE',
               },
             });
+
+            if (existingStock) {
+              // Update existing warehouse stock
+              await tx.inventoryItem.update({
+                where: { id: existingStock.id },
+                data: {
+                  quantity: { increment: new Prisma.Decimal(item.qty) },
+                },
+              });
+            } else {
+              // Create new warehouse stock entry
+              await tx.inventoryItem.create({
+                data: {
+                  warehouseId: grn.warehouseId,
+                  locationId: null, // NULL = warehouse stock
+                  itemId: itemRecord.id,
+                  quantity: new Prisma.Decimal(item.qty),
+                  status: 'AVAILABLE',
+                },
+              });
+            }
           }
-        }
 
-        // 3) Mark GRN as VALUED
-        await tx.goodsReceiptNote.update({
-          where: { id: grn.id },
-          data: { status: 'VALUED' },
-        });
+          // 3) Mark GRN as VALUED
+          await tx.goodsReceiptNote.update({
+            where: { id: grn.id },
+            data: { status: 'VALUED' },
+          });
 
-        return landedCost;
-      }, {
-        maxWait: 15000,
-        timeout: 60000,
-      });
+          return landedCost;
+        },
+        {
+          maxWait: 15000,
+          timeout: 60000,
+        },
+      );
 
       runInBackground(
         'Create Landed Cost',
@@ -504,7 +516,10 @@ export class LandedCostService {
     return { status: true, data: created };
   }
 
-  async createLocal(dto: CreateLandedCostDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async createLocal(
+    dto: CreateLandedCostDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const grn = await this.prisma.goodsReceiptNote.findUnique({
         where: { id: dto.grnId },
@@ -570,150 +585,157 @@ export class LandedCostService {
       const count = await this.prisma.landedCost.count();
       const landedCostNumber = `LC-${(count + 1).toString().padStart(6, '0')}`;
 
-      const landedCost = await this.prisma.$transaction(async (tx) => {
-        // 2) Create Landed Cost Header
-        const landedCost = await tx.landedCost.create({
-          data: {
-            landedCostNumber,
-            date: new Date(),
-            grnId: dto.grnId,
-            purchaseOrderId: po?.id,
-            supplierId: dto.supplierId || po?.vendorId,
-            lcNo: dto.lcNo,
-            blNo: dto.blNo,
-            blDate: dto.blDate ? new Date(dto.blDate) : null,
-            countryOfOrigin: dto.countryOfOrigin,
-            gdNo: dto.gdNo,
-            season: dto.season,
-            category: dto.category,
-            shippingInvoiceNo: dto.shippingInvoiceNo,
-            currency: 'PKR',
-            exchangeRate: 1,
-            status: 'VALUED',
-            items: {
-              create: resolvedItems.map((item) => ({
-                itemId: item.itemId,
-                sku: item.sku,
-                description: item.description,
-                hsCode: item.hsCode,
-                qty: item.qty,
-                unitFob: item.unitFob,
-                invoiceForeign: item.qty * item.unitFob,
-                freightForeign: item.freightForeign || 0,
-                exchangeRate: 1,
-                invoicePKR: item.qty * item.unitFob,
-                insuranceCharges: item.insuranceCharges || 0,
-                landingCharges: item.landingCharges || 0,
-                assessableValue: item.assessableValue || item.qty * item.unitFob,
-                unitCostPKR: item.normalizedRate,
-                totalCostPKR: item.totalCostPKR || item.qty * item.normalizedRate.toNumber(),
-                // Populate taxes if provided (though usually 0 for local)
-                customsDutyRate: item.customsDutyRate || 0,
-                customsDutyAmount: item.customsDutyAmount || 0,
-                regulatoryDutyRate: item.regulatoryDutyRate || 0,
-                regulatoryDutyAmount: item.regulatoryDutyAmount || 0,
-                salesTaxRate: item.salesTaxRate || 0,
-                salesTaxAmount: item.salesTaxAmount || 0,
-                incomeTaxRate: item.incomeTaxRate || 0,
-                incomeTaxAmount: item.incomeTaxAmount || 0,
-              })),
-            },
-          },
-        });
-
-        // Update calculations for header
-        let totalQuantity = 0;
-        let totalInvoiceForeign = 0;
-        let totalLandedCost = 0;
-
-        for (const item of resolvedItems) {
-          totalQuantity += item.qty;
-          totalInvoiceForeign += item.qty * item.unitFob;
-          totalLandedCost += item.totalCostPKR || (item.qty * item.normalizedRate.toNumber());
-        }
-
-        await tx.landedCost.update({
-          where: { id: landedCost.id },
-          data: {
-            totalQuantity,
-            totalInvoiceForeign,
-            totalInvoicePKR: totalInvoiceForeign,
-            totalLandedCost,
-          },
-        });
-
-        // 3) Update stock ledger and inventory
-        for (const item of resolvedItems) {
-          const weightedAvgRate = await this.calculateAndApplyWeightedAverage(
-            tx,
-            item.itemId,
-            grn.warehouseId,
-            new Prisma.Decimal(item.qty),
-            item.normalizedRate,
-          );
-
-          await this.stockLedgerService.createEntry(
-            {
-              itemId: item.itemId,
-              warehouseId: grn.warehouseId,
-              qty: Number(item.qty),
-              movementType: MovementType.INBOUND,
-              referenceType: 'LANDED_COST',
-              referenceId: landedCost.id, // Use LandedCost ID
-              rate: item.normalizedRate,
-            },
-            tx,
-          );
-
-          // Update InventoryItem
-          const existingStock = await tx.inventoryItem.findFirst({
-            where: {
-              warehouseId: grn.warehouseId,
-              locationId: null,
-              itemId: item.itemId,
-              status: 'AVAILABLE',
+      const landedCost = await this.prisma.$transaction(
+        async (tx) => {
+          // 2) Create Landed Cost Header
+          const landedCost = await tx.landedCost.create({
+            data: {
+              landedCostNumber,
+              date: new Date(),
+              grnId: dto.grnId,
+              purchaseOrderId: po?.id,
+              supplierId: dto.supplierId || po?.vendorId,
+              lcNo: dto.lcNo,
+              blNo: dto.blNo,
+              blDate: dto.blDate ? new Date(dto.blDate) : null,
+              countryOfOrigin: dto.countryOfOrigin,
+              gdNo: dto.gdNo,
+              season: dto.season,
+              category: dto.category,
+              shippingInvoiceNo: dto.shippingInvoiceNo,
+              currency: 'PKR',
+              exchangeRate: 1,
+              status: 'VALUED',
+              items: {
+                create: resolvedItems.map((item) => ({
+                  itemId: item.itemId,
+                  sku: item.sku,
+                  description: item.description,
+                  hsCode: item.hsCode,
+                  qty: item.qty,
+                  unitFob: item.unitFob,
+                  invoiceForeign: item.qty * item.unitFob,
+                  freightForeign: item.freightForeign || 0,
+                  exchangeRate: 1,
+                  invoicePKR: item.qty * item.unitFob,
+                  insuranceCharges: item.insuranceCharges || 0,
+                  landingCharges: item.landingCharges || 0,
+                  assessableValue:
+                    item.assessableValue || item.qty * item.unitFob,
+                  unitCostPKR: item.normalizedRate,
+                  totalCostPKR:
+                    item.totalCostPKR ||
+                    item.qty * item.normalizedRate.toNumber(),
+                  // Populate taxes if provided (though usually 0 for local)
+                  customsDutyRate: item.customsDutyRate || 0,
+                  customsDutyAmount: item.customsDutyAmount || 0,
+                  regulatoryDutyRate: item.regulatoryDutyRate || 0,
+                  regulatoryDutyAmount: item.regulatoryDutyAmount || 0,
+                  salesTaxRate: item.salesTaxRate || 0,
+                  salesTaxAmount: item.salesTaxAmount || 0,
+                  incomeTaxRate: item.incomeTaxRate || 0,
+                  incomeTaxAmount: item.incomeTaxAmount || 0,
+                })),
+              },
             },
           });
 
-          if (existingStock) {
-            await tx.inventoryItem.update({
-              where: { id: existingStock.id },
-              data: {
-                quantity: { increment: new Prisma.Decimal(item.qty) },
+          // Update calculations for header
+          let totalQuantity = 0;
+          let totalInvoiceForeign = 0;
+          let totalLandedCost = 0;
+
+          for (const item of resolvedItems) {
+            totalQuantity += item.qty;
+            totalInvoiceForeign += item.qty * item.unitFob;
+            totalLandedCost +=
+              item.totalCostPKR || item.qty * item.normalizedRate.toNumber();
+          }
+
+          await tx.landedCost.update({
+            where: { id: landedCost.id },
+            data: {
+              totalQuantity,
+              totalInvoiceForeign,
+              totalInvoicePKR: totalInvoiceForeign,
+              totalLandedCost,
+            },
+          });
+
+          // 3) Update stock ledger and inventory
+          for (const item of resolvedItems) {
+            const weightedAvgRate = await this.calculateAndApplyWeightedAverage(
+              tx,
+              item.itemId,
+              grn.warehouseId,
+              new Prisma.Decimal(item.qty),
+              item.normalizedRate,
+            );
+
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: grn.warehouseId,
+                qty: Number(item.qty),
+                movementType: MovementType.INBOUND,
+                referenceType: 'LANDED_COST',
+                referenceId: landedCost.id, // Use LandedCost ID
+                rate: item.normalizedRate,
               },
-            });
-          } else {
-            await tx.inventoryItem.create({
-              data: {
+              tx,
+            );
+
+            // Update InventoryItem
+            const existingStock = await tx.inventoryItem.findFirst({
+              where: {
                 warehouseId: grn.warehouseId,
                 locationId: null,
                 itemId: item.itemId,
-                quantity: new Prisma.Decimal(item.qty),
                 status: 'AVAILABLE',
               },
             });
+
+            if (existingStock) {
+              await tx.inventoryItem.update({
+                where: { id: existingStock.id },
+                data: {
+                  quantity: { increment: new Prisma.Decimal(item.qty) },
+                },
+              });
+            } else {
+              await tx.inventoryItem.create({
+                data: {
+                  warehouseId: grn.warehouseId,
+                  locationId: null,
+                  itemId: item.itemId,
+                  quantity: new Prisma.Decimal(item.qty),
+                  status: 'AVAILABLE',
+                },
+              });
+            }
           }
-        }
 
-        // 4) Mark GRN as VALUED
-        await tx.goodsReceiptNote.update({
-          where: { id: grn.id },
-          data: { status: 'VALUED' },
-        });
-
-        // 5) Update PO status to CLOSED
-        if (po) {
-          await tx.purchaseOrder.update({
-            where: { id: po.id },
-            data: { status: 'CLOSED' },
+          // 4) Mark GRN as VALUED
+          await tx.goodsReceiptNote.update({
+            where: { id: grn.id },
+            data: { status: 'VALUED' },
           });
-        }
 
-        return landedCost;
-      }, {
-        maxWait: 15000,
-        timeout: 60000,
-      });
+          // 5) Update PO status to CLOSED
+          if (po) {
+            await tx.purchaseOrder.update({
+              where: { id: po.id },
+              data: { status: 'CLOSED' },
+            });
+          }
+
+          return landedCost;
+        },
+        {
+          maxWait: 15000,
+          timeout: 60000,
+        },
+      );
 
       runInBackground(
         'Create Local Landed Cost',
@@ -752,7 +774,10 @@ export class LandedCostService {
     }
   }
 
-  async post(dto: { grnId: string; charges: { accountId: string; amount: number }[] }, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async post(
+    dto: { grnId: string; charges: { accountId: string; amount: number }[] },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const grn = await this.prisma.goodsReceiptNote.findUnique({
         where: { id: dto.grnId },
@@ -778,7 +803,9 @@ export class LandedCostService {
           };
         }),
       );
-      const itemMap = new Map(itemRecordIds.map((x) => [x.grnItemId, x.resolvedItemId]));
+      const itemMap = new Map(
+        itemRecordIds.map((x) => [x.grnItemId, x.resolvedItemId]),
+      );
 
       const result = await this.prisma.$transaction(
         async (tx) => {

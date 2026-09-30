@@ -37,17 +37,30 @@ export class KpiService {
 
       return { status: true, data: templates };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list KPI templates' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to list KPI templates',
+      };
     }
   }
 
   async getTemplate(id: string) {
     try {
-      const template = await this.prisma.kpiTemplate.findUnique({ where: { id } });
-      if (!template) return { status: false, message: 'KPI template not found' };
+      const template = await this.prisma.kpiTemplate.findUnique({
+        where: { id },
+      });
+      if (!template)
+        return { status: false, message: 'KPI template not found' };
       return { status: true, data: template };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to get KPI template' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to get KPI template',
+      };
     }
   }
 
@@ -80,16 +93,29 @@ export class KpiService {
         status: 'success',
       });
 
-      return { status: true, data: template, message: 'KPI template created successfully' };
+      return {
+        status: true,
+        data: template,
+        message: 'KPI template created successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to create KPI template' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to create KPI template',
+      };
     }
   }
 
   async updateTemplate(id: string, body: UpdateKpiTemplateDto, ctx: Ctx) {
     try {
-      const existing = await this.prisma.kpiTemplate.findUnique({ where: { id } });
-      if (!existing) return { status: false, message: 'KPI template not found' };
+      const existing = await this.prisma.kpiTemplate.findUnique({
+        where: { id },
+      });
+      if (!existing)
+        return { status: false, message: 'KPI template not found' };
 
       const updated = await this.prisma.kpiTemplate.update({
         where: { id },
@@ -109,16 +135,29 @@ export class KpiService {
         status: 'success',
       });
 
-      return { status: true, data: updated, message: 'KPI template updated successfully' };
+      return {
+        status: true,
+        data: updated,
+        message: 'KPI template updated successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update KPI template' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to update KPI template',
+      };
     }
   }
 
   async deleteTemplate(id: string, ctx: Ctx) {
     try {
-      const existing = await this.prisma.kpiTemplate.findUnique({ where: { id } });
-      if (!existing) return { status: false, message: 'KPI template not found' };
+      const existing = await this.prisma.kpiTemplate.findUnique({
+        where: { id },
+      });
+      if (!existing)
+        return { status: false, message: 'KPI template not found' };
 
       await this.prisma.kpiTemplate.delete({ where: { id } });
 
@@ -136,7 +175,13 @@ export class KpiService {
 
       return { status: true, message: 'KPI template deleted successfully' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete KPI template' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to delete KPI template',
+      };
     }
   }
 
@@ -161,7 +206,13 @@ export class KpiService {
         where,
         include: {
           employee: {
-            select: { id: true, employeeId: true, employeeName: true, departmentId: true, designationId: true },
+            select: {
+              id: true,
+              employeeId: true,
+              employeeName: true,
+              departmentId: true,
+              designationId: true,
+            },
           },
           kpiTemplate: true,
         },
@@ -171,11 +222,20 @@ export class KpiService {
       if (reviews.length === 0) return { status: true, data: [] };
 
       // Enrich with master DB data
-      const deptIds = [...new Set(reviews.map((r) => r.employee?.departmentId).filter(Boolean))] as string[];
-      const reviewerIds = [...new Set(reviews.map((r) => r.reviewedById).filter(Boolean))] as string[];
+      const deptIds = [
+        ...new Set(
+          reviews.map((r) => r.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
+      const reviewerIds = [
+        ...new Set(reviews.map((r) => r.reviewedById).filter(Boolean)),
+      ] as string[];
 
       const [departments, reviewers] = await Promise.all([
-        this.prisma.department.findMany({ where: { id: { in: deptIds } }, select: { id: true, name: true } }),
+        this.prisma.department.findMany({
+          where: { id: { in: deptIds } },
+          select: { id: true, name: true },
+        }),
         reviewerIds.length
           ? this.prismaMaster.user.findMany({
               where: { id: { in: reviewerIds } },
@@ -190,14 +250,23 @@ export class KpiService {
       const enriched = reviews.map((r) => ({
         ...r,
         employee: r.employee
-          ? { ...r.employee, department: deptMap.get(r.employee.departmentId) || null }
+          ? {
+              ...r.employee,
+              department: deptMap.get(r.employee.departmentId) || null,
+            }
           : null,
-        reviewedBy: r.reviewedById ? reviewerMap.get(r.reviewedById) || null : null,
+        reviewedBy: r.reviewedById
+          ? reviewerMap.get(r.reviewedById) || null
+          : null,
       }));
 
       return { status: true, data: enriched };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list KPI reviews' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to list KPI reviews',
+      };
     }
   }
 
@@ -206,29 +275,46 @@ export class KpiService {
       const review = await this.prisma.kpiReview.findUnique({
         where: { id },
         include: {
-          employee: { select: { id: true, employeeId: true, employeeName: true, departmentId: true } },
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              employeeName: true,
+              departmentId: true,
+            },
+          },
           kpiTemplate: true,
         },
       });
       if (!review) return { status: false, message: 'KPI review not found' };
       return { status: true, data: review };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to get KPI review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to get KPI review',
+      };
     }
   }
 
   async createReview(body: CreateKpiReviewDto, ctx: Ctx) {
     try {
-      const employee = await this.prisma.employee.findUnique({ where: { id: body.employeeId } });
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: body.employeeId },
+      });
       if (!employee) return { status: false, message: 'Employee not found' };
 
-      const template = await this.prisma.kpiTemplate.findUnique({ where: { id: body.kpiTemplateId } });
-      if (!template) return { status: false, message: 'KPI template not found' };
+      const template = await this.prisma.kpiTemplate.findUnique({
+        where: { id: body.kpiTemplateId },
+      });
+      if (!template)
+        return { status: false, message: 'KPI template not found' };
 
       // Calculate score if actualValue provided
-      const score = body.actualValue != null && body.targetValue > 0
-        ? Math.min(100, (body.actualValue / body.targetValue) * 100)
-        : null;
+      const score =
+        body.actualValue != null && body.targetValue > 0
+          ? Math.min(100, (body.actualValue / body.targetValue) * 100)
+          : null;
 
       const review = await this.prisma.kpiReview.create({
         data: {
@@ -259,36 +345,60 @@ export class KpiService {
         status: 'success',
       });
 
-      return { status: true, data: review, message: 'KPI review created successfully' };
+      return {
+        status: true,
+        data: review,
+        message: 'KPI review created successfully',
+      };
     } catch (error) {
       if ((error as any)?.code === 'P2002') {
-        return { status: false, message: 'A review for this employee, template, and period already exists' };
+        return {
+          status: false,
+          message:
+            'A review for this employee, template, and period already exists',
+        };
       }
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to create KPI review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to create KPI review',
+      };
     }
   }
 
   async updateReview(id: string, body: UpdateKpiReviewDto, ctx: Ctx) {
     try {
-      const existing = await this.prisma.kpiReview.findUnique({ where: { id } });
+      const existing = await this.prisma.kpiReview.findUnique({
+        where: { id },
+      });
       if (!existing) return { status: false, message: 'KPI review not found' };
 
       // Recalculate score if values changed
       const targetValue = body.targetValue ?? Number(existing.targetValue);
-      const actualValue = body.actualValue ?? (existing.actualValue != null ? Number(existing.actualValue) : null);
-      const score = actualValue != null && targetValue > 0
-        ? Math.min(100, (actualValue / targetValue) * 100)
-        : existing.score;
+      const actualValue =
+        body.actualValue ??
+        (existing.actualValue != null ? Number(existing.actualValue) : null);
+      const score =
+        actualValue != null && targetValue > 0
+          ? Math.min(100, (actualValue / targetValue) * 100)
+          : existing.score;
 
       const updated = await this.prisma.kpiReview.update({
         where: { id },
         data: {
-          ...(body.actualValue !== undefined && { actualValue: body.actualValue }),
-          ...(body.targetValue !== undefined && { targetValue: body.targetValue }),
+          ...(body.actualValue !== undefined && {
+            actualValue: body.actualValue,
+          }),
+          ...(body.targetValue !== undefined && {
+            targetValue: body.targetValue,
+          }),
           ...(body.notes !== undefined && { notes: body.notes }),
           ...(body.status && { status: body.status }),
           score,
-          reviewedById: body.status === 'approved' ? ctx.userId : existing.reviewedById,
+          reviewedById:
+            body.status === 'approved' ? ctx.userId : existing.reviewedById,
           updatedById: ctx.userId,
         },
         include: { kpiTemplate: true },
@@ -307,15 +417,27 @@ export class KpiService {
         status: 'success',
       });
 
-      return { status: true, data: updated, message: 'KPI review updated successfully' };
+      return {
+        status: true,
+        data: updated,
+        message: 'KPI review updated successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update KPI review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to update KPI review',
+      };
     }
   }
 
   async deleteReview(id: string, ctx: Ctx) {
     try {
-      const existing = await this.prisma.kpiReview.findUnique({ where: { id } });
+      const existing = await this.prisma.kpiReview.findUnique({
+        where: { id },
+      });
       if (!existing) return { status: false, message: 'KPI review not found' };
 
       await this.prisma.kpiReview.delete({ where: { id } });
@@ -334,7 +456,13 @@ export class KpiService {
 
       return { status: true, message: 'KPI review deleted successfully' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete KPI review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to delete KPI review',
+      };
     }
   }
 
@@ -344,9 +472,16 @@ export class KpiService {
    * Auto-populate actualValue for all "auto" KPI reviews for a given employee + period.
    * Creates reviews if they don't exist yet, updates if they do.
    */
-  async autoPopulate(employeeId: string, period: string, periodType: string, ctx: Ctx) {
+  async autoPopulate(
+    employeeId: string,
+    period: string,
+    periodType: string,
+    ctx: Ctx,
+  ) {
     try {
-      const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: employeeId },
+      });
       if (!employee) return { status: false, message: 'Employee not found' };
 
       const templates = await this.prisma.kpiTemplate.findMany({
@@ -354,7 +489,11 @@ export class KpiService {
       });
 
       if (templates.length === 0) {
-        return { status: true, data: [], message: 'No auto KPI templates found' };
+        return {
+          status: true,
+          data: [],
+          message: 'No auto KPI templates found',
+        };
       }
 
       const results: any[] = [];
@@ -362,15 +501,31 @@ export class KpiService {
       for (const template of templates) {
         if (!template.formula) continue;
 
-        const metric = await this.compute.compute(employeeId, template.formula, period, periodType);
+        const metric = await this.compute.compute(
+          employeeId,
+          template.formula,
+          period,
+          periodType,
+        );
         if (!metric) continue;
 
-        const targetValue = template.targetValue ? Number(template.targetValue) : 100;
+        const targetValue = template.targetValue
+          ? Number(template.targetValue)
+          : 100;
         const actualValue = metric.actualValue;
-        const score = targetValue > 0 ? Math.min(100, (actualValue / targetValue) * 100) : null;
+        const score =
+          targetValue > 0
+            ? Math.min(100, (actualValue / targetValue) * 100)
+            : null;
 
         const existing = await this.prisma.kpiReview.findUnique({
-          where: { employeeId_kpiTemplateId_period: { employeeId, kpiTemplateId: template.id, period } },
+          where: {
+            employeeId_kpiTemplateId_period: {
+              employeeId,
+              kpiTemplateId: template.id,
+              period,
+            },
+          },
         });
 
         let review: any;
@@ -411,20 +566,40 @@ export class KpiService {
         status: 'success',
       });
 
-      return { status: true, data: results, message: `Auto-populated ${results.length} KPI review(s)` };
+      return {
+        status: true,
+        data: results,
+        message: `Auto-populated ${results.length} KPI review(s)`,
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to auto-populate KPI reviews' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to auto-populate KPI reviews',
+      };
     }
   }
 
   /**
    * Get a full KPI summary for an employee: saved reviews + live auto-computed metrics.
    */
-  async getEmployeeSummary(employeeId: string, period: string, periodType: string) {
+  async getEmployeeSummary(
+    employeeId: string,
+    period: string,
+    periodType: string,
+  ) {
     try {
       const employee = await this.prisma.employee.findUnique({
         where: { id: employeeId },
-        select: { id: true, employeeId: true, employeeName: true, departmentId: true, designationId: true },
+        select: {
+          id: true,
+          employeeId: true,
+          employeeName: true,
+          departmentId: true,
+          designationId: true,
+        },
       });
       if (!employee) return { status: false, message: 'Employee not found' };
 
@@ -434,7 +609,11 @@ export class KpiService {
         orderBy: { createdAt: 'asc' },
       });
 
-      const liveMetrics = await this.compute.computeAll(employeeId, period, periodType);
+      const liveMetrics = await this.compute.computeAll(
+        employeeId,
+        period,
+        periodType,
+      );
 
       // Weighted overall score from saved reviews
       let weightedSum = 0;
@@ -446,21 +625,34 @@ export class KpiService {
           totalWeight += w;
         }
       }
-      const overallScore = totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 100) / 100 : null;
+      const overallScore =
+        totalWeight > 0
+          ? Math.round((weightedSum / totalWeight) * 100) / 100
+          : null;
 
       const [dept, desig] = await Promise.all([
         employee.departmentId
-          ? this.prisma.department.findUnique({ where: { id: employee.departmentId }, select: { name: true } })
+          ? this.prisma.department.findUnique({
+              where: { id: employee.departmentId },
+              select: { name: true },
+            })
           : null,
         employee.designationId
-          ? this.prisma.designation.findUnique({ where: { id: employee.designationId }, select: { name: true } })
+          ? this.prisma.designation.findUnique({
+              where: { id: employee.designationId },
+              select: { name: true },
+            })
           : null,
       ]);
 
       return {
         status: true,
         data: {
-          employee: { ...employee, departmentName: dept?.name || null, designationName: desig?.name || null },
+          employee: {
+            ...employee,
+            departmentName: dept?.name || null,
+            designationName: desig?.name || null,
+          },
           period,
           periodType,
           overallScore,
@@ -469,7 +661,13 @@ export class KpiService {
         },
       };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to get employee KPI summary' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to get employee KPI summary',
+      };
     }
   }
 }

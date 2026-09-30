@@ -23,7 +23,7 @@ import { PreviewPayrollDto, ConfirmPayrollDto } from './dto/payroll.dto';
 @ApiTags('Payroll')
 @Controller('api')
 export class PayrollController {
-  constructor(private readonly payrollService: PayrollService,) {}
+  constructor(private readonly payrollService: PayrollService) {}
 
   @Post('payroll/preview')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -62,7 +62,10 @@ export class PayrollController {
   @Permissions('hr.payroll.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get list of available payrolls with basic info' })
-  @ApiResponse({ status: 200, description: 'Returns list of payrolls with IDs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns list of payrolls with IDs',
+  })
   async getPayrollList(
     @Query('year') year?: string,
     @Query('month') month?: string,
@@ -223,4 +226,3 @@ export class PayrollController {
     );
   }
 }
-

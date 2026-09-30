@@ -17,7 +17,8 @@ export class PreviewPayrollDto {
   year: string;
 
   @ApiProperty({
-    description: 'Optional array of employee IDs. Leave empty for all employees.',
+    description:
+      'Optional array of employee IDs. Leave empty for all employees.',
     example: [],
     required: false,
   })

@@ -182,7 +182,15 @@ export class PiRegisterExportService {
 
     const endDate = endStr
       ? new Date(endStr)
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      : new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
 
     const where: any = {
       invoiceDate: {
@@ -193,7 +201,8 @@ export class PiRegisterExportService {
 
     if (supplierId) where.supplierId = supplierId;
     if (status && status !== 'ALL') where.status = status;
-    if (paymentStatus && paymentStatus !== 'ALL') where.paymentStatus = paymentStatus;
+    if (paymentStatus && paymentStatus !== 'ALL')
+      where.paymentStatus = paymentStatus;
     if (invoiceType && invoiceType !== 'ALL') where.invoiceType = invoiceType;
 
     if (brandId) {
@@ -216,8 +225,14 @@ export class PiRegisterExportService {
               OR: [
                 { description: { contains: search, mode: 'insensitive' } },
                 { item: { sku: { contains: search, mode: 'insensitive' } } },
-                { item: { description: { contains: search, mode: 'insensitive' } } },
-                { item: { barCode: { contains: search, mode: 'insensitive' } } },
+                {
+                  item: {
+                    description: { contains: search, mode: 'insensitive' },
+                  },
+                },
+                {
+                  item: { barCode: { contains: search, mode: 'insensitive' } },
+                },
               ],
             },
           },
@@ -259,8 +274,13 @@ export class PiRegisterExportService {
     for (const inv of invoices) {
       const supplierName = inv.supplier?.name || 'Unknown Supplier';
       const supplierLocation =
-        inv.supplier?.city || inv.supplier?.address || inv.supplier?.code || 'Location N/A';
-      const invDateStr = inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().slice(0, 10) : '';
+        inv.supplier?.city ||
+        inv.supplier?.address ||
+        inv.supplier?.code ||
+        'Location N/A';
+      const invDateStr = inv.invoiceDate
+        ? new Date(inv.invoiceDate).toISOString().slice(0, 10)
+        : '';
       const advRate = Number(inv.advanceTaxRate || 0.5);
 
       // Collect distinct brands for this PI document
@@ -271,7 +291,9 @@ export class PiRegisterExportService {
         }
       }
       const brandsDisplay =
-        brandNamesSet.size > 0 ? Array.from(brandNamesSet).join(' | ') : 'UNASSIGNED BRAND';
+        brandNamesSet.size > 0
+          ? Array.from(brandNamesSet).join(' | ')
+          : 'UNASSIGNED BRAND';
 
       const docGroup: PiRegisterDocumentGroup = {
         invoiceId: inv.id,
@@ -298,12 +320,17 @@ export class PiRegisterExportService {
         const itemObj = itemRow.item;
         const divName = (itemObj?.division?.name || 'GENERAL').toUpperCase();
         const catName = (itemObj?.category?.name || 'GENERAL').toUpperCase();
-        const subCatName = (itemObj?.subCategory?.name || 'GENERAL').toUpperCase();
-        const genderName = (itemObj?.gender?.name || 'UNASSIGNED').toUpperCase();
+        const subCatName = (
+          itemObj?.subCategory?.name || 'GENERAL'
+        ).toUpperCase();
+        const genderName = (
+          itemObj?.gender?.name || 'UNASSIGNED'
+        ).toUpperCase();
         const silName = (itemObj?.silhouette?.name || 'GENERAL').toUpperCase();
 
         const sku = itemObj?.sku || itemObj?.itemId || 'N/A';
-        const description = itemObj?.description || itemRow.description || 'N/A';
+        const description =
+          itemObj?.description || itemRow.description || 'N/A';
         const barCode = itemObj?.barCode || 'N/A';
         const colorName = (itemObj?.color?.name || 'N/A').toUpperCase();
         const sizeName = (itemObj?.size?.name || 'N/A').toUpperCase();
@@ -311,16 +338,20 @@ export class PiRegisterExportService {
         const qty = Number(itemRow.quantity) || 0;
         const unitCost = Number(itemRow.unitPrice) || 0;
         const discRate = Number(itemRow.discountRate) || 0;
-        const discAmt = Number(itemRow.discountAmount) || (qty * unitCost * discRate) / 100;
+        const discAmt =
+          Number(itemRow.discountAmount) || (qty * unitCost * discRate) / 100;
         const valExclTax = qty * unitCost - discAmt;
         const taxRate = Number(itemRow.taxRate) || 0;
-        const salesTax = Number(itemRow.taxAmount) || (valExclTax * taxRate) / 100;
+        const salesTax =
+          Number(itemRow.taxAmount) || (valExclTax * taxRate) / 100;
         const valInclTax = valExclTax + salesTax;
         const advTax = (valInclTax * advRate) / 100;
         const lineTotal = Number(itemRow.lineTotal) || valInclTax + advTax;
 
         // Division Level
-        let divGroup = docGroup.divisions.find((d) => d.divisionName === divName);
+        let divGroup = docGroup.divisions.find(
+          (d) => d.divisionName === divName,
+        );
         if (!divGroup) {
           divGroup = {
             divisionName: divName,
@@ -336,7 +367,9 @@ export class PiRegisterExportService {
         }
 
         // Category Level
-        let catGroup = divGroup.categories.find((c) => c.categoryName === catName);
+        let catGroup = divGroup.categories.find(
+          (c) => c.categoryName === catName,
+        );
         if (!catGroup) {
           catGroup = {
             categoryName: catName,
@@ -353,7 +386,9 @@ export class PiRegisterExportService {
         }
 
         // Gender Level
-        let genGroup = catGroup.genders.find((g) => g.genderName === genderName);
+        let genGroup = catGroup.genders.find(
+          (g) => g.genderName === genderName,
+        );
         if (!genGroup) {
           genGroup = {
             genderName,
@@ -369,7 +404,9 @@ export class PiRegisterExportService {
         }
 
         // Silhouette Level
-        let silGroup = genGroup.silhouettes.find((s) => s.silhouetteName === silName);
+        let silGroup = genGroup.silhouettes.find(
+          (s) => s.silhouetteName === silName,
+        );
         if (!silGroup) {
           silGroup = {
             silhouetteName: silName,
@@ -507,7 +544,9 @@ export class PiRegisterExportService {
     };
   }
 
-  async queueExport(opts: QueuePiRegisterExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueuePiRegisterExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -550,15 +589,20 @@ export class PiRegisterExportService {
       },
     );
 
-    this.logger.log(`[PiRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[PiRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -578,7 +622,9 @@ export class PiRegisterExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -587,7 +633,10 @@ export class PiRegisterExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -600,8 +649,16 @@ export class PiRegisterExportService {
     const stream = fs.createReadStream(filePath);
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

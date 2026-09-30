@@ -16,7 +16,7 @@ import {
 export class SegmentService {
   constructor(
     private prisma: PrismaService,
-        private prismaMaster: PrismaMasterService,
+    private prismaMaster: PrismaMasterService,
 
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private activityLogs: ActivityLogsService,
@@ -31,7 +31,7 @@ export class SegmentService {
 
     const segments = await this.prisma.segment.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -61,9 +61,7 @@ export class SegmentService {
 
   async getById(id: string) {
     const segment = await this.prisma.segment.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!segment) return { status: false, message: 'Segment not found' };
 
@@ -93,14 +91,14 @@ export class SegmentService {
       runInBackground(
         'Created segments (${result.count})',
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'segments',
-        entity: 'Segment',
-        description: `Created segments (${result.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      }),
+          userId: createdById,
+          action: 'create',
+          module: 'segments',
+          entity: 'Segment',
+          description: `Created segments (${result.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
         this.cacheManager.del('segments_all'),
       );
       return {
@@ -120,9 +118,7 @@ export class SegmentService {
   ) {
     try {
       const existing = await this.prisma.segment.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Segment not found' };
 
@@ -134,18 +130,18 @@ export class SegmentService {
       runInBackground(
         'Updated segment ${segment.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'segments',
-        entity: 'Segment',
-        entityId: id,
-        description: `Updated segment ${segment.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'segments',
+          entity: 'Segment',
+          entityId: id,
+          description: `Updated segment ${segment.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('segments_all'),
       );
       return {
@@ -176,16 +172,16 @@ export class SegmentService {
       runInBackground(
         'Bulk updated segments (${updated.length})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'segments',
-        entity: 'Segment',
-        description: `Bulk updated segments (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'segments',
+          entity: 'Segment',
+          description: `Bulk updated segments (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('segments_all'),
       );
       return {
@@ -205,21 +201,21 @@ export class SegmentService {
     try {
       const result = await this.prisma.segment.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk deleted segments (${result.count})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'segments',
-        entity: 'Segment',
-        description: `Bulk deleted segments (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'segments',
+          entity: 'Segment',
+          description: `Bulk deleted segments (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('segments_all'),
       );
       return {
@@ -238,28 +234,27 @@ export class SegmentService {
   ) {
     try {
       const existing = await this.prisma.segment.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.segment.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.segment.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Deleted segment ${existing?.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'segments',
-        entity: 'Segment',
-        entityId: id,
-        description: `Deleted segment ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'segments',
+          entity: 'Segment',
+          entityId: id,
+          description: `Deleted segment ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('segments_all'),
       );
       return {

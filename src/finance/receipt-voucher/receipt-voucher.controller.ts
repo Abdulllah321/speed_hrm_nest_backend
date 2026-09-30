@@ -24,7 +24,7 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 @Controller('api/finance/receipt-vouchers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ReceiptVoucherController {
-  constructor(private readonly receiptVoucherService: ReceiptVoucherService,) {}
+  constructor(private readonly receiptVoucherService: ReceiptVoucherService) {}
 
   @Post()
   @Permissions('erp.finance.receipt-voucher.create')
@@ -51,12 +51,26 @@ export class ReceiptVoucherController {
   ) {
     const pageNum = page ? parseInt(page, 10) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : undefined;
-    return this.receiptVoucherService.findAll({ type, status, fromDate, toDate, accountId, page: pageNum, limit: limitNum, search, sortBy, sortOrder });
+    return this.receiptVoucherService.findAll({
+      type,
+      status,
+      fromDate,
+      toDate,
+      accountId,
+      page: pageNum,
+      limit: limitNum,
+      search,
+      sortBy,
+      sortOrder,
+    });
   }
 
   @Get('missing-tag-accounts')
   @Permissions('erp.finance.receipt-voucher.read')
-  @ApiOperation({ summary: 'Get receipt vouchers where tagAccount (sub-ledger) is missing/unattached' })
+  @ApiOperation({
+    summary:
+      'Get receipt vouchers where tagAccount (sub-ledger) is missing/unattached',
+  })
   @ApiQuery({ name: 'type', required: false, enum: ['bank', 'cash'] })
   findMissingTagAccounts(@Query('type') type?: string) {
     return this.receiptVoucherService.findMissingTagAccounts(type);
@@ -71,7 +85,9 @@ export class ReceiptVoucherController {
 
   @Get('pending-invoices/:customerId')
   @Permissions('erp.finance.receipt-voucher.read')
-  @ApiOperation({ summary: 'Get pending/partial sales invoices for a customer' })
+  @ApiOperation({
+    summary: 'Get pending/partial sales invoices for a customer',
+  })
   getPendingInvoicesByCustomer(@Param('customerId') customerId: string) {
     return this.receiptVoucherService.getPendingInvoicesByCustomer(customerId);
   }
@@ -98,7 +114,12 @@ export class ReceiptVoucherController {
     @Body() updateStatusDto: UpdateStatusDto,
     @Req() req: any,
   ) {
-    return this.receiptVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
+    return this.receiptVoucherService.updateStatus(
+      id,
+      updateStatusDto.status,
+      updateStatusDto.remarks,
+      { userId: req.user?.id },
+    );
   }
 
   @Patch(':id/unapprove')
@@ -109,14 +130,18 @@ export class ReceiptVoucherController {
     @Body() body: { remarks?: string },
     @Req() req: any,
   ) {
-    return this.receiptVoucherService.unapprove(id, body?.remarks, { userId: req.user?.id });
+    return this.receiptVoucherService.unapprove(id, body?.remarks, {
+      userId: req.user?.id,
+    });
   }
 
   @Patch(':id/print')
   @Permissions('erp.finance.receipt-voucher.read')
   @ApiOperation({ summary: 'Mark receipt voucher as printed' })
   markAsPrinted(@Param('id') id: string, @Req() req: any) {
-    return this.receiptVoucherService.markAsPrinted(id, { userId: req.user?.id });
+    return this.receiptVoucherService.markAsPrinted(id, {
+      userId: req.user?.id,
+    });
   }
 
   @Delete(':id')

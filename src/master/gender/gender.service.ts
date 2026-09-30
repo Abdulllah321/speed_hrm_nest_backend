@@ -30,7 +30,7 @@ export class GenderService {
 
     const genders = await this.prisma.gender.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -60,9 +60,7 @@ export class GenderService {
 
   async getGenderById(id: string) {
     const gender = await this.prisma.gender.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!gender) return { status: false, message: 'Gender not found' };
 
@@ -92,14 +90,14 @@ export class GenderService {
       runInBackground(
         'Created genders (${genders.count})',
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'genders',
-        entity: 'Gender',
-        description: `Created genders (${genders.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      }),
+          userId: createdById,
+          action: 'create',
+          module: 'genders',
+          entity: 'Gender',
+          description: `Created genders (${genders.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
         this.cacheManager.del('genders_all'),
       );
       return {
@@ -119,9 +117,7 @@ export class GenderService {
   ) {
     try {
       const existing = await this.prisma.gender.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const gender = await this.prisma.gender.update({
         where: { id },
@@ -131,18 +127,18 @@ export class GenderService {
       runInBackground(
         'Updated gender ${gender.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'genders',
-        entity: 'Gender',
-        entityId: id,
-        description: `Updated gender ${gender.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'genders',
+          entity: 'Gender',
+          entityId: id,
+          description: `Updated gender ${gender.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('genders_all'),
       );
       return {
@@ -174,16 +170,16 @@ export class GenderService {
       runInBackground(
         'Bulk updated genders (${updated.length})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'genders',
-        entity: 'Gender',
-        description: `Bulk updated genders (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'genders',
+          entity: 'Gender',
+          description: `Bulk updated genders (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('genders_all'),
       );
       return {
@@ -203,21 +199,21 @@ export class GenderService {
     try {
       const result = await this.prisma.gender.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk deleted genders (${result.count})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'genders',
-        entity: 'Gender',
-        description: `Bulk deleted genders (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'genders',
+          entity: 'Gender',
+          description: `Bulk deleted genders (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('genders_all'),
       );
       return {
@@ -236,28 +232,27 @@ export class GenderService {
   ) {
     try {
       const existing = await this.prisma.gender.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.gender.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.gender.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Deleted gender ${existing?.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'genders',
-        entity: 'Gender',
-        entityId: id,
-        description: `Deleted gender ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'genders',
+          entity: 'Gender',
+          entityId: id,
+          description: `Deleted gender ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('genders_all'),
       );
       return {

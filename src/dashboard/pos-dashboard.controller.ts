@@ -15,7 +15,7 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PosDashboardController {
-  constructor(private readonly posDashboardService: PosDashboardService,) { }
+  constructor(private readonly posDashboardService: PosDashboardService) {}
 
   private extractLocationFromCookie(req: any): string | undefined {
     if (req.cookies?.posTerminalToken) {
@@ -32,7 +32,8 @@ export class PosDashboardController {
   @Get('stats')
   @ApiOperation({ summary: 'Get POS dashboard stats for the active location' })
   async getStats(@Req() req: any) {
-    const locationId = req.user?.locationId || this.extractLocationFromCookie(req);
+    const locationId =
+      req.user?.locationId || this.extractLocationFromCookie(req);
     return this.posDashboardService.getDashboardStats(locationId);
   }
 }

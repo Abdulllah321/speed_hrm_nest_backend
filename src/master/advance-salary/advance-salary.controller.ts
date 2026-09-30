@@ -32,7 +32,7 @@ import {
 @ApiTags('Advance Salary')
 @Controller('api')
 export class AdvanceSalaryController {
-  constructor(private service: AdvanceSalaryService,) {}
+  constructor(private service: AdvanceSalaryService) {}
 
   @Get('advance-salaries')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -54,14 +54,17 @@ export class AdvanceSalaryController {
     @Query('approvalStatus') approvalStatus?: string,
     @Query('status') status?: string,
   ) {
-    return this.service.list({
-      employeeId,
-      deductionMonth,
-      deductionYear,
-      deductionMonthYear,
-      approvalStatus,
-      status,
-    }, req.user);
+    return this.service.list(
+      {
+        employeeId,
+        deductionMonth,
+        deductionYear,
+        deductionMonthYear,
+        approvalStatus,
+        status,
+      },
+      req.user,
+    );
   }
 
   @Get('advance-salaries/:id')
@@ -90,7 +93,9 @@ export class AdvanceSalaryController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('hr.advance-salary.create')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Bulk create advance salary requests (auto-approved)' })
+  @ApiOperation({
+    summary: 'Bulk create advance salary requests (auto-approved)',
+  })
   async bulkCreate(@Body() body: BulkCreateAdvanceSalaryDto, @Req() req) {
     return this.service.bulkCreate(body, {
       userId: req.user?.userId,

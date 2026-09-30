@@ -22,7 +22,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/rfq')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class RfqController {
-  constructor(private readonly service: RfqService,) {}
+  constructor(private readonly service: RfqService) {}
 
   @Post()
   @Permissions('erp.procurement.rfq.create')
@@ -38,7 +38,11 @@ export class RfqController {
   @Get()
   @Permissions('erp.procurement.rfq.read')
   @ApiOperation({ summary: 'List all RFQs' })
-  @ApiQuery({ name: 'status', required: false, description: 'Filter by status' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    description: 'Filter by status',
+  })
   findAll(@Query('status') status?: string) {
     return this.service.findAll(status);
   }
@@ -53,7 +57,11 @@ export class RfqController {
   @Post(':id/vendors')
   @Permissions('erp.procurement.rfq.add-vendors')
   @ApiOperation({ summary: 'Add vendors to DRAFT RFQ' })
-  addVendors(@Param('id') id: string, @Body() addVendorsDto: AddVendorsDto, @Req() req: any) {
+  addVendors(
+    @Param('id') id: string,
+    @Body() addVendorsDto: AddVendorsDto,
+    @Req() req: any,
+  ) {
     return this.service.addVendors(id, addVendorsDto, {
       userId: req.user?.id,
       ipAddress: req.ip,
@@ -75,7 +83,11 @@ export class RfqController {
   @Patch(':id')
   @Permissions('erp.procurement.rfq.update')
   @ApiOperation({ summary: 'Update RFQ' })
-  update(@Param('id') id: string, @Body() updateDto: UpdateRfqDto, @Req() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateRfqDto,
+    @Req() req: any,
+  ) {
     return this.service.update(id, updateDto, {
       userId: req.user?.id,
       ipAddress: req.ip,

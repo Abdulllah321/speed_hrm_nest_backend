@@ -33,7 +33,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class LeaveEncashmentController {
-  constructor(private service: LeaveEncashmentService,) {}
+  constructor(private service: LeaveEncashmentService) {}
 
   @Get('leave-encashments')
   @Permissions('hr.leave-encashment.read')
@@ -53,14 +53,17 @@ export class LeaveEncashmentController {
     @Query('approvalStatus') approvalStatus?: string,
     @Query('status') status?: string,
   ) {
-    return this.service.list({
-      employeeId,
-      paymentMonth,
-      paymentYear,
-      paymentMonthYear,
-      approvalStatus,
-      status,
-    }, req.user);
+    return this.service.list(
+      {
+        employeeId,
+        paymentMonth,
+        paymentYear,
+        paymentMonthYear,
+        approvalStatus,
+        status,
+      },
+      req.user,
+    );
   }
 
   @Get('leave-encashments/:id')

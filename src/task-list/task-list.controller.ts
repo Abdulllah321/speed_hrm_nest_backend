@@ -1,17 +1,31 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { TaskListService } from './task-list.service';
-import { CreateTaskListDto, UpdateTaskListDto, ReorderTaskListDto } from './dto/task-list.dto';
+import {
+  CreateTaskListDto,
+  UpdateTaskListDto,
+  ReorderTaskListDto,
+} from './dto/task-list.dto';
 
 @ApiTags('Task Lists')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api')
 export class TaskListController {
-  constructor(private service: TaskListService,) {}
+  constructor(private service: TaskListService) {}
 
   @Get('task-projects/:projectId/lists')
   @Permissions('task.read')
@@ -23,7 +37,11 @@ export class TaskListController {
   @Post('task-projects/:projectId/lists')
   @Permissions('task.create')
   @ApiOperation({ summary: 'Create a task list in a project' })
-  create(@Param('projectId') projectId: string, @Body() body: CreateTaskListDto, @Req() req) {
+  create(
+    @Param('projectId') projectId: string,
+    @Body() body: CreateTaskListDto,
+    @Req() req,
+  ) {
     return this.service.create(projectId, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,

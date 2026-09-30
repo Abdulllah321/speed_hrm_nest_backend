@@ -16,15 +16,15 @@ export class QualificationService {
   async list() {
     const items = await this.prisma.qualification.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.qualification.findFirst({ where: { id,
-        isDeleted: false
-    } });
+    const item = await this.prisma.qualification.findFirst({
+      where: { id, isDeleted: false },
+    });
     if (!item) return { status: false, message: 'Qualification not found' };
     return { status: true, data: item };
   }
@@ -41,39 +41,38 @@ export class QualificationService {
           createdById: ctx.userId,
         },
       });
-      
+
       const response = { status: true, data: created };
       runInBackground(
         'Create Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'qualifications',
-        entity: 'Qualification',
-        entityId: created.id,
-        description: `Created qualification ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'create',
+          module: 'qualifications',
+          entity: 'Qualification',
+          entityId: created.id,
+          description: `Created qualification ${created.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Created successfully' };
     } catch (error: any) {
-      
       runInBackground(
         'Failed to create qualification',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'qualifications',
-        entity: 'Qualification',
-        description: 'Failed to create qualification',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
+          action: 'create',
+          module: 'qualifications',
+          entity: 'Qualification',
+          description: 'Failed to create qualification',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
         }),
       );
 
@@ -106,33 +105,32 @@ export class QualificationService {
         'Bulk Create Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'qualifications',
-        entity: 'Qualification',
-        description: `Bulk created qualifications (${result.count})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'create',
+          module: 'qualifications',
+          entity: 'Qualification',
+          description: `Bulk created qualifications (${result.count})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Created successfully' };
     } catch (error: any) {
-      
       runInBackground(
         'Failed bulk create qualifications',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'qualifications',
-        entity: 'Qualification',
-        description: 'Failed bulk create qualifications',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'create',
+          module: 'qualifications',
+          entity: 'Qualification',
+          description: 'Failed bulk create qualifications',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to create qualifications' };
     }
@@ -145,9 +143,7 @@ export class QualificationService {
   ) {
     try {
       const existing = await this.prisma.qualification.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) {
         return { status: false, message: 'Qualification not found' };
@@ -165,36 +161,35 @@ export class QualificationService {
         'Update Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'qualifications',
-        entity: 'Qualification',
-        entityId: id,
-        description: `Updated qualification ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'update',
+          module: 'qualifications',
+          entity: 'Qualification',
+          entityId: id,
+          description: `Updated qualification ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
-      
       runInBackground(
         'Failed to update qualification',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'qualifications',
-        entity: 'Qualification',
-        entityId: id,
-        description: 'Failed to update qualification',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'update',
+          module: 'qualifications',
+          entity: 'Qualification',
+          entityId: id,
+          description: 'Failed to update qualification',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
 
       if (error?.code === 'P2002') {
@@ -213,54 +208,56 @@ export class QualificationService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'qualification', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'qualification',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.qualification.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) {
         return { status: false, message: 'Qualification not found' };
       }
 
-      const removed = await this.prisma.qualification.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const removed = await this.prisma.qualification.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'qualifications',
-        entity: 'Qualification',
-        entityId: id,
-        description: `Deleted qualification ${existing.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'qualifications',
+          entity: 'Qualification',
+          entityId: id,
+          description: `Deleted qualification ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
-      
       runInBackground(
         'Failed to delete qualification',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'qualifications',
-        entity: 'Qualification',
-        entityId: id,
-        description: 'Failed to delete qualification',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'delete',
+          module: 'qualifications',
+          entity: 'Qualification',
+          entityId: id,
+          description: 'Failed to delete qualification',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to delete qualification' };
     }
@@ -274,32 +271,34 @@ export class QualificationService {
       return { status: false, message: 'No qualifications to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'qualification', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'qualification',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const existing = await this.prisma.qualification.findMany({
-        where: { id: { in: ids },
-            isDeleted: false
-        },
+        where: { id: { in: ids }, isDeleted: false },
       });
       const result = await this.prisma.qualification.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk Delete Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'qualifications',
-        entity: 'Qualification',
-        description: `Bulk deleted qualifications (${result.count})`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'qualifications',
+          entity: 'Qualification',
+          description: `Bulk deleted qualifications (${result.count})`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Qualifications deleted', data: result };
     } catch (error: any) {
@@ -307,16 +306,16 @@ export class QualificationService {
         'Failed to bulk delete qualifications (Failure Log)',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'qualifications',
-        entity: 'Qualification',
-        description: 'Failed to bulk delete qualifications',
-        errorMessage: error?.message,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'delete',
+          module: 'qualifications',
+          entity: 'Qualification',
+          description: 'Failed to bulk delete qualifications',
+          errorMessage: error?.message,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to delete qualifications' };
     }

@@ -12,7 +12,6 @@ import { MovementType } from '@prisma/client';
 import { EncryptionService } from '../../common/utils/encryption.service';
 
 @Injectable()
-
 export class EzcommerceOrderService {
   private readonly logger = new Logger(EzcommerceOrderService.name);
 
@@ -22,7 +21,6 @@ export class EzcommerceOrderService {
     private readonly encryptionService: EncryptionService,
     private readonly posSalesService: PosSalesService,
   ) {}
-
 
   async createConfirmedOrder(dto: EzcommerceConfirmOrderDto): Promise<any> {
     const activeStore = PrismaService.asyncLocalStorage.getStore();
@@ -136,17 +134,13 @@ export class EzcommerceOrderService {
       }
     }
 
-
     // 2. Find or Create Customer
     const phone = dto.customer.phone.trim();
     const email = dto.customer.email?.trim();
 
     let customer = await this.prisma.customer.findFirst({
       where: {
-        OR: [
-          { contactNo: phone },
-          ...(email ? [{ email }] : []),
-        ],
+        OR: [{ contactNo: phone }, ...(email ? [{ email }] : [])],
       },
     });
 
@@ -186,11 +180,7 @@ export class EzcommerceOrderService {
       const barcode = itemDto.BarCode.trim();
       const itemRecord = await this.prisma.item.findFirst({
         where: {
-          OR: [
-            { barCode: barcode },
-            { sku: barcode },
-            { itemId: barcode },
-          ],
+          OR: [{ barCode: barcode }, { sku: barcode }, { itemId: barcode }],
           isActive: true,
         },
         select: { id: true, unitPrice: true, taxRate1: true, unitCost: true },
@@ -203,7 +193,9 @@ export class EzcommerceOrderService {
       }
 
       const qty = Number(itemDto.quantity);
-      const retailPrice = Number(itemDto.unitPrice || itemRecord.unitPrice || 0);
+      const retailPrice = Number(
+        itemDto.unitPrice || itemRecord.unitPrice || 0,
+      );
       const taxRate = Number(itemRecord.taxRate1 || 18);
       const rawDiscount = Number(itemDto.discountAmount || 0);
 
@@ -252,7 +244,9 @@ export class EzcommerceOrderService {
     });
 
     if (existingOrder) {
-      this.logger.warn(`Order with reference ${dto.orderNo} has already been synced`);
+      this.logger.warn(
+        `Order with reference ${dto.orderNo} has already been synced`,
+      );
       return {
         status: true,
         message: 'Order already synced',
@@ -272,7 +266,8 @@ export class EzcommerceOrderService {
     // 4. Resolve Tender Breakdown (COD vs Card/Online)
     const rawMethod = (dto.paymentMethod || 'COD').trim();
     const upperMethod = rawMethod.toUpperCase();
-    const isCodOrCash = upperMethod.includes('COD') || upperMethod.includes('CASH');
+    const isCodOrCash =
+      upperMethod.includes('COD') || upperMethod.includes('CASH');
 
     const tenderType = isCodOrCash ? 'COD' : 'ONLINE';
     const cashAmount = isCodOrCash ? grandTotal : 0;
@@ -315,8 +310,6 @@ export class EzcommerceOrderService {
       },
     });
 
-
-
     // 5. Deduct Stock & Record Stock Ledger Movements
     for (const item of orderItemsToCreate) {
       // Find inventory item record
@@ -324,7 +317,9 @@ export class EzcommerceOrderService {
         where: {
           itemId: item.itemId,
           ...(locationId ? { locationId } : {}),
-          ...(warehouseId && !locationId ? { warehouseId, locationId: null } : {}),
+          ...(warehouseId && !locationId
+            ? { warehouseId, locationId: null }
+            : {}),
         },
       });
 
@@ -348,8 +343,6 @@ export class EzcommerceOrderService {
           referenceId: salesOrder.id,
         },
       });
-
-
     }
 
     this.logger.log(

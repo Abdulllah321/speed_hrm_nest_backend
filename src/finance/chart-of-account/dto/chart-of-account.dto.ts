@@ -27,7 +27,11 @@ export class CreateChartOfAccountDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ enum: AccountType, enumName: 'AccountType', example: AccountType.ASSET })
+  @ApiProperty({
+    enum: AccountType,
+    enumName: 'AccountType',
+    example: AccountType.ASSET,
+  })
   @IsEnum(AccountType)
   @IsNotEmpty()
   type: AccountType;

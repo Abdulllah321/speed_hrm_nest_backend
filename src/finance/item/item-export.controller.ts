@@ -28,7 +28,10 @@ export class ItemExportController {
    */
   @Post()
   @Permissions('erp.item.read')
-  @ApiOperation({ summary: 'Queue an items export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue an items export job (returns immediately, notifies when done)',
+  })
   async queueExport(
     @Req() req: any,
     @Query('search') search?: string,
@@ -39,7 +42,8 @@ export class ItemExportController {
     @Query('silhouetteIds') silhouetteIds?: string,
     @Query('genderIds') genderIds?: string,
   ) {
-    const parseIds = (v?: string) => (v ? v.split(',').filter(Boolean) : undefined);
+    const parseIds = (v?: string) =>
+      v ? v.split(',').filter(Boolean) : undefined;
 
     const result = await this.exportService.queueExport({
       userId: req.user?.userId,
@@ -54,7 +58,8 @@ export class ItemExportController {
 
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -78,7 +83,10 @@ export class ItemExportController {
    */
   @Get(':jobId/download')
   @Permissions('erp.item.read')
-  @ApiOperation({ summary: 'Download a completed export file (streams from disk, auto-deletes after)' })
+  @ApiOperation({
+    summary:
+      'Download a completed export file (streams from disk, auto-deletes after)',
+  })
   async download(@Param('jobId') jobId: string, @Res() res: any) {
     try {
       await this.exportService.streamExportFile(jobId, res);
@@ -86,7 +94,10 @@ export class ItemExportController {
       // When using @Res(), NestJS exception filters don't run — handle manually
       // so the socket is always closed cleanly (prevents "Failed to fetch" on client)
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

@@ -23,11 +23,11 @@ export class UpdatePosDto {
   status?: string;
 
   @ApiProperty({
-    description: 'Whether this is the parent (master) terminal for the outlet. Setting true will demote the current parent.',
+    description:
+      'Whether this is the parent (master) terminal for the outlet. Setting true will demote the current parent.',
     required: false,
   })
   @IsBoolean()
   @IsOptional()
   isParent?: boolean;
 }
-

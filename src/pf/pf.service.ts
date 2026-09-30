@@ -464,7 +464,9 @@ export class PFService {
       return {
         status: false,
         message:
-          error instanceof Error ? error.message : 'Failed to approve PF withdrawal',
+          error instanceof Error
+            ? error.message
+            : 'Failed to approve PF withdrawal',
       };
     }
   }

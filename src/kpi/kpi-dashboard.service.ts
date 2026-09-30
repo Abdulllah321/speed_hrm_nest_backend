@@ -32,7 +32,9 @@ export class KpiDashboardService {
               departmentId: true,
             },
           },
-          kpiTemplate: { select: { id: true, name: true, category: true, weight: true } },
+          kpiTemplate: {
+            select: { id: true, name: true, category: true, weight: true },
+          },
         },
       });
 
@@ -41,7 +43,8 @@ export class KpiDashboardService {
       const scoredReviews = reviews.filter((r) => r.score != null);
       const avgScore =
         scoredReviews.length > 0
-          ? scoredReviews.reduce((s, r) => s + Number(r.score), 0) / scoredReviews.length
+          ? scoredReviews.reduce((s, r) => s + Number(r.score), 0) /
+            scoredReviews.length
           : null;
 
       const byStatus = reviews.reduce<Record<string, number>>((acc, r) => {
@@ -64,47 +67,79 @@ export class KpiDashboardService {
       }
 
       // ── Department breakdown ───────────────────────────────────────────────
-      const deptIds = [...new Set(reviews.map((r) => r.employee?.departmentId).filter(Boolean))] as string[];
+      const deptIds = [
+        ...new Set(
+          reviews.map((r) => r.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
       const departments = await this.prisma.department.findMany({
         where: { id: { in: deptIds } },
         select: { id: true, name: true },
       });
       const deptMap = new Map(departments.map((d) => [d.id, d.name]));
 
-      const deptScores: Record<string, { name: string; scores: number[]; count: number }> = {};
+      const deptScores: Record<
+        string,
+        { name: string; scores: number[]; count: number }
+      > = {};
       for (const r of reviews) {
         const deptId = r.employee?.departmentId;
         if (!deptId) continue;
         if (!deptScores[deptId]) {
-          deptScores[deptId] = { name: deptMap.get(deptId) || 'Unknown', scores: [], count: 0 };
+          deptScores[deptId] = {
+            name: deptMap.get(deptId) || 'Unknown',
+            scores: [],
+            count: 0,
+          };
         }
         deptScores[deptId].count++;
         if (r.score != null) deptScores[deptId].scores.push(Number(r.score));
       }
 
-      const departmentBreakdown = Object.values(deptScores).map((d) => ({
-        department: d.name,
-        avgScore: d.scores.length > 0 ? Math.round((d.scores.reduce((a, b) => a + b, 0) / d.scores.length) * 10) / 10 : null,
-        reviewCount: d.count,
-      })).sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0));
+      const departmentBreakdown = Object.values(deptScores)
+        .map((d) => ({
+          department: d.name,
+          avgScore:
+            d.scores.length > 0
+              ? Math.round(
+                  (d.scores.reduce((a, b) => a + b, 0) / d.scores.length) * 10,
+                ) / 10
+              : null,
+          reviewCount: d.count,
+        }))
+        .sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0));
 
       // ── Per-employee weighted scores → top/bottom performers ──────────────
-      const empScoreMap: Record<string, { name: string; scores: number[]; weights: number[] }> = {};
+      const empScoreMap: Record<
+        string,
+        { name: string; scores: number[]; weights: number[] }
+      > = {};
       for (const r of scoredReviews) {
         const empId = r.employeeId;
         if (!empScoreMap[empId]) {
-          empScoreMap[empId] = { name: r.employee?.employeeName || 'Unknown', scores: [], weights: [] };
+          empScoreMap[empId] = {
+            name: r.employee?.employeeName || 'Unknown',
+            scores: [],
+            weights: [],
+          };
         }
         const w = r.kpiTemplate ? Number(r.kpiTemplate.weight) : 1;
         empScoreMap[empId].scores.push(Number(r.score) * w);
         empScoreMap[empId].weights.push(w);
       }
 
-      const empRanked = Object.entries(empScoreMap).map(([id, d]) => {
-        const totalW = d.weights.reduce((a, b) => a + b, 0);
-        const weighted = totalW > 0 ? d.scores.reduce((a, b) => a + b, 0) / totalW : 0;
-        return { employeeId: id, name: d.name, score: Math.round(weighted * 10) / 10 };
-      }).sort((a, b) => b.score - a.score);
+      const empRanked = Object.entries(empScoreMap)
+        .map(([id, d]) => {
+          const totalW = d.weights.reduce((a, b) => a + b, 0);
+          const weighted =
+            totalW > 0 ? d.scores.reduce((a, b) => a + b, 0) / totalW : 0;
+          return {
+            employeeId: id,
+            name: d.name,
+            score: Math.round(weighted * 10) / 10,
+          };
+        })
+        .sort((a, b) => b.score - a.score);
 
       const topPerformers = empRanked.slice(0, 5);
       const bottomPerformers = empRanked.slice(-5).reverse();
@@ -116,11 +151,16 @@ export class KpiDashboardService {
         if (!catScores[cat]) catScores[cat] = [];
         catScores[cat].push(Number(r.score));
       }
-      const categoryBreakdown = Object.entries(catScores).map(([category, scores]) => ({
-        category,
-        avgScore: Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10,
-        count: scores.length,
-      }));
+      const categoryBreakdown = Object.entries(catScores).map(
+        ([category, scores]) => ({
+          category,
+          avgScore:
+            Math.round(
+              (scores.reduce((a, b) => a + b, 0) / scores.length) * 10,
+            ) / 10,
+          count: scores.length,
+        }),
+      );
 
       // ── Live org-wide metric averages (sample up to 20 active employees) ──
       const activeEmployees = await this.prisma.employee.findMany({
@@ -132,7 +172,11 @@ export class KpiDashboardService {
       const metricTotals: Record<string, number[]> = {};
       await Promise.all(
         activeEmployees.map(async (emp) => {
-          const metrics = await this.compute.computeAll(emp.id, period, periodType);
+          const metrics = await this.compute.computeAll(
+            emp.id,
+            period,
+            periodType,
+          );
           for (const [formula, result] of Object.entries(metrics)) {
             if (!metricTotals[formula]) metricTotals[formula] = [];
             metricTotals[formula].push(result.actualValue);
@@ -140,11 +184,16 @@ export class KpiDashboardService {
         }),
       );
 
-      const liveMetricAverages = Object.entries(metricTotals).map(([formula, values]) => ({
-        formula,
-        avgValue: Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10,
-        sampleSize: values.length,
-      }));
+      const liveMetricAverages = Object.entries(metricTotals).map(
+        ([formula, values]) => ({
+          formula,
+          avgValue:
+            Math.round(
+              (values.reduce((a, b) => a + b, 0) / values.length) * 10,
+            ) / 10,
+          sampleSize: values.length,
+        }),
+      );
 
       return {
         status: true,
@@ -168,7 +217,10 @@ export class KpiDashboardService {
     } catch (error) {
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to get KPI dashboard',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to get KPI dashboard',
       };
     }
   }
@@ -182,14 +234,22 @@ export class KpiDashboardService {
         where: { period },
         include: {
           employee: {
-            select: { employeeId: true, employeeName: true, departmentId: true },
+            select: {
+              employeeId: true,
+              employeeName: true,
+              departmentId: true,
+            },
           },
           kpiTemplate: { select: { name: true, category: true, unit: true } },
         },
         orderBy: [{ employeeId: 'asc' }, { createdAt: 'asc' }],
       });
 
-      const deptIds = [...new Set(reviews.map((r) => r.employee?.departmentId).filter(Boolean))] as string[];
+      const deptIds = [
+        ...new Set(
+          reviews.map((r) => r.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
       const departments = await this.prisma.department.findMany({
         where: { id: { in: deptIds } },
         select: { id: true, name: true },
@@ -216,7 +276,8 @@ export class KpiDashboardService {
     } catch (error) {
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to export reviews',
+        message:
+          error instanceof Error ? error.message : 'Failed to export reviews',
       };
     }
   }

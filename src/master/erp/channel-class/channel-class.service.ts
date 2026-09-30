@@ -16,7 +16,7 @@ export class ChannelClassService {
   constructor(
     private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
-private prismaMaster: PrismaMasterService,
+    private prismaMaster: PrismaMasterService,
 
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private activityLogs: ActivityLogsService,
@@ -31,7 +31,7 @@ private prismaMaster: PrismaMasterService,
 
     const channelClasses = await this.prisma.channelClass.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -59,9 +59,7 @@ private prismaMaster: PrismaMasterService,
 
   async getChannelClassById(id: string) {
     const item = await this.prisma.channelClass.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Channel Class not found' };
 
@@ -118,9 +116,7 @@ private prismaMaster: PrismaMasterService,
   ) {
     try {
       const existing = await this.prisma.channelClass.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const result = await this.prisma.channelClass.update({
         where: { id },
@@ -194,14 +190,18 @@ private prismaMaster: PrismaMasterService,
   ) {
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'channelClass', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'channelClass',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const result = await this.prisma.channelClass.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       await this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
@@ -229,18 +229,20 @@ private prismaMaster: PrismaMasterService,
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'channelClass', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'channelClass',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.channelClass.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const result = await this.prisma.channelClass.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

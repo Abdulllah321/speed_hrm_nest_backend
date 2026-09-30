@@ -9,7 +9,7 @@ export class ExitClearanceService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list() {
     const clearances = await this.prisma.exitClearance.findMany({
@@ -53,22 +53,22 @@ export class ExitClearanceService {
     // Fetch department and designation for mapping
     const department = clearance.department
       ? await this.prisma.department.findUnique({
-        where: { id: clearance.department },
-        include: { subDepartments: true },
-      })
+          where: { id: clearance.department },
+          include: { subDepartments: true },
+        })
       : null;
 
     const subDepartment =
       department && clearance.subDepartment
         ? department.subDepartments.find(
-          (sd) => sd.id === clearance.subDepartment,
-        )
+            (sd) => sd.id === clearance.subDepartment,
+          )
         : null;
 
     const designation = clearance.designation
       ? await this.prisma.designation.findUnique({
-        where: { id: clearance.designation },
-      })
+          where: { id: clearance.designation },
+        })
       : null;
 
     const mappedClearance = {
@@ -396,7 +396,10 @@ export class ExitClearanceService {
 
       await this.prisma.exitClearance.delete({ where: { id } });
 
-      const response = { status: true, message: 'Exit clearance deleted successfully' };
+      const response = {
+        status: true,
+        message: 'Exit clearance deleted successfully',
+      };
       runInBackground(
         'Delete Exit Clearance',
         this.activityLogs.log({

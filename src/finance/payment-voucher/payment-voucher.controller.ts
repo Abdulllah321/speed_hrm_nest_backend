@@ -26,12 +26,15 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @Controller('api/finance/payment-vouchers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PaymentVoucherController {
-  constructor(private readonly paymentVoucherService: PaymentVoucherService,) {}
+  constructor(private readonly paymentVoucherService: PaymentVoucherService) {}
 
   @Post()
   @Permissions('erp.finance.payment-voucher.create')
   @ApiOperation({ summary: 'Create a new payment voucher' })
-  @ApiResponse({ status: 201, description: 'Payment voucher created successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Payment voucher created successfully',
+  })
   @ApiResponse({ status: 400, description: 'Bad request - validation failed' })
   create(@Body() createPaymentVoucherDto: CreatePaymentVoucherDto) {
     return this.paymentVoucherService.create(createPaymentVoucherDto);
@@ -41,7 +44,11 @@ export class PaymentVoucherController {
   @Permissions('erp.finance.payment-voucher.read')
   @ApiOperation({ summary: 'Get all payment vouchers with optional filtering' })
   @ApiQuery({ name: 'type', required: false, enum: ['bank', 'cash'] })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'rejected'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['pending', 'approved', 'rejected'],
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
@@ -59,7 +66,18 @@ export class PaymentVoucherController {
   ) {
     const pageNum = page ? parseInt(page, 10) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : undefined;
-    return this.paymentVoucherService.findAll({ type, status, fromDate, toDate, accountId, page: pageNum, limit: limitNum, search, sortBy, sortOrder });
+    return this.paymentVoucherService.findAll({
+      type,
+      status,
+      fromDate,
+      toDate,
+      accountId,
+      page: pageNum,
+      limit: limitNum,
+      search,
+      sortBy,
+      sortOrder,
+    });
   }
 
   @Get('next-pv-number')
@@ -95,10 +113,14 @@ export class PaymentVoucherController {
   @Get('suppliers-with-pending-invoices')
   @Permissions('erp.finance.payment-voucher.read')
   @ApiOperation({ summary: 'Get suppliers with pending invoices' })
-  @ApiResponse({ status: 200, description: 'Suppliers with pending invoices retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Suppliers with pending invoices retrieved successfully',
+  })
   async getSuppliersWithPendingInvoices() {
     try {
-      const result = await this.paymentVoucherService.getSuppliersWithPendingInvoices();
+      const result =
+        await this.paymentVoucherService.getSuppliersWithPendingInvoices();
       console.log('Controller - Suppliers result:', result);
       return result;
     } catch (error) {
@@ -110,7 +132,10 @@ export class PaymentVoucherController {
   @Get('pending-invoices/:supplierId')
   @Permissions('erp.finance.payment-voucher.read')
   @ApiOperation({ summary: 'Get pending invoices for a supplier' })
-  @ApiResponse({ status: 200, description: 'Pending invoices retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pending invoices retrieved successfully',
+  })
   getPendingInvoicesBySupplier(@Param('supplierId') supplierId: string) {
     return this.paymentVoucherService.getPendingInvoicesBySupplier(supplierId);
   }
@@ -124,7 +149,9 @@ export class PaymentVoucherController {
 
   @Get('supplier-summary/:supplierId')
   @Permissions('erp.finance.payment-voucher.read')
-  @ApiOperation({ summary: 'Get AP balance and advance balance for a supplier' })
+  @ApiOperation({
+    summary: 'Get AP balance and advance balance for a supplier',
+  })
   getSupplierSummary(@Param('supplierId') supplierId: string) {
     return this.paymentVoucherService.getSupplierSummary(supplierId);
   }
@@ -139,7 +166,11 @@ export class PaymentVoucherController {
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
   ) {
-    return this.paymentVoucherService.getSupplierLedger(supplierId, fromDate, toDate);
+    return this.paymentVoucherService.getSupplierLedger(
+      supplierId,
+      fromDate,
+      toDate,
+    );
   }
 
   @Get(':id')
@@ -154,7 +185,10 @@ export class PaymentVoucherController {
   @Patch(':id')
   @Permissions('erp.finance.payment-voucher.update')
   @ApiOperation({ summary: 'Update payment voucher' })
-  @ApiResponse({ status: 200, description: 'Payment voucher updated successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment voucher updated successfully',
+  })
   @ApiResponse({ status: 404, description: 'Payment voucher not found' })
   update(
     @Param('id') id: string,
@@ -172,7 +206,12 @@ export class PaymentVoucherController {
     @Body() updateStatusDto: UpdateStatusDto,
     @Req() req: any,
   ) {
-    return this.paymentVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
+    return this.paymentVoucherService.updateStatus(
+      id,
+      updateStatusDto.status,
+      updateStatusDto.remarks,
+      { userId: req.user?.id },
+    );
   }
 
   @Patch(':id/unapprove')
@@ -184,7 +223,9 @@ export class PaymentVoucherController {
     @Body() body: { remarks?: string },
     @Req() req: any,
   ) {
-    return this.paymentVoucherService.unapprove(id, body?.remarks, { userId: req.user?.id });
+    return this.paymentVoucherService.unapprove(id, body?.remarks, {
+      userId: req.user?.id,
+    });
   }
 
   @Patch(':id/cpr')
@@ -207,13 +248,18 @@ export class PaymentVoucherController {
   @Permissions('erp.finance.payment-voucher.read')
   @ApiOperation({ summary: 'Mark payment voucher as printed' })
   markAsPrinted(@Param('id') id: string, @Req() req: any) {
-    return this.paymentVoucherService.markAsPrinted(id, { userId: req.user?.id });
+    return this.paymentVoucherService.markAsPrinted(id, {
+      userId: req.user?.id,
+    });
   }
 
   @Delete(':id')
   @Permissions('erp.finance.payment-voucher.delete')
   @ApiOperation({ summary: 'Delete payment voucher' })
-  @ApiResponse({ status: 200, description: 'Payment voucher deleted successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment voucher deleted successfully',
+  })
   @ApiResponse({ status: 404, description: 'Payment voucher not found' })
   remove(@Param('id') id: string) {
     return this.paymentVoucherService.remove(id);

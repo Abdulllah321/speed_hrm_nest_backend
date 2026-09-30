@@ -5,7 +5,6 @@ import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
-
 @Injectable()
 export class InstituteService {
   constructor(
@@ -17,16 +16,14 @@ export class InstituteService {
   async list() {
     const items = await this.prisma.institute.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
     const item = await this.prisma.institute.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Institute not found' };
     return { status: true, data: item };
@@ -93,9 +90,7 @@ export class InstituteService {
   ) {
     try {
       const existing = await this.prisma.institute.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Institute not found' };
 
@@ -155,20 +150,22 @@ export class InstituteService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'institute', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'institute',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.institute.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Institute not found' };
 
       const removed = await this.prisma.institute.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         `Deleted institute ${existing.name}`,
@@ -186,7 +183,11 @@ export class InstituteService {
         }),
       );
 
-      return { status: true, data: removed, message: 'Institute deleted successfully' };
+      return {
+        status: true,
+        data: removed,
+        message: 'Institute deleted successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to delete institute',
@@ -213,7 +214,7 @@ export class InstituteService {
   ) {
     if (!items?.length)
       return { status: false, message: 'No institutes to create' };
-    
+
     try {
       const result = await this.prisma.institute.createMany({
         data: items.map((i) => ({
@@ -239,7 +240,11 @@ export class InstituteService {
         }),
       );
 
-      return { status: true, data: result, message: 'Institutes created successfully' };
+      return {
+        status: true,
+        data: result,
+        message: 'Institutes created successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to create institutes',
@@ -283,19 +288,27 @@ export class InstituteService {
       }
     }
     runInBackground(
-        `Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}`,
-        this.activityLogs.log({
-          userId: ctx.userId,
-          action: 'seed',
-          module: 'institutes',
-          entity: 'Institute',
-          description: `Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}`,
-          newValues: JSON.stringify({ total: seedItems.length, created, skipped }),
-          ipAddress: ctx.ipAddress,
-          userAgent: ctx.userAgent,
-          status: 'success',
+      `Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}`,
+      this.activityLogs.log({
+        userId: ctx.userId,
+        action: 'seed',
+        module: 'institutes',
+        entity: 'Institute',
+        description: `Seeded institutes: created=${created}, skipped=${skipped}. Total: ${seedItems.length}`,
+        newValues: JSON.stringify({
+          total: seedItems.length,
+          created,
+          skipped,
         }),
-      );
-      return { status: true, message: 'Seeding completed', data: { created, skipped, total: seedItems.length } };
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        status: 'success',
+      }),
+    );
+    return {
+      status: true,
+      message: 'Seeding completed',
+      data: { created, skipped, total: seedItems.length },
+    };
   }
 }

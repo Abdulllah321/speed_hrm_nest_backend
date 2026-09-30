@@ -19,7 +19,7 @@ import { UpdatePosDto } from './dto/update-pos.dto';
 @Controller('api/pos')
 @ApiBearerAuth()
 export class PosController {
-  constructor(private readonly posService: PosService,) {}
+  constructor(private readonly posService: PosService) {}
 
   @Get()
   @ApiOperation({ summary: 'List all POS' })
@@ -30,7 +30,7 @@ export class PosController {
   @Get('location/:locationId')
   @ApiOperation({ summary: 'List POS by location' })
   async listByLocation(@Param('locationId') locationId: string) {
-      return this.posService.list(locationId);
+    return this.posService.list(locationId);
   }
 
   @Get('location/:locationId/parent')
@@ -39,11 +39,11 @@ export class PosController {
     return this.posService.getParentTerminal(locationId);
   }
 
-    @Get(':id')
-    @ApiOperation({ summary: 'Get POS by ID' })
-    async get(@Param('id') id: string) {
-        return this.posService.get(id);
-    }
+  @Get(':id')
+  @ApiOperation({ summary: 'Get POS by ID' })
+  async get(@Param('id') id: string) {
+    return this.posService.get(id);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new POS' })

@@ -25,7 +25,11 @@ import { ChartOfAccountExportProcessor } from './chart-of-account-export.process
       { name: 'chart-of-account-export' },
     ),
   ],
-  controllers: [ChartOfAccountController, CoaBulkUploadController, ChartOfAccountExportController],
+  controllers: [
+    ChartOfAccountController,
+    CoaBulkUploadController,
+    ChartOfAccountExportController,
+  ],
   providers: [
     ChartOfAccountService,
     CoaBulkUploadService,

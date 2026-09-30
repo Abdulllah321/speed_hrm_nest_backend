@@ -16,7 +16,10 @@ export class RfqService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createDto: CreateRfqDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createDto: CreateRfqDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       // Verify PR exists and is APPROVED
       const pr = await this.prisma.purchaseRequisition.findUnique({
@@ -153,12 +156,18 @@ export class RfqService {
     return rfq;
   }
 
-  async addVendors(id: string, addVendorsDto: AddVendorsDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async addVendors(
+    id: string,
+    addVendorsDto: AddVendorsDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const rfq = await this.findOne(id);
 
       if (rfq.status !== 'DRAFT') {
-        throw new BadRequestException('Vendors can only be added to DRAFT RFQs');
+        throw new BadRequestException(
+          'Vendors can only be added to DRAFT RFQs',
+        );
       }
 
       // Add vendors (skip duplicates)
@@ -235,7 +244,10 @@ export class RfqService {
     }
   }
 
-  async markAsSent(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async markAsSent(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const rfq = await this.findOne(id);
 
@@ -308,7 +320,11 @@ export class RfqService {
     }
   }
 
-  async update(id: string, updateDto: UpdateRfqDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdateRfqDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const rfq = await this.findOne(id);
 
@@ -375,7 +391,10 @@ export class RfqService {
     }
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const rfq = await this.findOne(id);
 

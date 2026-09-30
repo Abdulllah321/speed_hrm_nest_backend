@@ -30,11 +30,11 @@ export class CreateJournalVoucherDetailDto {
 
   @IsString()
   @IsOptional()
-  narration?: string;       // Per-line narration
+  narration?: string; // Per-line narration
 
   @IsString()
   @IsOptional()
-  refBillNo?: string;       // Bill/ref number for this line
+  refBillNo?: string; // Bill/ref number for this line
 
   @IsString()
   @IsOptional()

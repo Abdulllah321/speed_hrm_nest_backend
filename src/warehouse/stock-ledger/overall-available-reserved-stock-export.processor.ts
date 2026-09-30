@@ -33,7 +33,9 @@ export interface OverallAvailableReservedStockExportJobData {
 
 @Processor('overall-available-reserved-stock-export')
 export class OverallAvailableReservedStockExportProcessor {
-  private readonly logger = new Logger(OverallAvailableReservedStockExportProcessor.name);
+  private readonly logger = new Logger(
+    OverallAvailableReservedStockExportProcessor.name,
+  );
 
   constructor(
     private readonly notificationsService: NotificationsService,
@@ -44,53 +46,92 @@ export class OverallAvailableReservedStockExportProcessor {
   @Process('generate-report-preview')
   async handleReportPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
-    this.logger.log(`[ReportPreview ${jobId}] Starting background preview computation`);
+    this.logger.log(
+      `[ReportPreview ${jobId}] Starting background preview computation`,
+    );
     try {
-      await job.progress({ percent: 5, message: 'Worker thread started. Connecting to database...' });
-      const prisma = (tenantId && tenantDbUrl)
-        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-        : new PrismaService({ tenantId, tenantDbUrl } as any);
+      await job.progress({
+        percent: 5,
+        message: 'Worker thread started. Connecting to database...',
+      });
+      const prisma =
+        tenantId && tenantDbUrl
+          ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+          : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      const data = await this.reportService.generateOverallAvailableReservedStockReportDataInternal(
-        prisma,
-        {
-          ...opts,
-          previewJobId: jobId,
-          onProgress: async (percent: number, message: string) => {
-            await job.progress({ percent, message });
+      const data =
+        await this.reportService.generateOverallAvailableReservedStockReportDataInternal(
+          prisma,
+          {
+            ...opts,
+            previewJobId: jobId,
+            onProgress: async (percent: number, message: string) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
       if (this.reportService.isJobCancelled(jobId)) {
-        this.logger.log(`[ReportPreview ${jobId}] Job was cancelled by user. Skipping result save.`);
+        this.logger.log(
+          `[ReportPreview ${jobId}] Job was cancelled by user. Skipping result save.`,
+        );
         return;
       }
 
-      await job.progress({ percent: 90, message: 'Compressing report payload & caching result...' });
+      await job.progress({
+        percent: 90,
+        message: 'Compressing report payload & caching result...',
+      });
       this.reportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({ percent: 100, message: 'Report computation complete!' });
-      this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
+      await job.progress({
+        percent: 100,
+        message: 'Report computation complete!',
+      });
+      this.logger.log(
+        `[ReportPreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[ReportPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[ReportPreview ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
 
   @Process({ concurrency: 1 })
-  async handleExport(job: Job<OverallAvailableReservedStockExportJobData>): Promise<void> {
+  async handleExport(
+    job: Job<OverallAvailableReservedStockExportJobData>,
+  ): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, asOfDate, format,
-      summaryOnly, showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant,
-      includeCosting
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      warehouseId,
+      asOfDate,
+      format,
+      summaryOnly,
+      showBrand,
+      showDivision,
+      showCategory,
+      showGender,
+      showSilhouette,
+      showArticle,
+      showVariant,
+      includeCosting,
     } = job.data;
 
-    this.logger.log(`[OverallAvailableReservedStockExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
+    this.logger.log(
+      `[OverallAvailableReservedStockExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
@@ -101,30 +142,35 @@ export class OverallAvailableReservedStockExportProcessor {
 
       let reportData: any = null;
       if ((job.data as any).previewJobId) {
-        reportData = this.reportService.getReportPreviewResult((job.data as any).previewJobId);
+        reportData = this.reportService.getReportPreviewResult(
+          (job.data as any).previewJobId,
+        );
         if (reportData) {
-          this.logger.log(`[OverallAvailableReservedStockExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`);
+          this.logger.log(
+            `[OverallAvailableReservedStockExport ${jobId}] Reusing pre-computed GZIP preview data from job ${(job.data as any).previewJobId} (0% DB load)`,
+          );
         }
       }
 
       if (!reportData) {
-        reportData = await this.reportService.generateOverallAvailableReservedStockReportDataInternal(
-          prisma,
-          {
-            locationId,
-            warehouseId,
-            asOfDate,
-            summaryOnly,
-            showBrand,
-            showDivision,
-            showCategory,
-            showGender,
-            showSilhouette,
-            showArticle,
-            showVariant,
-            includeCosting,
-          },
-        );
+        reportData =
+          await this.reportService.generateOverallAvailableReservedStockReportDataInternal(
+            prisma,
+            {
+              locationId,
+              warehouseId,
+              asOfDate,
+              summaryOnly,
+              showBrand,
+              showDivision,
+              showCategory,
+              showGender,
+              showSilhouette,
+              showArticle,
+              showVariant,
+              includeCosting,
+            },
+          );
       }
 
       const { root, grandTotals, warehouses, stockLocations } = reportData;
@@ -132,18 +178,25 @@ export class OverallAvailableReservedStockExportProcessor {
       await job.progress(50);
 
       if (format === 'pdf') {
-        const html = this.buildPdfHtml(root, warehouses, stockLocations, grandTotals, !!includeCosting);
+        const html = this.buildPdfHtml(
+          root,
+          warehouses,
+          stockLocations,
+          grandTotals,
+          !!includeCosting,
+        );
 
-        const launchArgs = process.platform === 'linux'
-          ? [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--no-first-run',
-              '--no-zygote',
-            ]
-          : [];
+        const launchArgs =
+          process.platform === 'linux'
+            ? [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+              ]
+            : [];
 
         const browser = await puppeteer.launch({
           headless: true,
@@ -169,11 +222,18 @@ export class OverallAvailableReservedStockExportProcessor {
             pdfBuffer = await page.pdf({
               format: 'A4',
               landscape: true,
-              margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+              margin: {
+                top: '15mm',
+                bottom: '15mm',
+                left: '10mm',
+                right: '10mm',
+              },
               printBackground: true,
               displayHeaderFooter: true,
-              headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Pvt.) Limited | Overall Available + Reserved Stock Report</div>',
-              footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+              headerTemplate:
+                '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Pvt.) Limited | Overall Available + Reserved Stock Report</div>',
+              footerTemplate:
+                '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
             });
           } finally {
             clearInterval(progressInterval);
@@ -191,51 +251,108 @@ export class OverallAvailableReservedStockExportProcessor {
           useSharedStrings: false,
         });
 
-        const columns: { header: string; key: string; width: number; align?: 'left' | 'center' | 'right' }[] = [
-          { header: 'GPC / Category / Product', key: 'sku', width: 35, align: 'left' },
+        const columns: {
+          header: string;
+          key: string;
+          width: number;
+          align?: 'left' | 'center' | 'right';
+        }[] = [
+          {
+            header: 'GPC / Category / Product',
+            key: 'sku',
+            width: 35,
+            align: 'left',
+          },
           { header: 'Size', key: 'size', width: 10, align: 'center' },
           { header: 'Color', key: 'color', width: 14, align: 'center' },
           { header: 'Quantity', key: 'quantity', width: 14, align: 'right' },
           { header: 'In Transit', key: 'transit', width: 12, align: 'right' },
-          { header: 'Stock Reserved', key: 'reserved', width: 14, align: 'right' },
+          {
+            header: 'Stock Reserved',
+            key: 'reserved',
+            width: 14,
+            align: 'right',
+          },
           { header: 'Total', key: 'total', width: 14, align: 'right' },
-          { header: 'Selling Price', key: 'unitPrice', width: 14, align: 'right' },
-          { header: 'Discount %', key: 'discountRate', width: 12, align: 'right' },
+          {
+            header: 'Selling Price',
+            key: 'unitPrice',
+            width: 14,
+            align: 'right',
+          },
+          {
+            header: 'Discount %',
+            key: 'discountRate',
+            width: 12,
+            align: 'right',
+          },
           { header: 'Tax %', key: 'taxRate', width: 10, align: 'right' },
           { header: 'Value (Rs.)', key: 'value', width: 18, align: 'right' },
         ];
 
         if (includeCosting) {
           columns.push(
-            { header: 'Cost Price', key: 'unitCost', width: 14, align: 'right' },
-            { header: 'Total Costing', key: 'costingValue', width: 18, align: 'right' }
+            {
+              header: 'Cost Price',
+              key: 'unitCost',
+              width: 14,
+              align: 'right',
+            },
+            {
+              header: 'Total Costing',
+              key: 'costingValue',
+              width: 18,
+              align: 'right',
+            },
           );
         }
 
         for (const wh of warehouses) {
-          columns.push({ header: `WH ${wh.name}`, key: `wh_${wh.id}`, width: 14, align: 'right' });
+          columns.push({
+            header: `WH ${wh.name}`,
+            key: `wh_${wh.id}`,
+            width: 14,
+            align: 'right',
+          });
         }
 
         for (const loc of stockLocations) {
           const locHeader = loc.shortCode || loc.code || loc.name;
-          columns.push({ header: locHeader, key: `loc_${loc.id}`, width: 14, align: 'right' });
+          columns.push({
+            header: locHeader,
+            key: `loc_${loc.id}`,
+            width: 14,
+            align: 'right',
+          });
         }
 
         const ws = workbook.addWorksheet('Stock Report', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+          pageSetup: {
+            paperSize: 9,
+            orientation: 'landscape',
+            fitToPage: true,
+            fitToWidth: 1,
+          },
           views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }],
         });
 
-        ws.columns = columns.map(c => ({ key: c.key, width: c.width }));
+        ws.columns = columns.map((c) => ({ key: c.key, width: c.width }));
 
         // Write header row
         const headerRow = ws.getRow(1);
         columns.forEach((col, idx) => {
           const cell = headerRow.getCell(idx + 1);
           cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF1E293B' },
+          };
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-          cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+          cell.alignment = {
+            horizontal: col.align ?? 'left',
+            vertical: 'middle',
+          };
           cell.border = {
             top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
             left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -253,29 +370,91 @@ export class OverallAvailableReservedStockExportProcessor {
           right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
         };
 
-        const rightAlign = { horizontal: 'right' as const, vertical: 'middle' as const };
-        const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const };
-        const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
+        const rightAlign = {
+          horizontal: 'right' as const,
+          vertical: 'middle' as const,
+        };
+        const leftAlign = {
+          horizontal: 'left' as const,
+          vertical: 'middle' as const,
+        };
+        const centerAlign = {
+          horizontal: 'center' as const,
+          vertical: 'middle' as const,
+        };
 
-        const LEVEL_EXCEL_STYLES: Record<string, {
-          bgHex: string;
-          fgHex: string;
-          fontSize: number;
-          bold: boolean;
-          indent: number;
-          prefix: string;
-        }> = {
-          brand: { bgHex: '0F172A', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: 'BRAND: ' },
-          division: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: 'DIVISION: ' },
-          category: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: 'CATEGORY: ' },
-          gender: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: 'GENDER: ' },
-          silhouette: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: 'SILHOUETTE: ' },
-          article: { bgHex: 'F1F5F9', fgHex: '0F172A', fontSize: 9, bold: true, indent: 10, prefix: 'SKU: ' },
-          variant: { bgHex: 'FFFFFF', fgHex: '334155', fontSize: 9, bold: false, indent: 12, prefix: '' },
+        const LEVEL_EXCEL_STYLES: Record<
+          string,
+          {
+            bgHex: string;
+            fgHex: string;
+            fontSize: number;
+            bold: boolean;
+            indent: number;
+            prefix: string;
+          }
+        > = {
+          brand: {
+            bgHex: '0F172A',
+            fgHex: 'FFFFFF',
+            fontSize: 10,
+            bold: true,
+            indent: 0,
+            prefix: 'BRAND: ',
+          },
+          division: {
+            bgHex: '1E293B',
+            fgHex: 'FFFFFF',
+            fontSize: 9.5,
+            bold: true,
+            indent: 2,
+            prefix: 'DIVISION: ',
+          },
+          category: {
+            bgHex: '334155',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 4,
+            prefix: 'CATEGORY: ',
+          },
+          gender: {
+            bgHex: '475569',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 6,
+            prefix: 'GENDER: ',
+          },
+          silhouette: {
+            bgHex: '64748B',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 8,
+            prefix: 'SILHOUETTE: ',
+          },
+          article: {
+            bgHex: 'F1F5F9',
+            fgHex: '0F172A',
+            fontSize: 9,
+            bold: true,
+            indent: 10,
+            prefix: 'SKU: ',
+          },
+          variant: {
+            bgHex: 'FFFFFF',
+            fgHex: '334155',
+            fontSize: 9,
+            bold: false,
+            indent: 12,
+            prefix: '',
+          },
         };
 
         const writeNodeToExcel = (node: any) => {
-          const style = LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
+          const style =
+            LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
           const tot = node.totals;
 
           let label = ' '.repeat(style.indent) + style.prefix;
@@ -288,7 +467,9 @@ export class OverallAvailableReservedStockExportProcessor {
           let taxVal: any = '';
 
           if (node.level === 'article') {
-            label = ' '.repeat(style.indent) + `SKU: ${node.sku} (${node.articleName})`;
+            label =
+              ' '.repeat(style.indent) +
+              `SKU: ${node.sku} (${node.articleName})`;
             unitPriceVal = tot.unitPrice;
             unitCostVal = tot.unitCost;
             discountVal = tot.discountRate ? tot.discountRate : '';
@@ -302,7 +483,10 @@ export class OverallAvailableReservedStockExportProcessor {
             discountVal = tot.discountRate ? tot.discountRate : '';
             taxVal = tot.taxRate ? tot.taxRate : '';
           } else {
-            label = ' '.repeat(style.indent) + style.prefix + node.value.toUpperCase();
+            label =
+              ' '.repeat(style.indent) +
+              style.prefix +
+              node.value.toUpperCase();
           }
 
           const rowData: Record<string, any> = {
@@ -337,10 +521,23 @@ export class OverallAvailableReservedStockExportProcessor {
           const numCols = columns.length;
           for (let colNum = 1; colNum <= numCols; colNum++) {
             const cell = row.getCell(colNum);
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
-            cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${style.bgHex}` },
+            };
+            cell.font = {
+              bold: style.bold,
+              size: style.fontSize,
+              color: { argb: `FF${style.fgHex}` },
+            };
             cell.border = borderThin;
-            cell.alignment = colNum === 2 || colNum === 3 ? centerAlign : (colNum === 1 ? leftAlign : rightAlign);
+            cell.alignment =
+              colNum === 2 || colNum === 3
+                ? centerAlign
+                : colNum === 1
+                  ? leftAlign
+                  : rightAlign;
 
             if (typeof cell.value === 'number') {
               cell.numFmt = '#,##0';
@@ -382,11 +579,13 @@ export class OverallAvailableReservedStockExportProcessor {
         }
 
         for (const wh of warehouses) {
-          grandTotalsData[`wh_${wh.id}`] = grandTotals.warehouseStocks[wh.id] || 0;
+          grandTotalsData[`wh_${wh.id}`] =
+            grandTotals.warehouseStocks[wh.id] || 0;
         }
 
         for (const loc of stockLocations) {
-          grandTotalsData[`loc_${loc.id}`] = grandTotals.locationStocks[loc.id] || 0;
+          grandTotalsData[`loc_${loc.id}`] =
+            grandTotals.locationStocks[loc.id] || 0;
         }
 
         const totalRow = ws.addRow(grandTotalsData);
@@ -399,7 +598,11 @@ export class OverallAvailableReservedStockExportProcessor {
             left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
             right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
           };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE2E8F0' },
+          };
           cell.alignment = colNum <= 3 ? leftAlign : rightAlign;
 
           if (typeof cell.value === 'number') {
@@ -414,10 +617,14 @@ export class OverallAvailableReservedStockExportProcessor {
 
       await job.progress(95);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const fileName = format === 'pdf'
-        ? `overall-available-reserved-stock-${new Date().toISOString().slice(0, 10)}.pdf`
-        : `overall-available-reserved-stock-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const fileName =
+        format === 'pdf'
+          ? `overall-available-reserved-stock-${new Date().toISOString().slice(0, 10)}.pdf`
+          : `overall-available-reserved-stock-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma,
@@ -438,9 +645,14 @@ export class OverallAvailableReservedStockExportProcessor {
       });
 
       await job.progress(100);
-      this.logger.log(`[OverallAvailableReservedStockExport ${jobId}] Finished processing successfully`);
+      this.logger.log(
+        `[OverallAvailableReservedStockExport ${jobId}] Finished processing successfully`,
+      );
     } catch (err: any) {
-      this.logger.error(`[OverallAvailableReservedStockExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[OverallAvailableReservedStockExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     }
@@ -454,7 +666,7 @@ export class OverallAvailableReservedStockExportProcessor {
     includeCosting: boolean,
   ): string {
     let rowsHtml = '';
-    const formatVal = (val: number) => val === 0 ? '-' : val.toLocaleString();
+    const formatVal = (val: number) => (val === 0 ? '-' : val.toLocaleString());
 
     const buildHtmlRows = (node: any): void => {
       const tot = node.totals;
@@ -610,8 +822,8 @@ export class OverallAvailableReservedStockExportProcessor {
               <th class="num">Tax %</th>
               <th class="num">Value (Rs.)</th>
               ${includeCosting ? '<th class="num">Cost Price</th><th class="num">Total Costing</th>' : ''}
-              ${warehouses.map(w => `<th class="num">WH ${w.name}</th>`).join('')}
-              ${stockLocations.map(l => `<th class="num">${l.shortCode || l.code || l.name}</th>`).join('')}
+              ${warehouses.map((w) => `<th class="num">WH ${w.name}</th>`).join('')}
+              ${stockLocations.map((l) => `<th class="num">${l.shortCode || l.code || l.name}</th>`).join('')}
             </tr>
           </thead>
           <tbody>

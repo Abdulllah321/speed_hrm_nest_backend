@@ -14,7 +14,7 @@ export class CustomerService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async getNextCustomerCode(): Promise<{ status: boolean; code: string }> {
     try {
@@ -44,7 +44,10 @@ export class CustomerService {
   }
 
   // ─── ERP: Create (defaults to ERP type) ──────────────────────────
-  async create(createDto: CreateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createDto: CreateCustomerDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const { code, ...restData } = createDto;
       let subCode = restData.subCode || code;
@@ -82,7 +85,11 @@ export class CustomerService {
         }),
       );
 
-      return { status: true, data: customer, message: 'Customer created successfully' };
+      return {
+        status: true,
+        data: customer,
+        message: 'Customer created successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to create customer',
@@ -143,7 +150,11 @@ export class CustomerService {
   }
 
   // ─── Shared: Update ───────────────────────────────────────────────
-  async update(id: string, updateDto: UpdateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdateCustomerDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.customer.findUnique({ where: { id } });
       const customer = await this.prisma.customer.update({
@@ -168,7 +179,11 @@ export class CustomerService {
         }),
       );
 
-      return { status: true, data: customer, message: 'Customer updated successfully' };
+      return {
+        status: true,
+        data: customer,
+        message: 'Customer updated successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to update customer',
@@ -191,7 +206,10 @@ export class CustomerService {
   }
 
   // ─── Shared: Delete ───────────────────────────────────────────────
-  async remove(id: string, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existing = await this.prisma.customer.findUnique({ where: { id } });
       await this.prisma.customer.delete({ where: { id } });
@@ -234,7 +252,10 @@ export class CustomerService {
   }
 
   // ─── POS: Create (defaults to POS type) ──────────────────────────
-  async posCreate(createDto: CreateCustomerDto, ctx: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async posCreate(
+    createDto: CreateCustomerDto,
+    ctx: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     return this.create(
       { ...createDto, customerType: createDto.customerType ?? 'POS' },
       ctx,
@@ -361,7 +382,7 @@ export class CustomerService {
           const totalOrders = Number(orderStats._sum?.grandTotal || 0);
           const totalPosSales = Number(posSalesStats._sum?.grandTotal || 0);
           const totalPosCredit = Number(posCreditStats._sum?.grandTotal || 0);
-          const outstandingBalance = (totalInvoiced - totalPaid) + totalPosCredit;
+          const outstandingBalance = totalInvoiced - totalPaid + totalPosCredit;
 
           return {
             ...customer,
@@ -447,7 +468,9 @@ export class CustomerService {
       });
 
       // Enrich with location names
-      const locationIds = [...new Set(posSales.map(s => s.locationId).filter(Boolean))] as string[];
+      const locationIds = [
+        ...new Set(posSales.map((s) => s.locationId).filter(Boolean)),
+      ] as string[];
       const locationMap = new Map<string, string>();
       if (locationIds.length > 0) {
         const locs = await this.prisma.location.findMany({
@@ -457,12 +480,17 @@ export class CustomerService {
         for (const loc of locs) locationMap.set(loc.id, loc.name);
       }
 
-      const enrichedPosSales = posSales.map(s => ({
+      const enrichedPosSales = posSales.map((s) => ({
         ...s,
-        locationName: s.locationId ? (locationMap.get(s.locationId) ?? null) : null,
+        locationName: s.locationId
+          ? (locationMap.get(s.locationId) ?? null)
+          : null,
       }));
 
-      return { status: true, data: { ...customer, posSales: enrichedPosSales } };
+      return {
+        status: true,
+        data: { ...customer, posSales: enrichedPosSales },
+      };
     } catch (error: any) {
       return { status: false, message: error.message, data: null };
     }
@@ -471,7 +499,13 @@ export class CustomerService {
   // ─── Record credit payment — mark selected orders as paid ─────────
   async recordCreditPayment(
     customerId: string,
-    dto: { orderIds: string[]; paymentMethod: string; notes?: string; cardLast4?: string; slipRef?: string },
+    dto: {
+      orderIds: string[];
+      paymentMethod: string;
+      notes?: string;
+      cardLast4?: string;
+      slipRef?: string;
+    },
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
@@ -493,12 +527,15 @@ export class CustomerService {
         return { status: false, message: 'No matching unpaid orders found.' };
       }
 
-      const totalPaid = orders.reduce((sum, o) => sum + Number(o.grandTotal), 0);
+      const totalPaid = orders.reduce(
+        (sum, o) => sum + Number(o.grandTotal),
+        0,
+      );
 
       await this.prisma.$transaction(async (tx) => {
         // Mark each order as paid
         await tx.salesOrder.updateMany({
-          where: { id: { in: orders.map(o => o.id) } },
+          where: { id: { in: orders.map((o) => o.id) } },
           data: {
             paymentStatus: 'paid',
             paymentMethod: dto.paymentMethod,

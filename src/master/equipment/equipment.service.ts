@@ -5,7 +5,6 @@ import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
-
 @Injectable()
 export class EquipmentService {
   constructor(
@@ -17,16 +16,14 @@ export class EquipmentService {
   async list() {
     const items = await this.prisma.equipment.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
     const item = await this.prisma.equipment.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Equipment not found' };
     return { status: true, data: item };
@@ -44,7 +41,11 @@ export class EquipmentService {
           createdById: ctx.userId,
         },
       });
-      const response = { status: true, data: created, message: 'Created successfully' };
+      const response = {
+        status: true,
+        data: created,
+        message: 'Created successfully',
+      };
       runInBackground(
         `Created equipment ${created.name}`,
         this.activityLogs.log({
@@ -88,9 +89,7 @@ export class EquipmentService {
   ) {
     try {
       const existing = await this.prisma.equipment.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const updated = await this.prisma.equipment.update({
         where: { id },
@@ -104,17 +103,17 @@ export class EquipmentService {
         'Update Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'equipments',
-        entity: 'Equipment',
-        entityId: id,
-        description: `Updated equipment ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'update',
+          module: 'equipments',
+          entity: 'Equipment',
+          entityId: id,
+          description: `Updated equipment ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
@@ -122,17 +121,17 @@ export class EquipmentService {
         'Failed to update equipment',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'equipments',
-        entity: 'Equipment',
-        entityId: id,
-        description: 'Failed to update equipment',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'update',
+          module: 'equipments',
+          entity: 'Equipment',
+          entityId: id,
+          description: 'Failed to update equipment',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to update equipment' };
     }
@@ -143,33 +142,35 @@ export class EquipmentService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'equipment', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'equipment',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.equipment.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const removed = await this.prisma.equipment.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'equipments',
-        entity: 'Equipment',
-        entityId: id,
-        description: `Deleted equipment ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'equipments',
+          entity: 'Equipment',
+          entityId: id,
+          description: `Deleted equipment ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
@@ -177,16 +178,16 @@ export class EquipmentService {
         'Failed to delete equipment',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'equipments',
-        entity: 'Equipment',
-        entityId: id,
-        description: 'Failed to delete equipment',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'delete',
+          module: 'equipments',
+          entity: 'Equipment',
+          entityId: id,
+          description: 'Failed to delete equipment',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to delete equipment' };
     }
@@ -211,33 +212,32 @@ export class EquipmentService {
         'Bulk Create Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'equipments',
-        entity: 'Equipment',
-        description: `Bulk created equipments (${result.count})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'create',
+          module: 'equipments',
+          entity: 'Equipment',
+          description: `Bulk created equipments (${result.count})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Equipments created successfully' };
     } catch (error: any) {
-      
       runInBackground(
         'Failed to bulk create equipments',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'equipments',
-        entity: 'Equipment',
-        description: 'Failed to bulk create equipments',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'create',
+          module: 'equipments',
+          entity: 'Equipment',
+          description: 'Failed to bulk create equipments',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to create equipments' };
     }
@@ -252,9 +252,7 @@ export class EquipmentService {
     try {
       for (const i of items) {
         const existing = await this.prisma.equipment.findFirst({
-          where: { id: i.id,
-              isDeleted: false
-        },
+          where: { id: i.id, isDeleted: false },
         });
         await this.prisma.equipment.update({
           where: { id: i.id },
@@ -264,20 +262,23 @@ export class EquipmentService {
           },
         });
       }
-      const response = { status: true, message: 'Operation completed successfully' };
+      const response = {
+        status: true,
+        message: 'Operation completed successfully',
+      };
       runInBackground(
         'Bulk Update Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'equipments',
-        entity: 'Equipment',
-        description: `Bulk updated equipments (${items.length})`,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'update',
+          module: 'equipments',
+          entity: 'Equipment',
+          description: `Bulk updated equipments (${items.length})`,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
@@ -285,16 +286,16 @@ export class EquipmentService {
         'Failed to bulk update equipments',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'equipments',
-        entity: 'Equipment',
-        description: 'Failed to bulk update equipments',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(items),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'update',
+          module: 'equipments',
+          entity: 'Equipment',
+          description: 'Failed to bulk update equipments',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(items),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to update equipments' };
     }
@@ -308,32 +309,34 @@ export class EquipmentService {
       return { status: false, message: 'No equipments to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'equipment', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'equipment',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const existing = await this.prisma.equipment.findMany({
-        where: { id: { in: ids },
-            isDeleted: false
-        },
+        where: { id: { in: ids }, isDeleted: false },
       });
       const result = await this.prisma.equipment.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk Delete Records',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'equipments',
-        entity: 'Equipment',
-        description: `Bulk deleted equipments (${result.count})`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'equipments',
+          entity: 'Equipment',
+          description: `Bulk deleted equipments (${result.count})`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Equipments deleted successfully' };
     } catch (error: any) {
@@ -341,15 +344,15 @@ export class EquipmentService {
         'Failed to bulk delete equipments (Failure Log)',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'equipments',
-        entity: 'Equipment',
-        description: 'Failed to bulk delete equipments',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'delete',
+          module: 'equipments',
+          entity: 'Equipment',
+          description: 'Failed to bulk delete equipments',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
       return { status: false, message: 'Failed to delete equipments' };
     }

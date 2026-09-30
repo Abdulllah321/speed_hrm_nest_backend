@@ -61,9 +61,7 @@ export class CityService {
     if (cached) return { status: true, data: cached };
 
     const cities = await this.prisma.city.findMany({
-      where: { stateId,
-          isDeleted: false
-    },
+      where: { stateId, isDeleted: false },
       orderBy: { name: 'asc' },
     });
     await this.cacheManager.set(cacheKey, cities, 3600000); // 1h
@@ -78,7 +76,7 @@ export class CityService {
     const cities = await this.prisma.city.findMany({
       include: { country: true, state: true },
       orderBy: { name: 'asc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     await this.cacheManager.set(cacheKey, cities, 3600000);
     return { status: true, data: cities };
@@ -157,9 +155,7 @@ export class CityService {
   ) {
     try {
       const existing = await this.prisma.city.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) {
         return { status: false, message: 'City not found' };
@@ -175,14 +171,14 @@ export class CityService {
         },
       });
       const response = { status: true, data: updated };
-      const cacheOps = [
-        this.cacheManager.del('cities_all'),
-      ];
+      const cacheOps = [this.cacheManager.del('cities_all')];
       if (existing.stateId)
-        cacheOps.push(this.cacheManager.del(`cities_state_${existing.stateId}`));
+        cacheOps.push(
+          this.cacheManager.del(`cities_state_${existing.stateId}`),
+        );
       if (body.stateId && body.stateId !== existing.stateId)
         cacheOps.push(this.cacheManager.del(`cities_state_${body.stateId}`));
-      
+
       runInBackground(
         'Update City',
         this.activityLogs.log({
@@ -235,26 +231,31 @@ export class CityService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'city', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'city',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.city.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) {
         return { status: false, message: 'City not found' };
       }
 
-      const removed = await this.prisma.city.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const removed = await this.prisma.city.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       const cacheOps = [this.cacheManager.del('cities_all')];
       if (existing.stateId)
-        cacheOps.push(this.cacheManager.del(`cities_state_${existing.stateId}`));
-      
+        cacheOps.push(
+          this.cacheManager.del(`cities_state_${existing.stateId}`),
+        );
+
       runInBackground(
         'Delete City',
         this.activityLogs.log({
@@ -299,27 +300,33 @@ export class CityService {
     if (!ids?.length) return { status: false, message: 'No cities to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'city', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'city',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const existing = await this.prisma.city.findMany({
-        where: { id: { in: ids },
-            isDeleted: false
-        },
+        where: { id: { in: ids }, isDeleted: false },
       });
       const result = await this.prisma.city.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
-      const response = { status: true, message: 'Cities deleted', data: result };
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
+      const response = {
+        status: true,
+        message: 'Cities deleted',
+        data: result,
+      };
       const cacheOps = [this.cacheManager.del('cities_all')];
       // Invalidate related states from the existing records
       const stateIds = new Set(existing.map((c) => c.stateId));
       for (const sid of stateIds) {
         if (sid) cacheOps.push(this.cacheManager.del(`cities_state_${sid}`));
       }
-      
+
       runInBackground(
         'Bulk Delete Cities',
         this.activityLogs.log({
@@ -377,13 +384,17 @@ export class CityService {
         })),
         skipDuplicates: true,
       });
-      const response = { status: true, message: 'Cities created', data: result };
+      const response = {
+        status: true,
+        message: 'Cities created',
+        data: result,
+      };
       const cacheOps = [this.cacheManager.del('cities_all')];
       const stateIds = new Set(items.map((i) => i.stateId));
       for (const sid of stateIds) {
         if (sid) cacheOps.push(this.cacheManager.del(`cities_state_${sid}`));
       }
-      
+
       runInBackground(
         'Bulk Create Cities',
         this.activityLogs.log({

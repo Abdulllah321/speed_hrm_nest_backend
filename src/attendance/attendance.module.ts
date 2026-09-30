@@ -12,7 +12,7 @@ import { AttendanceUploadProcessor } from '../queue/processors/attendance-upload
 
 @Module({
   imports: [
-    PrismaModule, 
+    PrismaModule,
     ActivityLogsModule,
     BullModule.registerQueue({
       name: 'attendance-upload',

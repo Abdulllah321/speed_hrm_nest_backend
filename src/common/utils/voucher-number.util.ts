@@ -7,10 +7,13 @@ export function getFiscalYearLabel(dateInput: Date | string): string {
   return `${startYear.toString().slice(-2)}-${endYear.toString().slice(-2)}`;
 }
 
-export async function generateNextJvNumber(prisma: any, date: Date | string): Promise<string> {
+export async function generateNextJvNumber(
+  prisma: any,
+  date: Date | string,
+): Promise<string> {
   const fyLabel = getFiscalYearLabel(date);
   const prefix = `JV-${fyLabel}-`;
-  
+
   const lastJV = await prisma.journalVoucher.findFirst({
     where: {
       jvNo: {
@@ -35,7 +38,11 @@ export async function generateNextJvNumber(prisma: any, date: Date | string): Pr
   return `${prefix}${nextSeq.toString().padStart(4, '0')}`;
 }
 
-export async function generateNextPvNumber(prisma: any, type: string, date: Date | string): Promise<string> {
+export async function generateNextPvNumber(
+  prisma: any,
+  type: string,
+  date: Date | string,
+): Promise<string> {
   const fyLabel = getFiscalYearLabel(date);
   const prefix = type === 'bank' ? 'BPV' : 'CPV';
   const prefixWithFy = `${prefix}-${fyLabel}-`;
@@ -65,7 +72,10 @@ export async function generateNextPvNumber(prisma: any, type: string, date: Date
   return `${prefixWithFy}${nextSeq.toString().padStart(4, '0')}`;
 }
 
-export async function generateNextRsrvNumber(prisma: any, date: Date | string): Promise<string> {
+export async function generateNextRsrvNumber(
+  prisma: any,
+  date: Date | string,
+): Promise<string> {
   const fyLabel = getFiscalYearLabel(date);
   const prefixWithFy = `RSRV-${fyLabel}-`;
 
@@ -94,7 +104,11 @@ export async function generateNextRsrvNumber(prisma: any, date: Date | string): 
   return `${prefixWithFy}${nextSeq.toString().padStart(5, '0')}`;
 }
 
-export async function generateNextRvNumber(prisma: any, type: string, date: Date | string): Promise<string> {
+export async function generateNextRvNumber(
+  prisma: any,
+  type: string,
+  date: Date | string,
+): Promise<string> {
   if (type === 'rs_rv') {
     return generateNextRsrvNumber(prisma, date);
   }
@@ -128,7 +142,10 @@ export async function generateNextRvNumber(prisma: any, type: string, date: Date
   return `${prefixWithFy}${nextSeq.toString().padStart(4, '0')}`;
 }
 
-export async function generateNextFolioNumber(prisma: any, date: Date | string): Promise<string> {
+export async function generateNextFolioNumber(
+  prisma: any,
+  date: Date | string,
+): Promise<string> {
   const fyLabel = getFiscalYearLabel(date);
   const folioPrefix = `FOL-${fyLabel}-`;
 
@@ -136,18 +153,18 @@ export async function generateNextFolioNumber(prisma: any, date: Date | string):
     prisma.journalVoucher.findFirst({
       where: { folio: { startsWith: folioPrefix } },
       orderBy: { folio: 'desc' },
-      select: { folio: true }
+      select: { folio: true },
     }),
     prisma.paymentVoucher.findFirst({
       where: { folio: { startsWith: folioPrefix } },
       orderBy: { folio: 'desc' },
-      select: { folio: true }
+      select: { folio: true },
     }),
     prisma.receiptVoucher.findFirst({
       where: { folio: { startsWith: folioPrefix } },
       orderBy: { folio: 'desc' },
-      select: { folio: true }
-    })
+      select: { folio: true },
+    }),
   ]);
 
   const parseFolioSeq = (folio: string | null) => {

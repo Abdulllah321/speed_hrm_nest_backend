@@ -16,7 +16,10 @@ export class PurchaseRequisitionService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createDto: CreatePurchaseRequisitionDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createDto: CreatePurchaseRequisitionDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const prNumber = `PR-${Date.now()}`;
 
@@ -93,7 +96,11 @@ export class PurchaseRequisitionService {
     return pr;
   }
 
-  async update(id: string, updateDto: UpdatePurchaseRequisitionDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdatePurchaseRequisitionDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const pr = await this.findOne(id);
 
@@ -186,13 +193,18 @@ export class PurchaseRequisitionService {
     }
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const pr = await this.findOne(id);
       if (pr.status !== 'DRAFT') {
         throw new BadRequestException('Only DRAFT requisitions can be deleted');
       }
-      const deleted = await this.prisma.purchaseRequisition.delete({ where: { id } });
+      const deleted = await this.prisma.purchaseRequisition.delete({
+        where: { id },
+      });
 
       runInBackground(
         'Delete Purchase Requisition',

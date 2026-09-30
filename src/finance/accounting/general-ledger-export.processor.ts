@@ -21,14 +21,14 @@ export interface GeneralLedgerExportJobData {
 
 const SUBHEADER_BG = '475569';
 const SUBHEADER_FG = 'F8FAFC';
-const ALT_ROW_BG   = 'F8FAFC';
+const ALT_ROW_BG = 'F8FAFC';
 const BORDER_COLOR = 'CBD5E1';
 
 const GROUP_COLORS: Record<string, string> = {
-  'Identity': '1E3A5F', // Dark Navy
-  'Details':  '334155', // Slate
-  'Volume':   '1E4D2B', // Forest Green
-  'Position': '7C3A00', // Bronze
+  Identity: '1E3A5F', // Dark Navy
+  Details: '334155', // Slate
+  Volume: '1E4D2B', // Forest Green
+  Position: '7C3A00', // Bronze
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -48,21 +48,94 @@ const COLUMNS: {
   numFmt?: string;
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
-  { header: 'Sr. No',      key: 'srNo',            width: 9,  group: 'Identity', align: 'center' },
-  { header: 'Date',        key: 'transactionDate', width: 14, group: 'Identity', numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'VOH No.',     key: 'sourceRef',       width: 18, group: 'Identity', align: 'center' },
-  { header: 'VOH TYPE',    key: 'sourceType',      width: 18, group: 'Identity', align: 'center' },
-  { header: 'Cheque No',   key: 'chequeNo',        width: 15, group: 'Details',  align: 'center' },
-  { header: 'Ref 1',       key: 'refBillNo',       width: 15, group: 'Details',  align: 'center' },
-  { header: 'Ref 2',       key: 'refBillNo2',      width: 15, group: 'Details',  align: 'center' },
-  { header: 'Narration',   key: 'narration',       width: 44, group: 'Details',  align: 'left' },
-  { header: 'Debit',       key: 'debit',           width: 18, group: 'Volume',   numFmt: '#,##0.00', align: 'right' },
-  { header: 'Credit',      key: 'credit',          width: 18, group: 'Volume',   numFmt: '#,##0.00', align: 'right' },
-  { header: 'Balance',     key: 'runningBalance',  width: 20, group: 'Position', numFmt: '#,##0.00;(#,##0.00)', align: 'right' },
+  {
+    header: 'Sr. No',
+    key: 'srNo',
+    width: 9,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Date',
+    key: 'transactionDate',
+    width: 14,
+    group: 'Identity',
+    numFmt: 'dd-mmm-yyyy',
+    align: 'center',
+  },
+  {
+    header: 'VOH No.',
+    key: 'sourceRef',
+    width: 18,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'VOH TYPE',
+    key: 'sourceType',
+    width: 18,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Cheque No',
+    key: 'chequeNo',
+    width: 15,
+    group: 'Details',
+    align: 'center',
+  },
+  {
+    header: 'Ref 1',
+    key: 'refBillNo',
+    width: 15,
+    group: 'Details',
+    align: 'center',
+  },
+  {
+    header: 'Ref 2',
+    key: 'refBillNo2',
+    width: 15,
+    group: 'Details',
+    align: 'center',
+  },
+  {
+    header: 'Narration',
+    key: 'narration',
+    width: 44,
+    group: 'Details',
+    align: 'left',
+  },
+  {
+    header: 'Debit',
+    key: 'debit',
+    width: 18,
+    group: 'Volume',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Credit',
+    key: 'credit',
+    width: 18,
+    group: 'Volume',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Balance',
+    key: 'runningBalance',
+    width: 20,
+    group: 'Position',
+    numFmt: '#,##0.00;(#,##0.00)',
+    align: 'right',
+  },
 ];
 
 function sanitizeSheetName(name: string, existingNames: Set<string>): string {
-  let clean = name.replace(/[\\/?*\[\]:]/g, ' ').replace(/\s+/g, ' ').trim();
+  let clean = name
+    .replace(/[\\/?*\[\]:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (clean.length > 31) clean = clean.substring(0, 31).trim();
   if (!clean) clean = 'Sheet';
   let candidate = clean;
@@ -80,15 +153,24 @@ function sanitizeSheetName(name: string, existingNames: Set<string>): string {
 export class GeneralLedgerExportProcessor {
   private readonly logger = new Logger(GeneralLedgerExportProcessor.name);
 
-  constructor(
-    private readonly notificationsService: NotificationsService,
-  ) {}
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   @Process()
   async handleExport(job: Job<GeneralLedgerExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, accountId, from, to, sourceType } = job.data;
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      accountId,
+      from,
+      to,
+      sourceType,
+    } = job.data;
 
-    this.logger.log(`[GeneralLedgerExport ${jobId}] Starting general ledger export for user ${userId}`);
+    this.logger.log(
+      `[GeneralLedgerExport ${jobId}] Starting general ledger export for user ${userId}`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const reportsService = new ReportsService(prisma);
@@ -108,23 +190,37 @@ export class GeneralLedgerExportProcessor {
         sourceType === 'all' ? undefined : sourceType,
       );
 
-      const heads: any[] = result.heads && result.heads.length > 0
-        ? result.heads
-        : [
-            {
-              head: { id: result.account.id, code: result.account.code, name: result.account.name },
-              openingBalance: result.openingBalance,
-              rangeTotalDebit: result.rangeTotalDebit,
-              rangeTotalCredit: result.rangeTotalCredit,
-              rangeClosingBalance: result.rangeClosingBalance,
-              ledgerCount: result.ledgers?.length || 1,
-              transactionCount: result.rows?.length || 0,
-              ledgers: result.ledgers && result.ledgers.length > 0 ? result.ledgers : [result],
-            },
-          ];
+      const heads: any[] =
+        result.heads && result.heads.length > 0
+          ? result.heads
+          : [
+              {
+                head: {
+                  id: result.account.id,
+                  code: result.account.code,
+                  name: result.account.name,
+                },
+                openingBalance: result.openingBalance,
+                rangeTotalDebit: result.rangeTotalDebit,
+                rangeTotalCredit: result.rangeTotalCredit,
+                rangeClosingBalance: result.rangeClosingBalance,
+                ledgerCount: result.ledgers?.length || 1,
+                transactionCount: result.rows?.length || 0,
+                ledgers:
+                  result.ledgers && result.ledgers.length > 0
+                    ? result.ledgers
+                    : [result],
+              },
+            ];
 
-      const totalAccounts = heads.reduce((sum, h) => sum + (h.ledgers?.length || 0), 0);
-      const totalTransactions = heads.reduce((sum, h) => sum + (h.transactionCount || 0), 0);
+      const totalAccounts = heads.reduce(
+        (sum, h) => sum + (h.ledgers?.length || 0),
+        0,
+      );
+      const totalTransactions = heads.reduce(
+        (sum, h) => sum + (h.transactionCount || 0),
+        0,
+      );
 
       // 2. Initialize streaming Excel writer
       const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
@@ -138,56 +234,138 @@ export class GeneralLedgerExportProcessor {
       // ── SHEET 1: Executive Summary & Index ─────────────────────────────────
       const summarySheetName = sanitizeSheetName('Summary & Index', sheetNames);
       const summaryWs = workbook.addWorksheet(summarySheetName, {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
       });
 
       const summaryCols = [
-        { header: 'Sr.',             key: 'sr',             width: 6,  align: 'center' },
-        { header: 'Head Code',       key: 'headCode',       width: 14, align: 'center' },
-        { header: 'Head Name',       key: 'headName',       width: 26, align: 'left' },
-        { header: 'Account Code',    key: 'accCode',        width: 14, align: 'center' },
-        { header: 'Account Name',    key: 'accName',        width: 28, align: 'left' },
-        { header: 'Account Type',    key: 'type',           width: 14, align: 'center' },
-        { header: 'Opening Balance', key: 'opening',        width: 20, align: 'right', numFmt: '#,##0.00;(#,##0.00)' },
-        { header: 'Debit Volume',    key: 'debit',          width: 20, align: 'right', numFmt: '#,##0.00' },
-        { header: 'Credit Volume',   key: 'credit',         width: 20, align: 'right', numFmt: '#,##0.00' },
-        { header: 'Closing Balance', key: 'closing',        width: 22, align: 'right', numFmt: '#,##0.00;(#,##0.00)' },
-        { header: 'Tx Count',        key: 'txCount',        width: 10, align: 'center' },
+        { header: 'Sr.', key: 'sr', width: 6, align: 'center' },
+        { header: 'Head Code', key: 'headCode', width: 14, align: 'center' },
+        { header: 'Head Name', key: 'headName', width: 26, align: 'left' },
+        { header: 'Account Code', key: 'accCode', width: 14, align: 'center' },
+        { header: 'Account Name', key: 'accName', width: 28, align: 'left' },
+        { header: 'Account Type', key: 'type', width: 14, align: 'center' },
+        {
+          header: 'Opening Balance',
+          key: 'opening',
+          width: 20,
+          align: 'right',
+          numFmt: '#,##0.00;(#,##0.00)',
+        },
+        {
+          header: 'Debit Volume',
+          key: 'debit',
+          width: 20,
+          align: 'right',
+          numFmt: '#,##0.00',
+        },
+        {
+          header: 'Credit Volume',
+          key: 'credit',
+          width: 20,
+          align: 'right',
+          numFmt: '#,##0.00',
+        },
+        {
+          header: 'Closing Balance',
+          key: 'closing',
+          width: 22,
+          align: 'right',
+          numFmt: '#,##0.00;(#,##0.00)',
+        },
+        { header: 'Tx Count', key: 'txCount', width: 10, align: 'center' },
       ];
-      summaryWs.columns = summaryCols.map(c => ({ key: c.key, width: c.width }));
+      summaryWs.columns = summaryCols.map((c) => ({
+        key: c.key,
+        width: c.width,
+      }));
 
       // Row 1: Title Banner
       const sRow1 = summaryWs.getRow(1);
       sRow1.getCell(1).value = 'GENERAL LEDGER — EXECUTIVE SUMMARY & INDEX';
-      sRow1.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 13 };
-      sRow1.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
-      sRow1.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+      sRow1.getCell(1).font = {
+        bold: true,
+        color: { argb: 'FFFFFFFF' },
+        size: 13,
+      };
+      sRow1.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1E3A5F' },
+      };
+      sRow1.getCell(1).alignment = {
+        horizontal: 'left',
+        vertical: 'middle',
+        indent: 1,
+      };
       for (let c = 2; c <= summaryCols.length; c++) {
-        sRow1.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+        sRow1.getCell(c).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF1E3A5F' },
+        };
       }
       sRow1.height = 28;
       sRow1.commit();
 
       // Row 2: Metadata Subtitle
       const sRow2 = summaryWs.getRow(2);
-      sRow2.getCell(1).value = `Period: ${from ? new Date(from).toLocaleDateString('en-GB') : 'Beginning'} to ${to ? new Date(to).toLocaleDateString('en-GB') : 'Present'}  |  Exported: ${new Date().toLocaleString('en-PK')}  |  Document Filter: ${sourceType ?? 'All Documents'}`;
-      sRow2.getCell(1).font = { italic: true, size: 9, color: { argb: 'FF475569' } };
-      sRow2.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-      sRow2.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+      sRow2.getCell(1).value =
+        `Period: ${from ? new Date(from).toLocaleDateString('en-GB') : 'Beginning'} to ${to ? new Date(to).toLocaleDateString('en-GB') : 'Present'}  |  Exported: ${new Date().toLocaleString('en-PK')}  |  Document Filter: ${sourceType ?? 'All Documents'}`;
+      sRow2.getCell(1).font = {
+        italic: true,
+        size: 9,
+        color: { argb: 'FF475569' },
+      };
+      sRow2.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF1F5F9' },
+      };
+      sRow2.getCell(1).alignment = {
+        horizontal: 'left',
+        vertical: 'middle',
+        indent: 1,
+      };
       for (let c = 2; c <= summaryCols.length; c++) {
-        sRow2.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+        sRow2.getCell(c).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF1F5F9' },
+        };
       }
       sRow2.height = 20;
       sRow2.commit();
 
       // Row 3: Scope KPIs
       const sRow3 = summaryWs.getRow(3);
-      sRow3.getCell(1).value = `SCOPE: ${heads.length} Account Head(s)  •  ${totalAccounts} Sub-Account(s)  •  ${totalTransactions} Total Transactions`;
-      sRow3.getCell(1).font = { bold: true, size: 9, color: { argb: 'FF1E293B' } };
-      sRow3.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-      sRow3.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+      sRow3.getCell(1).value =
+        `SCOPE: ${heads.length} Account Head(s)  •  ${totalAccounts} Sub-Account(s)  •  ${totalTransactions} Total Transactions`;
+      sRow3.getCell(1).font = {
+        bold: true,
+        size: 9,
+        color: { argb: 'FF1E293B' },
+      };
+      sRow3.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+      sRow3.getCell(1).alignment = {
+        horizontal: 'left',
+        vertical: 'middle',
+        indent: 1,
+      };
       for (let c = 2; c <= summaryCols.length; c++) {
-        sRow3.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        sRow3.getCell(c).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE2E8F0' },
+        };
       }
       sRow3.height = 20;
       sRow3.commit();
@@ -201,14 +379,21 @@ export class GeneralLedgerExportProcessor {
       summaryCols.forEach((col, idx) => {
         const cell = sHeaderRow.getCell(idx + 1);
         cell.value = col.header.toUpperCase();
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF334155' },
+        };
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-        cell.alignment = { horizontal: (col.align as any) || 'left', vertical: 'middle' };
+        cell.alignment = {
+          horizontal: (col.align as any) || 'left',
+          vertical: 'middle',
+        };
         cell.border = {
-          top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       sHeaderRow.height = 22;
@@ -228,8 +413,8 @@ export class GeneralLedgerExportProcessor {
           const isAlt = sIdx % 2 === 1;
 
           grandOpening += Number(ledger.openingBalance || 0);
-          grandDebit   += Number(ledger.rangeTotalDebit || 0);
-          grandCredit  += Number(ledger.rangeTotalCredit || 0);
+          grandDebit += Number(ledger.rangeTotalDebit || 0);
+          grandCredit += Number(ledger.rangeTotalCredit || 0);
           grandClosing += Number(ledger.rangeClosingBalance || 0);
 
           const values: Record<string, any> = {
@@ -250,7 +435,10 @@ export class GeneralLedgerExportProcessor {
             const cell = row.getCell(cIdx + 1);
             cell.value = values[col.key];
             if (col.numFmt) cell.numFmt = col.numFmt;
-            cell.alignment = { horizontal: (col.align as any) || 'left', vertical: 'middle' };
+            cell.alignment = {
+              horizontal: (col.align as any) || 'left',
+              vertical: 'middle',
+            };
             cell.fill = {
               type: 'pattern',
               pattern: 'solid',
@@ -261,14 +449,17 @@ export class GeneralLedgerExportProcessor {
               cell.font = {
                 bold: true,
                 size: 9,
-                color: values.closing >= 0 ? { argb: 'FF065F46' } : { argb: 'FF991B1B' },
+                color:
+                  values.closing >= 0
+                    ? { argb: 'FF065F46' }
+                    : { argb: 'FF991B1B' },
               };
             }
             cell.border = {
-              top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-              left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-              right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
             };
           });
 
@@ -290,16 +481,24 @@ export class GeneralLedgerExportProcessor {
 
       summaryCols.forEach((col, cIdx) => {
         const cell = grandTotalRow.getCell(cIdx + 1);
-        cell.value = grandValues[col.key] !== undefined ? grandValues[col.key] : '';
+        cell.value =
+          grandValues[col.key] !== undefined ? grandValues[col.key] : '';
         if (col.numFmt) cell.numFmt = col.numFmt;
-        cell.alignment = { horizontal: (col.align as any) || 'left', vertical: 'middle' };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        cell.alignment = {
+          horizontal: (col.align as any) || 'left',
+          vertical: 'middle',
+        };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE2E8F0' },
+        };
         cell.font = { bold: true, size: 9, color: { argb: 'FF1E293B' } };
         cell.border = {
-          top:    { style: 'thin', color: { argb: 'FF000000' } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'double', color: { argb: 'FF000000' } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       grandTotalRow.height = 22;
@@ -315,32 +514,71 @@ export class GeneralLedgerExportProcessor {
         const sheetTitle = sanitizeSheetName(rawSheetTitle, sheetNames);
 
         const ws = workbook.addWorksheet(sheetTitle, {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+          pageSetup: {
+            paperSize: 9,
+            orientation: 'landscape',
+            fitToPage: true,
+            fitToWidth: 1,
+          },
         });
 
-        ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
+        ws.columns = COLUMNS.map((c) => ({ key: c.key, width: c.width }));
 
         let curRowIdx = 1;
 
         // Master Head Banner
         const headTitleRow = ws.getRow(curRowIdx++);
-        headTitleRow.getCell(1).value = `HEAD: ${headGroup.head.code} — ${headGroup.head.name}`;
-        headTitleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
-        headTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
-        headTitleRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+        headTitleRow.getCell(1).value =
+          `HEAD: ${headGroup.head.code} — ${headGroup.head.name}`;
+        headTitleRow.getCell(1).font = {
+          bold: true,
+          color: { argb: 'FFFFFFFF' },
+          size: 12,
+        };
+        headTitleRow.getCell(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF1E3A5F' },
+        };
+        headTitleRow.getCell(1).alignment = {
+          horizontal: 'left',
+          vertical: 'middle',
+          indent: 1,
+        };
         for (let c = 2; c <= COLUMNS.length; c++) {
-          headTitleRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+          headTitleRow.getCell(c).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF1E3A5F' },
+          };
         }
         headTitleRow.height = 26;
         headTitleRow.commit();
 
         const headSubRow = ws.getRow(curRowIdx++);
-        headSubRow.getCell(1).value = `Period: ${from ? new Date(from).toLocaleDateString('en-GB') : 'Beginning'} to ${to ? new Date(to).toLocaleDateString('en-GB') : 'Present'}  |  Sub-Accounts: ${headGroup.ledgers.length}  |  Total Head Debit: ${headGroup.rangeTotalDebit.toLocaleString('en-PK')}  |  Total Head Credit: ${headGroup.rangeTotalCredit.toLocaleString('en-PK')}`;
-        headSubRow.getCell(1).font = { italic: true, size: 9, color: { argb: 'FF475569' } };
-        headSubRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-        headSubRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+        headSubRow.getCell(1).value =
+          `Period: ${from ? new Date(from).toLocaleDateString('en-GB') : 'Beginning'} to ${to ? new Date(to).toLocaleDateString('en-GB') : 'Present'}  |  Sub-Accounts: ${headGroup.ledgers.length}  |  Total Head Debit: ${headGroup.rangeTotalDebit.toLocaleString('en-PK')}  |  Total Head Credit: ${headGroup.rangeTotalCredit.toLocaleString('en-PK')}`;
+        headSubRow.getCell(1).font = {
+          italic: true,
+          size: 9,
+          color: { argb: 'FF475569' },
+        };
+        headSubRow.getCell(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF1F5F9' },
+        };
+        headSubRow.getCell(1).alignment = {
+          horizontal: 'left',
+          vertical: 'middle',
+          indent: 1,
+        };
         for (let c = 2; c <= COLUMNS.length; c++) {
-          headSubRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+          headSubRow.getCell(c).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF1F5F9' },
+          };
         }
         headSubRow.height = 20;
         headSubRow.commit();
@@ -351,16 +589,35 @@ export class GeneralLedgerExportProcessor {
         // Iterate through all sub-accounts under this Head
         for (let lIdx = 0; lIdx < headGroup.ledgers.length; lIdx++) {
           const ledgerItem = headGroup.ledgers[lIdx];
-          const isDebitNormal = ledgerItem.account.type === 'ASSET' || ledgerItem.account.type === 'EXPENSE';
+          const isDebitNormal =
+            ledgerItem.account.type === 'ASSET' ||
+            ledgerItem.account.type === 'EXPENSE';
 
           // Sub-Account Header Bar
           const accHeaderRow = ws.getRow(curRowIdx++);
-          accHeaderRow.getCell(1).value = `ACCOUNT: ${ledgerItem.account.code} — ${ledgerItem.account.name}   [${ledgerItem.account.type} • ${isDebitNormal ? 'Debit Normal' : 'Credit Normal'}]`;
-          accHeaderRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-          accHeaderRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
-          accHeaderRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+          accHeaderRow.getCell(1).value =
+            `ACCOUNT: ${ledgerItem.account.code} — ${ledgerItem.account.name}   [${ledgerItem.account.type} • ${isDebitNormal ? 'Debit Normal' : 'Credit Normal'}]`;
+          accHeaderRow.getCell(1).font = {
+            bold: true,
+            color: { argb: 'FFFFFFFF' },
+            size: 10,
+          };
+          accHeaderRow.getCell(1).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF334155' },
+          };
+          accHeaderRow.getCell(1).alignment = {
+            horizontal: 'left',
+            vertical: 'middle',
+            indent: 1,
+          };
           for (let c = 2; c <= COLUMNS.length; c++) {
-            accHeaderRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+            accHeaderRow.getCell(c).fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FF334155' },
+            };
           }
           accHeaderRow.height = 22;
           accHeaderRow.commit();
@@ -378,14 +635,18 @@ export class GeneralLedgerExportProcessor {
             const cell = groupRow.getCell(idx + 1);
             const { start } = groups[col.group];
             if (idx + 1 === start) cell.value = col.group.toUpperCase();
-            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
-            cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+            };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.border    = {
-              top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-              left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+            cell.border = {
+              top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-              right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
             };
           });
           groupRow.height = 20;
@@ -395,15 +656,26 @@ export class GeneralLedgerExportProcessor {
           const headerRow = ws.getRow(curRowIdx++);
           COLUMNS.forEach((col, idx) => {
             const cell = headerRow.getCell(idx + 1);
-            cell.value     = col.header;
-            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-            cell.font      = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
-            cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-            cell.border    = {
-              top:    { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
-              left:   { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+            cell.value = col.header;
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${SUBHEADER_BG}` },
+            };
+            cell.font = {
+              bold: true,
+              color: { argb: `FF${SUBHEADER_FG}` },
+              size: 9,
+            };
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
+            cell.border = {
+              top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-              right:  { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
             };
           });
           headerRow.height = 20;
@@ -423,21 +695,31 @@ export class GeneralLedgerExportProcessor {
           opRow.getCell(10).value = null;
           opRow.getCell(11).value = Number(ledgerItem.openingBalance);
           opRow.getCell(11).numFmt = '#,##0.00;(#,##0.00)';
-          opRow.getCell(11).alignment = { horizontal: 'right', vertical: 'middle' };
+          opRow.getCell(11).alignment = {
+            horizontal: 'right',
+            vertical: 'middle',
+          };
           opRow.getCell(11).font = {
             bold: true,
             size: 9,
-            color: ledgerItem.openingBalance >= 0 ? { argb: 'FF065F46' } : { argb: 'FF991B1B' },
+            color:
+              ledgerItem.openingBalance >= 0
+                ? { argb: 'FF065F46' }
+                : { argb: 'FF991B1B' },
           };
 
           for (let c = 1; c <= 11; c++) {
             const cell = opRow.getCell(c);
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFF1F5F9' },
+            };
             cell.border = {
-              top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-              left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-              right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
             };
           }
           opRow.height = 18;
@@ -448,16 +730,25 @@ export class GeneralLedgerExportProcessor {
           if (rows.length === 0) {
             const noTxRow = ws.getRow(curRowIdx++);
             noTxRow.getCell(1).value = '';
-            noTxRow.getCell(4).value = 'No transactions recorded in this period';
-            noTxRow.getCell(4).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
+            noTxRow.getCell(4).value =
+              'No transactions recorded in this period';
+            noTxRow.getCell(4).font = {
+              italic: true,
+              size: 9,
+              color: { argb: 'FF64748B' },
+            };
             for (let c = 1; c <= 11; c++) {
               const cell = noTxRow.getCell(c);
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFFFFF' },
+              };
               cell.border = {
-                top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
                 bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
               };
             }
             noTxRow.height = 18;
@@ -471,17 +762,19 @@ export class GeneralLedgerExportProcessor {
 
               const dataRow = ws.getRow(curRowIdx++);
               const rowData: Record<string, any> = {
-                srNo:            rowCounter,
-                transactionDate: r.transactionDate ? new Date(r.transactionDate) : null,
-                sourceRef:       r.sourceRef,
-                sourceType:      SOURCE_LABELS[r.sourceType] ?? r.sourceType,
-                chequeNo:        r.chequeNo || '',
-                refBillNo:       r.refBillNo || '',
-                refBillNo2:      r.refBillNo2 || '',
-                narration:       r.narration || r.description || '—',
-                debit:           r.debit > 0 ? Number(r.debit) : null,
-                credit:          r.credit > 0 ? Number(r.credit) : null,
-                runningBalance:  Number(r.runningBalance),
+                srNo: rowCounter,
+                transactionDate: r.transactionDate
+                  ? new Date(r.transactionDate)
+                  : null,
+                sourceRef: r.sourceRef,
+                sourceType: SOURCE_LABELS[r.sourceType] ?? r.sourceType,
+                chequeNo: r.chequeNo || '',
+                refBillNo: r.refBillNo || '',
+                refBillNo2: r.refBillNo2 || '',
+                narration: r.narration || r.description || '—',
+                debit: r.debit > 0 ? Number(r.debit) : null,
+                credit: r.credit > 0 ? Number(r.credit) : null,
+                runningBalance: Number(r.runningBalance),
               };
 
               COLUMNS.forEach((col, colIdx) => {
@@ -489,7 +782,10 @@ export class GeneralLedgerExportProcessor {
                 cell.value = rowData[col.key];
 
                 if (col.numFmt) cell.numFmt = col.numFmt;
-                cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+                cell.alignment = {
+                  horizontal: col.align ?? 'left',
+                  vertical: 'middle',
+                };
 
                 cell.fill = {
                   type: 'pattern',
@@ -502,15 +798,24 @@ export class GeneralLedgerExportProcessor {
                   cell.font = {
                     bold: true,
                     size: 9,
-                    color: r.runningBalance >= 0 ? { argb: 'FF065F46' } : { argb: 'FF991B1B' },
+                    color:
+                      r.runningBalance >= 0
+                        ? { argb: 'FF065F46' }
+                        : { argb: 'FF991B1B' },
                   };
                 }
 
                 cell.border = {
-                  top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                  left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                  bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                  right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                  top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                  left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                  bottom: {
+                    style: 'hair',
+                    color: { argb: `FF${BORDER_COLOR}` },
+                  },
+                  right: {
+                    style: 'hair',
+                    color: { argb: `FF${BORDER_COLOR}` },
+                  },
                 };
               });
 
@@ -518,9 +823,12 @@ export class GeneralLedgerExportProcessor {
               dataRow.commit();
 
               if (totalProcessedRows % 100 === 0 && totalTransactions > 0) {
-                const pct = Math.min(95, Math.round((totalProcessedRows / totalTransactions) * 90));
+                const pct = Math.min(
+                  95,
+                  Math.round((totalProcessedRows / totalTransactions) * 90),
+                );
                 await job.progress(pct);
-                await new Promise(res => setImmediate(res));
+                await new Promise((res) => setImmediate(res));
               }
             }
           }
@@ -528,10 +836,10 @@ export class GeneralLedgerExportProcessor {
           // Sub-Account Closing Total Row
           const subTotalRow = ws.getRow(curRowIdx++);
           const subTotalsData: Record<string, any> = {
-            sourceType:      `TOTAL (${ledgerItem.account.code})`,
-            debit:           Number(ledgerItem.rangeTotalDebit),
-            credit:          Number(ledgerItem.rangeTotalCredit),
-            runningBalance:  Number(ledgerItem.rangeClosingBalance),
+            sourceType: `TOTAL (${ledgerItem.account.code})`,
+            debit: Number(ledgerItem.rangeTotalDebit),
+            credit: Number(ledgerItem.rangeTotalCredit),
+            runningBalance: Number(ledgerItem.rangeClosingBalance),
           };
 
           COLUMNS.forEach((col, colIdx) => {
@@ -545,14 +853,21 @@ export class GeneralLedgerExportProcessor {
             }
 
             if (col.numFmt) cell.numFmt = col.numFmt;
-            cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFE2E8F0' },
+            };
             cell.font = { bold: true, size: 9, color: { argb: 'FF1E293B' } };
             cell.border = {
-              top:    { style: 'thin', color: { argb: 'FF000000' } },
-              left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              top: { style: 'thin', color: { argb: 'FF000000' } },
+              left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'double', color: { argb: 'FF000000' } },
-              right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
             };
           });
 
@@ -568,10 +883,10 @@ export class GeneralLedgerExportProcessor {
         if (headGroup.ledgers.length > 1) {
           const headGrandRow = ws.getRow(curRowIdx++);
           const headGrandData: Record<string, any> = {
-            sourceType:      `HEAD TOTAL (${headGroup.head.code})`,
-            debit:           Number(headGroup.rangeTotalDebit),
-            credit:          Number(headGroup.rangeTotalCredit),
-            runningBalance:  Number(headGroup.rangeClosingBalance),
+            sourceType: `HEAD TOTAL (${headGroup.head.code})`,
+            debit: Number(headGroup.rangeTotalDebit),
+            credit: Number(headGroup.rangeTotalCredit),
+            runningBalance: Number(headGroup.rangeClosingBalance),
           };
 
           COLUMNS.forEach((col, colIdx) => {
@@ -585,14 +900,21 @@ export class GeneralLedgerExportProcessor {
             }
 
             if (col.numFmt) cell.numFmt = col.numFmt;
-            cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCBD5E1' } };
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFCBD5E1' },
+            };
             cell.font = { bold: true, size: 9.5, color: { argb: 'FF0F172A' } };
             cell.border = {
-              top:    { style: 'medium', color: { argb: 'FF000000' } },
-              left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              top: { style: 'medium', color: { argb: 'FF000000' } },
+              left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'double', color: { argb: 'FF000000' } },
-              right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
             };
           });
 
@@ -606,7 +928,9 @@ export class GeneralLedgerExportProcessor {
       await workbook.commit();
       await job.progress(100);
 
-      this.logger.log(`[GeneralLedgerExport ${jobId}] Finished multi-sheet Excel export successfully`);
+      this.logger.log(
+        `[GeneralLedgerExport ${jobId}] Finished multi-sheet Excel export successfully`,
+      );
 
       // ── Push In-App Notification ──────────────────────────────────────────
       await this.notificationsService.create({
@@ -621,9 +945,11 @@ export class GeneralLedgerExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[GeneralLedgerExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[GeneralLedgerExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.notificationsService.create({

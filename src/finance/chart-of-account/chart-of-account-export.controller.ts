@@ -28,31 +28,35 @@ export class ChartOfAccountExportController {
    */
   @Post()
   @Permissions('erp.finance.chart-of-account.read')
-  @ApiOperation({ summary: 'Queue a chart-of-accounts export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue a chart-of-accounts export job (returns immediately, notifies when done)',
+  })
   async queueExport(
     @Req() req: any,
-    @Query('search')   search?: string,
-    @Query('type')     type?: string,
-    @Query('isGroup')  isGroupStr?: string,
+    @Query('search') search?: string,
+    @Query('type') type?: string,
+    @Query('isGroup') isGroupStr?: string,
     @Query('isActive') isActiveStr?: string,
   ) {
     const parseBool = (v?: string): boolean | undefined => {
-      if (v === 'true')  return true;
+      if (v === 'true') return true;
       if (v === 'false') return false;
       return undefined;
     };
 
     const result = await this.exportService.queueExport({
-      userId:   req.user?.userId,
+      userId: req.user?.userId,
       search,
       type,
-      isGroup:  parseBool(isGroupStr),
+      isGroup: parseBool(isGroupStr),
       isActive: parseBool(isActiveStr),
     });
 
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -74,13 +78,18 @@ export class ChartOfAccountExportController {
    */
   @Get(':jobId/download')
   @Permissions('erp.finance.chart-of-account.read')
-  @ApiOperation({ summary: 'Download a completed chart-of-accounts export file' })
+  @ApiOperation({
+    summary: 'Download a completed chart-of-accounts export file',
+  })
   async download(@Param('jobId') jobId: string, @Res() res: any) {
     try {
       await this.exportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

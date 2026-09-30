@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsOptional, IsString, IsEmail, IsIn, ValidateIf, IsNumber } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsEmail,
+  IsIn,
+  ValidateIf,
+  IsNumber,
+} from 'class-validator';
 
 export class CreateCustomerDto {
   @IsString()
@@ -49,7 +57,9 @@ export class CreateCustomerDto {
   @IsOptional()
   contactNo?: string;
 
-  @ValidateIf(o => o.email !== '' && o.email !== null && o.email !== undefined)
+  @ValidateIf(
+    (o) => o.email !== '' && o.email !== null && o.email !== undefined,
+  )
   @IsEmail()
   @IsOptional()
   email?: string;
@@ -121,7 +131,9 @@ export class UpdateCustomerDto {
   @IsOptional()
   contactNo?: string;
 
-  @ValidateIf(o => o.email !== '' && o.email !== null && o.email !== undefined)
+  @ValidateIf(
+    (o) => o.email !== '' && o.email !== null && o.email !== undefined,
+  )
   @IsEmail()
   @IsOptional()
   email?: string;
@@ -143,4 +155,3 @@ export class UpdateCustomerDto {
   @IsIn(['ERP', 'POS', 'BOTH'])
   customerType?: 'ERP' | 'POS' | 'BOTH';
 }
-

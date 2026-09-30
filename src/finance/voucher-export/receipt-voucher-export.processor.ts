@@ -24,12 +24,12 @@ export interface RvExportJobData {
 // ── Colour palette ────────────────────────────────────────────────────────────
 const SUBHEADER_BG = '1E3A5F';
 const SUBHEADER_FG = 'F1F5F9';
-const ALT_ROW_BG   = 'F0FDF4';
+const ALT_ROW_BG = 'F0FDF4';
 const BORDER_COLOR = 'CBD5E1';
 
 const GROUP_COLORS: Record<string, string> = {
   Voucher: '1A3A5C',
-  Detail:  '1E4D2B',
+  Detail: '1E4D2B',
   Amounts: '7C3A00',
 };
 
@@ -42,28 +42,120 @@ const COLUMNS: {
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
   // Voucher
-  { header: 'RV No',               key: 'rvNo',             width: 18, group: 'Voucher', align: 'center' },
-  { header: 'RV Date',             key: 'rvDate',           width: 14, group: 'Voucher', numFmt: 'dd-mmm-yyyy', align: 'center' },
-  { header: 'Type',                key: 'type',             width: 8,  group: 'Voucher', align: 'center' },
-  { header: 'Status',              key: 'status',           width: 11, group: 'Voucher', align: 'center' },
-  { header: 'Ref Bill No',         key: 'refBillNo',        width: 18, group: 'Voucher' },
-  { header: 'Payee / Account Code',key: 'debitAccountCode', width: 18, group: 'Voucher', align: 'center' },
-  { header: 'Payee / Account Name',key: 'debitAccountName', width: 28, group: 'Voucher' },
-  { header: 'Customer Code',       key: 'customerCode',     width: 16, group: 'Voucher', align: 'center' },
-  { header: 'Debit Amount',        key: 'debitAmount',      width: 16, group: 'Voucher', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Is Advance',          key: 'isAdvance',        width: 11, group: 'Voucher', align: 'center' },
-  { header: 'Cheque No',           key: 'chequeNo',         width: 16, group: 'Voucher', align: 'center' },
-  { header: 'Description',         key: 'description',      width: 34, group: 'Voucher' },
+  {
+    header: 'RV No',
+    key: 'rvNo',
+    width: 18,
+    group: 'Voucher',
+    align: 'center',
+  },
+  {
+    header: 'RV Date',
+    key: 'rvDate',
+    width: 14,
+    group: 'Voucher',
+    numFmt: 'dd-mmm-yyyy',
+    align: 'center',
+  },
+  { header: 'Type', key: 'type', width: 8, group: 'Voucher', align: 'center' },
+  {
+    header: 'Status',
+    key: 'status',
+    width: 11,
+    group: 'Voucher',
+    align: 'center',
+  },
+  { header: 'Ref Bill No', key: 'refBillNo', width: 18, group: 'Voucher' },
+  {
+    header: 'Payee / Account Code',
+    key: 'debitAccountCode',
+    width: 18,
+    group: 'Voucher',
+    align: 'center',
+  },
+  {
+    header: 'Payee / Account Name',
+    key: 'debitAccountName',
+    width: 28,
+    group: 'Voucher',
+  },
+  {
+    header: 'Customer Code',
+    key: 'customerCode',
+    width: 16,
+    group: 'Voucher',
+    align: 'center',
+  },
+  {
+    header: 'Debit Amount',
+    key: 'debitAmount',
+    width: 16,
+    group: 'Voucher',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Is Advance',
+    key: 'isAdvance',
+    width: 11,
+    group: 'Voucher',
+    align: 'center',
+  },
+  {
+    header: 'Cheque No',
+    key: 'chequeNo',
+    width: 16,
+    group: 'Voucher',
+    align: 'center',
+  },
+  { header: 'Description', key: 'description', width: 34, group: 'Voucher' },
   // Detail
-  { header: 'Line #',              key: 'lineNo',           width: 8,  group: 'Detail',  align: 'center' },
-  { header: 'Account Code',        key: 'accountCode',      width: 16, group: 'Detail',  align: 'center' },
-  { header: 'Account Name',        key: 'accountName',      width: 30, group: 'Detail' },
-  { header: 'Tag Account Code',    key: 'tagAccountCode',   width: 16, group: 'Detail',  align: 'center' },
-  { header: 'Tag Account Name',    key: 'tagAccountName',   width: 24, group: 'Detail' },
-  { header: 'Narration',           key: 'narration',        width: 34, group: 'Detail' },
+  {
+    header: 'Line #',
+    key: 'lineNo',
+    width: 8,
+    group: 'Detail',
+    align: 'center',
+  },
+  {
+    header: 'Account Code',
+    key: 'accountCode',
+    width: 16,
+    group: 'Detail',
+    align: 'center',
+  },
+  { header: 'Account Name', key: 'accountName', width: 30, group: 'Detail' },
+  {
+    header: 'Tag Account Code',
+    key: 'tagAccountCode',
+    width: 16,
+    group: 'Detail',
+    align: 'center',
+  },
+  {
+    header: 'Tag Account Name',
+    key: 'tagAccountName',
+    width: 24,
+    group: 'Detail',
+  },
+  { header: 'Narration', key: 'narration', width: 34, group: 'Detail' },
   // Amounts
-  { header: 'Debit',               key: 'debit',            width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Credit',              key: 'credit',           width: 16, group: 'Amounts', numFmt: '#,##0.00', align: 'right' },
+  {
+    header: 'Debit',
+    key: 'debit',
+    width: 16,
+    group: 'Amounts',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Credit',
+    key: 'credit',
+    width: 16,
+    group: 'Amounts',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
 ];
 
 @Processor('receipt-voucher-export')
@@ -74,7 +166,19 @@ export class ReceiptVoucherExportProcessor {
 
   @Process()
   async handleExport(job: Job<RvExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, type, status, dateFrom, dateTo, accountId, search, ids } = job.data;
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      type,
+      status,
+      dateFrom,
+      dateTo,
+      accountId,
+      search,
+      ids,
+    } = job.data;
 
     this.logger.log(`[RvExport ${jobId}] Starting for user ${userId}`);
 
@@ -87,20 +191,25 @@ export class ReceiptVoucherExportProcessor {
     try {
       // ── Build WHERE ────────────────────────────────────────────────────────
       const andClauses: any[] = [];
-      if (ids && ids.length > 0)       andClauses.push({ id: { in: ids } });
-      if (type && type !== 'all')     andClauses.push({ type });
+      if (ids && ids.length > 0) andClauses.push({ id: { in: ids } });
+      if (type && type !== 'all') andClauses.push({ type });
       if (status && status !== 'all') andClauses.push({ status });
       if (dateFrom || dateTo) {
         const dateFilter: any = {};
         if (dateFrom) dateFilter.gte = new Date(dateFrom);
-        if (dateTo)   dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+        if (dateTo)
+          dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
         andClauses.push({ rvDate: dateFilter });
       }
       if (accountId && accountId !== 'all') {
         andClauses.push({
           OR: [
             { debitAccountId: accountId },
-            { details: { some: { OR: [{ accountId }, { tagAccountId: accountId }] } } },
+            {
+              details: {
+                some: { OR: [{ accountId }, { tagAccountId: accountId }] },
+              },
+            },
           ],
         });
       }
@@ -112,13 +221,55 @@ export class ReceiptVoucherExportProcessor {
             { description: { contains: term, mode: 'insensitive' } },
             { refBillNo: { contains: term, mode: 'insensitive' } },
             { chequeNo: { contains: term, mode: 'insensitive' } },
-            { debitAccount: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
-            { customer: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
-            { details: { some: { OR: [
-              { narration: { contains: term, mode: 'insensitive' } },
-              { account: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
-              { tagAccount: { is: { OR: [{ code: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } } },
-            ] } } },
+            {
+              debitAccount: {
+                is: {
+                  OR: [
+                    { code: { contains: term, mode: 'insensitive' } },
+                    { name: { contains: term, mode: 'insensitive' } },
+                  ],
+                },
+              },
+            },
+            {
+              customer: {
+                is: {
+                  OR: [
+                    { code: { contains: term, mode: 'insensitive' } },
+                    { name: { contains: term, mode: 'insensitive' } },
+                  ],
+                },
+              },
+            },
+            {
+              details: {
+                some: {
+                  OR: [
+                    { narration: { contains: term, mode: 'insensitive' } },
+                    {
+                      account: {
+                        is: {
+                          OR: [
+                            { code: { contains: term, mode: 'insensitive' } },
+                            { name: { contains: term, mode: 'insensitive' } },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      tagAccount: {
+                        is: {
+                          OR: [
+                            { code: { contains: term, mode: 'insensitive' } },
+                            { name: { contains: term, mode: 'insensitive' } },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
           ],
         });
       }
@@ -135,7 +286,12 @@ export class ReceiptVoucherExportProcessor {
       });
 
       const ws = workbook.addWorksheet('Receipt Vouchers', {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
         views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
       });
 
@@ -154,14 +310,18 @@ export class ReceiptVoucherExportProcessor {
         const cell = groupRow.getCell(idx + 1);
         const { start } = groups[col.group];
         if (idx + 1 === start) cell.value = col.group.toUpperCase();
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
-        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+        };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       groupRow.height = 22;
@@ -171,15 +331,26 @@ export class ReceiptVoucherExportProcessor {
       const headerRow = ws.getRow(2);
       COLUMNS.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
-        cell.value     = col.header;
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font      = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
-        cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+        cell.value = col.header;
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 9,
+        };
+        cell.alignment = {
+          horizontal: col.align ?? 'left',
+          vertical: 'middle',
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       headerRow.height = 20;
@@ -198,10 +369,10 @@ export class ReceiptVoucherExportProcessor {
           take: CHUNK,
           include: {
             debitAccount: { select: { code: true, name: true } },
-            customer:     { select: { code: true, name: true } },
+            customer: { select: { code: true, name: true } },
             details: {
               include: {
-                account:    { select: { code: true, name: true } },
+                account: { select: { code: true, name: true } },
                 tagAccount: { select: { code: true, name: true } },
               },
             },
@@ -214,43 +385,58 @@ export class ReceiptVoucherExportProcessor {
           const details = rv.details.length > 0 ? rv.details : [null];
 
           details.forEach((detail: any, dIdx: number) => {
-            const isAlt      = rowIdx % 2 === 1;
+            const isAlt = rowIdx % 2 === 1;
             const isApproved = rv.status === 'approved';
 
             const rowData: Record<string, any> = {
-              rvNo:             dIdx === 0 ? rv.rvNo : '',
-              rvDate:           dIdx === 0 ? new Date(rv.rvDate) : null,
-              type:             dIdx === 0 ? rv.type.toUpperCase() : '',
-              status:           dIdx === 0 ? rv.status.toUpperCase() : '',
-              refBillNo:        dIdx === 0 ? (rv.refBillNo ?? '') : '',
+              rvNo: dIdx === 0 ? rv.rvNo : '',
+              rvDate: dIdx === 0 ? new Date(rv.rvDate) : null,
+              type: dIdx === 0 ? rv.type.toUpperCase() : '',
+              status: dIdx === 0 ? rv.status.toUpperCase() : '',
+              refBillNo: dIdx === 0 ? (rv.refBillNo ?? '') : '',
               debitAccountCode: dIdx === 0 ? (rv.debitAccount?.code ?? '') : '',
               debitAccountName: dIdx === 0 ? (rv.debitAccount?.name ?? '') : '',
-              customerCode:     dIdx === 0 ? (rv.customer?.code ?? '') : '',
-              debitAmount:      dIdx === 0 ? Number(rv.debitAmount) : null,
-              isAdvance:        dIdx === 0 ? (rv.isAdvance ? 'Yes' : 'No') : '',
-              chequeNo:         dIdx === 0 ? (rv.chequeNo ?? '') : '',
-              description:      dIdx === 0 ? (rv.description ?? '') : '',
-              lineNo:           detail ? dIdx + 1 : '',
-              accountCode:      detail?.account?.code ?? '',
-              accountName:      detail?.account?.name ?? '',
-              tagAccountCode:   detail?.tagAccount?.code ?? '',
-              tagAccountName:   detail?.tagAccount?.name ?? '',
-              narration:        detail?.narration      ?? '',
-              debit:            detail ? Number(detail.debit)  : null,
-              credit:           detail ? Number(detail.credit) : null,
+              customerCode: dIdx === 0 ? (rv.customer?.code ?? '') : '',
+              debitAmount: dIdx === 0 ? Number(rv.debitAmount) : null,
+              isAdvance: dIdx === 0 ? (rv.isAdvance ? 'Yes' : 'No') : '',
+              chequeNo: dIdx === 0 ? (rv.chequeNo ?? '') : '',
+              description: dIdx === 0 ? (rv.description ?? '') : '',
+              lineNo: detail ? dIdx + 1 : '',
+              accountCode: detail?.account?.code ?? '',
+              accountName: detail?.account?.name ?? '',
+              tagAccountCode: detail?.tagAccount?.code ?? '',
+              tagAccountName: detail?.tagAccount?.name ?? '',
+              narration: detail?.narration ?? '',
+              debit: detail ? Number(detail.debit) : null,
+              credit: detail ? Number(detail.credit) : null,
             };
 
             const dataRow = ws.getRow(rowIdx + 3);
             COLUMNS.forEach((col, colIdx) => {
               const cell = dataRow.getCell(colIdx + 1);
-              cell.value     = rowData[col.key] ?? null;
-              if (col.numFmt && rowData[col.key] !== null && rowData[col.key] !== '')
+              cell.value = rowData[col.key] ?? null;
+              if (
+                col.numFmt &&
+                rowData[col.key] !== null &&
+                rowData[col.key] !== ''
+              )
                 cell.numFmt = col.numFmt;
-              cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-              cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+              cell.alignment = {
+                horizontal: col.align ?? 'left',
+                vertical: 'middle',
+              };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` },
+              };
 
               if (col.key === 'status') {
-                cell.font = { bold: true, size: 9, color: { argb: isApproved ? 'FF15803D' : 'FFB45309' } };
+                cell.font = {
+                  bold: true,
+                  size: 9,
+                  color: { argb: isApproved ? 'FF15803D' : 'FFB45309' },
+                };
               } else if (col.key === 'debit') {
                 cell.font = { size: 9, color: { argb: 'FF1D4ED8' } };
               } else if (col.key === 'credit') {
@@ -260,10 +446,10 @@ export class ReceiptVoucherExportProcessor {
               }
 
               cell.border = {
-                top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
                 bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-                right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+                right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
               };
             });
 
@@ -275,39 +461,62 @@ export class ReceiptVoucherExportProcessor {
 
         processedVouchers += chunk.length;
 
-        const pct = total > 0 ? Math.round((processedVouchers / total) * 95) : 50;
+        const pct =
+          total > 0 ? Math.round((processedVouchers / total) * 95) : 50;
         await job.progress(pct);
         await new Promise((r) => setImmediate(r));
       }
 
       // ── Summary sheet ──────────────────────────────────────────────────────
       const summary = workbook.addWorksheet('Summary');
-      summary.columns = [{ key: 'label', width: 28 }, { key: 'value', width: 24 }];
+      summary.columns = [
+        { key: 'label', width: 28 },
+        { key: 'value', width: 24 },
+      ];
       const titleRow = summary.getRow(1);
-      titleRow.getCell(1).value     = 'Receipt Voucher Export Summary';
-      titleRow.getCell(1).font      = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
-      titleRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-      titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).value = 'Receipt Voucher Export Summary';
+      titleRow.getCell(1).font = {
+        bold: true,
+        size: 14,
+        color: { argb: 'FF1E293B' },
+      };
+      titleRow.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+      titleRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       titleRow.height = 28;
       titleRow.commit();
 
       const summaryRows = [
-        ['Export Date',    new Date().toLocaleString('en-PK')],
+        ['Export Date', new Date().toLocaleString('en-PK')],
         ['Total Vouchers', processedVouchers],
-        ['Total Rows',     rowIdx],
-        ['Type Filter',    type   ?? '(all)'],
-        ['Status Filter',  status ?? '(all)'],
-        ['Date From',      dateFrom ?? '(all)'],
-        ['Date To',        dateTo   ?? '(all)'],
+        ['Total Rows', rowIdx],
+        ['Type Filter', type ?? '(all)'],
+        ['Status Filter', status ?? '(all)'],
+        ['Date From', dateFrom ?? '(all)'],
+        ['Date To', dateTo ?? '(all)'],
       ];
       summaryRows.forEach(([label, value], idx) => {
         const r = summary.getRow(idx + 2);
         r.getCell(1).value = label;
-        r.getCell(1).font  = { bold: true, size: 10 };
-        r.getCell(1).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(1).font = { bold: true, size: 10 };
+        r.getCell(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.getCell(2).value = value;
-        r.getCell(2).font  = { size: 10 };
-        r.getCell(2).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(2).font = { size: 10 };
+        r.getCell(2).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.height = 18;
         r.commit();
       });
@@ -315,7 +524,9 @@ export class ReceiptVoucherExportProcessor {
       await workbook.commit();
       await job.progress(100);
 
-      this.logger.log(`[RvExport ${jobId}] File written (${processedVouchers} vouchers, ${rowIdx} rows)`);
+      this.logger.log(
+        `[RvExport ${jobId}] File written (${processedVouchers} vouchers, ${rowIdx} rows)`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -329,9 +540,11 @@ export class ReceiptVoucherExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[RvExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[RvExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.notificationsService.create({

@@ -9,7 +9,7 @@ export class DashboardService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private taskReports: TaskReportsService,
-  ) { }
+  ) {}
 
   async getDashboardStats() {
     this.prisma.ensureTenantContext();
@@ -94,7 +94,10 @@ export class DashboardService {
         where: { date: { gte: lastWeekStart, lt: today }, status: 'present' },
       }),
       this.prisma.attendance.count({
-        where: { date: { gte: weekBeforeStart, lt: lastWeekStart }, status: 'present' },
+        where: {
+          date: { gte: weekBeforeStart, lt: lastWeekStart },
+          status: 'present',
+        },
       }),
       this.prisma.attendance.findMany({
         where: { date: { gte: lastWeekStart }, lateMinutes: { gt: 0 } },
@@ -123,20 +126,54 @@ export class DashboardService {
 
     // 1. Basic Stats Processing
     const totalEmployees = activeEmployees.length;
-    const employeeTrend = totalEmployeesLastWeekCount === 0 ? 0 : Math.round(((totalEmployees - totalEmployeesLastWeekCount) / totalEmployeesLastWeekCount) * 100);
+    const employeeTrend =
+      totalEmployeesLastWeekCount === 0
+        ? 0
+        : Math.round(
+            ((totalEmployees - totalEmployeesLastWeekCount) /
+              totalEmployeesLastWeekCount) *
+              100,
+          );
 
-    const presentToday = attendanceTodayStats.find(s => s.status === 'present')?._count.id || 0;
-    const absentToday = attendanceTodayStats.find(s => s.status === 'absent')?._count.id || 0;
-    const presentLastWeek = attendanceLastWeekStats.find(s => s.status === 'present')?._count.id || 0;
-    const presentTrend = presentLastWeek === 0 ? 0 : Math.round(((presentToday - presentLastWeek) / presentLastWeek) * 100);
+    const presentToday =
+      attendanceTodayStats.find((s) => s.status === 'present')?._count.id || 0;
+    const absentToday =
+      attendanceTodayStats.find((s) => s.status === 'absent')?._count.id || 0;
+    const presentLastWeek =
+      attendanceLastWeekStats.find((s) => s.status === 'present')?._count.id ||
+      0;
+    const presentTrend =
+      presentLastWeek === 0
+        ? 0
+        : Math.round(
+            ((presentToday - presentLastWeek) / presentLastWeek) * 100,
+          );
 
-    const leavesTrend = pendingLeavesLastWeekCount === 0 ? 0 : Math.round(((pendingLeavesStatus - pendingLeavesLastWeekCount) / pendingLeavesLastWeekCount) * 100);
-    const queriesTrend = pendingQueriesLastWeekCount === 0 ? 0 : Math.round(((pendingAttendanceQueriesStatus - pendingQueriesLastWeekCount) / pendingQueriesLastWeekCount) * 100);
+    const leavesTrend =
+      pendingLeavesLastWeekCount === 0
+        ? 0
+        : Math.round(
+            ((pendingLeavesStatus - pendingLeavesLastWeekCount) /
+              pendingLeavesLastWeekCount) *
+              100,
+          );
+    const queriesTrend =
+      pendingQueriesLastWeekCount === 0
+        ? 0
+        : Math.round(
+            ((pendingAttendanceQueriesStatus - pendingQueriesLastWeekCount) /
+              pendingQueriesLastWeekCount) *
+              100,
+          );
 
     // 2. Celebrations & Critical Alerts
     const getEffectiveDate = (d: Date) => {
       const bday = new Date(d);
-      const thisYear = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());
+      const thisYear = new Date(
+        today.getFullYear(),
+        bday.getMonth(),
+        bday.getDate(),
+      );
       if (thisYear >= today) return thisYear;
       return new Date(today.getFullYear() + 1, bday.getMonth(), bday.getDate());
     };
@@ -145,45 +182,87 @@ export class DashboardService {
       .filter((emp) => {
         if (!emp.dateOfBirth) return false;
         const bday = new Date(emp.dateOfBirth as Date);
-        const thisYearBday = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());
-        const nextYearBday = new Date(today.getFullYear() + 1, bday.getMonth(), bday.getDate());
-        return (thisYearBday >= today && thisYearBday <= next30Days) || (nextYearBday >= today && nextYearBday <= next30Days);
+        const thisYearBday = new Date(
+          today.getFullYear(),
+          bday.getMonth(),
+          bday.getDate(),
+        );
+        const nextYearBday = new Date(
+          today.getFullYear() + 1,
+          bday.getMonth(),
+          bday.getDate(),
+        );
+        return (
+          (thisYearBday >= today && thisYearBday <= next30Days) ||
+          (nextYearBday >= today && nextYearBday <= next30Days)
+        );
       })
       .map((emp) => ({
         name: emp.employeeName,
         date: emp.dateOfBirth,
-        department: departments.find((d) => d.id === emp.departmentId)?.name || 'N/A',
+        department:
+          departments.find((d) => d.id === emp.departmentId)?.name || 'N/A',
       }))
-      .sort((a, b) => getEffectiveDate(a.date as Date).getTime() - getEffectiveDate(b.date as Date).getTime());
+      .sort(
+        (a, b) =>
+          getEffectiveDate(a.date as Date).getTime() -
+          getEffectiveDate(b.date as Date).getTime(),
+      );
 
     const upcomingAnniversaries = activeEmployees
       .filter((emp) => {
         if (!emp.joiningDate) return false;
         const joinDate = new Date(emp.joiningDate as Date);
-        const thisYearAnn = new Date(today.getFullYear(), joinDate.getMonth(), joinDate.getDate());
-        const nextYearAnn = new Date(today.getFullYear() + 1, joinDate.getMonth(), joinDate.getDate());
-        return joinDate.getFullYear() < today.getFullYear() && ((thisYearAnn >= today && thisYearAnn <= next30Days) || (nextYearAnn >= today && nextYearAnn <= next30Days));
+        const thisYearAnn = new Date(
+          today.getFullYear(),
+          joinDate.getMonth(),
+          joinDate.getDate(),
+        );
+        const nextYearAnn = new Date(
+          today.getFullYear() + 1,
+          joinDate.getMonth(),
+          joinDate.getDate(),
+        );
+        return (
+          joinDate.getFullYear() < today.getFullYear() &&
+          ((thisYearAnn >= today && thisYearAnn <= next30Days) ||
+            (nextYearAnn >= today && nextYearAnn <= next30Days))
+        );
       })
       .map((emp) => ({
         name: emp.employeeName,
         date: emp.joiningDate,
-        years: today.getFullYear() - new Date(emp.joiningDate as Date).getFullYear(),
-        department: departments.find((d) => d.id === emp.departmentId)?.name || 'N/A',
+        years:
+          today.getFullYear() - new Date(emp.joiningDate as Date).getFullYear(),
+        department:
+          departments.find((d) => d.id === emp.departmentId)?.name || 'N/A',
       }))
-      .sort((a, b) => getEffectiveDate(a.date as Date).getTime() - getEffectiveDate(b.date as Date).getTime());
+      .sort(
+        (a, b) =>
+          getEffectiveDate(a.date as Date).getTime() -
+          getEffectiveDate(b.date as Date).getTime(),
+      );
 
     const criticalAlerts: any[] = [];
     activeEmployees.forEach((emp) => {
-      if (emp.cnicExpiryDate && new Date(emp.cnicExpiryDate as Date) <= next30Days) {
+      if (
+        emp.cnicExpiryDate &&
+        new Date(emp.cnicExpiryDate as Date) <= next30Days
+      ) {
         criticalAlerts.push({
-          type: 'CNIC_EXPIRY', priority: 'high',
+          type: 'CNIC_EXPIRY',
+          priority: 'high',
           message: `CNIC for ${emp.employeeName} expires on ${new Date(emp.cnicExpiryDate as Date).toLocaleDateString()}`,
           employeeId: emp.id,
         });
       }
-      if (emp.probationExpiryDate && new Date(emp.probationExpiryDate as Date) <= next30Days) {
+      if (
+        emp.probationExpiryDate &&
+        new Date(emp.probationExpiryDate as Date) <= next30Days
+      ) {
         criticalAlerts.push({
-          type: 'PROBATION_EXPIRY', priority: 'medium',
+          type: 'PROBATION_EXPIRY',
+          priority: 'medium',
           message: `${emp.employeeName} completes probation on ${new Date(emp.probationExpiryDate as Date).toLocaleDateString()}`,
           employeeId: emp.id,
         });
@@ -218,7 +297,9 @@ export class DashboardService {
       acc[curr.employeeId] = (acc[curr.employeeId] || 0) + 1;
       return acc;
     }, {});
-    const highLateFreqCount = Object.values(lateFrequencies).filter(v => (v as number) >= 3).length;
+    const highLateFreqCount = Object.values(lateFrequencies).filter(
+      (v) => (v as number) >= 3,
+    ).length;
     if (highLateFreqCount > 0) {
       analyticsSuggestions.push({
         title: 'Retention Risk Indicator',
@@ -232,15 +313,22 @@ export class DashboardService {
     for (let i = 13; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dayRecords = attendancesForTrend.filter(a => {
+      const dayRecords = attendancesForTrend.filter((a) => {
         const d = new Date(a.date);
-        return d.getDate() === date.getDate() && d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear();
+        return (
+          d.getDate() === date.getDate() &&
+          d.getMonth() === date.getMonth() &&
+          d.getFullYear() === date.getFullYear()
+        );
       });
 
       attendanceTrend.push({
-        date: date.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }),
-        present: dayRecords.filter(a => a.status === 'present').length,
-        absent: dayRecords.filter(a => a.status === 'absent').length,
+        date: date.toLocaleDateString(undefined, {
+          day: '2-digit',
+          month: 'short',
+        }),
+        present: dayRecords.filter((a) => a.status === 'present').length,
+        absent: dayRecords.filter((a) => a.status === 'absent').length,
       });
     }
 
@@ -248,10 +336,19 @@ export class DashboardService {
     const formattedRecentLeaves = recentLeaveRequests.map((l) => ({
       id: l.id,
       employeeName: (l as any).employee?.employeeName || 'Unknown',
-      department: departments.find((d) => d.id === (l as any).employee?.departmentId)?.name || 'N/A',
-      type: 'Leave', status: l.status,
-      dateFrom: (l as any).fromDate, dateTo: (l as any).toDate,
-      days: Math.ceil((new Date((l as any).toDate).getTime() - new Date((l as any).fromDate).getTime()) / (1000 * 60 * 60 * 24)) + 1,
+      department:
+        departments.find((d) => d.id === (l as any).employee?.departmentId)
+          ?.name || 'N/A',
+      type: 'Leave',
+      status: l.status,
+      dateFrom: (l as any).fromDate,
+      dateTo: (l as any).toDate,
+      days:
+        Math.ceil(
+          (new Date((l as any).toDate).getTime() -
+            new Date((l as any).fromDate).getTime()) /
+            (1000 * 60 * 60 * 24),
+        ) + 1,
     }));
 
     // 8. Department Stats Processing
@@ -262,14 +359,36 @@ export class DashboardService {
 
     return {
       overview: {
-        totalEmployees: { value: totalEmployees, trend: employeeTrend, trendType: employeeTrend >= 0 ? 'up' : 'down' },
+        totalEmployees: {
+          value: totalEmployees,
+          trend: employeeTrend,
+          trendType: employeeTrend >= 0 ? 'up' : 'down',
+        },
         inactiveEmployees: { value: inactiveEmployeesCount },
-        presentToday: { value: presentToday, trend: presentTrend, trendType: presentTrend >= 0 ? 'up' : 'down' },
+        presentToday: {
+          value: presentToday,
+          trend: presentTrend,
+          trendType: presentTrend >= 0 ? 'up' : 'down',
+        },
         absentToday: { value: absentToday },
-        pendingLeaves: { value: pendingLeavesStatus, trend: leavesTrend, trendType: leavesTrend >= 0 ? 'up' : 'down' },
-        pendingAttendanceQueries: { value: pendingAttendanceQueriesStatus, trend: queriesTrend, trendType: queriesTrend >= 0 ? 'up' : 'down' },
+        pendingLeaves: {
+          value: pendingLeavesStatus,
+          trend: leavesTrend,
+          trendType: leavesTrend >= 0 ? 'up' : 'down',
+        },
+        pendingAttendanceQueries: {
+          value: pendingAttendanceQueriesStatus,
+          trend: queriesTrend,
+          trendType: queriesTrend >= 0 ? 'up' : 'down',
+        },
       },
-      departmentStats, upcomingBirthdays, upcomingAnniversaries, criticalAlerts, analyticsSuggestions, attendanceTrend, recentLeaveRequests: formattedRecentLeaves,
+      departmentStats,
+      upcomingBirthdays,
+      upcomingAnniversaries,
+      criticalAlerts,
+      analyticsSuggestions,
+      attendanceTrend,
+      recentLeaveRequests: formattedRecentLeaves,
       taskWidgets: await this.taskReports.adminWidgets().catch(() => null),
     };
   }
@@ -282,15 +401,12 @@ export class DashboardService {
 
     // Auto-link logic: If not linked, try to match by email
     if (!employee) {
-   
-
       try {
         const user = await this.prismaMaster.user.findUnique({
           where: { id: userId },
         });
 
         if (user && user.email) {
-          
           const matchedEmployee = await this.prisma.employee.findFirst({
             where: {
               OR: [
@@ -301,8 +417,6 @@ export class DashboardService {
           });
 
           if (matchedEmployee) {
-          
-
             // Verify if this employee is already linked to another user (edge case)
             if (matchedEmployee.userId && matchedEmployee.userId !== userId) {
               console.warn(
@@ -314,7 +428,6 @@ export class DashboardService {
                 where: { id: matchedEmployee.id },
                 data: { userId: user.id },
               });
-          
             }
           } else {
             // Fallback: Try matching by Phone Number
@@ -335,7 +448,7 @@ export class DashboardService {
                     data: { userId: user.id },
                   });
                 }
-              } 
+              }
             }
           }
         }
@@ -345,7 +458,6 @@ export class DashboardService {
     }
 
     if (!employee) {
-
       return {
         overview: {
           presentMonth: 0,
@@ -446,7 +558,9 @@ export class DashboardService {
       },
       upcomingHoliday,
       recentActivities,
-      taskWidgets: await this.taskReports.employeeWidgets(employee.id).catch(() => null),
+      taskWidgets: await this.taskReports
+        .employeeWidgets(employee.id)
+        .catch(() => null),
     };
   }
 }

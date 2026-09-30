@@ -11,9 +11,17 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ItemService } from './item.service';
-import { CreateItemDto, UpdateItemDto, BulkDiscountDto, RollbackCampaignDto, BulkSalePriceDto, BulkSearchIdsDto } from './dto/item.dto';
+import {
+  CreateItemDto,
+  UpdateItemDto,
+  BulkDiscountDto,
+  RollbackCampaignDto,
+  BulkSalePriceDto,
+  BulkSearchIdsDto,
+} from './dto/item.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { GetUser } from '../../common/decorators/get-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
@@ -35,6 +43,7 @@ export class ItemController {
   @Permissions('erp.item.read')
   @ApiOperation({ summary: 'List all items' })
   async findAll(
+    @GetUser() user: any,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('search') search?: string,
@@ -45,8 +54,10 @@ export class ItemController {
     @Query('silhouetteIds') silhouetteIds?: string,
     @Query('genderIds') genderIds?: string,
   ) {
-    const parseIds = (v?: string) => (v ? v.split(',').filter(Boolean) : undefined);
+    const parseIds = (v?: string) =>
+      v ? v.split(',').filter(Boolean) : undefined;
     return this.itemService.findAll(
+      user,
       page ? Number(page) : 1,
       limit ? Number(limit) : 50,
       search,
@@ -79,7 +90,10 @@ export class ItemController {
 
   @Patch('bulk-discount')
   @Permissions('erp.item.update')
-  @ApiOperation({ summary: 'Apply or clear discount on multiple items — persists a DiscountCampaign record' })
+  @ApiOperation({
+    summary:
+      'Apply or clear discount on multiple items — persists a DiscountCampaign record',
+  })
   async bulkDiscount(@Body() dto: BulkDiscountDto) {
     return this.itemService.bulkDiscount(dto);
   }
@@ -93,7 +107,9 @@ export class ItemController {
 
   @Get('campaigns')
   @Permissions('erp.item.read')
-  @ApiOperation({ summary: 'List all discount campaigns (paginated, newest first)' })
+  @ApiOperation({
+    summary: 'List all discount campaigns (paginated, newest first)',
+  })
   async getCampaigns(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -113,14 +129,19 @@ export class ItemController {
 
   @Post('campaigns/rollback')
   @Permissions('erp.item.update')
-  @ApiOperation({ summary: 'Rollback a campaign — restores pre-apply discount state from DB snapshot' })
+  @ApiOperation({
+    summary:
+      'Rollback a campaign — restores pre-apply discount state from DB snapshot',
+  })
   async rollbackCampaign(@Body() dto: RollbackCampaignDto) {
     return this.itemService.rollbackCampaign(dto);
   }
 
   @Post('bulk-search')
   @Permissions('erp.item.read')
-  @ApiOperation({ summary: 'Bulk search items by an array of barcodes, SKUs, or Item IDs' })
+  @ApiOperation({
+    summary: 'Bulk search items by an array of barcodes, SKUs, or Item IDs',
+  })
   async bulkSearchByBarcodes(@Body() dto: BulkSearchIdsDto) {
     return this.itemService.bulkSearchByBarcodes(dto.barcodes);
   }

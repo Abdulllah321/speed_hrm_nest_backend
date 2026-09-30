@@ -6,9 +6,7 @@ import type { Queue } from 'bull';
 export class PosSessionRsrvScheduler implements OnModuleInit {
   private readonly logger = new Logger(PosSessionRsrvScheduler.name);
 
-  constructor(
-    @InjectQueue('reconciliation-rsrv') private queue: Queue,
-  ) {}
+  constructor(@InjectQueue('reconciliation-rsrv') private queue: Queue) {}
 
   async onModuleInit() {
     try {
@@ -28,7 +26,9 @@ export class PosSessionRsrvScheduler implements OnModuleInit {
         },
       );
 
-      this.logger.log('Automated Daily Midnight RSRV generation job scheduled (00:00 AM)');
+      this.logger.log(
+        'Automated Daily Midnight RSRV generation job scheduled (00:00 AM)',
+      );
     } catch (err: any) {
       this.logger.warn(`Could not schedule RSRV cron: ${err?.message}`);
     }

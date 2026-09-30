@@ -23,12 +23,14 @@ export class OpeningBalanceService {
     }
 
     if (account.isGroup) {
-      throw new BadRequestException('Cannot set opening balance for group accounts');
+      throw new BadRequestException(
+        'Cannot set opening balance for group accounts',
+      );
     }
 
     // Create journal entry for opening balance
     const transactionDate = date ? new Date(date) : new Date();
-    
+
     // Determine debit and credit amounts based on type
     const debit = type === 'DEBIT' ? amount : 0;
     const credit = type === 'CREDIT' ? amount : 0;

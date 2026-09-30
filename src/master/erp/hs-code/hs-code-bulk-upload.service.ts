@@ -7,11 +7,11 @@ import { BaseBulkUploadService } from '../../../common/services/base-bulk-upload
 
 @Injectable()
 export class HsCodeBulkUploadService extends BaseBulkUploadService {
-    constructor(
-        @InjectQueue('hscode-upload') uploadQueue: Queue,
-        prisma: PrismaService,
-        eventsService: UploadEventsService,
-    ) {
-        super(uploadQueue, prisma, eventsService, 'hscode');
-    }
+  constructor(
+    @InjectQueue('hscode-upload') uploadQueue: Queue,
+    prisma: PrismaService,
+    eventsService: UploadEventsService,
+  ) {
+    super(uploadQueue, prisma, eventsService, 'hscode');
+  }
 }

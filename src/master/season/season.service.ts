@@ -15,12 +15,12 @@ import {
 @Injectable()
 export class SeasonService {
   constructor(
-    private prisma: PrismaService, 
+    private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
 
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async getAll() {
     const cacheKey = 'seasons_all';
@@ -31,7 +31,7 @@ export class SeasonService {
 
     const seasons = await this.prisma.season.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -61,9 +61,7 @@ export class SeasonService {
 
   async getById(id: string) {
     const season = await this.prisma.season.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!season) return { status: false, message: 'Season not found' };
 
@@ -93,14 +91,14 @@ export class SeasonService {
       runInBackground(
         'Created seasons (${result.count})',
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'seasons',
-        entity: 'Season',
-        description: `Created seasons (${result.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      }),
+          userId: createdById,
+          action: 'create',
+          module: 'seasons',
+          entity: 'Season',
+          description: `Created seasons (${result.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
         this.cacheManager.del('seasons_all'),
       );
       return {
@@ -120,9 +118,7 @@ export class SeasonService {
   ) {
     try {
       const existing = await this.prisma.season.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Season not found' };
 
@@ -134,18 +130,18 @@ export class SeasonService {
       runInBackground(
         'Updated season ${season.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'seasons',
-        entity: 'Season',
-        entityId: id,
-        description: `Updated season ${season.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'seasons',
+          entity: 'Season',
+          entityId: id,
+          description: `Updated season ${season.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('seasons_all'),
       );
       return {
@@ -176,16 +172,16 @@ export class SeasonService {
       runInBackground(
         'Bulk updated seasons (${updated.length})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'seasons',
-        entity: 'Season',
-        description: `Bulk updated seasons (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'seasons',
+          entity: 'Season',
+          description: `Bulk updated seasons (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('seasons_all'),
       );
       return {
@@ -205,21 +201,21 @@ export class SeasonService {
     try {
       const result = await this.prisma.season.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk deleted seasons (${result.count})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'seasons',
-        entity: 'Season',
-        description: `Bulk deleted seasons (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'seasons',
+          entity: 'Season',
+          description: `Bulk deleted seasons (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('seasons_all'),
       );
       return {
@@ -238,28 +234,27 @@ export class SeasonService {
   ) {
     try {
       const existing = await this.prisma.season.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.season.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.season.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Deleted season ${existing?.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'seasons',
-        entity: 'Season',
-        entityId: id,
-        description: `Deleted season ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'seasons',
+          entity: 'Season',
+          entityId: id,
+          description: `Deleted season ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('seasons_all'),
       );
       return {

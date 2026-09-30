@@ -119,8 +119,13 @@ export class AttendanceController {
   @ApiOperation({ summary: 'Download attendance import template' })
   async downloadTemplate(@Res() res: any) {
     const buffer = await this.bulkUploadService.generateTemplate();
-    res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', 'attachment; filename="attendance-import-template.xlsx"');
+    res.type(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      'attachment; filename="attendance-import-template.xlsx"',
+    );
     res.send(buffer);
   }
 
@@ -225,13 +230,16 @@ export class AttendanceController {
     const userId = user?.userId || user?.sub || user?.id || 'system';
 
     const fileBuffer = await data.toBuffer();
-    const result = await this.bulkUploadService.initiateValidation(fileBuffer, data.filename, userId);
+    const result = await this.bulkUploadService.initiateValidation(
+      fileBuffer,
+      data.filename,
+      userId,
+    );
     return {
       status: true,
       ...result,
     };
   }
-
 
   @Post('attendances/apply-sandwich-rules')
   @Permissions('hr.attendance.update')
@@ -286,7 +294,10 @@ export class AttendanceController {
   @Post('attendances/bulk-upload/:uploadId/confirm')
   @Permissions('hr.attendance.create')
   @ApiOperation({ summary: 'Confirm and start attendance import' })
-  async confirmBulkUpload(@Param('uploadId') uploadId: string, @Req() req: FastifyRequest) {
+  async confirmBulkUpload(
+    @Param('uploadId') uploadId: string,
+    @Req() req: FastifyRequest,
+  ) {
     const user = (req as any).user;
     const userId = user?.userId || user?.sub || user?.id || 'system';
     return this.bulkUploadService.confirmUpload(uploadId, userId);
@@ -295,15 +306,19 @@ export class AttendanceController {
   @Get('attendances/bulk-upload/:uploadId/errors/stream')
   @Permissions('hr.attendance.view')
   @ApiOperation({ summary: 'Stream attendance bulk upload error report' })
-  async streamBulkUploadErrors(@Param('uploadId') uploadId: string, @Res() res: any) {
+  async streamBulkUploadErrors(
+    @Param('uploadId') uploadId: string,
+    @Res() res: any,
+  ) {
     return this.bulkUploadService.streamErrorReport(uploadId, res);
   }
 
   @Sse('attendances/bulk-upload/:uploadId/events')
   @Permissions('hr.attendance.view')
-  @ApiOperation({ summary: 'Stream attendance bulk upload real-time events (SSE)' })
+  @ApiOperation({
+    summary: 'Stream attendance bulk upload real-time events (SSE)',
+  })
   streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
     return this.eventsService.subscribe(uploadId);
   }
 }
-

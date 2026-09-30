@@ -62,21 +62,80 @@ export interface GrossSalesReturnPreviewJobData {
 }
 
 const COLUMNS = [
-  { header: 'GPC / Category / Product', key: 'label', width: 38, align: 'left' },
+  {
+    header: 'GPC / Category / Product',
+    key: 'label',
+    width: 38,
+    align: 'left',
+  },
   { header: 'Size', key: 'size', width: 10, align: 'center' },
   { header: 'Color', key: 'color', width: 14, align: 'center' },
   { header: 'HS CODE', key: 'hsCode', width: 14, align: 'center' },
   { header: 'Barcode', key: 'barcode', width: 16, align: 'center' },
   { header: 'Qty', key: 'qty', width: 10, align: 'right', numFmt: '#,##0' },
-  { header: 'Retail Price (Rs.)', key: 'retailPrice', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Total Price WOST', key: 'totalPriceWost', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount Amount (Rs.)', key: 'discountAmount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Excluding Sales Tax', key: 'excludingSalesTax', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sales Tax %', key: 'salesTaxPercent', width: 14, align: 'center', numFmt: '0.00%' },
-  { header: 'Sales Tax Amount', key: 'salesTaxAmount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Further Tax Amount', key: 'furtherTaxAmount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Total Tax (Rs.)', key: 'totalTax', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Including Sales Tax', key: 'includingSalesTax', width: 20, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Retail Price (Rs.)',
+    key: 'retailPrice',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Total Price WOST',
+    key: 'totalPriceWost',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount Amount (Rs.)',
+    key: 'discountAmount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Excluding Sales Tax',
+    key: 'excludingSalesTax',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Sales Tax %',
+    key: 'salesTaxPercent',
+    width: 14,
+    align: 'center',
+    numFmt: '0.00%',
+  },
+  {
+    header: 'Sales Tax Amount',
+    key: 'salesTaxAmount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Further Tax Amount',
+    key: 'furtherTaxAmount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Total Tax (Rs.)',
+    key: 'totalTax',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Including Sales Tax',
+    key: 'includingSalesTax',
+    width: 20,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Sales Person', key: 'salesPerson', width: 18, align: 'left' },
 ];
 
@@ -95,16 +154,20 @@ export class GrossSalesExportProcessor {
         const { exec } = require('child_process');
         exec(
           'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
-          () => {}
+          () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
 
   @Process('generate-gross-sales-return-preview')
-  async handleGenerateReturnPreview(job: Job<GrossSalesReturnPreviewJobData>): Promise<void> {
+  async handleGenerateReturnPreview(
+    job: Job<GrossSalesReturnPreviewJobData>,
+  ): Promise<void> {
     const {
       jobId,
       tenantId,
@@ -122,47 +185,64 @@ export class GrossSalesExportProcessor {
       fiscalYear,
       year,
     } = job.data;
-    this.logger.log(`[GrossSalesReturnPreview ${jobId}] Starting background gross-sales-return preview computation`);
+    this.logger.log(
+      `[GrossSalesReturnPreview ${jobId}] Starting background gross-sales-return preview computation`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      await job.progress({ percent: 10, message: 'Queueing sales return register preview computation task...' });
+      await job.progress({
+        percent: 10,
+        message: 'Queueing sales return register preview computation task...',
+      });
 
-      const result = await this.grossSalesExportService.generateGrossSalesReturnReportDataInternal(
-        prisma as any,
-        {
-          locationId,
-          startDate,
-          endDate,
-          cashierUserId,
-          reportType,
-          search,
-          paymentModeGroup,
-          minAmount,
-          maxAmount,
-          fbrOnly,
-          fiscalYear,
-          year,
-          onProgress: async (percent, message) => {
-            await job.progress({ percent, message });
+      const result =
+        await this.grossSalesExportService.generateGrossSalesReturnReportDataInternal(
+          prisma as any,
+          {
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            reportType,
+            search,
+            paymentModeGroup,
+            minAmount,
+            maxAmount,
+            fbrOnly,
+            fiscalYear,
+            year,
+            onProgress: async (percent, message) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
       await this.grossSalesExportService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Successfully generated sales-return preview result' });
-      this.logger.log(`[GrossSalesReturnPreview ${jobId}] Successfully generated and saved preview result`);
+      await job.progress({
+        percent: 100,
+        message: 'Successfully generated sales-return preview result',
+      });
+      this.logger.log(
+        `[GrossSalesReturnPreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[GrossSalesReturnPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      this.logger.error(
+        `[GrossSalesReturnPreview ${jobId}] Exception in background computation: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
 
   @Process('generate-gross-sales-summary-preview')
-  async handleGenerateSummaryPreview(job: Job<GrossSalesReturnPreviewJobData>): Promise<void> {
+  async handleGenerateSummaryPreview(
+    job: Job<GrossSalesReturnPreviewJobData>,
+  ): Promise<void> {
     const {
       jobId,
       tenantId,
@@ -180,41 +260,56 @@ export class GrossSalesExportProcessor {
       fiscalYear,
       year,
     } = job.data;
-    this.logger.log(`[GrossSalesSummaryPreview ${jobId}] Starting background gross-sales-summary preview computation`);
+    this.logger.log(
+      `[GrossSalesSummaryPreview ${jobId}] Starting background gross-sales-summary preview computation`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      await job.progress({ percent: 10, message: 'Queueing gross sales summary preview computation task...' });
+      await job.progress({
+        percent: 10,
+        message: 'Queueing gross sales summary preview computation task...',
+      });
 
-      const result = await this.grossSalesExportService.generateGrossSalesSummaryReportDataInternal(
-        prisma as any,
-        {
-          locationId,
-          startDate,
-          endDate,
-          cashierUserId,
-          reportType,
-          search,
-          paymentModeGroup,
-          minAmount,
-          maxAmount,
-          fbrOnly,
-          fiscalYear,
-          year,
-          onProgress: async (percent, message) => {
-            await job.progress({ percent, message });
+      const result =
+        await this.grossSalesExportService.generateGrossSalesSummaryReportDataInternal(
+          prisma as any,
+          {
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            reportType,
+            search,
+            paymentModeGroup,
+            minAmount,
+            maxAmount,
+            fbrOnly,
+            fiscalYear,
+            year,
+            onProgress: async (percent, message) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
       await this.grossSalesExportService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Successfully generated gross-sales-summary preview result' });
-      this.logger.log(`[GrossSalesSummaryPreview ${jobId}] Successfully generated and saved preview result`);
+      await job.progress({
+        percent: 100,
+        message: 'Successfully generated gross-sales-summary preview result',
+      });
+      this.logger.log(
+        `[GrossSalesSummaryPreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[GrossSalesSummaryPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      this.logger.error(
+        `[GrossSalesSummaryPreview ${jobId}] Exception in background computation: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
@@ -255,8 +350,13 @@ export class GrossSalesExportProcessor {
         dbUrl: tenantDbUrl,
       },
       async () => {
-        const reportLabel = reportType === 'return' ? 'Gross Sales Return' : 'Gross Sales Summary';
-        this.logger.log(`[GrossSalesExport ${jobId}] Starting ${format.toUpperCase()} export for ${reportLabel}`);
+        const reportLabel =
+          reportType === 'return'
+            ? 'Gross Sales Return'
+            : 'Gross Sales Summary';
+        this.logger.log(
+          `[GrossSalesExport ${jobId}] Starting ${format.toUpperCase()} export for ${reportLabel}`,
+        );
 
         const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
         const prismaMaster = new PrismaMasterService();
@@ -266,21 +366,34 @@ export class GrossSalesExportProcessor {
         const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
         try {
-          await job.progress({ percent: 15, message: 'Loading outlet details & parameters...' });
+          await job.progress({
+            percent: 15,
+            message: 'Loading outlet details & parameters...',
+          });
 
-          const allLocations = await prisma.location.findMany({ select: { id: true, name: true } });
+          const allLocations = await prisma.location.findMany({
+            select: { id: true, name: true },
+          });
           const locationMap = new Map<string, string>();
           for (const l of allLocations) locationMap.set(l.id, l.name);
 
-          const locIds = (job.data.locationIds && job.data.locationIds.length > 0)
-            ? job.data.locationIds
-            : (locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : []);
+          const locIds =
+            job.data.locationIds && job.data.locationIds.length > 0
+              ? job.data.locationIds
+              : locationId
+                ? locationId
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                : [];
 
-          const locationName = locIds.length > 0
-            ? locIds.map((id) => locationMap.get(id) || id).join(', ')
-            : 'All Outlets (Stores)';
+          const locationName =
+            locIds.length > 0
+              ? locIds.map((id) => locationMap.get(id) || id).join(', ')
+              : 'All Outlets (Stores)';
 
-          const effectiveLocationParam = locIds.length > 0 ? locIds.join(',') : undefined;
+          const effectiveLocationParam =
+            locIds.length > 0 ? locIds.join(',') : undefined;
 
           // Fetch flat rows from Service
           let result;
@@ -328,244 +441,320 @@ export class GrossSalesExportProcessor {
             });
           }
 
-      const rows = result.data || [];
-      await job.progress({ percent: 50, message: `Loaded ${rows.length.toLocaleString()} rows. Aggregating totals...` });
-
-      // Compute Grand Totals
-      const grandTotals = {
-        qty: 0,
-        totalPriceWost: 0,
-        discountAmount: 0,
-        excludingSalesTax: 0,
-        salesTaxAmount: 0,
-        furtherTaxAmount: 0,
-        totalTax: 0,
-        includingSalesTax: 0,
-      };
-
-      for (const r of rows) {
-        if (r.depth === 1) {
-          grandTotals.qty += r.qty || 0;
-          grandTotals.totalPriceWost += r.totalPriceWost || 0;
-          grandTotals.discountAmount += r.discountAmount || 0;
-          grandTotals.excludingSalesTax += r.excludingSalesTax || 0;
-          grandTotals.salesTaxAmount += r.salesTaxAmount || 0;
-          grandTotals.furtherTaxAmount += r.furtherTaxAmount || 0;
-          grandTotals.totalTax += r.totalTax || 0;
-          grandTotals.includingSalesTax += r.includingSalesTax || 0;
-        }
-      }
-
-      await job.progress(70);
-
-      if (format === 'pdf') {
-        const fromStr = startDate ? new Date(startDate).toLocaleDateString() : '';
-        const toStr = endDate ? new Date(endDate).toLocaleDateString() : '';
-        const html = this.buildPdfHtml(rows, locationName, fromStr, toStr, grandTotals, reportLabel);
-
-        const launchArgs = [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-        ];
-        const browser = await puppeteer.launch({
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-          headless: true,
-          args: launchArgs,
-        });
-
-        try {
-          const page = await browser.newPage();
-          page.setDefaultTimeout(0);
-          page.setDefaultNavigationTimeout(0);
-          await page.setContent(html, { waitUntil: 'domcontentloaded' });
-
-          const pdfBuffer = await page.pdf({
-            format: 'A4',
-            landscape: true,
-            margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
-            printBackground: true,
-            displayHeaderFooter: true,
-            headerTemplate: `<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">${reportLabel}</div>`,
-            footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+          const rows = result.data || [];
+          await job.progress({
+            percent: 50,
+            message: `Loaded ${rows.length.toLocaleString()} rows. Aggregating totals...`,
           });
 
-          fs.writeFileSync(filePath, pdfBuffer);
-        } finally {
-          await browser.close();
-        }
-      } else {
-        // XLSX format
-        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-          filename: filePath,
-          useStyles: true,
-          useSharedStrings: false,
-        });
-
-        const ws = workbook.addWorksheet(reportLabel.slice(0, 30), {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
-        });
-
-        ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
-
-        // Add Header Row
-        const headerRow = ws.getRow(1);
-        COLUMNS.forEach((col, idx) => {
-          const cell = headerRow.getCell(idx + 1);
-          cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
-          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-          cell.alignment = { horizontal: col.align === 'right' ? 'right' : (col.align === 'center' ? 'center' : 'left'), vertical: 'middle' };
-        });
-        headerRow.height = 24;
-        headerRow.commit();
-
-        const borderThin = {
-          top: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          bottom: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
-        };
-
-        let processedRows = 0;
-        const totalRowsCount = rows.length;
-
-        for (const r of rows) {
-          processedRows++;
-          if (processedRows % 250 === 0 || processedRows === totalRowsCount) {
-            const pct = 70 + Math.floor((processedRows / Math.max(1, totalRowsCount)) * 25);
-            await job.progress({
-              percent: Math.min(95, pct),
-              message: `Streaming row ${processedRows.toLocaleString()} of ${totalRowsCount.toLocaleString()}...`,
-            });
-          }
-          const labelPadding = '  '.repeat(r.depth || 0) + r.label;
-          const rowData = {
-            label: labelPadding,
-            size: r.size || '',
-            color: r.color || '',
-            qty: r.qty,
-            retailPrice: (r.type === 'variant' || r.type === 'invoice') ? r.retailPrice : '',
-            totalPriceWost: r.totalPriceWost,
-            discountAmount: r.discountAmount,
-            excludingSalesTax: r.excludingSalesTax,
-            salesTaxPercent: (r.type === 'variant' || r.type === 'invoice') ? (r.salesTaxPercent / 100) : '',
-            salesTaxAmount: r.salesTaxAmount,
-            furtherTaxAmount: r.furtherTaxAmount,
-            totalTax: r.totalTax,
-            includingSalesTax: r.includingSalesTax,
-            salesPerson: r.salesPerson || '',
+          // Compute Grand Totals
+          const grandTotals = {
+            qty: 0,
+            totalPriceWost: 0,
+            discountAmount: 0,
+            excludingSalesTax: 0,
+            salesTaxAmount: 0,
+            furtherTaxAmount: 0,
+            totalTax: 0,
+            includingSalesTax: 0,
           };
 
-          const row = ws.addRow(rowData);
-          const isGroup = r.type !== 'variant' && r.type !== 'invoice';
+          for (const r of rows) {
+            if (r.depth === 1) {
+              grandTotals.qty += r.qty || 0;
+              grandTotals.totalPriceWost += r.totalPriceWost || 0;
+              grandTotals.discountAmount += r.discountAmount || 0;
+              grandTotals.excludingSalesTax += r.excludingSalesTax || 0;
+              grandTotals.salesTaxAmount += r.salesTaxAmount || 0;
+              grandTotals.furtherTaxAmount += r.furtherTaxAmount || 0;
+              grandTotals.totalTax += r.totalTax || 0;
+              grandTotals.includingSalesTax += r.includingSalesTax || 0;
+            }
+          }
 
-          for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
-            const cell = row.getCell(colNum);
-            cell.border = borderThin;
-            cell.alignment = {
-              horizontal: COLUMNS[colNum - 1].align === 'right' ? 'right' : (COLUMNS[colNum - 1].align === 'center' ? 'center' : 'left'),
-              vertical: 'middle',
+          await job.progress(70);
+
+          if (format === 'pdf') {
+            const fromStr = startDate
+              ? new Date(startDate).toLocaleDateString()
+              : '';
+            const toStr = endDate ? new Date(endDate).toLocaleDateString() : '';
+            const html = this.buildPdfHtml(
+              rows,
+              locationName,
+              fromStr,
+              toStr,
+              grandTotals,
+              reportLabel,
+            );
+
+            const launchArgs = [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-accelerated-2d-canvas',
+              '--disable-gpu',
+            ];
+            const browser = await puppeteer.launch({
+              executablePath:
+                process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+              headless: true,
+              args: launchArgs,
+            });
+
+            try {
+              const page = await browser.newPage();
+              page.setDefaultTimeout(0);
+              page.setDefaultNavigationTimeout(0);
+              await page.setContent(html, { waitUntil: 'domcontentloaded' });
+
+              const pdfBuffer = await page.pdf({
+                format: 'A4',
+                landscape: true,
+                margin: {
+                  top: '15mm',
+                  bottom: '15mm',
+                  left: '10mm',
+                  right: '10mm',
+                },
+                printBackground: true,
+                displayHeaderFooter: true,
+                headerTemplate: `<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">${reportLabel}</div>`,
+                footerTemplate:
+                  '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+              });
+
+              fs.writeFileSync(filePath, pdfBuffer);
+            } finally {
+              await browser.close();
+            }
+          } else {
+            // XLSX format
+            const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+              filename: filePath,
+              useStyles: true,
+              useSharedStrings: false,
+            });
+
+            const ws = workbook.addWorksheet(reportLabel.slice(0, 30), {
+              pageSetup: {
+                paperSize: 9,
+                orientation: 'landscape',
+                fitToPage: true,
+                fitToWidth: 1,
+              },
+            });
+
+            ws.columns = COLUMNS.map((c) => ({ key: c.key, width: c.width }));
+
+            // Add Header Row
+            const headerRow = ws.getRow(1);
+            COLUMNS.forEach((col, idx) => {
+              const cell = headerRow.getCell(idx + 1);
+              cell.value = col.header;
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF1E293B' },
+              };
+              cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+              cell.alignment = {
+                horizontal:
+                  col.align === 'right'
+                    ? 'right'
+                    : col.align === 'center'
+                      ? 'center'
+                      : 'left',
+                vertical: 'middle',
+              };
+            });
+            headerRow.height = 24;
+            headerRow.commit();
+
+            const borderThin = {
+              top: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+              bottom: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+              left: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
+              right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
             };
 
-            const c = COLUMNS[colNum - 1];
-            if (c.numFmt && cell.value !== '') {
-              cell.numFmt = c.numFmt;
-            }
+            let processedRows = 0;
+            const totalRowsCount = rows.length;
 
-            if (isGroup) {
-              cell.font = { bold: true, size: 9 };
-              if (r.type === 'brand') {
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-              } else if (r.type === 'division') {
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+            for (const r of rows) {
+              processedRows++;
+              if (
+                processedRows % 250 === 0 ||
+                processedRows === totalRowsCount
+              ) {
+                const pct =
+                  70 +
+                  Math.floor(
+                    (processedRows / Math.max(1, totalRowsCount)) * 25,
+                  );
+                await job.progress({
+                  percent: Math.min(95, pct),
+                  message: `Streaming row ${processedRows.toLocaleString()} of ${totalRowsCount.toLocaleString()}...`,
+                });
               }
-            } else {
-              cell.font = { size: 8.5 };
+              const labelPadding = '  '.repeat(r.depth || 0) + r.label;
+              const rowData = {
+                label: labelPadding,
+                size: r.size || '',
+                color: r.color || '',
+                qty: r.qty,
+                retailPrice:
+                  r.type === 'variant' || r.type === 'invoice'
+                    ? r.retailPrice
+                    : '',
+                totalPriceWost: r.totalPriceWost,
+                discountAmount: r.discountAmount,
+                excludingSalesTax: r.excludingSalesTax,
+                salesTaxPercent:
+                  r.type === 'variant' || r.type === 'invoice'
+                    ? r.salesTaxPercent / 100
+                    : '',
+                salesTaxAmount: r.salesTaxAmount,
+                furtherTaxAmount: r.furtherTaxAmount,
+                totalTax: r.totalTax,
+                includingSalesTax: r.includingSalesTax,
+                salesPerson: r.salesPerson || '',
+              };
+
+              const row = ws.addRow(rowData);
+              const isGroup = r.type !== 'variant' && r.type !== 'invoice';
+
+              for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
+                const cell = row.getCell(colNum);
+                cell.border = borderThin;
+                cell.alignment = {
+                  horizontal:
+                    COLUMNS[colNum - 1].align === 'right'
+                      ? 'right'
+                      : COLUMNS[colNum - 1].align === 'center'
+                        ? 'center'
+                        : 'left',
+                  vertical: 'middle',
+                };
+
+                const c = COLUMNS[colNum - 1];
+                if (c.numFmt && cell.value !== '') {
+                  cell.numFmt = c.numFmt;
+                }
+
+                if (isGroup) {
+                  cell.font = { bold: true, size: 9 };
+                  if (r.type === 'brand') {
+                    cell.fill = {
+                      type: 'pattern',
+                      pattern: 'solid',
+                      fgColor: { argb: 'FFF1F5F9' },
+                    };
+                  } else if (r.type === 'division') {
+                    cell.fill = {
+                      type: 'pattern',
+                      pattern: 'solid',
+                      fgColor: { argb: 'FFE2E8F0' },
+                    };
+                  }
+                } else {
+                  cell.font = { size: 8.5 };
+                }
+              }
+              row.height = 20;
+              row.commit();
             }
+
+            // Add Grand Totals
+            const totalRow = ws.addRow({
+              label: 'GRAND TOTALS',
+              size: '',
+              color: '',
+              qty: grandTotals.qty,
+              retailPrice: '',
+              totalPriceWost: grandTotals.totalPriceWost,
+              discountAmount: grandTotals.discountAmount,
+              excludingSalesTax: grandTotals.excludingSalesTax,
+              salesTaxPercent: '',
+              salesTaxAmount: grandTotals.salesTaxAmount,
+              furtherTaxAmount: grandTotals.furtherTaxAmount,
+              totalTax: grandTotals.totalTax,
+              includingSalesTax: grandTotals.includingSalesTax,
+              salesPerson: '',
+            });
+
+            totalRow.eachCell((cell, colNum) => {
+              cell.font = { bold: true, size: 9.5 };
+              cell.border = {
+                top: { style: 'medium', color: { argb: 'FF1E293B' } },
+                bottom: { style: 'double', color: { argb: 'FF1E293B' } },
+                left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+                right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+              };
+              const c = COLUMNS[colNum - 1];
+              cell.alignment = {
+                horizontal:
+                  c.align === 'right'
+                    ? 'right'
+                    : c.align === 'center'
+                      ? 'center'
+                      : 'left',
+                vertical: 'middle',
+              };
+              if (c.numFmt && cell.value !== '') {
+                cell.numFmt = c.numFmt;
+              }
+            });
+            totalRow.height = 24;
+            totalRow.commit();
+
+            await workbook.commit();
           }
-          row.height = 20;
-          row.commit();
+
+          await job.progress(95);
+
+          const mimeType =
+            format === 'pdf'
+              ? 'application/pdf'
+              : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          const fileName =
+            format === 'pdf'
+              ? `${reportType === 'return' ? 'gross-sales-return-report' : 'gross-sales-summary-report'}-${new Date().toISOString().slice(0, 10)}.pdf`
+              : `${reportType === 'return' ? 'gross-sales-return-report' : 'gross-sales-summary-report'}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+          await this.exportHistoryService.completeAndUploadExport(
+            prisma,
+            jobId,
+            filePath,
+            fileName,
+            mimeType,
+          );
+
+          // Notify User
+          await this.notificationsService.create({
+            userId,
+            title: `${reportLabel} Export Ready`,
+            message: `Your ${reportLabel} ${format.toUpperCase()} report has been processed successfully.`,
+            category: 'export',
+            priority: 'high',
+            actionType: `gross-sales-${reportType}-export.ready`,
+            actionPayload: JSON.stringify({ jobId }),
+          });
+
+          await job.progress(100);
+          this.logger.log(
+            `[GrossSalesExport ${jobId}] Finished processing successfully`,
+          );
+        } catch (err) {
+          this.logger.error(
+            `[GrossSalesExport ${jobId}] Failed: ${err.message}`,
+            err.stack,
+          );
+          await this.exportHistoryService.failExport(prisma, jobId);
+          throw err;
+        } finally {
+          await prismaMaster.$disconnect();
         }
-
-        // Add Grand Totals
-        const totalRow = ws.addRow({
-          label: 'GRAND TOTALS',
-          size: '',
-          color: '',
-          qty: grandTotals.qty,
-          retailPrice: '',
-          totalPriceWost: grandTotals.totalPriceWost,
-          discountAmount: grandTotals.discountAmount,
-          excludingSalesTax: grandTotals.excludingSalesTax,
-          salesTaxPercent: '',
-          salesTaxAmount: grandTotals.salesTaxAmount,
-          furtherTaxAmount: grandTotals.furtherTaxAmount,
-          totalTax: grandTotals.totalTax,
-          includingSalesTax: grandTotals.includingSalesTax,
-          salesPerson: '',
-        });
-
-        totalRow.eachCell((cell, colNum) => {
-          cell.font = { bold: true, size: 9.5 };
-          cell.border = {
-            top: { style: 'medium', color: { argb: 'FF1E293B' } },
-            bottom: { style: 'double', color: { argb: 'FF1E293B' } },
-            left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-            right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-          };
-          const c = COLUMNS[colNum - 1];
-          cell.alignment = {
-            horizontal: c.align === 'right' ? 'right' : (c.align === 'center' ? 'center' : 'left'),
-            vertical: 'middle',
-          };
-          if (c.numFmt && cell.value !== '') {
-            cell.numFmt = c.numFmt;
-          }
-        });
-        totalRow.height = 24;
-        totalRow.commit();
-
-        await workbook.commit();
-      }
-
-      await job.progress(95);
-
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const fileName = format === 'pdf'
-        ? `${reportType === 'return' ? 'gross-sales-return-report' : 'gross-sales-summary-report'}-${new Date().toISOString().slice(0, 10)}.pdf`
-        : `${reportType === 'return' ? 'gross-sales-return-report' : 'gross-sales-summary-report'}-${new Date().toISOString().slice(0, 10)}.xlsx`;
-
-      await this.exportHistoryService.completeAndUploadExport(
-        prisma,
-        jobId,
-        filePath,
-        fileName,
-        mimeType,
-      );
-
-      // Notify User
-      await this.notificationsService.create({
-        userId,
-        title: `${reportLabel} Export Ready`,
-        message: `Your ${reportLabel} ${format.toUpperCase()} report has been processed successfully.`,
-        category: 'export',
-        priority: 'high',
-        actionType: `gross-sales-${reportType}-export.ready`,
-        actionPayload: JSON.stringify({ jobId }),
-      });
-
-      await job.progress(100);
-      this.logger.log(`[GrossSalesExport ${jobId}] Finished processing successfully`);
-    } catch (err) {
-      this.logger.error(`[GrossSalesExport ${jobId}] Failed: ${err.message}`, err.stack);
-      await this.exportHistoryService.failExport(prisma, jobId);
-      throw err;
-    } finally {
-      await prismaMaster.$disconnect();
-    }
       },
     );
   }
@@ -576,11 +765,17 @@ export class GrossSalesExportProcessor {
     fromDateStr: string,
     toDateStr: string,
     grandTotals: any,
-    reportLabel: string
+    reportLabel: string,
   ): string {
     let rowsHtml = '';
-    const formatVal = (val: number) => val === 0 ? '-' : val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const formatPct = (val: number) => val === 0 ? '-' : `${val.toFixed(2)}%`;
+    const formatVal = (val: number) =>
+      val === 0
+        ? '-'
+        : val.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+    const formatPct = (val: number) => (val === 0 ? '-' : `${val.toFixed(2)}%`);
 
     for (const r of data) {
       const isGroup = r.type !== 'variant';

@@ -294,9 +294,6 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     return { status: true };
   }
 
-
-
-
   async sendPosLocationNotification(args: {
     locationId: string;
     title: string;
@@ -348,7 +345,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           where: {
             OR: [
               ...(userIds.length > 0 ? [{ id: { in: userIds } }] : []),
-              ...(empCodes.length > 0 ? [{ employeeId: { in: empCodes } }] : []),
+              ...(empCodes.length > 0
+                ? [{ employeeId: { in: empCodes } }]
+                : []),
             ],
             status: 'active',
           },
@@ -426,21 +425,22 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
 
       if (!args.warehouseRoleOnly) {
         // 2. Also find permissions related to warehouse operations
-        const warehousePermissions = await this.prismaMaster.permission.findMany({
-          where: {
-            name: {
-              in: [
-                'erp.inventory.warehouse.stock-requisition.pending',
-                'erp.inventory.warehouse.view',
-                'erp.inventory.warehouse.stock-transfer',
-                'erp.inventory.stock-transfer.read',
-                'erp.inventory.transfer.create',
-                'erp.inventory.warehouse.manage',
-              ],
+        const warehousePermissions =
+          await this.prismaMaster.permission.findMany({
+            where: {
+              name: {
+                in: [
+                  'erp.inventory.warehouse.stock-requisition.pending',
+                  'erp.inventory.warehouse.view',
+                  'erp.inventory.warehouse.stock-transfer',
+                  'erp.inventory.stock-transfer.read',
+                  'erp.inventory.transfer.create',
+                  'erp.inventory.warehouse.manage',
+                ],
+              },
             },
-          },
-          select: { id: true },
-        });
+            select: { id: true },
+          });
         const warehousePermIds = warehousePermissions.map((p) => p.id);
 
         // 3. Find roles that have these permissions
@@ -449,7 +449,10 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           select: { roleId: true },
         });
         allTargetRoleIds = Array.from(
-          new Set([...warehouseRoleIds, ...rolesWithPerm.map((rp) => rp.roleId)]),
+          new Set([
+            ...warehouseRoleIds,
+            ...rolesWithPerm.map((rp) => rp.roleId),
+          ]),
         );
 
         // 4. Find all active users with these direct permissions
@@ -465,8 +468,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       const targetUsers = await this.prismaMaster.user.findMany({
         where: {
           OR: [
-            ...(allTargetRoleIds.length > 0 ? [{ roleId: { in: allTargetRoleIds } }] : []),
-            ...(directUsersWithPerm.length > 0 ? [{ id: { in: directUsersWithPerm.map((u) => u.userId) } }] : []),
+            ...(allTargetRoleIds.length > 0
+              ? [{ roleId: { in: allTargetRoleIds } }]
+              : []),
+            ...(directUsersWithPerm.length > 0
+              ? [{ id: { in: directUsersWithPerm.map((u) => u.userId) } }]
+              : []),
           ],
           status: 'active',
         },
@@ -486,7 +493,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
             category,
             priority,
             actionType: args.actionType || 'NAVIGATE',
-            actionPayload: args.actionPayload || { url: '/erp/inventory/transactions/stock-requisition/pending' },
+            actionPayload: args.actionPayload || {
+              url: '/erp/inventory/transactions/stock-requisition/pending',
+            },
             entityType: args.entityType || 'StockRequisition',
             entityId: args.entityId,
           })),
@@ -498,7 +507,6 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       );
     }
   }
-
 
   getHealthSnapshot() {
     return {

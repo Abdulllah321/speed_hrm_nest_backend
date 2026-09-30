@@ -14,33 +14,33 @@ import { GeneralLedgerExportService } from './general-ledger-export.service';
 import { GeneralLedgerExportProcessor } from './general-ledger-export.processor';
 
 @Module({
-    imports: [
-        PrismaModule,
-        NotificationsModule,
-        BullModule.registerQueue(
-            { name: 'trial-balance-export' },
-            { name: 'general-ledger-export' }
-        ),
-    ],
-    controllers: [
-        AccountLedgerController, 
-        ReportsController, 
-        TrialBalanceExportController,
-        GeneralLedgerExportController,
-    ],
-    providers: [
-        AccountingService, 
-        ReportsService,
-        TrialBalanceExportService,
-        TrialBalanceExportProcessor,
-        GeneralLedgerExportService,
-        GeneralLedgerExportProcessor,
-    ],
-    exports: [
-        AccountingService, 
-        ReportsService, 
-        TrialBalanceExportService,
-        GeneralLedgerExportService,
-    ],
+  imports: [
+    PrismaModule,
+    NotificationsModule,
+    BullModule.registerQueue(
+      { name: 'trial-balance-export' },
+      { name: 'general-ledger-export' },
+    ),
+  ],
+  controllers: [
+    AccountLedgerController,
+    ReportsController,
+    TrialBalanceExportController,
+    GeneralLedgerExportController,
+  ],
+  providers: [
+    AccountingService,
+    ReportsService,
+    TrialBalanceExportService,
+    TrialBalanceExportProcessor,
+    GeneralLedgerExportService,
+    GeneralLedgerExportProcessor,
+  ],
+  exports: [
+    AccountingService,
+    ReportsService,
+    TrialBalanceExportService,
+    GeneralLedgerExportService,
+  ],
 })
 export class AccountingModule {}

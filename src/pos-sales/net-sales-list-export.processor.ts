@@ -24,7 +24,9 @@ export class NetSalesListExportProcessor {
   ) {}
 
   @Process('generate-net-sales-list-preview')
-  async handleGeneratePreview(job: Job<NetSalesListPreviewJobData>): Promise<void> {
+  async handleGeneratePreview(
+    job: Job<NetSalesListPreviewJobData>,
+  ): Promise<void> {
     const {
       jobId,
       tenantId,
@@ -45,19 +47,28 @@ export class NetSalesListExportProcessor {
       year,
     } = job.data;
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      this.logger.log(`[NetSalesListPreview ${jobId}] Starting background net sales list preview computation`);
-      await job.progress({ percent: 5, message: 'Queueing Net Sales List computation task...' });
+      this.logger.log(
+        `[NetSalesListPreview ${jobId}] Starting background net sales list preview computation`,
+      );
+      await job.progress({
+        percent: 5,
+        message: 'Queueing Net Sales List computation task...',
+      });
 
       const onProgress = async (percent: number, message: string) => {
         if (this.netSalesListExportService.isJobCancelled(jobId)) {
           throw new Error('JOB_CANCELLED');
         }
-        await job.progress({ percent: Math.min(95, Math.max(5, percent)), message });
+        await job.progress({
+          percent: Math.min(95, Math.max(5, percent)),
+          message,
+        });
       };
 
       await this.netSalesListExportService.generateNetSalesListReportDataInternal(
@@ -83,34 +94,54 @@ export class NetSalesListExportProcessor {
         },
       );
 
-      await job.progress({ percent: 100, message: 'Net Sales List preview generated successfully' });
-      this.logger.log(`[NetSalesListPreview ${jobId}] Finished preview generation`);
+      await job.progress({
+        percent: 100,
+        message: 'Net Sales List preview generated successfully',
+      });
+      this.logger.log(
+        `[NetSalesListPreview ${jobId}] Finished preview generation`,
+      );
     } catch (err: any) {
-      this.logger.error(`[NetSalesListPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[NetSalesListPreview ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
 
   @Process('generate-net-sales-list-export')
-  async handleGenerateExport(job: Job<NetSalesListExportJobData>): Promise<void> {
+  async handleGenerateExport(
+    job: Job<NetSalesListExportJobData>,
+  ): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, userId, format = 'xlsx' } = job.data;
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      this.logger.log(`[NetSalesListExport ${jobId}] Starting background export`);
-      await job.progress({ percent: 10, message: 'Calculating net sales data for export...' });
-
-      const data = await this.netSalesListExportService.generateNetSalesListReportDataInternal(
-        prisma as any,
-        {
-          ...job.data,
-          onProgress: async (p, msg) => {
-            await job.progress({ percent: Math.min(70, Math.floor(p * 0.7)), message: msg });
-          },
-        },
+      this.logger.log(
+        `[NetSalesListExport ${jobId}] Starting background export`,
       );
+      await job.progress({
+        percent: 10,
+        message: 'Calculating net sales data for export...',
+      });
+
+      const data =
+        await this.netSalesListExportService.generateNetSalesListReportDataInternal(
+          prisma as any,
+          {
+            ...job.data,
+            onProgress: async (p, msg) => {
+              await job.progress({
+                percent: Math.min(70, Math.floor(p * 0.7)),
+                message: msg,
+              });
+            },
+          },
+        );
 
       await job.progress({ percent: 75, message: 'Building Excel file...' });
 
@@ -235,9 +266,14 @@ export class NetSalesListExportProcessor {
       );
 
       await job.progress({ percent: 100, message: 'Export completed' });
-      this.logger.log(`[NetSalesListExport ${jobId}] Export file uploaded and completed`);
+      this.logger.log(
+        `[NetSalesListExport ${jobId}] Export file uploaded and completed`,
+      );
     } catch (err: any) {
-      this.logger.error(`[NetSalesListExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[NetSalesListExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma as any, jobId);
       throw err;
     }

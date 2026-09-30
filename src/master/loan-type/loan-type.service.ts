@@ -17,15 +17,15 @@ export class LoanTypeService {
   async list() {
     const items = await this.prisma.loanType.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.loanType.findFirst({ where: { id,
-        isDeleted: false
-    } });
+    const item = await this.prisma.loanType.findFirst({
+      where: { id, isDeleted: false },
+    });
     if (!item) return { status: false, message: 'Loan type not found' };
     return { status: true, data: item };
   }
@@ -91,9 +91,7 @@ export class LoanTypeService {
   ) {
     try {
       const existing = await this.prisma.loanType.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Loan type not found' };
 
@@ -153,20 +151,22 @@ export class LoanTypeService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'loanType', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'loanType',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.loanType.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Loan type not found' };
 
       const removed = await this.prisma.loanType.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         `Deleted loan type ${existing.name}`,
@@ -184,7 +184,11 @@ export class LoanTypeService {
         }),
       );
 
-      return { status: true, data: removed, message: 'Loan type deleted successfully' };
+      return {
+        status: true,
+        data: removed,
+        message: 'Loan type deleted successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to delete loan type',
@@ -236,7 +240,11 @@ export class LoanTypeService {
         }),
       );
 
-      return { status: true, data: result, message: 'Loan types created successfully' };
+      return {
+        status: true,
+        data: result,
+        message: 'Loan types created successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to bulk create loan types',
@@ -272,9 +280,7 @@ export class LoanTypeService {
       const updatedItems: any[] = [];
       for (const i of validItems) {
         const existing = await this.prisma.loanType.findFirst({
-          where: { id: i.id,
-              isDeleted: false
-        },
+          where: { id: i.id, isDeleted: false },
         });
         if (!existing) continue;
 
@@ -303,7 +309,11 @@ export class LoanTypeService {
         }),
       );
 
-      return { status: true, data: updatedItems, message: 'Loan types updated successfully' };
+      return {
+        status: true,
+        data: updatedItems,
+        message: 'Loan types updated successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to bulk update loan types',
@@ -332,19 +342,21 @@ export class LoanTypeService {
       return { status: false, message: 'No loan types to delete' };
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'loanType', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'loanType',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const existing = await this.prisma.loanType.findMany({
-        where: { id: { in: ids },
-            isDeleted: false
-        },
+        where: { id: { in: ids }, isDeleted: false },
       });
       const result = await this.prisma.loanType.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         `Bulk deleted loan types (${result.count})`,

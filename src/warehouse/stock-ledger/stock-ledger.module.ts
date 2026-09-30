@@ -70,4 +70,3 @@ import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
   ],
 })
 export class StockLedgerModule {}
-

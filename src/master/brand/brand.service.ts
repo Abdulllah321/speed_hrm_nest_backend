@@ -23,11 +23,36 @@ export class BrandService {
 
   // --- BRAND LOGIC ---
 
-  async getAllBrands() {
-    const cacheKey = 'brands_all';
+  async getAllBrands(user?: any) {
+    const cacheKey = user ? `brands_all_${user.id}` : 'brands_all';
     const cachedData = await this.cacheManager.get(cacheKey);
     if (cachedData) {
       return { status: true, data: cachedData };
+    }
+
+    const whereClause: any = { isDeleted: false };
+
+    // ── RBAC / Brand Isolation ─────────────────────────────────────────
+    if (user) {
+      const roleName = user?.roleName?.toLowerCase();
+      const isAdmin =
+        roleName === 'super_admin' ||
+        roleName === 'super-admin' ||
+        roleName === 'admin';
+
+      if (!isAdmin && user?.id) {
+        const userBrands = await this.prisma.userBrand.findMany({
+          where: { userId: user.id },
+          select: { brandId: true },
+        });
+        const allowedBrandIds = userBrands.map((ub) => ub.brandId);
+
+        // If they have no brands assigned, they see no brands
+        if (allowedBrandIds.length === 0) {
+          return { status: true, data: [] };
+        }
+        whereClause.id = { in: allowedBrandIds };
+      }
     }
 
     const brands = await this.prisma.brand.findMany({
@@ -35,7 +60,7 @@ export class BrandService {
         divisions: true,
       },
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: whereClause,
     });
 
     const userIds = [
@@ -64,9 +89,7 @@ export class BrandService {
 
   async getBrandById(id: string) {
     const brand = await this.prisma.brand.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
       include: { divisions: true },
     });
     if (!brand) return { status: false, message: 'Brand not found' };
@@ -125,15 +148,17 @@ export class BrandService {
   ) {
     try {
       const existing = await this.prisma.brand.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Brand not found' };
 
       const brand = await this.prisma.brand.update({
         where: { id },
-        data: { name: dto.name, code: dto.code !== undefined ? dto.code : undefined, status: dto.status },
+        data: {
+          name: dto.name,
+          code: dto.code !== undefined ? dto.code : undefined,
+          status: dto.status,
+        },
       });
 
       runInBackground(
@@ -174,7 +199,11 @@ export class BrandService {
         updated.push(
           await this.prisma.brand.update({
             where: { id: dto.id },
-            data: { name: dto.name, code: dto.code !== undefined ? dto.code : undefined, status: dto.status },
+            data: {
+              name: dto.name,
+              code: dto.code !== undefined ? dto.code : undefined,
+              status: dto.status,
+            },
           }),
         );
       }
@@ -211,8 +240,8 @@ export class BrandService {
     try {
       const result = await this.prisma.brand.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         `Bulk deleted brands (${result.count})`,
         this.activityLogs.log({
@@ -244,15 +273,14 @@ export class BrandService {
   ) {
     try {
       const existing = await this.prisma.brand.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Brand not found' };
 
-      const result = await this.prisma.brand.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.brand.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         `Deleted brand ${existing.name}`,
@@ -294,7 +322,7 @@ export class BrandService {
         brand: true,
       },
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -323,9 +351,7 @@ export class BrandService {
 
   async getDivisionsByBrand(brandId: string) {
     const divisions = await this.prisma.division.findMany({
-      where: { brandId,
-          isDeleted: false
-    },
+      where: { brandId, isDeleted: false },
       include: { brand: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -356,7 +382,7 @@ export class BrandService {
           status: 'success',
         }),
       );
-      
+
       await this.cacheManager.del('divisions_all');
       await this.cacheManager.del('brands_all');
 
@@ -419,9 +445,7 @@ export class BrandService {
   ) {
     try {
       const existing = await this.prisma.division.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Division not found' };
 
@@ -465,8 +489,8 @@ export class BrandService {
     try {
       const result = await this.prisma.division.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         `Bulk deleted divisions (${result.count})`,
         this.activityLogs.log({
@@ -499,15 +523,14 @@ export class BrandService {
   ) {
     try {
       const existing = await this.prisma.division.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Division not found' };
 
-      const result = await this.prisma.division.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.division.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         `Deleted division ${existing.name}`,

@@ -98,8 +98,10 @@ export class ReportsService {
       { openingDr: number; openingCr: number; txDr: number; txCr: number }
     >();
 
-    const effectiveId = (row: { accountId: string; tagAccountId?: string | null }) =>
-      (row as any).tagAccountId || row.accountId;
+    const effectiveId = (row: {
+      accountId: string;
+      tagAccountId?: string | null;
+    }) => (row as any).tagAccountId || row.accountId;
 
     for (const o of openingRaw) {
       const eid = effectiveId(o as any);
@@ -125,7 +127,10 @@ export class ReportsService {
     // This is purely for display rows — it does NOT affect any balance calculations.
     const tagBreakdownMap = new Map<
       string, // accountId (the parent account)
-      Map<string, { openingDr: number; openingCr: number; txDr: number; txCr: number }>
+      Map<
+        string,
+        { openingDr: number; openingCr: number; txDr: number; txCr: number }
+      >
     >();
 
     if (includeTagAccounts) {
@@ -154,7 +159,6 @@ export class ReportsService {
         e.txCr += Number(t._sum.credit ?? 0);
       }
     }
-
 
     // ─── 4. Build leaf nodes from canonical amountsMap ────────────────────────
     const leafNodes: any[] = [];
@@ -432,7 +436,7 @@ export class ReportsService {
       to,
     };
   }
-  
+
   async getGeneralLedger(
     accountId: string,
     from?: string,
@@ -462,10 +466,13 @@ export class ReportsService {
         parent: { select: { id: true, code: true, name: true } },
       },
     });
-    if (initialAccounts.length === 0) throw new NotFoundException('Account not found');
+    if (initialAccounts.length === 0)
+      throw new NotFoundException('Account not found');
 
     // If any selected accounts are groups, fetch their active leaf child accounts
-    const groupAccountIds = initialAccounts.filter((a) => a.isGroup).map((a) => a.id);
+    const groupAccountIds = initialAccounts
+      .filter((a) => a.isGroup)
+      .map((a) => a.id);
     let resolvedAccounts = [...initialAccounts];
 
     if (groupAccountIds.length > 0) {
@@ -488,7 +495,9 @@ export class ReportsService {
 
       const existingIds = new Set(initialAccounts.map((a) => a.id));
       const newChildren = childAccounts.filter((c) => !existingIds.has(c.id));
-      const groupsWithChildren = new Set(childAccounts.map((c) => c.parentId).filter(Boolean));
+      const groupsWithChildren = new Set(
+        childAccounts.map((c) => c.parentId).filter(Boolean),
+      );
 
       resolvedAccounts = [
         ...initialAccounts.filter((a) => !groupsWithChildren.has(a.id)),
@@ -517,29 +526,43 @@ export class ReportsService {
     ];
 
     if (sortBy === 'sourceRef') {
-      orderBy = [{ sourceRef: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
+      orderBy = [
+        { sourceRef: dir },
+        { transactionDate: 'asc' as const },
+        { id: 'asc' as const },
+      ];
     } else if (sortBy === 'sourceType') {
-      orderBy = [{ sourceType: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
+      orderBy = [
+        { sourceType: dir },
+        { transactionDate: 'asc' as const },
+        { id: 'asc' as const },
+      ];
     } else if (sortBy === 'debit') {
-      orderBy = [{ debit: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
+      orderBy = [
+        { debit: dir },
+        { transactionDate: 'asc' as const },
+        { id: 'asc' as const },
+      ];
     } else if (sortBy === 'credit') {
-      orderBy = [{ credit: dir }, { transactionDate: 'asc' as const }, { id: 'asc' as const }];
+      orderBy = [
+        { credit: dir },
+        { transactionDate: 'asc' as const },
+        { id: 'asc' as const },
+      ];
     }
 
     // Process each account independently so multi-selected sub-accounts get separate ledgers
     const ledgers = await Promise.all(
       accounts.map(async (acc) => {
         const accountMatch = {
-          OR: [
-            { accountId: acc.id },
-            { tagAccountId: acc.id },
-          ],
+          OR: [{ accountId: acc.id }, { tagAccountId: acc.id }],
         };
 
         const openingWhere: any = { AND: [accountMatch] };
         if (sourceType) {
           openingWhere.AND.push({ sourceType });
-          if (fromDate) openingWhere.AND.push({ transactionDate: { lt: fromDate } });
+          if (fromDate)
+            openingWhere.AND.push({ transactionDate: { lt: fromDate } });
         } else {
           openingWhere.AND.push({
             OR: [
@@ -611,11 +634,15 @@ export class ReportsService {
         const pvIds = transactions
           .filter((tx) => tx.sourceType === 'PAYMENT_VOUCHER')
           .map((tx) => tx.sourceId)
-          .filter((id): id is string => Boolean(id && typeof id === 'string' && id.trim()));
+          .filter((id): id is string =>
+            Boolean(id && typeof id === 'string' && id.trim()),
+          );
         const rvIds = transactions
           .filter((tx) => tx.sourceType === 'RECEIPT_VOUCHER')
           .map((tx) => tx.sourceId)
-          .filter((id): id is string => Boolean(id && typeof id === 'string' && id.trim()));
+          .filter((id): id is string =>
+            Boolean(id && typeof id === 'string' && id.trim()),
+          );
 
         const [pvs, rvs] = await Promise.all([
           pvIds.length > 0
@@ -623,13 +650,17 @@ export class ReportsService {
                 where: { id: { in: pvIds } },
                 select: { id: true, chequeNo: true },
               })
-            : Promise.resolve([] as Array<{ id: string; chequeNo: string | null }>),
+            : Promise.resolve(
+                [] as Array<{ id: string; chequeNo: string | null }>,
+              ),
           rvIds.length > 0
             ? this.prisma.receiptVoucher.findMany({
                 where: { id: { in: rvIds } },
                 select: { id: true, chequeNo: true },
               })
-            : Promise.resolve([] as Array<{ id: string; chequeNo: string | null }>),
+            : Promise.resolve(
+                [] as Array<{ id: string; chequeNo: string | null }>,
+              ),
         ]);
 
         const chequeMap = new Map<string, string>();
@@ -672,7 +703,12 @@ export class ReportsService {
           rangeTotalDebit,
           rangeTotalCredit,
           rangeClosingBalance,
-          pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+          pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+          },
         };
       }),
     );
@@ -724,7 +760,7 @@ export class ReportsService {
       hGroup.rangeTotalCredit += lg.rangeTotalCredit;
       hGroup.rangeClosingBalance += lg.rangeClosingBalance;
       hGroup.ledgerCount += 1;
-      hGroup.transactionCount += (lg.pagination?.total ?? lg.rows.length);
+      hGroup.transactionCount += lg.pagination?.total ?? lg.rows.length;
       hGroup.ledgers.push(lg);
     }
 
@@ -756,7 +792,10 @@ export class ReportsService {
           : primaryLedger.closingBalance,
       rangeTotalDebit: ledgers.reduce((sum, l) => sum + l.rangeTotalDebit, 0),
       rangeTotalCredit: ledgers.reduce((sum, l) => sum + l.rangeTotalCredit, 0),
-      rangeClosingBalance: ledgers.reduce((sum, l) => sum + l.rangeClosingBalance, 0),
+      rangeClosingBalance: ledgers.reduce(
+        (sum, l) => sum + l.rangeClosingBalance,
+        0,
+      ),
       pagination: primaryLedger.pagination,
       ledgers,
       heads,
@@ -770,17 +809,20 @@ export class ReportsService {
   // INCOME STATEMENT  (Profit & Loss — Market-Standard Hierarchical & Tag-Aware)
   // ─────────────────────────────────────────────────────────────────────────
   async getIncomeStatement(
-    params?: string | {
-      from?: string;
-      to?: string;
-      compareFrom?: string;
-      compareTo?: string;
-      includeTagAccounts?: boolean;
-      showZeroBalances?: boolean;
-    },
+    params?:
+      | string
+      | {
+          from?: string;
+          to?: string;
+          compareFrom?: string;
+          compareTo?: string;
+          includeTagAccounts?: boolean;
+          showZeroBalances?: boolean;
+        },
     toParam?: string,
   ) {
-    const opts = typeof params === 'object' ? params : { from: params, to: toParam };
+    const opts =
+      typeof params === 'object' ? params : { from: params, to: toParam };
     const fromStr = opts.from;
     const toStr = opts.to;
     const compareFromStr = opts.compareFrom;
@@ -847,7 +889,10 @@ export class ReportsService {
 
     // Determine target account ID for leaf attribution:
     // If tagAccountId is specified and exists in COA, attribute to tagAccountId (Level 3/4 sub-account), else accountId.
-    const getLeafId = (row: { accountId: string; tagAccountId?: string | null }) => {
+    const getLeafId = (row: {
+      accountId: string;
+      tagAccountId?: string | null;
+    }) => {
       if (row.tagAccountId && accountMap.has(row.tagAccountId)) {
         return row.tagAccountId;
       }
@@ -858,7 +903,8 @@ export class ReportsService {
     const amountsMap = new Map<string, { debit: number; credit: number }>();
     for (const r of primaryRaw) {
       const targetId = getLeafId(r as any);
-      if (!amountsMap.has(targetId)) amountsMap.set(targetId, { debit: 0, credit: 0 });
+      if (!amountsMap.has(targetId))
+        amountsMap.set(targetId, { debit: 0, credit: 0 });
       const entry = amountsMap.get(targetId)!;
       entry.debit += Number(r._sum.debit ?? 0);
       entry.credit += Number(r._sum.credit ?? 0);
@@ -868,7 +914,8 @@ export class ReportsService {
     const compareMap = new Map<string, { debit: number; credit: number }>();
     for (const r of compareRaw) {
       const targetId = getLeafId(r as any);
-      if (!compareMap.has(targetId)) compareMap.set(targetId, { debit: 0, credit: 0 });
+      if (!compareMap.has(targetId))
+        compareMap.set(targetId, { debit: 0, credit: 0 });
       const entry = compareMap.get(targetId)!;
       entry.debit += Number(r._sum.debit ?? 0);
       entry.credit += Number(r._sum.credit ?? 0);
@@ -877,14 +924,29 @@ export class ReportsService {
     // 4. Tag breakdown map
     const tagBreakdownMap = new Map<
       string, // accountId
-      Map<string, { primaryDebit: number; primaryCredit: number; compareDebit: number; compareCredit: number }>
+      Map<
+        string,
+        {
+          primaryDebit: number;
+          primaryCredit: number;
+          compareDebit: number;
+          compareCredit: number;
+        }
+      >
     >();
 
     if (includeTagAccounts) {
       const upsertTag = (accountId: string, tagId: string) => {
-        if (!tagBreakdownMap.has(accountId)) tagBreakdownMap.set(accountId, new Map());
+        if (!tagBreakdownMap.has(accountId))
+          tagBreakdownMap.set(accountId, new Map());
         const inner = tagBreakdownMap.get(accountId)!;
-        if (!inner.has(tagId)) inner.set(tagId, { primaryDebit: 0, primaryCredit: 0, compareDebit: 0, compareCredit: 0 });
+        if (!inner.has(tagId))
+          inner.set(tagId, {
+            primaryDebit: 0,
+            primaryCredit: 0,
+            compareDebit: 0,
+            compareCredit: 0,
+          });
         return inner.get(tagId)!;
       };
 
@@ -920,7 +982,11 @@ export class ReportsService {
       const vComp = compareMap.get(acc.id) ?? { debit: 0, credit: 0 };
 
       let amtPri = calcNet(acc.type as AccountType, vPri.debit, vPri.credit);
-      let amtComp = calcNet(acc.type as AccountType, vComp.debit, vComp.credit);
+      const amtComp = calcNet(
+        acc.type as AccountType,
+        vComp.debit,
+        vComp.credit,
+      );
 
       // If no date range specified and 0 transactions, fallback to stored balance
       if (!fromStr && !toStr && vPri.debit === 0 && vPri.credit === 0) {
@@ -931,8 +997,16 @@ export class ReportsService {
         (tagBreakdownMap.get(acc.id) ?? new Map()).entries(),
         ([tagAccountId, val]) => ({
           tagAccountId,
-          amount: calcNet(acc.type as AccountType, val.primaryDebit, val.primaryCredit),
-          compareAmount: calcNet(acc.type as AccountType, val.compareDebit, val.compareCredit),
+          amount: calcNet(
+            acc.type as AccountType,
+            val.primaryDebit,
+            val.primaryCredit,
+          ),
+          compareAmount: calcNet(
+            acc.type as AccountType,
+            val.compareDebit,
+            val.compareCredit,
+          ),
         }),
       );
 
@@ -1022,7 +1096,7 @@ export class ReportsService {
           name: node.name,
           type: node.type,
           isGroup: node.isGroup ?? false,
-          isTagAccount: (node.isTagAccount ?? false) || (level >= 4),
+          isTagAccount: (node.isTagAccount ?? false) || level >= 4,
           parentId: node.parentId,
           level,
           amount: node.amount,
@@ -1032,17 +1106,29 @@ export class ReportsService {
           parent: node.parentId ? accountMap.get(node.parentId) : null,
         };
 
-        if (showZeroBalances || Math.abs(node.amount) > 0.001 || Math.abs(node.compareAmount || 0) > 0.001) {
+        if (
+          showZeroBalances ||
+          Math.abs(node.amount) > 0.001 ||
+          Math.abs(node.compareAmount || 0) > 0.001
+        ) {
           list.push(rowObj);
         }
 
         // Sub-ledger tag account sub-rows (excluding self-referencing tag IDs and accounts already in childMap)
         const childIds = new Set((childMap.get(nodeId) || []).map((c) => c.id));
-        if (!node.isGroup && includeTagAccounts && node._tagBreakdown?.length > 0) {
-          const tags: Array<{ tagAccountId: string; amount: number; compareAmount: number }> =
-            node._tagBreakdown.filter(
-              (t: any) => t.tagAccountId !== node.id && !childIds.has(t.tagAccountId),
-            );
+        if (
+          !node.isGroup &&
+          includeTagAccounts &&
+          node._tagBreakdown?.length > 0
+        ) {
+          const tags: Array<{
+            tagAccountId: string;
+            amount: number;
+            compareAmount: number;
+          }> = node._tagBreakdown.filter(
+            (t: any) =>
+              t.tagAccountId !== node.id && !childIds.has(t.tagAccountId),
+          );
           tags.sort((a, b) => {
             const ta = accountMap.get(a.tagAccountId);
             const tb = accountMap.get(b.tagAccountId);
@@ -1052,9 +1138,16 @@ export class ReportsService {
           for (const tag of tags) {
             const tagAcc = accountMap.get(tag.tagAccountId);
             const tagVar = tag.amount - tag.compareAmount;
-            const tagPct = tag.compareAmount !== 0 ? (tagVar / Math.abs(tag.compareAmount)) * 100 : 0;
+            const tagPct =
+              tag.compareAmount !== 0
+                ? (tagVar / Math.abs(tag.compareAmount)) * 100
+                : 0;
 
-            if (showZeroBalances || Math.abs(tag.amount) > 0.001 || Math.abs(tag.compareAmount) > 0.001) {
+            if (
+              showZeroBalances ||
+              Math.abs(tag.amount) > 0.001 ||
+              Math.abs(tag.compareAmount) > 0.001
+            ) {
               list.push({
                 id: `${node.id}_${tag.tagAccountId}`,
                 code: tagAcc ? tagAcc.code : tag.tagAccountId,
@@ -1117,7 +1210,10 @@ export class ReportsService {
           r.code.startsWith('50')),
     );
     const totalCogs = cogsRoots.reduce((acc, r) => acc + (r.amount || 0), 0);
-    const compareTotalCogs = cogsRoots.reduce((acc, r) => acc + (r.compareAmount || 0), 0);
+    const compareTotalCogs = cogsRoots.reduce(
+      (acc, r) => acc + (r.compareAmount || 0),
+      0,
+    );
 
     const grossProfit = totalIncome - totalCogs;
     const compareGrossProfit = compareTotalIncome - compareTotalCogs;
@@ -1126,7 +1222,10 @@ export class ReportsService {
     const compareNetProfit = compareTotalIncome - compareTotalExpense;
 
     const varianceNetProfit = netProfit - compareNetProfit;
-    const percentageNetProfit = compareNetProfit !== 0 ? (varianceNetProfit / Math.abs(compareNetProfit)) * 100 : 0;
+    const percentageNetProfit =
+      compareNetProfit !== 0
+        ? (varianceNetProfit / Math.abs(compareNetProfit)) * 100
+        : 0;
 
     return {
       income,
@@ -1167,7 +1266,9 @@ export class ReportsService {
     const showZeroBalances = opts?.showZeroBalances ?? false;
 
     const asOfDate = parseToDate(asOfStr) || new Date();
-    const compareAsOfDate = compareAsOfStr ? parseToDate(compareAsOfStr) : undefined;
+    const compareAsOfDate = compareAsOfStr
+      ? parseToDate(compareAsOfStr)
+      : undefined;
 
     // 1. Fetch all chart of accounts
     const allAccounts = await this.prisma.chartOfAccount.findMany({
@@ -1208,7 +1309,6 @@ export class ReportsService {
         },
         _sum: { debit: true, credit: true },
       });
-
     }
 
     // Canonical map for asOf totals (indexed by accountId)
@@ -1232,8 +1332,10 @@ export class ReportsService {
     }
 
     // 4. Calculate Net Income for Current Period up to asOfDate and compareAsOfDate
-    let incomeAsOf = 0, expenseAsOf = 0;
-    let incomeCompare = 0, expenseCompare = 0;
+    let incomeAsOf = 0,
+      expenseAsOf = 0;
+    let incomeCompare = 0,
+      expenseCompare = 0;
 
     for (const r of asOfRaw) {
       const acc = accountMap.get(r.accountId);
@@ -1241,9 +1343,9 @@ export class ReportsService {
       const dr = Number(r._sum.debit ?? 0);
       const cr = Number(r._sum.credit ?? 0);
       if (acc.type === AccountType.INCOME) {
-        incomeAsOf += (cr - dr);
+        incomeAsOf += cr - dr;
       } else if (acc.type === AccountType.EXPENSE) {
-        expenseAsOf += (dr - cr);
+        expenseAsOf += dr - cr;
       }
     }
 
@@ -1253,9 +1355,9 @@ export class ReportsService {
       const dr = Number(r._sum.debit ?? 0);
       const cr = Number(r._sum.credit ?? 0);
       if (acc.type === AccountType.INCOME) {
-        incomeCompare += (cr - dr);
+        incomeCompare += cr - dr;
       } else if (acc.type === AccountType.EXPENSE) {
-        expenseCompare += (dr - cr);
+        expenseCompare += dr - cr;
       }
     }
 
@@ -1265,14 +1367,29 @@ export class ReportsService {
     // 5. Tag breakdown map for display sub-rows under parent COA leaf nodes
     const tagBreakdownMap = new Map<
       string, // accountId
-      Map<string, { asOfDebit: number; asOfCredit: number; compareDebit: number; compareCredit: number }>
+      Map<
+        string,
+        {
+          asOfDebit: number;
+          asOfCredit: number;
+          compareDebit: number;
+          compareCredit: number;
+        }
+      >
     >();
 
     if (includeTagAccounts) {
       const upsertTag = (accountId: string, tagId: string) => {
-        if (!tagBreakdownMap.has(accountId)) tagBreakdownMap.set(accountId, new Map());
+        if (!tagBreakdownMap.has(accountId))
+          tagBreakdownMap.set(accountId, new Map());
         const inner = tagBreakdownMap.get(accountId)!;
-        if (!inner.has(tagId)) inner.set(tagId, { asOfDebit: 0, asOfCredit: 0, compareDebit: 0, compareCredit: 0 });
+        if (!inner.has(tagId))
+          inner.set(tagId, {
+            asOfDebit: 0,
+            asOfCredit: 0,
+            compareDebit: 0,
+            compareCredit: 0,
+          });
         return inner.get(tagId)!;
       };
 
@@ -1295,7 +1412,9 @@ export class ReportsService {
 
     // 6. Build Balance Sheet Leaf Nodes (ASSET, LIABILITY, EQUITY)
     const bsAccounts = allAccounts.filter((a) =>
-      [AccountType.ASSET, AccountType.LIABILITY, AccountType.EQUITY].includes(a.type as any),
+      [AccountType.ASSET, AccountType.LIABILITY, AccountType.EQUITY].includes(
+        a.type as any,
+      ),
     );
 
     const calcNet = (type: AccountType, debit: number, credit: number) => {
@@ -1310,7 +1429,11 @@ export class ReportsService {
 
       // Stored balance fallback if no transactions exist
       let amtAsOf = calcNet(acc.type as AccountType, vAsOf.debit, vAsOf.credit);
-      let amtComp = calcNet(acc.type as AccountType, vComp.debit, vComp.credit);
+      const amtComp = calcNet(
+        acc.type as AccountType,
+        vComp.debit,
+        vComp.credit,
+      );
 
       if (!asOfStr && vAsOf.debit === 0 && vAsOf.credit === 0) {
         amtAsOf = Number(acc.balance);
@@ -1320,8 +1443,16 @@ export class ReportsService {
         (tagBreakdownMap.get(acc.id) ?? new Map()).entries(),
         ([tagAccountId, val]) => ({
           tagAccountId,
-          amount: calcNet(acc.type as AccountType, val.asOfDebit, val.asOfCredit),
-          compareAmount: calcNet(acc.type as AccountType, val.compareDebit, val.compareCredit),
+          amount: calcNet(
+            acc.type as AccountType,
+            val.asOfDebit,
+            val.asOfCredit,
+          ),
+          compareAmount: calcNet(
+            acc.type as AccountType,
+            val.compareDebit,
+            val.compareCredit,
+          ),
         }),
       );
 
@@ -1439,17 +1570,29 @@ export class ReportsService {
           parent: node.parentId ? accountMap.get(node.parentId) : null,
         };
 
-        if (showZeroBalances || Math.abs(node.amount) > 0.001 || Math.abs(node.compareAmount || 0) > 0.001) {
+        if (
+          showZeroBalances ||
+          Math.abs(node.amount) > 0.001 ||
+          Math.abs(node.compareAmount || 0) > 0.001
+        ) {
           list.push(rowObj);
         }
 
         // Tag Account display sub-rows (excluding self-referencing tag IDs and accounts already in childMap)
         const childIds = new Set((childMap.get(nodeId) || []).map((c) => c.id));
-        if (!node.isGroup && includeTagAccounts && node._tagBreakdown?.length > 0) {
-          const tags: Array<{ tagAccountId: string; amount: number; compareAmount: number }> =
-            node._tagBreakdown.filter(
-              (t: any) => t.tagAccountId !== node.id && !childIds.has(t.tagAccountId),
-            );
+        if (
+          !node.isGroup &&
+          includeTagAccounts &&
+          node._tagBreakdown?.length > 0
+        ) {
+          const tags: Array<{
+            tagAccountId: string;
+            amount: number;
+            compareAmount: number;
+          }> = node._tagBreakdown.filter(
+            (t: any) =>
+              t.tagAccountId !== node.id && !childIds.has(t.tagAccountId),
+          );
           tags.sort((a, b) => {
             const ta = accountMap.get(a.tagAccountId);
             const tb = accountMap.get(b.tagAccountId);
@@ -1459,9 +1602,16 @@ export class ReportsService {
           for (const tag of tags) {
             const tagAcc = accountMap.get(tag.tagAccountId);
             const tagVar = tag.amount - tag.compareAmount;
-            const tagPct = tag.compareAmount !== 0 ? (tagVar / Math.abs(tag.compareAmount)) * 100 : 0;
+            const tagPct =
+              tag.compareAmount !== 0
+                ? (tagVar / Math.abs(tag.compareAmount)) * 100
+                : 0;
 
-            if (showZeroBalances || Math.abs(tag.amount) > 0.001 || Math.abs(tag.compareAmount) > 0.001) {
+            if (
+              showZeroBalances ||
+              Math.abs(tag.amount) > 0.001 ||
+              Math.abs(tag.compareAmount) > 0.001
+            ) {
               list.push({
                 id: `${node.id}_${tag.tagAccountId}`,
                 code: tagAcc ? tagAcc.code : tag.tagAccountId,
@@ -1500,18 +1650,27 @@ export class ReportsService {
 
     // Summary calculations
     const assetRoots = roots.filter((r) => r.type === AccountType.ASSET);
-    const liabilityRoots = roots.filter((r) => r.type === AccountType.LIABILITY);
+    const liabilityRoots = roots.filter(
+      (r) => r.type === AccountType.LIABILITY,
+    );
 
     const totalAssets = assetRoots.reduce((s, r) => s + r.amount, 0);
     const totalLiabilities = liabilityRoots.reduce((s, r) => s + r.amount, 0);
-    const totalEquity = (equityRoot ? equityRoot.amount : 0);
+    const totalEquity = equityRoot ? equityRoot.amount : 0;
 
-    const compareTotalAssets = assetRoots.reduce((s, r) => s + r.compareAmount, 0);
-    const compareTotalLiabilities = liabilityRoots.reduce((s, r) => s + r.compareAmount, 0);
-    const compareTotalEquity = (equityRoot ? equityRoot.compareAmount : 0);
+    const compareTotalAssets = assetRoots.reduce(
+      (s, r) => s + r.compareAmount,
+      0,
+    );
+    const compareTotalLiabilities = liabilityRoots.reduce(
+      (s, r) => s + r.compareAmount,
+      0,
+    );
+    const compareTotalEquity = equityRoot ? equityRoot.compareAmount : 0;
 
     const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
-    const compareTotalLiabilitiesAndEquity = compareTotalLiabilities + compareTotalEquity;
+    const compareTotalLiabilitiesAndEquity =
+      compareTotalLiabilities + compareTotalEquity;
 
     const workingCapital = totalAssets - totalLiabilities;
     const compareWorkingCapital = compareTotalAssets - compareTotalLiabilities;
@@ -1667,7 +1826,12 @@ export class ReportsService {
           return {
             parentAccount,
             rows: [],
-            totals: { openingBalance: 0, debit: 0, credit: 0, closingBalance: 0 },
+            totals: {
+              openingBalance: 0,
+              debit: 0,
+              credit: 0,
+              closingBalance: 0,
+            },
           };
         }
 
@@ -1681,7 +1845,12 @@ export class ReportsService {
           return {
             parentAccount,
             rows: [],
-            totals: { openingBalance: 0, debit: 0, credit: 0, closingBalance: 0 },
+            totals: {
+              openingBalance: 0,
+              debit: 0,
+              credit: 0,
+              closingBalance: 0,
+            },
           };
         }
 
@@ -1754,7 +1923,10 @@ export class ReportsService {
           }
         });
 
-        const activityMap = new Map<string, { debit: number; credit: number }>();
+        const activityMap = new Map<
+          string,
+          { debit: number; credit: number }
+        >();
         activityAggs.forEach((agg) => {
           const eid = agg.tagAccountId || agg.accountId;
           if (eid) {
@@ -1806,7 +1978,7 @@ export class ReportsService {
             closingBalance: grandClosing,
           },
         };
-      })
+      }),
     );
   }
 }

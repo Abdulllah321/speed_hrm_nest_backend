@@ -114,10 +114,15 @@ async function bootstrap() {
         enableImplicitConversion: true, // Enable implicit type conversion
       },
       exceptionFactory: (errors) => {
-        const flattenErrors = (errorList: any[], parent = ''): { field: string; messages: string[] }[] => {
+        const flattenErrors = (
+          errorList: any[],
+          parent = '',
+        ): { field: string; messages: string[] }[] => {
           const result: { field: string; messages: string[] }[] = [];
           for (const err of errorList) {
-            const fieldPath = parent ? `${parent}.${err.property}` : err.property;
+            const fieldPath = parent
+              ? `${parent}.${err.property}`
+              : err.property;
             if (err.constraints) {
               result.push({
                 field: fieldPath,
@@ -132,7 +137,9 @@ async function bootstrap() {
         };
 
         const formattedErrors = flattenErrors(errors);
-        const messages = formattedErrors.flatMap((e) => e.messages.map((m) => `${e.field}: ${m}`));
+        const messages = formattedErrors.flatMap((e) =>
+          e.messages.map((m) => `${e.field}: ${m}`),
+        );
 
         return new BadRequestException({
           message: messages.join('; ') || 'Validation failed',
@@ -145,7 +152,8 @@ async function bootstrap() {
   /* Swagger Setup */
   try {
     if (process.env.ENABLE_SWAGGER !== 'false') {
-      const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
+      const { DocumentBuilder, SwaggerModule } =
+        await import('@nestjs/swagger');
       const config = new DocumentBuilder()
         .setTitle('Speed (pvt.) Limited API')
         .setDescription('The Speed (pvt.) Limited API description')

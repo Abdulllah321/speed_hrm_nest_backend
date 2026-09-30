@@ -21,7 +21,15 @@ export class FiscalYearClosingService {
         where: {
           OR: [
             { movementType: MovementType.OPENING_BALANCE },
-            { referenceType: { in: ['FISCAL_YEAR_OPENING', 'OPENING_BALANCE', 'BULK_STOCK_UPLOAD'] } },
+            {
+              referenceType: {
+                in: [
+                  'FISCAL_YEAR_OPENING',
+                  'OPENING_BALANCE',
+                  'BULK_STOCK_UPLOAD',
+                ],
+              },
+            },
           ],
           createdAt: { lte: targetDate },
         },
@@ -35,7 +43,9 @@ export class FiscalYearClosingService {
         return snapshotDate;
       }
     } catch (err: any) {
-      this.logger.warn(`Failed to resolve latest fiscal opening snapshot: ${err.message}`);
+      this.logger.warn(
+        `Failed to resolve latest fiscal opening snapshot: ${err.message}`,
+      );
     }
 
     return null;
@@ -55,9 +65,21 @@ export class FiscalYearClosingService {
       companyId?: string;
       skipLedgerEntries?: boolean;
     },
-  ): Promise<{ success: boolean; openingRecordsCount: number; message: string }> {
-    const { fiscalYearName, closingDate, userId, companyId, skipLedgerEntries } = opts;
-    this.logger.log(`Starting Fiscal Year Close for ${fiscalYearName} (skipLedgerEntries=${!!skipLedgerEntries})`);
+  ): Promise<{
+    success: boolean;
+    openingRecordsCount: number;
+    message: string;
+  }> {
+    const {
+      fiscalYearName,
+      closingDate,
+      userId,
+      companyId,
+      skipLedgerEntries,
+    } = opts;
+    this.logger.log(
+      `Starting Fiscal Year Close for ${fiscalYearName} (skipLedgerEntries=${!!skipLedgerEntries})`,
+    );
 
     let openingRecordsCount = 0;
 
@@ -75,7 +97,9 @@ export class FiscalYearClosingService {
       });
 
       if (ledgerItems.length > 0) {
-        const uniqueItemIds: string[] = Array.from(new Set(ledgerItems.map((i: any) => String(i.itemId))));
+        const uniqueItemIds: string[] = Array.from(
+          new Set(ledgerItems.map((i: any) => String(i.itemId))),
+        );
         const CHUNK_SIZE = 1000;
         const itemChunks: string[][] = [];
         for (let i = 0; i < uniqueItemIds.length; i += CHUNK_SIZE) {
@@ -97,12 +121,14 @@ export class FiscalYearClosingService {
               where: {
                 itemId: { in: chunk },
                 createdAt: { lte: closingDate },
-                OR: [
-                  { unitCost: { gt: 0 } },
-                  { rate: { gt: 0 } },
-                ],
+                OR: [{ unitCost: { gt: 0 } }, { rate: { gt: 0 } }],
               },
-              select: { itemId: true, unitCost: true, rate: true, createdAt: true },
+              select: {
+                itemId: true,
+                unitCost: true,
+                rate: true,
+                createdAt: true,
+              },
               orderBy: { createdAt: 'desc' },
             }),
           ]);
@@ -180,7 +206,9 @@ export class FiscalYearClosingService {
       this.logger.warn(`Could not update FiscalPeriod table: ${err.message}`);
     }
 
-    this.logger.log(`Fiscal Year Close ${fiscalYearName} completed successfully. Created ${openingRecordsCount} opening balance records for ${openingDate.toISOString()}`);
+    this.logger.log(
+      `Fiscal Year Close ${fiscalYearName} completed successfully. Created ${openingRecordsCount} opening balance records for ${openingDate.toISOString()}`,
+    );
 
     return {
       success: true,
@@ -200,7 +228,15 @@ export class FiscalYearClosingService {
       where: {
         OR: [
           { movementType: MovementType.OPENING_BALANCE },
-          { referenceType: { in: ['FISCAL_YEAR_OPENING', 'OPENING_BALANCE', 'BULK_STOCK_UPLOAD'] } },
+          {
+            referenceType: {
+              in: [
+                'FISCAL_YEAR_OPENING',
+                'OPENING_BALANCE',
+                'BULK_STOCK_UPLOAD',
+              ],
+            },
+          },
         ],
       },
       orderBy: { createdAt: 'asc' },
@@ -208,7 +244,11 @@ export class FiscalYearClosingService {
     });
 
     if (!earliestOpening?.createdAt) {
-      return { success: false, message: 'No opening balance records found in stock ledgers to backfill.' };
+      return {
+        success: false,
+        message:
+          'No opening balance records found in stock ledgers to backfill.',
+      };
     }
 
     const snapshotDate = new Date(earliestOpening.createdAt);
@@ -257,8 +297,17 @@ export class FiscalYearClosingService {
         newUnitCost: number;
       }>;
     },
-  ): Promise<{ success: boolean; updatedCount: number; message: string; details: any[] }> {
-    const { warehouseCode = 'C40001', warehouseId: explicitWhId, adjustments } = opts;
+  ): Promise<{
+    success: boolean;
+    updatedCount: number;
+    message: string;
+    details: any[];
+  }> {
+    const {
+      warehouseCode = 'C40001',
+      warehouseId: explicitWhId,
+      adjustments,
+    } = opts;
 
     // 1. Resolve Warehouse
     let warehouseId = explicitWhId;
@@ -274,17 +323,19 @@ export class FiscalYearClosingService {
     }
 
     if (!warehouseId) {
-      return { success: false, updatedCount: 0, message: `Warehouse "${warehouseCode}" not found.`, details: [] };
+      return {
+        success: false,
+        updatedCount: 0,
+        message: `Warehouse "${warehouseCode}" not found.`,
+        details: [],
+      };
     }
 
     // 2. Resolve items by barcode / itemId
-    const barCodes = adjustments.map(a => a.barCode);
+    const barCodes = adjustments.map((a) => a.barCode);
     const items = await prisma.item.findMany({
       where: {
-        OR: [
-          { barCode: { in: barCodes } },
-          { itemId: { in: barCodes } },
-        ],
+        OR: [{ barCode: { in: barCodes } }, { itemId: { in: barCodes } }],
       },
       select: { id: true, barCode: true, itemId: true, description: true },
     });
@@ -301,7 +352,11 @@ export class FiscalYearClosingService {
     for (const adj of adjustments) {
       const item = itemMap.get(adj.barCode);
       if (!item) {
-        details.push({ barCode: adj.barCode, status: 'SKIPPED', reason: 'Barcode not found in Item master' });
+        details.push({
+          barCode: adj.barCode,
+          status: 'SKIPPED',
+          reason: 'Barcode not found in Item master',
+        });
         continue;
       }
 
@@ -312,7 +367,15 @@ export class FiscalYearClosingService {
           warehouseId,
           OR: [
             { movementType: MovementType.OPENING_BALANCE },
-            { referenceType: { in: ['OPENING_BALANCE', 'BULK_STOCK_UPLOAD', 'FISCAL_YEAR_OPENING'] } },
+            {
+              referenceType: {
+                in: [
+                  'OPENING_BALANCE',
+                  'BULK_STOCK_UPLOAD',
+                  'FISCAL_YEAR_OPENING',
+                ],
+              },
+            },
           ],
         },
         orderBy: { createdAt: 'desc' },

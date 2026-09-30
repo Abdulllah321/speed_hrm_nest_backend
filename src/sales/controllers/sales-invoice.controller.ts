@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 @Controller('api/sales/invoices')
 @UseGuards(JwtAuthGuard)
 export class SalesInvoiceController {
-  constructor(private readonly salesInvoiceService: SalesInvoiceService,) {}
+  constructor(private readonly salesInvoiceService: SalesInvoiceService) {}
 
   @Get()
   async findAll(
@@ -31,7 +31,11 @@ export class SalesInvoiceController {
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() updateData: any, @Req() req: any) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateData: any,
+    @Req() req: any,
+  ) {
     return this.salesInvoiceService.update(id, updateData, {
       userId: req.user?.id,
       ipAddress: req.ip,

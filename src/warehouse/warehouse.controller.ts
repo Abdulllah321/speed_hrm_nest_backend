@@ -14,7 +14,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Warehouse')
 @Controller('api/warehouse')
 export class WarehouseController {
-  constructor(private readonly warehouseService: WarehouseService,) { }
+  constructor(private readonly warehouseService: WarehouseService) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new warehouse' })
@@ -46,7 +46,11 @@ export class WarehouseController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update warehouse' })
-  update(@Param('id') id: string, @Body() updateWarehouseDto: any, @Req() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updateWarehouseDto: any,
+    @Req() req: any,
+  ) {
     return this.warehouseService.updateWarehouse(id, updateWarehouseDto, {
       userId: req.user?.id,
       ipAddress: req.ip,

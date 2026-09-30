@@ -17,12 +17,12 @@ import { MasterDeleteGuardService } from '../../../common/services/master-delete
 export class SeasonService {
   constructor(
     private readonly masterDeleteGuard: MasterDeleteGuardService,
-    private prisma: PrismaService, 
+    private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
 
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async getAll() {
     const cacheKey = 'seasons_all';
@@ -33,7 +33,7 @@ export class SeasonService {
 
     const seasons = await this.prisma.season.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -63,9 +63,7 @@ export class SeasonService {
 
   async getById(id: string) {
     const season = await this.prisma.season.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!season) return { status: false, message: 'Season not found' };
 
@@ -123,9 +121,7 @@ export class SeasonService {
   ) {
     try {
       const existing = await this.prisma.season.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Season not found' };
 
@@ -209,14 +205,18 @@ export class SeasonService {
   ) {
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'season', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'season',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const result = await this.prisma.season.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: result,
@@ -248,17 +248,20 @@ export class SeasonService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'season', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'season',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.season.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.season.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.season.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       const response = {
         status: true,

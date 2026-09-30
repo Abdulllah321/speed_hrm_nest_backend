@@ -15,23 +15,27 @@ import { CustomerExportController } from './customer-export.controller';
 import { CustomerExportProcessor } from './customer-export.processor';
 
 @Module({
-    imports: [
-        PrismaModule,
-        DatabaseModule,
-        BullModule.registerQueue({ name: 'customer-upload' }),
-        BullModule.registerQueue({ name: 'customer-export' }),
-    ],
-    controllers: [CustomerController, CustomerBulkUploadController, CustomerExportController],
-    providers: [
-        CustomerService,
-        CustomerBulkUploadService,
-        CustomerUploadProcessor,
-        CustomerCsvParserService,
-        CustomerValidatorService,
-        UploadEventsService,
-        CustomerExportService,
-        CustomerExportProcessor,
-    ],
-    exports: [CustomerService],
+  imports: [
+    PrismaModule,
+    DatabaseModule,
+    BullModule.registerQueue({ name: 'customer-upload' }),
+    BullModule.registerQueue({ name: 'customer-export' }),
+  ],
+  controllers: [
+    CustomerController,
+    CustomerBulkUploadController,
+    CustomerExportController,
+  ],
+  providers: [
+    CustomerService,
+    CustomerBulkUploadService,
+    CustomerUploadProcessor,
+    CustomerCsvParserService,
+    CustomerValidatorService,
+    UploadEventsService,
+    CustomerExportService,
+    CustomerExportProcessor,
+  ],
+  exports: [CustomerService],
 })
-export class CustomerModule { }
+export class CustomerModule {}

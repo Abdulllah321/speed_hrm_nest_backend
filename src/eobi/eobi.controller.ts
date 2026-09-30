@@ -28,7 +28,9 @@ export class EOBIController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('hr.eobi.read')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get EOBI balances and contributions for employees' })
+  @ApiOperation({
+    summary: 'Get EOBI balances and contributions for employees',
+  })
   @ApiResponse({
     status: 200,
     description: 'Returns EOBI balance and contribution data for employees',
@@ -113,7 +115,9 @@ export class EOBIController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions('hr.eobi.update')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Recalculate EOBI contributions based on employee profiles' })
+  @ApiOperation({
+    summary: 'Recalculate EOBI contributions based on employee profiles',
+  })
   @ApiResponse({ status: 200, description: 'EOBI contributions recalculated' })
   async recalculateEOBIContributions(
     @Body('month') month?: string,
@@ -122,4 +126,3 @@ export class EOBIController {
     return this.eobiService.recalculateEOBIContributions(month, year);
   }
 }
-

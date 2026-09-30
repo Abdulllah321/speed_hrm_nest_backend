@@ -47,7 +47,10 @@ export class CreateAdvanceSalaryItemDto {
   @IsString()
   reason: string; // Detailed reason
 
-  @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'with_payroll',
+    enum: ['with_payroll', 'separately'],
+  })
   @IsOptional()
   @IsString()
   disbursementType?: string;
@@ -114,7 +117,10 @@ export class UpdateAdvanceSalaryDto {
   @IsString()
   status?: string; // pending, active, completed, cancelled, rejected
 
-  @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'with_payroll',
+    enum: ['with_payroll', 'separately'],
+  })
   @IsOptional()
   @IsString()
   disbursementType?: string;
@@ -163,7 +169,10 @@ export class BulkCreateAdvanceSalaryItemDto {
   @IsString()
   reason: string;
 
-  @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'with_payroll',
+    enum: ['with_payroll', 'separately'],
+  })
   @IsOptional()
   @IsString()
   disbursementType?: string;
@@ -182,4 +191,3 @@ export class BulkCreateAdvanceSalaryDto {
   @IsBoolean()
   isApproved?: boolean;
 }
-

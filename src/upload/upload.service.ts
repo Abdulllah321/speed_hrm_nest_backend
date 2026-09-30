@@ -43,7 +43,10 @@ if (USE_S3) {
 const S3_BUCKET = process.env.AWS_S3_BUCKET || '';
 const S3_KEY_PREFIX = process.env.AWS_S3_KEY_PREFIX || 'uploads';
 // Signed URL expiry for private buckets (seconds). Default 7 days.
-const SIGNED_URL_EXPIRES = parseInt(process.env.AWS_S3_SIGNED_URL_EXPIRES || '604800', 10);
+const SIGNED_URL_EXPIRES = parseInt(
+  process.env.AWS_S3_SIGNED_URL_EXPIRES || '604800',
+  10,
+);
 // Set to 'true' if your bucket/objects are publicly accessible (no signed URLs needed)
 const S3_PUBLIC = process.env.AWS_S3_PUBLIC === 'true';
 
@@ -150,7 +153,7 @@ export class UploadService {
     });
     // Resolve the URL to return to the caller
     // The frontend base URL already includes /api, so return a path without it
-    const fileUrl = publicUrl ? publicUrl: `/uploads/${record.id}`;
+    const fileUrl = publicUrl ? publicUrl : `/uploads/${record.id}`;
 
     runInBackground(
       'Upload File',
@@ -161,7 +164,10 @@ export class UploadService {
         entity: 'FileUpload',
         entityId: record.id,
         description: `Uploaded file ${record.filename}`,
-        newValues: JSON.stringify({ filename: record.filename, size: record.size }),
+        newValues: JSON.stringify({
+          filename: record.filename,
+          size: record.size,
+        }),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         status: 'success',
@@ -218,7 +224,9 @@ export class UploadService {
   // ---------------------------------------------------------------------------
   // Stream / download
   // ---------------------------------------------------------------------------
-  async downloadUpload(id: string): Promise<{ item: any; stream: Readable; url?: string }> {
+  async downloadUpload(
+    id: string,
+  ): Promise<{ item: any; stream: Readable; url?: string }> {
     const item = await this.prisma.fileUpload.findUnique({ where: { id } });
     if (!item || !item.path) throw new NotFoundException('File not found');
 
@@ -235,7 +243,10 @@ export class UploadService {
       // Private bucket: generate a signed URL and stream via it
       const signedUrl = await getSignedUrl(
         s3Client!,
-        new GetObjectCommand({ Bucket: S3_BUCKET, Key: item.path ?? undefined }),
+        new GetObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: item.path ?? undefined,
+        }),
         { expiresIn: SIGNED_URL_EXPIRES },
       );
       return { item, stream: Readable.from([]), url: signedUrl };
@@ -243,7 +254,8 @@ export class UploadService {
 
     // Local disk
     const absPath = path.join(this.uploadRoot, path.basename(item.path));
-    if (!fs.existsSync(absPath)) throw new NotFoundException('File not found on disk');
+    if (!fs.existsSync(absPath))
+      throw new NotFoundException('File not found on disk');
     return { item, stream: fs.createReadStream(absPath) };
   }
 
@@ -260,7 +272,10 @@ export class UploadService {
     if (USE_S3) {
       try {
         await s3Client!.send(
-          new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: item.path ?? undefined }),
+          new DeleteObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: item.path ?? undefined,
+          }),
         );
       } catch (e) {
         this.logger.error(`Failed to delete S3 object ${item.path}:`, e);
@@ -301,7 +316,10 @@ export class UploadService {
     return USE_S3;
   }
 
-  async getSignedUrlForDownload(key: string, fileName?: string): Promise<string> {
+  async getSignedUrlForDownload(
+    key: string,
+    fileName?: string,
+  ): Promise<string> {
     if (!USE_S3) return `/uploads/${key}`;
     const commandParams: any = { Bucket: S3_BUCKET, Key: key };
     if (fileName) {
@@ -310,11 +328,9 @@ export class UploadService {
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     }
-    return getSignedUrl(
-      s3Client!,
-      new GetObjectCommand(commandParams),
-      { expiresIn: SIGNED_URL_EXPIRES },
-    );
+    return getSignedUrl(s3Client!, new GetObjectCommand(commandParams), {
+      expiresIn: SIGNED_URL_EXPIRES,
+    });
   }
 
   async deleteS3Object(key: string): Promise<void> {
@@ -325,7 +341,9 @@ export class UploadService {
         );
         this.logger.log(`[UploadService] Deleted S3 object: ${key}`);
       } catch (e: any) {
-        this.logger.error(`[UploadService] Failed to delete S3 object ${key}: ${e.message}`);
+        this.logger.error(
+          `[UploadService] Failed to delete S3 object ${key}: ${e.message}`,
+        );
       }
     }
   }
@@ -384,4 +402,3 @@ export class UploadService {
     return { url: publicUrl, key: s3Key };
   }
 }
-

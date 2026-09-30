@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { runInBackground } from '../common/utils/run-in-background.util';
-import { CreateTaskListDto, UpdateTaskListDto, ReorderTaskListDto } from './dto/task-list.dto';
+import {
+  CreateTaskListDto,
+  UpdateTaskListDto,
+  ReorderTaskListDto,
+} from './dto/task-list.dto';
 
 type Ctx = { userId?: string; ipAddress?: string; userAgent?: string };
 
@@ -22,13 +26,19 @@ export class TaskListService {
       });
       return { status: true, data: lists };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list task lists' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to list task lists',
+      };
     }
   }
 
   async create(projectId: string, body: CreateTaskListDto, ctx: Ctx) {
     try {
-      const project = await this.prisma.taskProject.findUnique({ where: { id: projectId } });
+      const project = await this.prisma.taskProject.findUnique({
+        where: { id: projectId },
+      });
       if (!project) return { status: false, message: 'Project not found' };
 
       // Auto-assign next position if not provided
@@ -51,7 +61,11 @@ export class TaskListService {
         },
       });
 
-      const response = { status: true, data: list, message: 'Task list created successfully' };
+      const response = {
+        status: true,
+        data: list,
+        message: 'Task list created successfully',
+      };
       runInBackground(
         'Create Task List',
         this.activityLogs.log({
@@ -68,7 +82,11 @@ export class TaskListService {
       );
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to create task list' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to create task list',
+      };
     }
   }
 
@@ -77,9 +95,16 @@ export class TaskListService {
       const existing = await this.prisma.taskList.findUnique({ where: { id } });
       if (!existing) return { status: false, message: 'Task list not found' };
 
-      const updated = await this.prisma.taskList.update({ where: { id }, data: body });
+      const updated = await this.prisma.taskList.update({
+        where: { id },
+        data: body,
+      });
 
-      const response = { status: true, data: updated, message: 'Task list updated successfully' };
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Task list updated successfully',
+      };
       runInBackground(
         'Update Task List',
         this.activityLogs.log({
@@ -96,7 +121,11 @@ export class TaskListService {
       );
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update task list' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to update task list',
+      };
     }
   }
 
@@ -107,7 +136,10 @@ export class TaskListService {
 
       await this.prisma.taskList.delete({ where: { id } });
 
-      const response = { status: true, message: 'Task list deleted successfully' };
+      const response = {
+        status: true,
+        message: 'Task list deleted successfully',
+      };
       runInBackground(
         'Delete Task List',
         this.activityLogs.log({
@@ -124,7 +156,11 @@ export class TaskListService {
       );
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete task list' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to delete task list',
+      };
     }
   }
 
@@ -132,12 +168,21 @@ export class TaskListService {
     try {
       await this.prisma.$transaction(
         body.ids.map((id, index) =>
-          this.prisma.taskList.update({ where: { id }, data: { position: index } }),
+          this.prisma.taskList.update({
+            where: { id },
+            data: { position: index },
+          }),
         ),
       );
       return { status: true, message: 'Task lists reordered successfully' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to reorder task lists' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to reorder task lists',
+      };
     }
   }
 }
