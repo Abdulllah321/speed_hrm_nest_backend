@@ -345,12 +345,12 @@ export class NetSalesSummaryExportService {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
     await fs.promises.mkdir(previewDir, { recursive: true });
 
-    // 1. Save compressed preview JSON directly (capped to 5,000 records for fast fallback loading)
+    // 1. Save compressed preview JSON directly (capped to 25,000 records for fast instant loading)
     try {
       const jsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
       const previewResult = {
         ...result,
-        flatItems: (result.flatItems || []).slice(0, 10000),
+        flatItems: (result.flatItems || []).slice(0, 25000),
       };
       const jsonStr = JSON.stringify(previewResult);
       const compressedJson = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
@@ -441,14 +441,22 @@ export class NetSalesSummaryExportService {
   }
 
   async getReportPreviewResult(jobId: string): Promise<NetSalesSummaryReportResult | null> {
-    const filePath = this.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
+    const previewDir = path.join(process.cwd(), 'uploads', 'previews');
+    const jsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
+    if (fs.existsSync(jsonPath)) {
+      const compressed = await fs.promises.readFile(jsonPath);
+      const decompressed = await gunzipAsync(compressed);
+      const parsed = JSON.parse(decompressed.toString('utf8'));
+      return parsed.data || parsed;
+    }
+
+    const ndjsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.ndjson.gz`);
+    if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
 
-    if (filePath.endsWith('.ndjson.gz')) {
-      const fileStream = fs.createReadStream(filePath);
-      const gunzip = zlib.createGunzip();
+    const fileStream = fs.createReadStream(ndjsonPath);
+    const gunzip = zlib.createGunzip();
       const lineReader = readline.createInterface({
         input: fileStream.pipe(gunzip),
         crlfDelay: Infinity,
@@ -484,11 +492,6 @@ export class NetSalesSummaryExportService {
         flatItems,
         grandTotals,
       };
-    }
-
-    const compressed = await fs.promises.readFile(filePath);
-    const decompressed = await gunzipAsync(compressed);
-    return JSON.parse(decompressed.toString('utf8'));
   }
 
   /**
