@@ -641,6 +641,10 @@ export class NetSalesListExportService {
       endDate.setHours(23, 59, 59, 999);
     }
 
+    if (endDate > now) {
+      endDate = now;
+    }
+
     const locIds = locationIds && locationIds.length > 0
       ? locationIds
       : locationId

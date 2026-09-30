@@ -66,13 +66,13 @@ export class StockRequisitionController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const data = await this.requisitionService.getReplenishmentCandidates({
+    const { items, totalNetSales } = await this.requisitionService.getReplenishmentCandidates({
       locationId,
       fromWarehouseId,
       startDate,
       endDate,
     });
-    return { status: true, data };
+    return { status: true, data: items, summary: { totalNetSales } };
   }
 
   @Get()

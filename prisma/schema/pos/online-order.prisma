@@ -1,0 +1,48 @@
+model OnlineOrder {
+  id                   String    @id @default(uuid())
+  orderNumber          String?   @map("order_number")
+  orderId              String?   @map("order_id")
+  sku                  String?
+  barcode              String?
+  systemSku            String?   @map("system_sku")
+  size                 String?
+  name                 String?
+  brand                String?
+  qty                  Int       @default(1)
+  price                Decimal   @default(0) @db.Decimal(15, 2)
+  paidPrice            Decimal   @default(0) @map("paid_price") @db.Decimal(15, 2)
+  subTotalPaidPrice    Decimal   @default(0) @map("sub_total_paid_price") @db.Decimal(15, 2)
+  subTotalPrice        Decimal   @default(0) @map("sub_total_price") @db.Decimal(15, 2)
+  skuDiscounted        Decimal?  @map("sku_discounted") @db.Decimal(15, 2)
+  skuActualDiscount    Decimal?  @map("sku_actual_discount") @db.Decimal(15, 2)
+  shippingCharges      Decimal?  @map("shipping_charges") @db.Decimal(15, 2)
+  orderTotal           Decimal   @default(0) @map("order_total") @db.Decimal(15, 2)
+  itemStatus           String?   @map("item_status")
+  realMarketStatus     String?   @map("real_market_status")
+  couponCode           String?   @map("coupon_code")
+  paymentMethod        String?   @map("payment_method")
+  trackingNumber       String?   @map("tracking_number")
+  marketplace          String?
+  channel              String?
+  orderedAt            DateTime? @map("ordered_at")
+  orderMonth           String?   @map("order_month")
+  orderYear            String?   @map("order_year")
+  customerType         String?   @map("customer_type")
+  customerName         String?   @map("customer_name")
+  email                String?
+  city                 String?
+  phone                String?
+  address              String?   @db.Text
+  note                 String?   @db.Text
+  fulfilledByWarehouse String?   @map("fulfilled_by_warehouse")
+  shipping             String?
+
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@index([orderNumber])
+  @@index([orderId])
+  @@index([sku])
+  @@index([customerName])
+  @@map("pos_online_orders")
+}

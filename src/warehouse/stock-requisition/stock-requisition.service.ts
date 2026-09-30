@@ -1077,7 +1077,7 @@ export class StockRequisitionService {
       where: {
         salesOrder: {
           locationId,
-          status: { in: ['completed', 'partially_returned', 'exchanged'] },
+          status: { in: ['completed', 'partially_returned', 'exchanged', 'refunded'] },
           createdAt: { gte: startDate, lte: endDate },
         },
       },
@@ -1091,6 +1091,50 @@ export class StockRequisitionService {
     }
 
     const itemIds = salesItems.map((si) => si.itemId);
+
+    // 1.5. Group returned items from StockLedger within the same date range
+    const returnItems = await this.prisma.stockLedger.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: itemIds },
+        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+        locationId,
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      _sum: {
+        qty: true,
+      },
+    });
+
+    const approvedClaimItems = await this.prisma.posClaimItem.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: itemIds },
+        itemStatus: 'APPROVED',
+        approvedQty: { gt: 0 },
+        claim: {
+          status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
+          reviewedAt: { gte: startDate, lte: endDate },
+          salesOrder: { locationId },
+        },
+      },
+      _sum: {
+        approvedQty: true,
+      },
+    });
+
+    const returnedMap = new Map<string, number>();
+    for (const ri of returnItems) {
+      // StockLedger might store returns as positive or negative depending on transaction type, 
+      // but usually for a return to store, it's a positive quantity addition to stock.
+      // In POS_RETURN, it's typically a receipt into the warehouse/store. 
+      // Let's assume it's stored as absolute quantity or we take Math.abs
+      returnedMap.set(ri.itemId, Math.abs(Number(ri._sum.qty || 0)));
+    }
+    for (const ci of approvedClaimItems) {
+      const current = returnedMap.get(ci.itemId) || 0;
+      returnedMap.set(ci.itemId, current + Math.abs(Number(ci._sum.approvedQty || 0)));
+    }
 
     // 2. Fetch master items
     const items = await this.prisma.item.findMany({
@@ -1148,7 +1192,9 @@ export class StockRequisitionService {
     // 5. Combine and calculate replenishment qty
     const candidates = items.map((item) => {
       const salesEntry = salesItems.find((si) => si.itemId === item.id);
-      const soldQty = salesEntry ? Number(salesEntry._sum.quantity || 0) : 0;
+      const grossSoldQty = salesEntry ? Number(salesEntry._sum.quantity || 0) : 0;
+      const returnedQty = returnedMap.get(item.id) || 0;
+      const soldQty = Math.max(0, grossSoldQty - returnedQty);
 
       const physicalQty = physicalStockMap.get(item.id) || 0;
       const reservedQty = reservedStockMap.get(item.id) || 0;
@@ -1170,9 +1216,48 @@ export class StockRequisitionService {
         warehouseAvailableQty: netAvailable,
         quantity: replenishQty, // Suggest this qty
       };
+    }).filter(c => c.soldQty > 0);
+
+    // Calculate Exact Global Net Sales for the period to match Net Sales Summary report exactly
+    const allSalesItems = await this.prisma.salesOrderItem.aggregate({
+      where: {
+        salesOrder: {
+          locationId,
+          status: { in: ['completed', 'partially_returned', 'exchanged', 'refunded'] },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+      },
+      _sum: { quantity: true },
     });
 
-    return candidates;
+    const allReturns = await this.prisma.stockLedger.aggregate({
+      where: {
+        locationId,
+        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      _sum: { qty: true },
+    });
+
+    const allClaims = await this.prisma.posClaimItem.aggregate({
+      where: {
+        itemStatus: 'APPROVED',
+        approvedQty: { gt: 0 },
+        claim: {
+          status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
+          reviewedAt: { gte: startDate, lte: endDate },
+          salesOrder: { locationId },
+        },
+      },
+      _sum: { approvedQty: true },
+    });
+
+    const totalGross = Number(allSalesItems._sum.quantity || 0);
+    const totalRet = Math.abs(Number(allReturns._sum.qty || 0));
+    const totalClaim = Math.abs(Number(allClaims._sum.approvedQty || 0));
+    const totalNetSales = totalGross - totalRet - totalClaim;
+
+    return { items: candidates, totalNetSales };
   }
 
   async getNextRequisitionNumber(): Promise<{ nextRequisitionNumber: string }> {

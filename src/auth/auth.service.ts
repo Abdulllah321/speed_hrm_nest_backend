@@ -1198,6 +1198,7 @@ export class AuthService {
                   fbrNtn: terminal.location.fbrNtn || '',
                   fbrSellerName: terminal.location.fbrSellerName || '',
                   fbrEnabled: terminal.location.fbrEnabled ?? false,
+                  isOnline: terminal.location.isOnline ?? false,
                 }
               : null,
           },

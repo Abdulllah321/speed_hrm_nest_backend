@@ -272,6 +272,7 @@ export class AvailableStockSummaryExportService {
       value: entry.value ?? entry.metrics?.value ?? 0,
       unitCost: entry.unitCost ?? entry.metrics?.unitCost ?? 0,
       costingValue: entry.costingValue ?? entry.metrics?.costingValue ?? 0,
+      pendingInvoice: entry.pendingInvoice ?? entry.metrics?.pendingInvoice ?? 0,
     }));
 
     const payloadToSerialize = {
@@ -660,6 +661,8 @@ export class AvailableStockSummaryExportService {
       transitItemsResults,
       reserveGroupResults,
       tenantSettingsResults,
+      pendingInvoiceGroupResults,
+      salesOrderReserveResults,
     ] = await Promise.all([
       // 1. Compute B/F Opening balance before startDate
       prisma.stockLedger.groupBy({
@@ -743,6 +746,51 @@ export class AvailableStockSummaryExportService {
           standardCost: true,
         },
       }),
+      // 7. Query pending invoices (DCs not invoiced)
+      prisma.deliveryChallanItem.findMany({
+        where: {
+          deliveryChallan: {
+            status: { in: ['PENDING', 'DELIVERED'] },
+            ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+          },
+        },
+        select: {
+          itemId: true,
+          deliveredQty: true,
+          deliveryChallan: {
+            select: { warehouseId: true },
+          },
+        },
+      }),
+      // 8. Query Sales Order Reserved stock
+      prisma.eRPSalesOrderItem.findMany({
+        where: {
+          salesOrder: {
+            status: { in: ['DRAFT', 'CONFIRMED', 'WAREHOUSE_VERIFIED'] },
+            ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+          },
+        },
+        select: {
+          itemId: true,
+          quantity: true,
+          salesOrder: {
+            select: {
+              warehouseId: true,
+              deliveryChallans: {
+                where: { status: { not: 'CANCELLED' } },
+                select: {
+                  items: {
+                    select: {
+                      itemId: true,
+                      deliveredQty: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
     ]);
 
     if (isAborted?.()) {
@@ -756,6 +804,8 @@ export class AvailableStockSummaryExportService {
     for (const r of ledgerEntriesResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
     for (const r of transitItemsResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
     for (const r of reserveGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of pendingInvoiceGroupResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
+    for (const r of salesOrderReserveResults) if (r?.itemId) activeItemIdsSet.add(r.itemId);
 
     if (activeItemIdsSet.size === 0) {
       const inventoryFallback = await prisma.inventoryItem.findMany({
@@ -878,6 +928,51 @@ export class AvailableStockSummaryExportService {
       }
     }
 
+    // Add Sales Order Reservations to Reserve Map
+    for (const row of salesOrderReserveResults) {
+      let qty = Number(row.quantity || 0);
+
+      // Subtract quantities already in delivery challans
+      for (const dc of row.salesOrder.deliveryChallans) {
+        for (const dcItem of dc.items) {
+          if (dcItem.itemId === row.itemId) {
+            qty -= Number(dcItem.deliveredQty || 0);
+          }
+        }
+      }
+
+      if (qty > 0) {
+        const whId = row.salesOrder.warehouseId;
+        const locKey = isSeparate
+          ? (whId ? `wh:${whId}` : 'all')
+          : 'all';
+        const key = `${locKey}_${row.itemId}`;
+        reserveMap.set(key, (reserveMap.get(key) || 0) + qty);
+
+        if (!isSeparate) {
+          const allKey = `all_${row.itemId}`;
+          reserveMap.set(allKey, (reserveMap.get(allKey) || 0) + qty);
+        }
+      }
+    }
+
+    // Populate Pending Invoice Map
+    const pendingInvoiceMap = new Map<string, number>();
+    for (const row of pendingInvoiceGroupResults) {
+      const qty = Number(row.deliveredQty || 0);
+      const whId = row.deliveryChallan?.warehouseId;
+      const locKey = isSeparate
+        ? (whId ? `wh:${whId}` : 'all')
+        : 'all';
+      const key = `${locKey}_${row.itemId}`;
+      pendingInvoiceMap.set(key, (pendingInvoiceMap.get(key) || 0) + qty);
+
+      if (!isSeparate) {
+        const allKey = `all_${row.itemId}`;
+        pendingInvoiceMap.set(allKey, (pendingInvoiceMap.get(allKey) || 0) + qty);
+      }
+    }
+
     const movementMetricsMap = new Map<string, {
       fromWarehouse: number;
       fromOutlet: number;
@@ -966,6 +1061,7 @@ export class AvailableStockSummaryExportService {
       quantity: number;
       transit: number;
       reserved: number;
+      pendingInvoice: number;
       total: number;
       unitPrice: number;
       value: number;
@@ -979,6 +1075,7 @@ export class AvailableStockSummaryExportService {
       target.quantity += source.quantity;
       target.transit += source.transit;
       target.reserved += source.reserved;
+      target.pendingInvoice += source.pendingInvoice;
       target.total += source.total;
       target.value += source.value;
       target.costingValue += source.costingValue;
@@ -996,6 +1093,7 @@ export class AvailableStockSummaryExportService {
         const bf = (bfMap.get(mapKey) ?? bfMap.get(altMapKey)) || 0;
         const transit = (transitMap.get(mapKey) ?? transitMap.get(altMapKey)) || 0;
         const reserved = (reserveMap.get(mapKey) ?? reserveMap.get(altMapKey)) || 0;
+        const pendingInvoice = (pendingInvoiceMap.get(mapKey) ?? pendingInvoiceMap.get(altMapKey)) || 0;
         const m = (movementMetricsMap.get(mapKey) ?? movementMetricsMap.get(altMapKey)) || {
           fromWarehouse: 0, fromOutlet: 0, toWarehouse: 0, toOutlet: 0,
           exchg: 0, refund: 0, claim: 0, sales: 0, adj: 0,
@@ -1003,16 +1101,18 @@ export class AvailableStockSummaryExportService {
 
         const totalTrfIn = m.fromWarehouse + m.fromOutlet;
         const totalTrfOut = m.toWarehouse + m.toOutlet;
+        
+        // When DC is created, it decreases physical stock via toOutlet (DELIVERY_CHALLAN)
         const physicalStock = bf + totalTrfIn - totalTrfOut + m.exchg + m.refund + m.claim - m.sales + m.adj;
 
-        // Total Balance = Physical On-Hand Stock + In Transit
-        const balance = physicalStock + transit;
+        // Balance needs to include pendingInvoice so it doesn't officially leave stock until Invoiced
+        const balance = physicalStock + transit + pendingInvoice;
 
-        // Available Qty = Total Balance - In Transit - Reserved
-        const availableStock = balance - transit - reserved;
+        // Available Qty = Total Balance - In Transit - Reserved - PendingInvoice
+        const availableStock = balance - transit - reserved - pendingInvoice;
 
         // In separate mode, skip item entries with 0 stock across all fields for this specific location
-        if (isSeparate && availableStock === 0 && transit === 0 && reserved === 0 && balance === 0) {
+        if (isSeparate && availableStock === 0 && transit === 0 && reserved === 0 && balance === 0 && pendingInvoice === 0) {
           continue;
         }
 
@@ -1038,6 +1138,7 @@ export class AvailableStockSummaryExportService {
           quantity: availableStock,
           transit,
           reserved,
+          pendingInvoice,
           total: balance,
           unitPrice,
           value,
@@ -1068,6 +1169,7 @@ export class AvailableStockSummaryExportService {
           quantity: availableStock,
           transit,
           reserved,
+          pendingInvoice,
           total: balance,
           unitPrice,
           value,
@@ -1147,6 +1249,7 @@ export class AvailableStockSummaryExportService {
       quantity: 0,
       transit: 0,
       reserved: 0,
+      pendingInvoice: 0,
       total: 0,
       unitPrice: 0,
       value: 0,

@@ -45,6 +45,8 @@ import { VoucherRegisterExportService } from './voucher-register-export.service'
 import { VoucherRegisterExportProcessor } from './voucher-register-export.processor';
 import { WarehouseModule } from '../warehouse/warehouse.module';
 import { ReportPreviewCleanupService } from '../common/services/report-preview-cleanup.service';
+import { OnlineOrderManagementService } from './online-order-management.service';
+import { OnlineOrderManagementController } from './online-order-management.controller';
 
 @Module({
     imports: [
@@ -98,6 +100,7 @@ import { ReportPreviewCleanupService } from '../common/services/report-preview-c
         PosSalesController, 
         SalesHistoryBulkUploadController,
         PosSalesActivityExportController,
+        OnlineOrderManagementController,
     ],
     providers: [
         PosSalesService,
@@ -134,6 +137,7 @@ import { ReportPreviewCleanupService } from '../common/services/report-preview-c
         VoucherRegisterExportService,
         VoucherRegisterExportProcessor,
         ReportPreviewCleanupService,
+        OnlineOrderManagementService,
     ],
     exports: [
         PosSalesService, 
@@ -151,6 +155,7 @@ import { ReportPreviewCleanupService } from '../common/services/report-preview-c
         CreditVoucherExportService,
         VoucherRegisterExportService,
         ReportPreviewCleanupService,
+        OnlineOrderManagementService,
     ],
 })
 export class PosSalesModule { }
