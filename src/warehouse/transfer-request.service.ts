@@ -32,7 +32,7 @@ export class TransferRequestService {
         fromWarehouseId?: string; // Optional for outlet-to-warehouse
         fromLocationId?: string;  // Source outlet for returns and outlet-to-outlet
         toLocationId?: string;    // Destination outlet (null for warehouse)
-        transferType?: 'WAREHOUSE_TO_OUTLET' | 'OUTLET_TO_WAREHOUSE' | 'OUTLET_TO_OUTLET';
+        transferType?: 'WAREHOUSE_TO_OUTLET' | 'OUTLET_TO_WAREHOUSE' | 'OUTLET_TO_OUTLET' | 'WAREHOUSE_TO_WAREHOUSE';
         items: { itemId: string; quantity: number }[];
         createdById?: string;
         notes?: string;
@@ -57,6 +57,13 @@ export class TransferRequestService {
             if (transferType === 'WAREHOUSE_TO_OUTLET') {
                 if (!data.fromWarehouseId || !data.toLocationId) {
                     throw new BadRequestException('fromWarehouseId and toLocationId required for warehouse-to-outlet transfers');
+                }
+            } else if (transferType === 'WAREHOUSE_TO_WAREHOUSE') {
+                if (!data.fromWarehouseId || !data.toWarehouseId) {
+                    throw new BadRequestException('fromWarehouseId and toWarehouseId required for warehouse-to-warehouse transfers');
+                }
+                if (data.fromWarehouseId === data.toWarehouseId) {
+                    throw new BadRequestException('Source and destination warehouses cannot be the same');
                 }
             } else if (transferType === 'OUTLET_TO_WAREHOUSE') {
                 if (!data.fromLocationId || !data.fromWarehouseId) {
@@ -97,7 +104,7 @@ export class TransferRequestService {
                 // Validate stock availability based on transfer type
                 for (const item of data.items) {
                     let availableQty = 0;
-                    if (transferType === 'WAREHOUSE_TO_OUTLET') {
+                    if (transferType === 'WAREHOUSE_TO_OUTLET' || transferType === 'WAREHOUSE_TO_WAREHOUSE') {
                         const stock = await tx.inventoryItem.findFirst({
                             where: {
                                 warehouseId: data.fromWarehouseId,
@@ -145,6 +152,7 @@ export class TransferRequestService {
                     data: {
                         requestNo,
                         fromWarehouseId: data.fromWarehouseId || null,
+                        toWarehouseId: data.toWarehouseId || null,
                         fromLocationId: data.fromLocationId || null,
                         toLocationId: data.toLocationId || null,
                         transferType,
@@ -214,7 +222,7 @@ export class TransferRequestService {
                             rate: transferRate,
                         }, tx);
                     }
-                } else if (transferType === 'WAREHOUSE_TO_OUTLET') {
+                } else if (transferType === 'WAREHOUSE_TO_OUTLET' || transferType === 'WAREHOUSE_TO_WAREHOUSE') {
                     // Immediately decrement warehouse inventory upon dispatch/creation
                     for (const item of createdRequest.items) {
                         const sourceStock = await tx.inventoryItem.findFirst({
@@ -1091,6 +1099,61 @@ export class TransferRequestService {
                             itemId: item.itemId,
                             warehouseId: request.fromWarehouseId!,
                             locationId: request.toLocationId!,
+                            qty: Number(item.quantity),
+                            movementType: 'INBOUND' as any,
+                            referenceType: 'TRANSFER_RECEIPT',
+                            referenceId: request.id,
+                            rate: itemRate,
+                        }, tx);
+                    }
+
+                    const updated = await tx.transferRequest.update({
+                        where: { id },
+                        data: {
+                            status: 'COMPLETED',
+                            approvedById: userId || null,
+                        },
+                    });
+
+                    return updated;
+                } else if (request.transferType === 'WAREHOUSE_TO_WAREHOUSE') {
+                    if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+                        throw new BadRequestException(`Request is not in PENDING or APPROVED status (Current: ${request.status})`);
+                    }
+
+                    for (const item of request.items) {
+                        const itemRate = await this.getCurrentItemRate(tx, item.itemId);
+
+                        const existingStock = await tx.inventoryItem.findFirst({
+                            where: {
+                                itemId: item.itemId,
+                                warehouseId: request.toWarehouseId!,
+                                locationId: null,
+                                status: 'AVAILABLE',
+                            },
+                        });
+
+                        if (existingStock) {
+                            await tx.inventoryItem.update({
+                                where: { id: existingStock.id },
+                                data: { quantity: { increment: Number(item.quantity) } },
+                            });
+                        } else {
+                            await tx.inventoryItem.create({
+                                data: {
+                                    itemId: item.itemId,
+                                    warehouseId: request.toWarehouseId!,
+                                    locationId: null,
+                                    quantity: Number(item.quantity),
+                                    status: 'AVAILABLE',
+                                },
+                            });
+                        }
+
+                        await this.stockLedgerService.createEntry({
+                            itemId: item.itemId,
+                            warehouseId: request.toWarehouseId!,
+                            locationId: null,
                             qty: Number(item.quantity),
                             movementType: 'INBOUND' as any,
                             referenceType: 'TRANSFER_RECEIPT',
