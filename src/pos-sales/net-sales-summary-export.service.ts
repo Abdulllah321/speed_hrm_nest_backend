@@ -594,6 +594,10 @@ export class NetSalesSummaryExportService {
       endDate = bounds.end;
     }
 
+    if (endDate > now) {
+      endDate = now;
+    }
+
     const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
 
