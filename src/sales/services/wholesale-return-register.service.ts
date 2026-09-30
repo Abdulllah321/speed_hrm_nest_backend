@@ -650,9 +650,7 @@ export class WholesaleReturnRegisterService {
         const taxPayable = salesTax + addTax;
 
         // Net value (value incl tax after discount)
-        const valueInclTax = origItem?.total !== undefined
-          ? Math.round(Number(origItem.total))
-          : (taxableAmt + taxPayable);
+        const valueInclTax = taxableAmt + taxPayable;
 
         const record: WholesaleReturnLineItem = {
           id: retItem.id,
@@ -668,7 +666,7 @@ export class WholesaleReturnRegisterService {
           colorName: itemObj.color?.name || '',
           quantity: qty,
           unitPrice: grossSellingPrice,
-          wostAmount: valueExclTax,
+          wostAmount: taxableAmt,
           discountAmount: discount,
           taxAmount: salesTax,
           addTaxAmount: addTax,
@@ -733,7 +731,7 @@ export class WholesaleReturnRegisterService {
         productNode.items.push(record);
         productNode.totals.totalItems += qty;
         productNode.totals.grossAmount += qty * grossSellingPrice;
-        productNode.totals.wostAmount += valueExclTax;
+        productNode.totals.wostAmount += taxableAmt;
         productNode.totals.discountAmount += discount;
         productNode.totals.taxAmount += salesTax;
         productNode.totals.netAmount += valueInclTax;
@@ -741,7 +739,7 @@ export class WholesaleReturnRegisterService {
         // Add to category
         categoryNode.totals.totalItems += qty;
         categoryNode.totals.grossAmount += qty * grossSellingPrice;
-        categoryNode.totals.wostAmount += valueExclTax;
+        categoryNode.totals.wostAmount += taxableAmt;
         categoryNode.totals.discountAmount += discount;
         categoryNode.totals.taxAmount += salesTax;
         categoryNode.totals.netAmount += valueInclTax;
@@ -749,7 +747,7 @@ export class WholesaleReturnRegisterService {
         // Add to return node
         returnNode.totals.totalItems += qty;
         returnNode.totals.grossAmount += qty * grossSellingPrice;
-        returnNode.totals.wostAmount += valueExclTax;
+        returnNode.totals.wostAmount += taxableAmt;
         returnNode.totals.discountAmount += discount;
         returnNode.totals.taxAmount += salesTax;
         returnNode.totals.netAmount += valueInclTax;
@@ -757,7 +755,7 @@ export class WholesaleReturnRegisterService {
         // Add to customer
         customerNode.totals.totalItems += qty;
         customerNode.totals.grossAmount += qty * grossSellingPrice;
-        customerNode.totals.wostAmount += valueExclTax;
+        customerNode.totals.wostAmount += taxableAmt;
         customerNode.totals.discountAmount += discount;
         customerNode.totals.taxAmount += salesTax;
         customerNode.totals.netAmount += valueInclTax;
@@ -765,7 +763,7 @@ export class WholesaleReturnRegisterService {
         // Add to grand totals
         grandTotals.totalItems += qty;
         grandTotals.grossAmount += qty * grossSellingPrice;
-        grandTotals.wostAmount += valueExclTax;
+        grandTotals.wostAmount += taxableAmt;
         grandTotals.discountAmount += discount;
         grandTotals.taxAmount += salesTax;
         grandTotals.netAmount += valueInclTax;
