@@ -97,7 +97,13 @@ export class CreditVoucherExportService {
         { code: { contains: q, mode: 'insensitive' } },
         { customer: { name: { contains: q, mode: 'insensitive' } } },
         { customer: { contactNo: { contains: q, mode: 'insensitive' } } },
-        { redemptions: { some: { order: { orderNumber: { contains: q, mode: 'insensitive' } } } } },
+        {
+          redemptions: {
+            some: {
+              order: { orderNumber: { contains: q, mode: 'insensitive' } },
+            },
+          },
+        },
       ];
 
       if (where.OR) {
@@ -149,12 +155,18 @@ export class CreditVoucherExportService {
       .map((v) => v.sourceOrderId)
       .filter((id): id is string => !!id);
 
-    const sourceOrders = sourceOrderIds.length > 0
-      ? await this.prisma.salesOrder.findMany({
-          where: { id: { in: sourceOrderIds } },
-          select: { id: true, orderNumber: true, returnNumber: true, refundNumber: true },
-        })
-      : [];
+    const sourceOrders =
+      sourceOrderIds.length > 0
+        ? await this.prisma.salesOrder.findMany({
+            where: { id: { in: sourceOrderIds } },
+            select: {
+              id: true,
+              orderNumber: true,
+              returnNumber: true,
+              refundNumber: true,
+            },
+          })
+        : [];
 
     const sourceOrderMap = new Map(sourceOrders.map((o) => [o.id, o]));
 
@@ -179,7 +191,11 @@ export class CreditVoucherExportService {
       }
 
       const validTillStr = v.expiresAt
-        ? new Date(v.expiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        ? new Date(v.expiresAt).toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+          })
         : 'No Expiry';
 
       const dtStr = new Date(v.createdAt).toLocaleString('en-GB', {
@@ -200,13 +216,14 @@ export class CreditVoucherExportService {
       } else if (v.sourceOrderId) {
         const srcOrd = sourceOrderMap.get(v.sourceOrderId);
         if (srcOrd) {
-          baseCashMemo = srcOrd.returnNumber || srcOrd.refundNumber || srcOrd.orderNumber;
+          baseCashMemo =
+            srcOrd.returnNumber || srcOrd.refundNumber || srcOrd.orderNumber;
         }
       }
 
       let settledInCashMemo = 'Pending / Unsettled';
       let settledDtStr = '-';
-      let statusStr = v.isRedeemed ? 'REDEEMED' : 'ACTIVE';
+      const statusStr = v.isRedeemed ? 'REDEEMED' : 'ACTIVE';
 
       if (v.redemptions && v.redemptions.length > 0) {
         const redemptionOrders = v.redemptions
@@ -218,13 +235,16 @@ export class CreditVoucherExportService {
 
         const latestRedemption = v.redemptions[v.redemptions.length - 1];
         if (latestRedemption?.createdAt) {
-          settledDtStr = new Date(latestRedemption.createdAt).toLocaleString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          });
+          settledDtStr = new Date(latestRedemption.createdAt).toLocaleString(
+            'en-GB',
+            {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            },
+          );
         }
 
         for (const r of v.redemptions) {
@@ -261,7 +281,9 @@ export class CreditVoucherExportService {
     };
   }
 
-  async queueExport(opts: QueueCreditVoucherExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueCreditVoucherExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -299,15 +321,20 @@ export class CreditVoucherExportService {
       },
     );
 
-    this.logger.log(`[CreditVoucherExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[CreditVoucherExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -327,7 +354,9 @@ export class CreditVoucherExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -336,7 +365,10 @@ export class CreditVoucherExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -349,8 +381,16 @@ export class CreditVoucherExportService {
     const stream = fs.createReadStream(filePath);
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

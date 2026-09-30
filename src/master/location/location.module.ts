@@ -25,4 +25,3 @@ import { ActivityLogsModule } from '../../activity-logs/activity-logs.module';
   exports: [LocationService, LocationExportService],
 })
 export class LocationModule {}
-

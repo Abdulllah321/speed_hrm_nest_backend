@@ -1,6 +1,16 @@
 import {
-  IsNotEmpty, IsString, IsOptional, IsIn, IsInt, IsArray,
-  IsBoolean, IsDateString, IsNumber, Min, Max, ValidateNested,
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsIn,
+  IsInt,
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsNumber,
+  Min,
+  Max,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -26,7 +36,9 @@ export class CreateTaskDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ enum: ['todo', 'in_progress', 'in_review', 'done', 'cancelled'] })
+  @ApiPropertyOptional({
+    enum: ['todo', 'in_progress', 'in_review', 'done', 'cancelled'],
+  })
   @IsOptional()
   @IsIn(['todo', 'in_progress', 'in_review', 'done', 'cancelled'])
   status?: string;
@@ -61,7 +73,10 @@ export class CreateTaskDto {
   @IsNumber()
   estimatedHours?: number;
 
-  @ApiPropertyOptional({ description: 'Initial assignee employee IDs', type: [String] })
+  @ApiPropertyOptional({
+    description: 'Initial assignee employee IDs',
+    type: [String],
+  })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -133,7 +148,9 @@ export class UpdateTaskDto {
 }
 
 export class ChangeTaskStatusDto {
-  @ApiProperty({ enum: ['todo', 'in_progress', 'in_review', 'done', 'cancelled'] })
+  @ApiProperty({
+    enum: ['todo', 'in_progress', 'in_review', 'done', 'cancelled'],
+  })
   @IsNotEmpty()
   @IsIn(['todo', 'in_progress', 'in_review', 'done', 'cancelled'])
   status: string;
@@ -165,12 +182,17 @@ export class UpdateAssigneesDto {
 }
 
 export class ReorderTasksDto {
-  @ApiProperty({ description: 'Ordered array of task IDs within a list', type: [String] })
+  @ApiProperty({
+    description: 'Ordered array of task IDs within a list',
+    type: [String],
+  })
   @IsArray()
   @IsString({ each: true })
   ids: string[];
 
-  @ApiPropertyOptional({ description: 'Target listId when moving between columns' })
+  @ApiPropertyOptional({
+    description: 'Target listId when moving between columns',
+  })
   @IsOptional()
   @IsString()
   listId?: string;
@@ -182,7 +204,9 @@ export class BulkTaskActionDto {
   @IsString({ each: true })
   taskIds: string[];
 
-  @ApiProperty({ enum: ['change_status', 'reassign', 'delete', 'change_priority'] })
+  @ApiProperty({
+    enum: ['change_status', 'reassign', 'delete', 'change_priority'],
+  })
   @IsNotEmpty()
   @IsIn(['change_status', 'reassign', 'delete', 'change_priority'])
   action: string;
@@ -192,12 +216,17 @@ export class BulkTaskActionDto {
   @IsIn(['todo', 'in_progress', 'in_review', 'done', 'cancelled'])
   status?: string;
 
-  @ApiPropertyOptional({ description: 'New priority (for change_priority action)' })
+  @ApiPropertyOptional({
+    description: 'New priority (for change_priority action)',
+  })
   @IsOptional()
   @IsIn(['none', 'low', 'medium', 'high', 'urgent'])
   priority?: string;
 
-  @ApiPropertyOptional({ description: 'Employee IDs to assign (for reassign action)', type: [String] })
+  @ApiPropertyOptional({
+    description: 'Employee IDs to assign (for reassign action)',
+    type: [String],
+  })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

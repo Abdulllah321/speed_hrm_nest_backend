@@ -141,7 +141,8 @@ export class VoucherRegisterExportService {
     } = params;
 
     const now = new Date();
-    const isOutstandingMode = Boolean(isOutstandingOnly) || status === 'OUTSTANDING';
+    const isOutstandingMode =
+      Boolean(isOutstandingOnly) || status === 'OUTSTANDING';
 
     let startDate: Date | undefined;
     let endDate: Date;
@@ -151,8 +152,8 @@ export class VoucherRegisterExportService {
       const targetAsOf = asOfDateStr
         ? new Date(asOfDateStr)
         : endStr
-        ? new Date(endStr)
-        : now;
+          ? new Date(endStr)
+          : now;
       targetAsOf.setHours(23, 59, 59, 999);
       endDate = targetAsOf;
 
@@ -226,7 +227,13 @@ export class VoucherRegisterExportService {
         { customer: { name: { contains: q, mode: 'insensitive' } } },
         { customer: { contactNo: { contains: q, mode: 'insensitive' } } },
         { customer: { cnicNo: { contains: q, mode: 'insensitive' } } },
-        { redemptions: { some: { order: { orderNumber: { contains: q, mode: 'insensitive' } } } } },
+        {
+          redemptions: {
+            some: {
+              order: { orderNumber: { contains: q, mode: 'insensitive' } },
+            },
+          },
+        },
       ];
 
       if (baseWhere.OR) {
@@ -275,12 +282,72 @@ export class VoucherRegisterExportService {
         expiredCount: number;
       }
     > = {
-      CORPORATE: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
-      REFUND: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
-      GIFT: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
-      EXCHANGE: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
-      CLAIM: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
-      CREDIT: { count: 0, faceValue: 0, discount: 0, settledAmount: 0, outstandingAmount: 0, redeemedCount: 0, outstandingCount: 0, activeCount: 0, expiredCount: 0 },
+      CORPORATE: {
+        count: 0,
+        faceValue: 0,
+        discount: 0,
+        settledAmount: 0,
+        outstandingAmount: 0,
+        redeemedCount: 0,
+        outstandingCount: 0,
+        activeCount: 0,
+        expiredCount: 0,
+      },
+      REFUND: {
+        count: 0,
+        faceValue: 0,
+        discount: 0,
+        settledAmount: 0,
+        outstandingAmount: 0,
+        redeemedCount: 0,
+        outstandingCount: 0,
+        activeCount: 0,
+        expiredCount: 0,
+      },
+      GIFT: {
+        count: 0,
+        faceValue: 0,
+        discount: 0,
+        settledAmount: 0,
+        outstandingAmount: 0,
+        redeemedCount: 0,
+        outstandingCount: 0,
+        activeCount: 0,
+        expiredCount: 0,
+      },
+      EXCHANGE: {
+        count: 0,
+        faceValue: 0,
+        discount: 0,
+        settledAmount: 0,
+        outstandingAmount: 0,
+        redeemedCount: 0,
+        outstandingCount: 0,
+        activeCount: 0,
+        expiredCount: 0,
+      },
+      CLAIM: {
+        count: 0,
+        faceValue: 0,
+        discount: 0,
+        settledAmount: 0,
+        outstandingAmount: 0,
+        redeemedCount: 0,
+        outstandingCount: 0,
+        activeCount: 0,
+        expiredCount: 0,
+      },
+      CREDIT: {
+        count: 0,
+        faceValue: 0,
+        discount: 0,
+        settledAmount: 0,
+        outstandingAmount: 0,
+        redeemedCount: 0,
+        outstandingCount: 0,
+        activeCount: 0,
+        expiredCount: 0,
+      },
     };
 
     for (const group of dbTypeStatusGroups) {
@@ -329,7 +396,10 @@ export class VoucherRegisterExportService {
 
     for (const key of Object.keys(typeBreakdownDetails)) {
       const detail = typeBreakdownDetails[key];
-      detail.activeCount = Math.max(0, detail.outstandingCount - (detail.expiredCount || 0));
+      detail.activeCount = Math.max(
+        0,
+        detail.outstandingCount - (detail.expiredCount || 0),
+      );
     }
 
     // Build items query (filter by voucherType if specific type requested)
@@ -375,11 +445,16 @@ export class VoucherRegisterExportService {
     const totalDiscount = Number(aggregateSummary._sum?.discount || 0);
     const totalNetValue = Math.max(0, totalAmount - totalDiscount);
     const totalSettledAmount = Number(redeemedSummary._sum?.faceValue || 0);
-    const totalOutstandingAmount = Number(unredeemedSummary._sum?.faceValue || 0);
+    const totalOutstandingAmount = Number(
+      unredeemedSummary._sum?.faceValue || 0,
+    );
     const totalRedeemedCount = redeemedSummary._count?._all || 0;
     const totalOutstandingCount = unredeemedSummary._count?._all || 0;
     const totalExpiredCount = expiredCount;
-    const totalActiveCount = Math.max(0, totalOutstandingCount - totalExpiredCount);
+    const totalActiveCount = Math.max(
+      0,
+      totalOutstandingCount - totalExpiredCount,
+    );
 
     const statusBreakdown: Record<string, number> = {
       ACTIVE: totalActiveCount,
@@ -504,7 +579,12 @@ export class VoucherRegisterExportService {
       sourceOrderIds.length > 0
         ? await this.prisma.salesOrder.findMany({
             where: { id: { in: sourceOrderIds } },
-            select: { id: true, orderNumber: true, returnNumber: true, refundNumber: true },
+            select: {
+              id: true,
+              orderNumber: true,
+              returnNumber: true,
+              refundNumber: true,
+            },
           })
         : [];
 
@@ -571,14 +651,19 @@ export class VoucherRegisterExportService {
       } else if (v.sourceOrderId) {
         const srcOrd = sourceOrderMap.get(v.sourceOrderId);
         if (srcOrd) {
-          baseCashMemo = srcOrd.returnNumber || srcOrd.refundNumber || srcOrd.orderNumber;
+          baseCashMemo =
+            srcOrd.returnNumber || srcOrd.refundNumber || srcOrd.orderNumber;
         }
       }
 
       let settledInCashMemo = 'Pending / Unsettled';
       let settledDtStr = '-';
       let itemSettledAmount = 0;
-      const redemptionList: Array<{ orderNumber: string; amountUsed: number; dateTime: string }> = [];
+      const redemptionList: Array<{
+        orderNumber: string;
+        amountUsed: number;
+        dateTime: string;
+      }> = [];
 
       if (v.redemptions && v.redemptions.length > 0) {
         const redemptionOrders = v.redemptions
@@ -590,13 +675,16 @@ export class VoucherRegisterExportService {
 
         const latestRedemption = v.redemptions[v.redemptions.length - 1];
         if (latestRedemption?.createdAt) {
-          settledDtStr = new Date(latestRedemption.createdAt).toLocaleString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          });
+          settledDtStr = new Date(latestRedemption.createdAt).toLocaleString(
+            'en-GB',
+            {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            },
+          );
         }
 
         for (const r of v.redemptions) {
@@ -660,7 +748,8 @@ export class VoucherRegisterExportService {
         outstandingAmount: itemOutstandingAmount,
         status: statusStr,
         paymentMode: v.paymentMode || undefined,
-        merchantName: v.merchant?.bankName || v.merchant?.description || undefined,
+        merchantName:
+          v.merchant?.bankName || v.merchant?.description || undefined,
         slipNo: v.slipNo || undefined,
         cardholderName: v.cardholderName || undefined,
         cardLast4: v.cardLast4 || undefined,
@@ -698,17 +787,23 @@ export class VoucherRegisterExportService {
       },
       startDate: (startDate || new Date(0)).toISOString().slice(0, 10),
       endDate: endDate.toISOString().slice(0, 10),
-      asOfDate: isOutstandingMode ? endDate.toISOString().slice(0, 10) : undefined,
+      asOfDate: isOutstandingMode
+        ? endDate.toISOString().slice(0, 10)
+        : undefined,
       isOutstandingOnly: isOutstandingMode,
     };
   }
 
-  async queueExport(opts: QueueVoucherRegisterExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueVoucherRegisterExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
     const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
-    const prefix = opts.isOutstandingOnly ? 'voucher-outstanding-preview' : 'voucher-register-report';
+    const prefix = opts.isOutstandingOnly
+      ? 'voucher-outstanding-preview'
+      : 'voucher-register-report';
 
     await this.prisma.exportHistory.create({
       data: {
@@ -752,11 +847,14 @@ export class VoucherRegisterExportService {
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -776,7 +874,9 @@ export class VoucherRegisterExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -785,7 +885,10 @@ export class VoucherRegisterExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -804,10 +907,12 @@ export class VoucherRegisterExportService {
         ? 'application/pdf'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
   }
 }
-

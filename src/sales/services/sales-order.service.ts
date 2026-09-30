@@ -1,6 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateSalesOrderDto, UpdateSalesOrderDto } from '../dto/sales-order.dto';
+import {
+  CreateSalesOrderDto,
+  UpdateSalesOrderDto,
+} from '../dto/sales-order.dto';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
@@ -9,7 +16,7 @@ export class SalesOrderService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async findAll(search?: string, status?: string) {
     const where: any = {};
@@ -17,8 +24,16 @@ export class SalesOrderService {
     if (search) {
       where.OR = [
         { orderNo: { contains: search, mode: 'insensitive' as const } },
-        { customer: { name: { contains: search, mode: 'insensitive' as const } } },
-        { customer: { code: { contains: search, mode: 'insensitive' as const } } },
+        {
+          customer: {
+            name: { contains: search, mode: 'insensitive' as const },
+          },
+        },
+        {
+          customer: {
+            code: { contains: search, mode: 'insensitive' as const },
+          },
+        },
       ];
     }
 
@@ -55,8 +70,8 @@ export class SalesOrderService {
       where: {
         status: 'WAREHOUSE_VERIFIED' as any,
         deliveryChallans: {
-          none: {} // No delivery challans created yet
-        }
+          none: {}, // No delivery challans created yet
+        },
       },
       include: {
         customer: true,
@@ -79,7 +94,7 @@ export class SalesOrderService {
     // First, let's check if any sales orders exist at all
     const allOrders = await this.prisma.eRPSalesOrder.findMany({
       take: 5,
-      select: { id: true, orderNo: true }
+      select: { id: true, orderNo: true },
     });
     console.log('Sample orders in database:', allOrders); // Debug log
 
@@ -117,7 +132,10 @@ export class SalesOrderService {
     return { status: true, data: salesOrder };
   }
 
-  async create(createSalesOrderDto: CreateSalesOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createSalesOrderDto: CreateSalesOrderDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       // Generate order number (PI format: SO-FY-0001)
       const now = new Date();
@@ -125,7 +143,7 @@ export class SalesOrderService {
       const currentMonth = now.getMonth();
       const startY = currentMonth >= 6 ? currentYear : currentYear - 1;
       const fyStr = `${String(startY).slice(-2)}-${String(startY + 1).slice(-2)}`;
-      
+
       const prefix = `SO-${fyStr}`;
       const lastOrder = await this.prisma.eRPSalesOrder.findFirst({
         where: {
@@ -155,24 +173,26 @@ export class SalesOrderService {
       }
 
       // Item records: Simple retail price and quantity
-      const itemRecords = await Promise.all(createSalesOrderDto.items.map(async (item) => {
-        const itemRecord = await this.prisma.item.findUnique({
-          where: { id: item.itemId },
-          select: { unitCost: true }
-        });
-        const retailPrice = Number(item.salePrice || 0);
-        const quantity = Number(item.quantity || 0);
-        const total = retailPrice * quantity;
+      const itemRecords = await Promise.all(
+        createSalesOrderDto.items.map(async (item) => {
+          const itemRecord = await this.prisma.item.findUnique({
+            where: { id: item.itemId },
+            select: { unitCost: true },
+          });
+          const retailPrice = Number(item.salePrice || 0);
+          const quantity = Number(item.quantity || 0);
+          const total = retailPrice * quantity;
 
-        return {
-          itemId: item.itemId,
-          quantity,
-          costPrice: itemRecord?.unitCost || 0,
-          salePrice: retailPrice,
-          discount: 0,
-          total,
-        };
-      }));
+          return {
+            itemId: item.itemId,
+            quantity,
+            costPrice: itemRecord?.unitCost || 0,
+            salePrice: retailPrice,
+            discount: 0,
+            total,
+          };
+        }),
+      );
 
       const grandTotal = itemRecords.reduce((sum, it) => sum + it.total, 0);
 
@@ -275,7 +295,11 @@ export class SalesOrderService {
     }
   }
 
-  async update(id: string, updateSalesOrderDto: UpdateSalesOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateSalesOrderDto: UpdateSalesOrderDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesOrderResponse = await this.findOne(id);
       const salesOrder = salesOrderResponse.data; // Extract data from response
@@ -289,24 +313,26 @@ export class SalesOrderService {
       let itemsToCreate: any[] | undefined = undefined;
 
       if (updateSalesOrderDto.items) {
-        const itemRecords = await Promise.all(updateSalesOrderDto.items.map(async (item) => {
-          const itemRecord = await this.prisma.item.findUnique({
-            where: { id: item.itemId },
-            select: { unitCost: true }
-          });
-          const retailPrice = Number(item.salePrice || 0);
-          const quantity = Number(item.quantity || 0);
-          const total = retailPrice * quantity;
+        const itemRecords = await Promise.all(
+          updateSalesOrderDto.items.map(async (item) => {
+            const itemRecord = await this.prisma.item.findUnique({
+              where: { id: item.itemId },
+              select: { unitCost: true },
+            });
+            const retailPrice = Number(item.salePrice || 0);
+            const quantity = Number(item.quantity || 0);
+            const total = retailPrice * quantity;
 
-          return {
-            itemId: item.itemId,
-            quantity,
-            costPrice: itemRecord?.unitCost || 0,
-            salePrice: retailPrice,
-            discount: 0,
-            total,
-          };
-        }));
+            return {
+              itemId: item.itemId,
+              quantity,
+              costPrice: itemRecord?.unitCost || 0,
+              salePrice: retailPrice,
+              discount: 0,
+              total,
+            };
+          }),
+        );
 
         const grandTotal = itemRecords.reduce((sum, it) => sum + it.total, 0);
 
@@ -342,20 +368,31 @@ export class SalesOrderService {
         where: { id },
         data: {
           customerId: updateData.customerId || salesOrder.customerId,
-          warehouseId: updateData.warehouseId !== undefined ? updateData.warehouseId : salesOrder.warehouseId,
+          warehouseId:
+            updateData.warehouseId !== undefined
+              ? updateData.warehouseId
+              : salesOrder.warehouseId,
           status: updateData.status || salesOrder.status,
           baseMargin: 0,
           cashMargin: 0,
           baseMarginAmount: 0,
           cashMarginAmount: 0,
-          subtotal: updateData.subtotal !== undefined ? updateData.subtotal : salesOrder.subtotal,
+          subtotal:
+            updateData.subtotal !== undefined
+              ? updateData.subtotal
+              : salesOrder.subtotal,
           taxRate: 0,
           taxAmount: 0,
           discount: 0,
-          grandTotal: updateData.grandTotal !== undefined ? updateData.grandTotal : salesOrder.grandTotal,
-          items: itemsToCreate ? {
-            create: itemsToCreate,
-          } : undefined,
+          grandTotal:
+            updateData.grandTotal !== undefined
+              ? updateData.grandTotal
+              : salesOrder.grandTotal,
+          items: itemsToCreate
+            ? {
+                create: itemsToCreate,
+              }
+            : undefined,
         } as any,
         include: {
           customer: true,
@@ -407,7 +444,10 @@ export class SalesOrderService {
     }
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesOrderResponse = await this.findOne(id);
       const salesOrder = salesOrderResponse.data;
@@ -461,7 +501,10 @@ export class SalesOrderService {
     }
   }
 
-  async confirm(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async confirm(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesOrderResponse = await this.findOne(id);
       const salesOrder = salesOrderResponse.data;
@@ -518,13 +561,22 @@ export class SalesOrderService {
     }
   }
 
-  async verify(id: string, items: any[], ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async verify(
+    id: string,
+    items: any[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesOrderResponse = await this.findOne(id);
       const salesOrder = salesOrderResponse.data;
 
-      if (salesOrder.status !== 'CONFIRMED' && salesOrder.status !== 'WAREHOUSE_VERIFIED') {
-        throw new BadRequestException('Only confirmed orders can be verified by warehouse');
+      if (
+        salesOrder.status !== 'CONFIRMED' &&
+        salesOrder.status !== 'WAREHOUSE_VERIFIED'
+      ) {
+        throw new BadRequestException(
+          'Only confirmed orders can be verified by warehouse',
+        );
       }
 
       const result = await this.prisma.$transaction(async (tx) => {
@@ -534,35 +586,41 @@ export class SalesOrderService {
         const orderDiscount = Number(salesOrder.discount || 0);
 
         // Fetch taxRate1 for each item and process totals
-        const itemRecords = await Promise.all(items.map(async (item: any) => {
-          const itemRecord = await tx.item.findUnique({
-            where: { id: item.itemId },
-            select: { unitCost: true, taxRate1: true }
-          });
-          const retailPrice = Number(item.salePrice || 0);
-          const itemTaxRate = Number(itemRecord?.taxRate1 || 18);
-          const quantity = Number(item.quantity || 0);
+        const itemRecords = await Promise.all(
+          items.map(async (item: any) => {
+            const itemRecord = await tx.item.findUnique({
+              where: { id: item.itemId },
+              select: { unitCost: true, taxRate1: true },
+            });
+            const retailPrice = Number(item.salePrice || 0);
+            const itemTaxRate = Number(itemRecord?.taxRate1 || 18);
+            const quantity = Number(item.quantity || 0);
 
-          const wostUnit = retailPrice / (1 + itemTaxRate / 100);
-          const wostTotal = wostUnit * quantity;
+            const wostUnit = retailPrice / (1 + itemTaxRate / 100);
+            const wostTotal = wostUnit * quantity;
 
-          return {
-            itemId: item.itemId,
-            quantity,
-            costPrice: itemRecord?.unitCost || 0,
-            salePrice: retailPrice,
-            taxRate: itemTaxRate,
-            wostTotal
-          };
-        }));
+            return {
+              itemId: item.itemId,
+              quantity,
+              costPrice: itemRecord?.unitCost || 0,
+              salePrice: retailPrice,
+              taxRate: itemTaxRate,
+              wostTotal,
+            };
+          }),
+        );
 
-        const grossTotal = itemRecords.reduce((sum, it) => sum + it.wostTotal, 0);
+        const grossTotal = itemRecords.reduce(
+          (sum, it) => sum + it.wostTotal,
+          0,
+        );
         const baseMarginAmount = (grossTotal * baseMargin) / 100;
         const cashMarginAmount = (grossTotal * cashMargin) / 100;
         const totalMarginDeduction = baseMarginAmount + cashMarginAmount;
         const subtotal = grossTotal - totalMarginDeduction;
 
-        const orderDiscountPct = subtotal > 0 ? (orderDiscount / subtotal) * 100 : 0;
+        const orderDiscountPct =
+          subtotal > 0 ? (orderDiscount / subtotal) * 100 : 0;
 
         let taxAmount = 0;
         const processedItems = itemRecords.map((item) => {
@@ -572,7 +630,7 @@ export class SalesOrderService {
           // Apply additional order discount percentage to the afterDiscount base
           const discountedBase = afterDiscount * (1 - orderDiscountPct / 100);
           const itemTaxAmount = discountedBase * (item.taxRate / 100);
-          const itemTotal = (discountedBase + itemTaxAmount);
+          const itemTotal = discountedBase + itemTaxAmount;
 
           taxAmount += itemTaxAmount;
 
@@ -586,7 +644,7 @@ export class SalesOrderService {
           };
         });
 
-        const grandTotal = (subtotal - orderDiscount) + taxAmount;
+        const grandTotal = subtotal - orderDiscount + taxAmount;
 
         // Update items with new quantities and totals
         for (const item of processedItems) {
@@ -667,7 +725,10 @@ export class SalesOrderService {
     }
   }
 
-  async cancel(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async cancel(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesOrderResponse = await this.findOne(id);
       const salesOrder = salesOrderResponse.data;

@@ -1,8 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
 import { AccountRoleKey } from '../../finance/finance-account-config/dto/finance-account-config.dto';
-import { generateNextJvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
+import {
+  generateNextJvNumber,
+  generateNextFolioNumber,
+} from '../../common/utils/voucher-number.util';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
@@ -51,10 +58,7 @@ export class SalesInvoiceService {
   async findOne(id: string) {
     const salesInvoice = await this.prisma.eRPSalesInvoice.findFirst({
       where: {
-        OR: [
-          { id },
-          { invoiceNo: id },
-        ],
+        OR: [{ id }, { invoiceNo: id }],
       },
       include: {
         customer: true,
@@ -86,7 +90,11 @@ export class SalesInvoiceService {
     return { status: true, data: salesInvoice };
   }
 
-  async update(id: string, updateData: any, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateData: any,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesInvoiceResponse = await this.findOne(id);
       const salesInvoice = salesInvoiceResponse.data;
@@ -150,7 +158,10 @@ export class SalesInvoiceService {
     }
   }
 
-  async post(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async post(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesInvoiceResponse = await this.findOne(id);
       const salesInvoice = salesInvoiceResponse.data;
@@ -185,10 +196,24 @@ export class SalesInvoiceService {
         const sequentialFolio = await generateNextFolioNumber(tx, jvDate);
 
         // Helper to round to 2 decimal places
-        const roundToTwo = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
+        const roundToTwo = (num: number) =>
+          Math.round((num + Number.EPSILON) * 100) / 100;
 
         // Month abbreviation label for narration: e.g. "JUL'26"
-        const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const monthNames = [
+          'JAN',
+          'FEB',
+          'MAR',
+          'APR',
+          'MAY',
+          'JUN',
+          'JUL',
+          'AUG',
+          'SEP',
+          'OCT',
+          'NOV',
+          'DEC',
+        ];
         const invoiceMonth = monthNames[jvDate.getMonth()];
         const invoiceYearTwoDigit = jvDate.getFullYear().toString().slice(-2);
         const periodStr = `M/O ${invoiceMonth}'${invoiceYearTwoDigit}, CO`;
@@ -196,12 +221,17 @@ export class SalesInvoiceService {
         const detailsData: any[] = [];
 
         // Helper to resolve parent COA and its tag child
-        const getAccountWithTag = async (parentCode: string, tagCode: string = 'C00001') => {
+        const getAccountWithTag = async (
+          parentCode: string,
+          tagCode: string = 'C00001',
+        ) => {
           const parent = await tx.chartOfAccount.findFirst({
             where: { code: parentCode },
           });
           if (!parent) {
-            throw new BadRequestException(`Chart of Account with code "${parentCode}" not found.`);
+            throw new BadRequestException(
+              `Chart of Account with code "${parentCode}" not found.`,
+            );
           }
           const tag = await tx.chartOfAccount.findFirst({
             where: {
@@ -245,7 +275,12 @@ export class SalesInvoiceService {
         // Aggregate by tax rate across items matching the Sales Tax Invoice breakdown:
         // Value Excl Tax (WOST) = Round( (salePrice / (1 + rate/100)) * qty )
         // Discount = Round( item.discount )
-        const taxRateGroups: { [taxRate: number]: { grossValueExclTax: number; discountAmount: number } } = {};
+        const taxRateGroups: {
+          [taxRate: number]: {
+            grossValueExclTax: number;
+            discountAmount: number;
+          };
+        } = {};
         for (const it of updatedInvoice.items) {
           const rate = Number(it.item?.taxRate1 || 18);
           if (!taxRateGroups[rate]) {
@@ -408,7 +443,10 @@ export class SalesInvoiceService {
     }
   }
 
-  async cancel(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async cancel(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const salesInvoiceResponse = await this.findOne(id);
       const salesInvoice = salesInvoiceResponse.data;

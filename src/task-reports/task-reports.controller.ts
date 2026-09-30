@@ -1,5 +1,18 @@
-import { Controller, Get, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -22,8 +35,15 @@ export class TaskReportsController {
   @Permissions('task.report.read')
   @ApiOperation({ summary: 'Employee task summary for a period' })
   @ApiQuery({ name: 'employeeId', required: true })
-  @ApiQuery({ name: 'period', required: true, description: '2026-04 | 2026-Q1 | 2026' })
-  employeeSummary(@Query('employeeId') employeeId: string, @Query('period') period: string) {
+  @ApiQuery({
+    name: 'period',
+    required: true,
+    description: '2026-04 | 2026-Q1 | 2026',
+  })
+  employeeSummary(
+    @Query('employeeId') employeeId: string,
+    @Query('period') period: string,
+  ) {
     return this.service.employeeSummary(employeeId, period);
   }
 
@@ -40,7 +60,10 @@ export class TaskReportsController {
   @ApiOperation({ summary: 'Department task summary for a period' })
   @ApiQuery({ name: 'departmentId', required: true })
   @ApiQuery({ name: 'period', required: true })
-  departmentSummary(@Query('departmentId') departmentId: string, @Query('period') period: string) {
+  departmentSummary(
+    @Query('departmentId') departmentId: string,
+    @Query('period') period: string,
+  ) {
     return this.service.departmentSummary(departmentId, period);
   }
 
@@ -48,9 +71,13 @@ export class TaskReportsController {
   @Permissions('task.report.read')
   @ApiOperation({ summary: 'Export project tasks as CSV' })
   @ApiQuery({ name: 'projectId', required: true })
-  async exportCsv(@Query('projectId') projectId: string, @Res() res: FastifyReply, @Req() req: any) {
+  async exportCsv(
+    @Query('projectId') projectId: string,
+    @Res() res: FastifyReply,
+    @Req() req: any,
+  ) {
     const csv = await this.service.exportCsv(projectId);
-    
+
     runInBackground(
       'Export Task Report',
       this.activityLogs.log({
@@ -68,7 +95,10 @@ export class TaskReportsController {
 
     res
       .header('Content-Type', 'text/csv')
-      .header('Content-Disposition', `attachment; filename="tasks-${projectId}.csv"`)
+      .header(
+        'Content-Disposition',
+        `attachment; filename="tasks-${projectId}.csv"`,
+      )
       .send(csv);
   }
 
@@ -86,7 +116,8 @@ export class TaskReportsController {
   @ApiOperation({ summary: 'Employee dashboard task widgets' })
   employeeWidgets(@Req() req) {
     const employeeId = req.user?.employeeId;
-    if (!employeeId) return { status: false, message: 'Employee ID not found in token' };
+    if (!employeeId)
+      return { status: false, message: 'Employee ID not found in token' };
     return this.service.employeeWidgets(employeeId);
   }
 }

@@ -1,4 +1,19 @@
-import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, Body, Sse, MessageEvent, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Query,
+  Param,
+  Req,
+  Res,
+  UseGuards,
+  Body,
+  Sse,
+  MessageEvent,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Observable, interval } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
@@ -28,19 +43,23 @@ export class StockLedgerController {
     private readonly overallAvailableReservedStockExportService: OverallAvailableReservedStockExportService,
     private readonly inventoryAgingExportService: InventoryAgingExportService,
     private readonly fiscalClosingService: FiscalYearClosingService,
-  ) { }
+  ) {}
 
   @Get('levels')
-  async getStockLevels(@Query('warehouseId') warehouseId?: string, @Query('locationId') locationId?: string) {
+  async getStockLevels(
+    @Query('warehouseId') warehouseId?: string,
+    @Query('locationId') locationId?: string,
+  ) {
     return this.stockLedgerService.getStockLevels({ warehouseId, locationId });
   }
 
   @Post('sync-sales-history')
   @UseGuards(JwtAuthGuard)
-  async syncSalesHistory(
-    @Query('locationId') locationId?: string,
-  ) {
-    const result = await this.stockLedgerService.syncAllSalesAndReturnsToStockLedger({ locationId });
+  async syncSalesHistory(@Query('locationId') locationId?: string) {
+    const result =
+      await this.stockLedgerService.syncAllSalesAndReturnsToStockLedger({
+        locationId,
+      });
     return {
       status: true,
       message: 'Stock ledger and inventory sync completed successfully',
@@ -56,7 +75,7 @@ export class StockLedgerController {
     @Query('itemId') itemId?: string,
     @Query('referenceType') referenceType?: string,
     @Query('page') page?: string,
-    @Query('cursor') cursor?: string,   // BigInt id of last seen record
+    @Query('cursor') cursor?: string, // BigInt id of last seen record
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('startDate') startDate?: string,
@@ -104,7 +123,8 @@ export class StockLedgerController {
 
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -122,7 +142,10 @@ export class StockLedgerController {
       await this.stockLedgerService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -149,12 +172,17 @@ export class StockLedgerController {
       endDate,
       summaryOnly: summaryOnly === 'true',
       showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
-      showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
-      showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
+      showDivision:
+        showDivision !== undefined ? showDivision === 'true' : undefined,
+      showCategory:
+        showCategory !== undefined ? showCategory === 'true' : undefined,
       showGender: showGender !== undefined ? showGender === 'true' : undefined,
-      showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
-      showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
-      showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
+      showSilhouette:
+        showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
+      showArticle:
+        showArticle !== undefined ? showArticle === 'true' : undefined,
+      showVariant:
+        showVariant !== undefined ? showVariant === 'true' : undefined,
     });
     return { status: true, data };
   }
@@ -163,7 +191,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueActivityReportExport(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       startDate?: string;
@@ -207,7 +236,10 @@ export class StockLedgerController {
   }
 
   @Get('activity-report/export/:jobId/download')
-  async downloadActivityReportExport(@Param('jobId') jobId: string, @Res() res: any) {
+  async downloadActivityReportExport(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     try {
       await this.stockActivityExportService.streamExportFile(jobId, res);
     } catch (err: any) {
@@ -220,7 +252,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueStockActivityPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       startDate?: string;
@@ -238,10 +271,13 @@ export class StockLedgerController {
   }
 
   @Sse('reports/stock-activity/stream/:jobId')
-  streamStockActivityStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamStockActivityStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1000).pipe(
       switchMap(async () => {
-        const queueStatus = await this.stockActivityExportService.getJobQueueStatus(jobId);
+        const queueStatus =
+          await this.stockActivityExportService.getJobQueueStatus(jobId);
         return {
           data: JSON.stringify({
             status: queueStatus.status || queueStatus.state,
@@ -260,9 +296,13 @@ export class StockLedgerController {
   @Get('reports/stock-activity/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getStockActivityResult(@Param('jobId') jobId: string) {
-    const data = await this.stockActivityExportService.getReportPreviewResult(jobId);
+    const data =
+      await this.stockActivityExportService.getReportPreviewResult(jobId);
     if (!data) {
-      return { status: false, message: 'Stock Activity report result not found or expired' };
+      return {
+        status: false,
+        message: 'Stock Activity report result not found or expired',
+      };
     }
     return { status: true, data };
   }
@@ -271,18 +311,20 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async registerClientStockActivityExport(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       fileName: string;
       fileBase64: string;
       mimeType: string;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.stockActivityExportService.registerClientGeneratedExport(
-      req.prisma || (this.stockLedgerService as any).prisma,
-      userId,
-      body,
-    );
+    const result =
+      await this.stockActivityExportService.registerClientGeneratedExport(
+        req.prisma || (this.stockLedgerService as any).prisma,
+        userId,
+        body,
+      );
     return { status: true, data: result };
   }
 
@@ -301,19 +343,26 @@ export class StockLedgerController {
     @Query('showArticle') showArticle?: string,
     @Query('showVariant') showVariant?: string,
   ) {
-    const resData = await this.stockValuationExportService.getValuationReportData({
-      locationId,
-      startDate,
-      endDate,
-      summaryOnly: summaryOnly === 'true',
-      showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
-      showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
-      showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
-      showGender: showGender !== undefined ? showGender === 'true' : undefined,
-      showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
-      showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
-      showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
-    });
+    const resData =
+      await this.stockValuationExportService.getValuationReportData({
+        locationId,
+        startDate,
+        endDate,
+        summaryOnly: summaryOnly === 'true',
+        showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
+        showDivision:
+          showDivision !== undefined ? showDivision === 'true' : undefined,
+        showCategory:
+          showCategory !== undefined ? showCategory === 'true' : undefined,
+        showGender:
+          showGender !== undefined ? showGender === 'true' : undefined,
+        showSilhouette:
+          showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
+        showArticle:
+          showArticle !== undefined ? showArticle === 'true' : undefined,
+        showVariant:
+          showVariant !== undefined ? showVariant === 'true' : undefined,
+      });
     return { status: true, ...resData };
   }
 
@@ -321,7 +370,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueValuationReportExport(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       startDate?: string;
       endDate?: string;
@@ -360,12 +410,18 @@ export class StockLedgerController {
   }
 
   @Get('valuation-report/export/:jobId/download')
-  async downloadValuationReportExport(@Param('jobId') jobId: string, @Res() res: any) {
+  async downloadValuationReportExport(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     try {
       await this.stockValuationExportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -386,21 +442,28 @@ export class StockLedgerController {
     @Query('showArticle') showArticle?: string,
     @Query('showVariant') showVariant?: string,
   ) {
-    const result = await this.stockLedgerService.getStockTransactionDetailReport({
-      locationId,
-      warehouseId,
-      itemId,
-      startDate,
-      endDate,
-      search,
-      showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
-      showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
-      showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
-      showGender: showGender !== undefined ? showGender === 'true' : undefined,
-      showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
-      showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
-      showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
-    });
+    const result =
+      await this.stockLedgerService.getStockTransactionDetailReport({
+        locationId,
+        warehouseId,
+        itemId,
+        startDate,
+        endDate,
+        search,
+        showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
+        showDivision:
+          showDivision !== undefined ? showDivision === 'true' : undefined,
+        showCategory:
+          showCategory !== undefined ? showCategory === 'true' : undefined,
+        showGender:
+          showGender !== undefined ? showGender === 'true' : undefined,
+        showSilhouette:
+          showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
+        showArticle:
+          showArticle !== undefined ? showArticle === 'true' : undefined,
+        showVariant:
+          showVariant !== undefined ? showVariant === 'true' : undefined,
+      });
     return { status: true, data: result };
   }
 
@@ -408,7 +471,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueTransactionDetailReportExport(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       itemId?: string;
@@ -450,17 +514,27 @@ export class StockLedgerController {
   @Get('transaction-detail-report/export/:jobId/status')
   @UseGuards(JwtAuthGuard)
   async getTransactionDetailReportStatus(@Param('jobId') jobId: string) {
-    const result = await this.stockTransactionDetailExportService.getJobStatus(jobId);
+    const result =
+      await this.stockTransactionDetailExportService.getJobStatus(jobId);
     return { status: true, data: result };
   }
 
   @Get('transaction-detail-report/export/:jobId/download')
-  async downloadTransactionDetailReportExport(@Param('jobId') jobId: string, @Res() res: any) {
+  async downloadTransactionDetailReportExport(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     try {
-      await this.stockTransactionDetailExportService.streamExportFile(jobId, res);
+      await this.stockTransactionDetailExportService.streamExportFile(
+        jobId,
+        res,
+      );
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -481,21 +555,32 @@ export class StockLedgerController {
     @Query('showArticle') showArticle?: string,
     @Query('showVariant') showVariant?: string,
   ) {
-    const data = await this.availableStockSummaryExportService.getAvailableStockSummaryReportData({
-      locationId,
-      warehouseId,
-      startDate,
-      endDate,
-      reportType,
-      summaryOnly: summaryOnly === 'true',
-      showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
-      showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
-      showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
-      showGender: showGender !== undefined ? showGender === 'true' : undefined,
-      showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
-      showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
-      showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
-    });
+    const data =
+      await this.availableStockSummaryExportService.getAvailableStockSummaryReportData(
+        {
+          locationId,
+          warehouseId,
+          startDate,
+          endDate,
+          reportType,
+          summaryOnly: summaryOnly === 'true',
+          showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
+          showDivision:
+            showDivision !== undefined ? showDivision === 'true' : undefined,
+          showCategory:
+            showCategory !== undefined ? showCategory === 'true' : undefined,
+          showGender:
+            showGender !== undefined ? showGender === 'true' : undefined,
+          showSilhouette:
+            showSilhouette !== undefined
+              ? showSilhouette === 'true'
+              : undefined,
+          showArticle:
+            showArticle !== undefined ? showArticle === 'true' : undefined,
+          showVariant:
+            showVariant !== undefined ? showVariant === 'true' : undefined,
+        },
+      );
     return { status: true, data };
   }
 
@@ -503,7 +588,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueAvailableStockSummaryPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       startDate?: string;
@@ -520,18 +606,24 @@ export class StockLedgerController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.availableStockSummaryExportService.queueReportPreview({
-      userId,
-      ...body,
-    });
+    const result =
+      await this.availableStockSummaryExportService.queueReportPreview({
+        userId,
+        ...body,
+      });
     return { status: true, data: result };
   }
 
   @Sse('available-stock-summary/stream/:jobId')
-  streamAvailableStockSummaryReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamAvailableStockSummaryReport(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1000).pipe(
       switchMap(async () => {
-        const status = await this.availableStockSummaryExportService.getJobQueueStatus(jobId);
+        const status =
+          await this.availableStockSummaryExportService.getJobQueueStatus(
+            jobId,
+          );
         return {
           data: JSON.stringify({
             jobId,
@@ -550,7 +642,8 @@ export class StockLedgerController {
   @Get('available-stock-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getAvailableStockSummaryReportResult(@Param('jobId') jobId: string) {
-    const data = this.availableStockSummaryExportService.getReportPreviewResult(jobId);
+    const data =
+      this.availableStockSummaryExportService.getReportPreviewResult(jobId);
     if (!data) {
       return { status: false, message: 'Report result not ready or expired' };
     }
@@ -561,7 +654,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueAvailableStockSummaryExport(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       startDate?: string;
@@ -601,12 +695,17 @@ export class StockLedgerController {
     if (!file || !file.buffer) {
       throw new BadRequestException('No file uploaded');
     }
-    const result = await this.availableStockSummaryExportService.registerClientGeneratedExport({
-      userId,
-      fileBuffer: file.buffer,
-      fileName: body.fileName || `available-stock-summary-${new Date().toISOString().slice(0, 10)}.${body.format || 'xlsx'}`,
-      format: body.format || 'xlsx',
-    });
+    const result =
+      await this.availableStockSummaryExportService.registerClientGeneratedExport(
+        {
+          userId,
+          fileBuffer: file.buffer,
+          fileName:
+            body.fileName ||
+            `available-stock-summary-${new Date().toISOString().slice(0, 10)}.${body.format || 'xlsx'}`,
+          format: body.format || 'xlsx',
+        },
+      );
     return { status: true, data: result };
   }
 
@@ -614,7 +713,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueValuationReportPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       startDate?: string;
       endDate?: string;
@@ -643,10 +743,13 @@ export class StockLedgerController {
   }
 
   @Sse('valuation-report/stream/:jobId')
-  streamValuationReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamValuationReport(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1000).pipe(
       switchMap(async () => {
-        const status = await this.stockValuationExportService.getJobQueueStatus(jobId);
+        const status =
+          await this.stockValuationExportService.getJobQueueStatus(jobId);
         return {
           data: JSON.stringify({
             jobId,
@@ -675,17 +778,27 @@ export class StockLedgerController {
   @Get('available-stock-summary/export/:jobId/status')
   @UseGuards(JwtAuthGuard)
   async getAvailableStockSummaryStatus(@Param('jobId') jobId: string) {
-    const result = await this.availableStockSummaryExportService.getJobStatus(jobId);
+    const result =
+      await this.availableStockSummaryExportService.getJobStatus(jobId);
     return { status: true, data: result };
   }
 
   @Get('available-stock-summary/export/:jobId/download')
-  async downloadAvailableStockSummaryExport(@Param('jobId') jobId: string, @Res() res: any) {
+  async downloadAvailableStockSummaryExport(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     try {
-      await this.availableStockSummaryExportService.streamExportFile(jobId, res);
+      await this.availableStockSummaryExportService.streamExportFile(
+        jobId,
+        res,
+      );
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -705,20 +818,31 @@ export class StockLedgerController {
     @Query('showVariant') showVariant?: string,
     @Query('includeCosting') includeCosting?: string,
   ) {
-    const data = await this.overallAvailableReservedStockExportService.getOverallAvailableReservedStockReportData({
-      locationId,
-      warehouseId,
-      asOfDate,
-      summaryOnly: summaryOnly === 'true',
-      showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
-      showDivision: showDivision !== undefined ? showDivision === 'true' : undefined,
-      showCategory: showCategory !== undefined ? showCategory === 'true' : undefined,
-      showGender: showGender !== undefined ? showGender === 'true' : undefined,
-      showSilhouette: showSilhouette !== undefined ? showSilhouette === 'true' : undefined,
-      showArticle: showArticle !== undefined ? showArticle === 'true' : undefined,
-      showVariant: showVariant !== undefined ? showVariant === 'true' : undefined,
-      includeCosting: includeCosting === 'true',
-    });
+    const data =
+      await this.overallAvailableReservedStockExportService.getOverallAvailableReservedStockReportData(
+        {
+          locationId,
+          warehouseId,
+          asOfDate,
+          summaryOnly: summaryOnly === 'true',
+          showBrand: showBrand !== undefined ? showBrand === 'true' : undefined,
+          showDivision:
+            showDivision !== undefined ? showDivision === 'true' : undefined,
+          showCategory:
+            showCategory !== undefined ? showCategory === 'true' : undefined,
+          showGender:
+            showGender !== undefined ? showGender === 'true' : undefined,
+          showSilhouette:
+            showSilhouette !== undefined
+              ? showSilhouette === 'true'
+              : undefined,
+          showArticle:
+            showArticle !== undefined ? showArticle === 'true' : undefined,
+          showVariant:
+            showVariant !== undefined ? showVariant === 'true' : undefined,
+          includeCosting: includeCosting === 'true',
+        },
+      );
     return { status: true, data };
   }
 
@@ -726,7 +850,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueOverallAvailableReservedStockPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       asOfDate?: string;
@@ -742,18 +867,24 @@ export class StockLedgerController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.overallAvailableReservedStockExportService.queueReportPreview({
-      userId,
-      ...body,
-    });
+    const result =
+      await this.overallAvailableReservedStockExportService.queueReportPreview({
+        userId,
+        ...body,
+      });
     return { status: true, data: result };
   }
 
   @Sse('overall-available-reserved-stock/stream/:jobId')
-  streamOverallAvailableReservedStockReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamOverallAvailableReservedStockReport(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1000).pipe(
       switchMap(async () => {
-        const status = await this.overallAvailableReservedStockExportService.getJobQueueStatus(jobId);
+        const status =
+          await this.overallAvailableReservedStockExportService.getJobQueueStatus(
+            jobId,
+          );
         return {
           data: JSON.stringify({
             jobId,
@@ -771,8 +902,13 @@ export class StockLedgerController {
 
   @Get('overall-available-reserved-stock/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getOverallAvailableReservedStockReportResult(@Param('jobId') jobId: string) {
-    const data = this.overallAvailableReservedStockExportService.getReportPreviewResult(jobId);
+  async getOverallAvailableReservedStockReportResult(
+    @Param('jobId') jobId: string,
+  ) {
+    const data =
+      this.overallAvailableReservedStockExportService.getReportPreviewResult(
+        jobId,
+      );
     if (!data) {
       return { status: false, message: 'Report result not ready or expired' };
     }
@@ -781,7 +917,9 @@ export class StockLedgerController {
 
   @Post('overall-available-reserved-stock/cancel-preview/:jobId')
   @UseGuards(JwtAuthGuard)
-  async cancelOverallAvailableReservedStockPreview(@Param('jobId') jobId: string) {
+  async cancelOverallAvailableReservedStockPreview(
+    @Param('jobId') jobId: string,
+  ) {
     this.overallAvailableReservedStockExportService.cancelReportPreview(jobId);
     return { status: true, message: 'Preview job cancelled' };
   }
@@ -790,7 +928,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueOverallAvailableReservedStockExport(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       asOfDate?: string;
@@ -808,40 +947,51 @@ export class StockLedgerController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.overallAvailableReservedStockExportService.queueExport({
-      userId,
-      locationId: body.locationId,
-      warehouseId: body.warehouseId,
-      asOfDate: body.asOfDate,
-      format: body.format,
-      summaryOnly: body.summaryOnly,
-      showBrand: body.showBrand,
-      showDivision: body.showDivision,
-      showCategory: body.showCategory,
-      showGender: body.showGender,
-      showSilhouette: body.showSilhouette,
-      showArticle: body.showArticle,
-      showVariant: body.showVariant,
-      includeCosting: body.includeCosting,
-      previewJobId: body.previewJobId,
-    });
+    const result =
+      await this.overallAvailableReservedStockExportService.queueExport({
+        userId,
+        locationId: body.locationId,
+        warehouseId: body.warehouseId,
+        asOfDate: body.asOfDate,
+        format: body.format,
+        summaryOnly: body.summaryOnly,
+        showBrand: body.showBrand,
+        showDivision: body.showDivision,
+        showCategory: body.showCategory,
+        showGender: body.showGender,
+        showSilhouette: body.showSilhouette,
+        showArticle: body.showArticle,
+        showVariant: body.showVariant,
+        includeCosting: body.includeCosting,
+        previewJobId: body.previewJobId,
+      });
     return { status: true, data: result };
   }
 
   @Get('overall-available-reserved-stock/export/:jobId/status')
   @UseGuards(JwtAuthGuard)
   async getOverallAvailableReservedStockStatus(@Param('jobId') jobId: string) {
-    const result = await this.overallAvailableReservedStockExportService.getJobStatus(jobId);
+    const result =
+      await this.overallAvailableReservedStockExportService.getJobStatus(jobId);
     return { status: true, data: result };
   }
 
   @Get('overall-available-reserved-stock/export/:jobId/download')
-  async downloadOverallAvailableReservedStockExport(@Param('jobId') jobId: string, @Res() res: any) {
+  async downloadOverallAvailableReservedStockExport(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
     try {
-      await this.overallAvailableReservedStockExportService.streamExportFile(jobId, res);
+      await this.overallAvailableReservedStockExportService.streamExportFile(
+        jobId,
+        res,
+      );
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 
@@ -858,12 +1008,20 @@ export class StockLedgerController {
       return { status: false, message: 'No file uploaded' };
     }
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.overallAvailableReservedStockExportService.registerClientGeneratedExport({
-      userId,
-      fileBuffer: file.buffer,
-      fileName,
-      format: formatStr === 'pdf' ? 'pdf' : (formatStr === 'html' ? 'html' : 'xlsx'),
-    });
+    const result =
+      await this.overallAvailableReservedStockExportService.registerClientGeneratedExport(
+        {
+          userId,
+          fileBuffer: file.buffer,
+          fileName,
+          format:
+            formatStr === 'pdf'
+              ? 'pdf'
+              : formatStr === 'html'
+                ? 'html'
+                : 'xlsx',
+        },
+      );
     return { status: true, data: result };
   }
 
@@ -873,7 +1031,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueStockTransactionDetailPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       itemId?: string;
@@ -890,18 +1049,24 @@ export class StockLedgerController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.stockTransactionDetailExportService.queueReportPreview({
-      userId,
-      ...body,
-    });
+    const result =
+      await this.stockTransactionDetailExportService.queueReportPreview({
+        userId,
+        ...body,
+      });
     return { status: true, data: result };
   }
 
   @Sse('stock-transaction-detail/stream/:jobId')
-  streamStockTransactionDetailReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamStockTransactionDetailReport(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1000).pipe(
       switchMap(async () => {
-        const status = await this.stockTransactionDetailExportService.getJobQueueStatus(jobId);
+        const status =
+          await this.stockTransactionDetailExportService.getJobQueueStatus(
+            jobId,
+          );
         return {
           data: JSON.stringify({
             jobId,
@@ -920,7 +1085,8 @@ export class StockLedgerController {
   @Get('stock-transaction-detail/result/:jobId')
   @UseGuards(JwtAuthGuard)
   async getStockTransactionDetailReportResult(@Param('jobId') jobId: string) {
-    const data = this.stockTransactionDetailExportService.getReportPreviewResult(jobId);
+    const data =
+      this.stockTransactionDetailExportService.getReportPreviewResult(jobId);
     if (!data) {
       return { status: false, message: 'Report result not ready or expired' };
     }
@@ -947,12 +1113,20 @@ export class StockLedgerController {
       return { status: false, message: 'No file uploaded' };
     }
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.stockTransactionDetailExportService.registerClientGeneratedExport({
-      userId,
-      fileBuffer: file.buffer,
-      fileName,
-      format: formatStr === 'pdf' ? 'pdf' : (formatStr === 'html' ? 'html' : 'xlsx'),
-    });
+    const result =
+      await this.stockTransactionDetailExportService.registerClientGeneratedExport(
+        {
+          userId,
+          fileBuffer: file.buffer,
+          fileName,
+          format:
+            formatStr === 'pdf'
+              ? 'pdf'
+              : formatStr === 'html'
+                ? 'html'
+                : 'xlsx',
+        },
+      );
     return { status: true, data: result };
   }
 
@@ -962,7 +1136,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async queueInventoryAgingPreview(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       locationId?: string;
       warehouseId?: string;
       startDate?: string;
@@ -979,10 +1154,13 @@ export class StockLedgerController {
   }
 
   @Sse('inventory-aging/stream/:jobId')
-  streamInventoryAgingReport(@Param('jobId') jobId: string): Observable<MessageEvent> {
+  streamInventoryAgingReport(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
     return interval(1000).pipe(
       switchMap(async () => {
-        const status = await this.inventoryAgingExportService.getJobQueueStatus(jobId);
+        const status =
+          await this.inventoryAgingExportService.getJobQueueStatus(jobId);
         return {
           data: JSON.stringify({
             jobId,
@@ -1012,13 +1190,21 @@ export class StockLedgerController {
           status: false,
           message: 'Inventory aging preview result not found or expired',
         };
-        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
+        return typeof res.send === 'function'
+          ? res.status(404).send(errPayload)
+          : res.status(404).json(errPayload);
       }
-      throw new BadRequestException('Inventory aging preview result not found or expired');
+      throw new BadRequestException(
+        'Inventory aging preview result not found or expired',
+      );
     }
 
-    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
-    const isNdjson = filePath.endsWith('.ndjson.gz') || (req.headers?.['accept'] || '').includes('application/x-ndjson');
+    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes(
+      'gzip',
+    );
+    const isNdjson =
+      filePath.endsWith('.ndjson.gz') ||
+      (req.headers?.['accept'] || '').includes('application/x-ndjson');
     const contentType = isNdjson ? 'application/x-ndjson' : 'application/json';
 
     if (typeof res.header === 'function') {
@@ -1067,12 +1253,13 @@ export class StockLedgerController {
       return { status: false, message: 'No file uploaded' };
     }
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.inventoryAgingExportService.registerClientGeneratedExport({
-      userId,
-      fileBuffer: file.buffer,
-      fileName,
-      format: formatStr === 'pdf' ? 'pdf' : 'xlsx',
-    });
+    const result =
+      await this.inventoryAgingExportService.registerClientGeneratedExport({
+        userId,
+        fileBuffer: file.buffer,
+        fileName,
+        format: formatStr === 'pdf' ? 'pdf' : 'xlsx',
+      });
     return { status: true, data: result };
   }
 
@@ -1080,28 +1267,42 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async executeFiscalYearClose(
     @Req() req: any,
-    @Body() body: { fiscalYearName?: string; closingDate?: string; skipLedgerEntries?: boolean },
+    @Body()
+    body: {
+      fiscalYearName?: string;
+      closingDate?: string;
+      skipLedgerEntries?: boolean;
+    },
   ) {
     const userId = req.user?.id || req.user?.userId;
     const now = new Date();
     const prevYear = now.getFullYear() - 1;
     const closingYear = now.getFullYear();
-    const fiscalYearName = body.fiscalYearName || `FY_${prevYear}_${closingYear}`;
-    const closingDate = body.closingDate ? new Date(body.closingDate) : new Date(closingYear, 5, 30, 23, 59, 59);
+    const fiscalYearName =
+      body.fiscalYearName || `FY_${prevYear}_${closingYear}`;
+    const closingDate = body.closingDate
+      ? new Date(body.closingDate)
+      : new Date(closingYear, 5, 30, 23, 59, 59);
 
-    const result = await this.fiscalClosingService.executeYearEndClose(req.prisma || this.stockLedgerService.getPrismaClient(), {
-      fiscalYearName,
-      closingDate,
-      userId,
-      skipLedgerEntries: !!body.skipLedgerEntries,
-    });
+    const result = await this.fiscalClosingService.executeYearEndClose(
+      req.prisma || this.stockLedgerService.getPrismaClient(),
+      {
+        fiscalYearName,
+        closingDate,
+        userId,
+        skipLedgerEntries: !!body.skipLedgerEntries,
+      },
+    );
     return { status: true, data: result };
   }
 
   @Get('fiscal-year-close/latest-snapshot')
   @UseGuards(JwtAuthGuard)
   async getLatestFiscalSnapshot(@Req() req: any) {
-    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(req.prisma || this.stockLedgerService.getPrismaClient());
+    const snapshotDate =
+      await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(
+        req.prisma || this.stockLedgerService.getPrismaClient(),
+      );
     return { status: true, data: { snapshotDate } };
   }
 
@@ -1109,7 +1310,10 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async backfillFiscalSnapshot(@Req() req: any) {
     const userId = req.user?.id || req.user?.userId;
-    const result = await this.fiscalClosingService.backfillInitialFiscalPeriod(req.prisma || this.stockLedgerService.getPrismaClient(), userId);
+    const result = await this.fiscalClosingService.backfillInitialFiscalPeriod(
+      req.prisma || this.stockLedgerService.getPrismaClient(),
+      userId,
+    );
     return { status: true, data: result };
   }
 
@@ -1117,7 +1321,8 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async adjustOpeningBalances(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       warehouseCode?: string;
       warehouseId?: string;
       adjustments: Array<{

@@ -33,14 +33,62 @@ const COLUMNS = [
   { header: 'Product', key: 'productSku', width: 16 },
   { header: 'Size', key: 'size', width: 10, align: 'center' },
   { header: 'HS Code', key: 'hsCode', width: 14, align: 'center' },
-  { header: 'Quantity', key: 'quantity', width: 12, align: 'right', numFmt: '#,##0' },
-  { header: 'Unit Price', key: 'unitPrice', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Tax %', key: 'taxPercent', width: 10, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Unit Price WOT', key: 'unitPriceWot', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sub Total', key: 'subTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount Amount', key: 'discountAmount', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Tax Amount', key: 'taxAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Net Total', key: 'netTotal', width: 16, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Quantity',
+    key: 'quantity',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0',
+  },
+  {
+    header: 'Unit Price',
+    key: 'unitPrice',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Tax %',
+    key: 'taxPercent',
+    width: 10,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Unit Price WOT',
+    key: 'unitPriceWot',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Sub Total',
+    key: 'subTotal',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount Amount',
+    key: 'discountAmount',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Tax Amount',
+    key: 'taxAmount',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Net Total',
+    key: 'netTotal',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
 ];
 
 @Processor('claim-register-export')
@@ -60,15 +108,29 @@ export class ClaimRegisterExportProcessor {
           () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
 
   @Process({ concurrency: 1 })
   async handleExport(job: Job<ClaimRegisterExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate, endDate, format, search } = job.data;
-    this.logger.log(`[ClaimRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`);
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate,
+      endDate,
+      format,
+      search,
+    } = job.data;
+    this.logger.log(
+      `[ClaimRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
@@ -97,7 +159,10 @@ export class ClaimRegisterExportProcessor {
 
       await job.progress(90);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma as any,
@@ -119,17 +184,25 @@ export class ClaimRegisterExportProcessor {
         }),
       );
     } catch (err: any) {
-      this.logger.error(`[ClaimRegisterExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[ClaimRegisterExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       try {
         await this.exportHistoryService.failExport(prisma as any, jobId);
       } catch (e: any) {
-        this.logger.error(`Failed to update export history status to FAILED for job ${jobId}`);
+        this.logger.error(
+          `Failed to update export history status to FAILED for job ${jobId}`,
+        );
       }
       throw err;
     }
   }
 
-  private async generateExcel(filePath: string, reportData: any): Promise<void> {
+  private async generateExcel(
+    filePath: string,
+    reportData: any,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -162,14 +235,19 @@ export class ClaimRegisterExportProcessor {
       };
       cell.font = { bold: true, color: { argb: 'FFFFFF' }, size: 10 };
       cell.border = borderThin;
-      cell.alignment = { vertical: 'middle', horizontal: (COLUMNS[c - 1].align as any) || 'left' };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: (COLUMNS[c - 1].align as any) || 'left',
+      };
     }
     headerRow.commit();
 
     for (const outlet of reportData.outlets) {
       if (!outlet.claims || outlet.claims.length === 0) continue;
 
-      const outletRow = worksheet.addRow([`OUTLET: ${outlet.locationName.toUpperCase()}`]);
+      const outletRow = worksheet.addRow([
+        `OUTLET: ${outlet.locationName.toUpperCase()}`,
+      ]);
       outletRow.height = 24;
       const outletCell = outletRow.getCell(1);
       outletCell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 11 };
@@ -267,9 +345,17 @@ export class ClaimRegisterExportProcessor {
   }
 
   private async generatePdf(filePath: string, reportData: any): Promise<void> {
-    const launchArgs = process.platform === 'linux'
-      ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
-      : [];
+    const launchArgs =
+      process.platform === 'linux'
+        ? [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+          ]
+        : [];
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -412,6 +498,8 @@ export class ClaimRegisterExportProcessor {
 
 function runInBackground(promise: Promise<any>) {
   promise.catch((err) => {
-    Logger.error(`[ClaimRegisterExportProcessor] Background error: ${err?.message || err}`);
+    Logger.error(
+      `[ClaimRegisterExportProcessor] Background error: ${err?.message || err}`,
+    );
   });
 }

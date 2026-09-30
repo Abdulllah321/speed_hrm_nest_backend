@@ -37,7 +37,7 @@ export class AuthController {
   constructor(
     private service: AuthService,
     private prisma: PrismaService,
-  ) { }
+  ) {}
 
   private getCookieOptions(req: any) {
     const isProd = process.env.NODE_ENV === 'production';
@@ -130,7 +130,7 @@ export class AuthController {
       body.password,
       ipAddress,
       userAgent,
-      browserId
+      browserId,
     );
 
     if (result.status && result.data) {
@@ -179,7 +179,7 @@ export class AuthController {
         message: 'Login successful',
         data: {
           user: result.data.user,
-          sessionId: result.data.sessionId
+          sessionId: result.data.sessionId,
         },
       });
     }
@@ -211,11 +211,18 @@ export class AuthController {
 
   @Post('pos/global-context')
   @ApiOperation({ summary: 'Get POS Login Context across all Tenants' })
-  async getGlobalPosContext(@Body() body: { code: string }, @Req() req: any, @Res() res: any) {
+  async getGlobalPosContext(
+    @Body() body: { code: string },
+    @Req() req: any,
+    @Res() res: any,
+  ) {
     const ipAddress =
       req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
 
-    const result = await this.service.getGlobalPosLoginContext(ipAddress, body.code);
+    const result = await this.service.getGlobalPosLoginContext(
+      ipAddress,
+      body.code,
+    );
 
     if (result.status) {
       return res.status(200).send(result);
@@ -230,7 +237,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'POS Terminal Login successful' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async posLogin(
-    @Body() body: { terminalCode: string, pin: string },
+    @Body() body: { terminalCode: string; pin: string },
     @Req() req: any,
     @Res() res: any,
   ) {
@@ -251,7 +258,7 @@ export class AuthController {
     const cookieOptions = this.getCookieOptions(req);
     res.setCookie('posTerminalToken', terminalData.accessToken, {
       ...cookieOptions,
-      maxAge: 365 * 24 * 60 * 60 // 1 year cookie for physical terminal registration 
+      maxAge: 365 * 24 * 60 * 60, // 1 year cookie for physical terminal registration
     });
 
     return res.send(validation);
@@ -260,7 +267,9 @@ export class AuthController {
   @Post('pos/user-login')
   @OptionalJwtAuth()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Login a user into an already-authenticated POS terminal' })
+  @ApiOperation({
+    summary: 'Login a user into an already-authenticated POS terminal',
+  })
   async posUserLogin(
     @Body() body: { email: string; password: string },
     @Req() req: any,
@@ -268,7 +277,11 @@ export class AuthController {
   ) {
     const posTerminalToken = req.cookies?.['posTerminalToken'];
     if (!posTerminalToken) {
-      return res.status(401).send({ status: false, message: 'Terminal not authenticated. Complete the terminal setup first.' });
+      return res.status(401).send({
+        status: false,
+        message:
+          'Terminal not authenticated. Complete the terminal setup first.',
+      });
     }
 
     let terminalContext: any;
@@ -276,11 +289,15 @@ export class AuthController {
       const jwt = require('jsonwebtoken');
       terminalContext = jwt.decode(posTerminalToken);
     } catch {
-      return res.status(401).send({ status: false, message: 'Could not decode terminal session.' });
+      return res
+        .status(401)
+        .send({ status: false, message: 'Could not decode terminal session.' });
     }
 
     if (!terminalContext || !terminalContext.terminalId) {
-      return res.status(401).send({ status: false, message: 'Invalid terminal context.' });
+      return res
+        .status(401)
+        .send({ status: false, message: 'Invalid terminal context.' });
     }
 
     const terminalSession = await this.prisma.posSession.findFirst({
@@ -289,29 +306,53 @@ export class AuthController {
     });
 
     if (!terminalSession?.token) {
-      return res.status(401).send({ status: false, message: 'Terminal session not found or expired. Please re-setup terminal.' });
+      return res.status(401).send({
+        status: false,
+        message:
+          'Terminal session not found or expired. Please re-setup terminal.',
+      });
     }
 
     const context = {
       terminalId: terminalContext.terminalId,
       posId: terminalContext.posId || terminalContext.terminalId,
       locationId: terminalContext.locationId || '',
-      posSessionId: terminalSession.status === 'open' ? terminalSession.id : undefined,
+      posSessionId:
+        terminalSession.status === 'open' ? terminalSession.id : undefined,
       tenantId: terminalContext.tenantId || '',
     };
 
-    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
+    const ipAddress =
+      req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    const deviceInfo = { ip: ipAddress, userAgent, deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal' };
+    const deviceInfo = {
+      ip: ipAddress,
+      userAgent,
+      deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal',
+    };
 
-    const result = await this.service.posUserLoginStandard(body.email, body.password, context, deviceInfo);
+    const result = await this.service.posUserLoginStandard(
+      body.email,
+      body.password,
+      context,
+      deviceInfo,
+    );
 
     if (result.status && result.data) {
       const cookieOptions = this.getCookieOptions(req);
-      res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 12 * 60 * 60,
+      });
       const { permissions: _p1, ...posUserCookie } = result.data.user;
-      res.setCookie('user', JSON.stringify(posUserCookie), { ...cookieOptions, maxAge: 12 * 60 * 60 });
-      res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('user', JSON.stringify(posUserCookie), {
+        ...cookieOptions,
+        maxAge: 12 * 60 * 60,
+      });
+      res.setCookie('userRole', result.data.user.role || '', {
+        ...cookieOptions,
+        maxAge: 12 * 60 * 60,
+      });
       return res.send(result);
     }
 
@@ -325,7 +366,9 @@ export class AuthController {
   async posSwitchSession(@Req() req: any, @Res() res: any) {
     const posTerminalToken = req.cookies?.['posTerminalToken'];
     if (!posTerminalToken) {
-      return res.status(401).send({ status: false, message: 'Terminal not authenticated' });
+      return res
+        .status(401)
+        .send({ status: false, message: 'Terminal not authenticated' });
     }
 
     let terminalContext: any;
@@ -333,30 +376,51 @@ export class AuthController {
       const jwt = require('jsonwebtoken');
       terminalContext = jwt.decode(posTerminalToken);
     } catch {
-      return res.status(401).send({ status: false, message: 'Could not decode terminal session.' });
+      return res
+        .status(401)
+        .send({ status: false, message: 'Could not decode terminal session.' });
     }
 
     const terminalSession = await this.prisma.posSession.findFirst({
       where: { posId: terminalContext?.terminalId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!terminalSession || !terminalSession.token) {
-      return res.status(401).send({ status: false, message: 'Terminal session not found' });
+      return res
+        .status(401)
+        .send({ status: false, message: 'Terminal session not found' });
     }
 
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    const deviceInfo = { ip: ipAddress, userAgent, deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal' };
+    const deviceInfo = {
+      ip: ipAddress,
+      userAgent,
+      deviceInfo: req.headers['sec-ch-ua'] || 'POS Terminal',
+    };
 
-    const result = await this.service.posUserLinkSession(req.user.userId || req.user.id, terminalSession.token, deviceInfo);
+    const result = await this.service.posUserLinkSession(
+      req.user.userId || req.user.id,
+      terminalSession.token,
+      deviceInfo,
+    );
 
     if (result.status && result.data) {
       const cookieOptions = this.getCookieOptions(req);
-      res.setCookie('accessToken', result.data.accessToken, { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('accessToken', result.data.accessToken, {
+        ...cookieOptions,
+        maxAge: 12 * 60 * 60,
+      });
       const { permissions: _p2, ...posSwitchCookie } = result.data.user;
-      res.setCookie('user', JSON.stringify(posSwitchCookie), { ...cookieOptions, maxAge: 12 * 60 * 60 });
-      res.setCookie('userRole', result.data.user.role || '', { ...cookieOptions, maxAge: 12 * 60 * 60 });
+      res.setCookie('user', JSON.stringify(posSwitchCookie), {
+        ...cookieOptions,
+        maxAge: 12 * 60 * 60,
+      });
+      res.setCookie('userRole', result.data.user.role || '', {
+        ...cookieOptions,
+        maxAge: 12 * 60 * 60,
+      });
 
       return res.send(result);
     }
@@ -504,7 +568,9 @@ export class AuthController {
   @Post('stop-impersonating')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Stop impersonating and return to original admin session' })
+  @ApiOperation({
+    summary: 'Stop impersonating and return to original admin session',
+  })
   async stopImpersonating(@Req() req: any, @Res() res: any) {
     if (!req.user.isImpersonating || !req.user.impersonatorId) {
       return res.status(400).send({
@@ -513,7 +579,9 @@ export class AuthController {
       });
     }
 
-    const result = await this.service.stopImpersonating(req.user.impersonatorId);
+    const result = await this.service.stopImpersonating(
+      req.user.impersonatorId,
+    );
 
     if (result.status && result.data) {
       const cookieOptions = this.getCookieOptions(req);
@@ -621,7 +689,6 @@ export class AuthController {
   async me(@Req() req: any) {
     const result = await this.service.me(req.user.id || req.user.userId);
     if (result.status && result.data) {
-
       let terminalId = req.user.terminalId;
       let locationId = req.user.locationId;
       let isPosUser = req.user.isPosUser;
@@ -637,7 +704,7 @@ export class AuthController {
             locationId = decoded.locationId;
             isPosUser = true;
           }
-        } catch { } // Ignore decoding errors
+        } catch {} // Ignore decoding errors
       }
 
       // Enrich with POS context
@@ -658,20 +725,22 @@ export class AuthController {
                 code: terminalRaw.terminalCode,
                 name: terminalRaw.name,
                 isParent: terminalRaw.isParent,
-                location: terminalRaw.location ? {
-                  id: terminalRaw.location.id,
-                  code: terminalRaw.location.code,
-                  name: terminalRaw.location.name,
-                  phone: terminalRaw.location.phone || '',
-                  address: terminalRaw.location.address || '',
-                  fbrNtn: terminalRaw.location.fbrNtn || '',
-                  fbrSellerName: terminalRaw.location.fbrSellerName || '',
-                  fbrEnabled: terminalRaw.location.fbrEnabled ?? false,
-                  isOnline: terminalRaw.location.isOnline ?? false,
-                } : null
+                location: terminalRaw.location
+                  ? {
+                      id: terminalRaw.location.id,
+                      code: terminalRaw.location.code,
+                      name: terminalRaw.location.name,
+                      phone: terminalRaw.location.phone || '',
+                      address: terminalRaw.location.address || '',
+                      fbrNtn: terminalRaw.location.fbrNtn || '',
+                      fbrSellerName: terminalRaw.location.fbrSellerName || '',
+                      fbrEnabled: terminalRaw.location.fbrEnabled ?? false,
+                      isOnline: terminalRaw.location.isOnline ?? false,
+                    }
+                  : null,
               };
             }
-          } catch (e) { }
+          } catch (e) {}
         }
       }
       // Enrich with impersonation context from current token
@@ -715,7 +784,10 @@ export class AuthController {
   @OptionalJwtAuth()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Logout current user — preserves posTerminalToken so the device stays registered' })
+  @ApiOperation({
+    summary:
+      'Logout current user — preserves posTerminalToken so the device stays registered',
+  })
   async logout(@Req() req: any, @Res() res: any) {
     const clearCookieOptions = this.getCookieOptions(req);
 
@@ -743,7 +815,10 @@ export class AuthController {
   @OptionalJwtAuth()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Fully deregister this POS terminal device — clears posTerminalToken' })
+  @ApiOperation({
+    summary:
+      'Fully deregister this POS terminal device — clears posTerminalToken',
+  })
   async logoutTerminal(@Req() req: any, @Res() res: any) {
     const clearCookieOptions = this.getCookieOptions(req);
 
@@ -764,7 +839,10 @@ export class AuthController {
     res.clearCookie('tenantCode', clearCookieOptions);
     res.clearCookie('tenantId', clearCookieOptions);
 
-    return res.send({ status: true, message: 'Terminal deregistered successfully' });
+    return res.send({
+      status: true,
+      message: 'Terminal deregistered successfully',
+    });
   }
 
   @Post('change-password')
@@ -823,7 +901,9 @@ export class AuthController {
   @Post('users/reset-password')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Admin reset of a user password — sets isFirstPassword to true' })
+  @ApiOperation({
+    summary: 'Admin reset of a user password — sets isFirstPassword to true',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -873,8 +953,14 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Verify current user password' })
   async verifyPassword(@Req() req: any, @Body() body: { password: string }) {
-    const isValid = await this.service.verifyPassword(req.user.userId, body.password);
-    return { status: isValid, message: isValid ? 'Password verified' : 'Invalid password' };
+    const isValid = await this.service.verifyPassword(
+      req.user.userId,
+      body.password,
+    );
+    return {
+      status: isValid,
+      message: isValid ? 'Password verified' : 'Invalid password',
+    };
   }
 
   @Post('verify-manager')
@@ -906,8 +992,15 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Terminate a specific session by ID' })
-  async terminateSession(@Req() req: any, @Body('sessionId') sessionId: string, @Res() res: any) {
-    const result = await this.service.terminateSession(req.user.userId, sessionId);
+  async terminateSession(
+    @Req() req: any,
+    @Body('sessionId') sessionId: string,
+    @Res() res: any,
+  ) {
+    const result = await this.service.terminateSession(
+      req.user.userId,
+      sessionId,
+    );
     return res.status(result.status ? 200 : 400).send(result);
   }
 
@@ -923,10 +1016,13 @@ export class AuthController {
   @Post('desktop/register-device')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Register or re-activate an Electron desktop device' })
+  @ApiOperation({
+    summary: 'Register or re-activate an Electron desktop device',
+  })
   async registerDesktopDevice(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       machineId: string;
       hostname?: string;
       platform?: string;
@@ -953,11 +1049,14 @@ export class AuthController {
    * This is the "silent re-auth" flow used by Teams, Postman, Docker Desktop, etc.
    */
   @Post('desktop/validate-session')
-  @ApiOperation({ summary: 'Validate a desktop device token and issue fresh tokens' })
+  @ApiOperation({
+    summary: 'Validate a desktop device token and issue fresh tokens',
+  })
   async validateDesktopSession(
     @Req() req: any,
     @Res() res: any,
-    @Body() body: { deviceToken: string; machineId: string; appVersion?: string },
+    @Body()
+    body: { deviceToken: string; machineId: string; appVersion?: string },
   ) {
     const ipAddress =
       req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress;
@@ -1027,7 +1126,9 @@ export class AuthController {
   @Get('desktop/devices')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'List registered desktop devices for the current user' })
+  @ApiOperation({
+    summary: 'List registered desktop devices for the current user',
+  })
   async listDesktopDevices(@Req() req: any) {
     return this.service.listDesktopDevices(req.user.userId);
   }

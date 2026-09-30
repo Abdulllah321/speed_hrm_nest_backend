@@ -30,5 +30,4 @@ import { PosSessionRsrvProcessor } from './pos-session-rsrv.processor';
   controllers: [PosSessionController],
   exports: [PosSessionService],
 })
-export class PosSessionModule { }
-
+export class PosSessionModule {}

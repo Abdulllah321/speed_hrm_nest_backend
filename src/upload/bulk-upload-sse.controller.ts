@@ -1,4 +1,11 @@
-import { Controller, Sse, MessageEvent, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Sse,
+  MessageEvent,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Observable, fromEvent, map, merge, timer } from 'rxjs';
 import { ApiOperation, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -25,12 +32,12 @@ export class BulkUploadSseController {
     }
 
     const events$ = fromEvent(this.eventEmitter, eventName).pipe(
-      map((event: any) => ({ data: event } as MessageEvent)),
+      map((event: any) => ({ data: event }) as MessageEvent),
     );
 
     // Heartbeat every 20s — prevents Nginx/proxy from closing idle SSE connections
     const heartbeat$ = timer(15000, 20000).pipe(
-      map(() => ({ data: { type: 'heartbeat', uploadId } } as MessageEvent)),
+      map(() => ({ data: { type: 'heartbeat', uploadId } }) as MessageEvent),
     );
 
     return merge(events$, heartbeat$);

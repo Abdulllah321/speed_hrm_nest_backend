@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Param, Res, UseGuards, Req, Logger, Body } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Res,
+  UseGuards,
+  Req,
+  Logger,
+  Body,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SalesInvoiceExportService } from '../services/sales-invoice-export.service';
@@ -18,15 +28,27 @@ export class SalesInvoiceExportController {
   }
 
   @Post('sync')
-  async syncExport(@Req() req: any, @Body() body: { invoiceIds?: string[] }, @Res() res: Response) {
+  async syncExport(
+    @Req() req: any,
+    @Body() body: { invoiceIds?: string[] },
+    @Res() res: Response,
+  ) {
     try {
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.header('Content-Disposition', `attachment; filename="sales-invoices-export.xlsx"`);
+      res.header(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.header(
+        'Content-Disposition',
+        `attachment; filename="sales-invoices-export.xlsx"`,
+      );
       await this.exportService.streamExportFile(res, body.invoiceIds);
     } catch (error: any) {
       this.logger.error(`Error streaming export: ${error.message}`);
       if (!res.headersSent) {
-        res.status(500).send({ message: 'Internal server error during export generation' });
+        res
+          .status(500)
+          .send({ message: 'Internal server error during export generation' });
       }
     }
   }
@@ -44,14 +66,21 @@ export class SalesInvoiceExportController {
 
       const stat = fs.statSync(filePath);
       const fileStream = fs.createReadStream(filePath);
-      
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.header('Content-Disposition', `attachment; filename="sales-invoices-export.xlsx"`);
+
+      res.header(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.header(
+        'Content-Disposition',
+        `attachment; filename="sales-invoices-export.xlsx"`,
+      );
       res.header('Content-Length', stat.size);
-      
+
       fileStream.on('end', () => {
         fs.unlink(filePath, (err) => {
-          if (err) this.logger.error(`Error deleting export file: ${err.message}`);
+          if (err)
+            this.logger.error(`Error deleting export file: ${err.message}`);
         });
       });
 
@@ -66,7 +95,9 @@ export class SalesInvoiceExportController {
     } catch (error: any) {
       this.logger.error(`Download error: ${error.message}`);
       if (!res.sent) {
-        res.status(500).send({ message: 'Internal server error during download' });
+        res
+          .status(500)
+          .send({ message: 'Internal server error during download' });
       }
     }
   }

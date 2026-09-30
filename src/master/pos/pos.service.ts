@@ -23,7 +23,7 @@ export class PosService {
 
     private encryptionService: EncryptionService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(locationId?: string) {
     const items = await this.prisma.pos.findMany({
@@ -36,9 +36,7 @@ export class PosService {
 
   async get(id: string) {
     const item = await this.prisma.pos.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
       include: { location: true },
     });
     if (!item) return { status: false, message: 'POS not found' };
@@ -52,9 +50,7 @@ export class PosService {
     try {
       // Get existing POS IDs for this location to generate the next sequential ID
       const existingPos = await this.prisma.pos.findMany({
-        where: { locationId: body.locationId,
-            isDeleted: false
-        },
+        where: { locationId: body.locationId, isDeleted: false },
         select: { posId: true },
       });
       const existingIds = existingPos.map((p) => p.posId);
@@ -64,23 +60,22 @@ export class PosService {
       let terminalCode = body.terminalCode;
       if (!terminalCode) {
         const location = await this.prisma.location.findFirst({
-          where: { id: body.locationId,
-              isDeleted: false
-        },
+          where: { id: body.locationId, isDeleted: false },
           select: { name: true },
         });
 
         const prefix = location?.name
-          ? location.name.substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '')
+          ? location.name
+              .substring(0, 4)
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, '')
           : 'POS';
 
         terminalCode = `${prefix}-${nextPosId}`;
 
         // Check for uniqueness and append suffix if needed
         const existing = await this.prisma.pos.findFirst({
-          where: { terminalCode,
-              isDeleted: false
-        },
+          where: { terminalCode, isDeleted: false },
         });
         if (existing) {
           terminalCode = `${terminalCode}-${Math.floor(Math.random() * 900) + 100}`;
@@ -88,9 +83,7 @@ export class PosService {
       } else {
         // strict check if manually provided
         const existing = await this.prisma.pos.findFirst({
-          where: { terminalCode,
-              isDeleted: false
-        },
+          where: { terminalCode, isDeleted: false },
         });
         if (existing) {
           throw new BadRequestException('Terminal Code already exists');
@@ -100,7 +93,9 @@ export class PosService {
       let hashedPin = null;
       if (body.terminalPin) {
         if (!/^\d{4,6}$/.test(body.terminalPin)) {
-          throw new BadRequestException('Terminal PIN must be numeric and between 4 and 6 digits.');
+          throw new BadRequestException(
+            'Terminal PIN must be numeric and between 4 and 6 digits.',
+          );
         }
         hashedPin = await bcrypt.hash(body.terminalPin, 10);
       }
@@ -113,7 +108,11 @@ export class PosService {
         created = await this.prisma.$transaction(async (tx) => {
           // Demote existing parent (if any)
           await tx.pos.updateMany({
-            where: { locationId: body.locationId, isParent: true, isDeleted: false },
+            where: {
+              locationId: body.locationId,
+              isParent: true,
+              isDeleted: false,
+            },
             data: { isParent: false },
           });
           return tx.pos.create({
@@ -193,16 +192,16 @@ export class PosService {
   ) {
     try {
       const existing = await this.prisma.pos.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'POS not found' };
 
       let hashedPin = existing.terminalPin;
       if (body.terminalPin) {
         if (!/^\d{4,6}$/.test(body.terminalPin)) {
-          throw new BadRequestException('Terminal PIN must be numeric and between 4 and 6 digits.');
+          throw new BadRequestException(
+            'Terminal PIN must be numeric and between 4 and 6 digits.',
+          );
         }
         hashedPin = await bcrypt.hash(body.terminalPin, 10);
       }
@@ -214,7 +213,12 @@ export class PosService {
         updated = await this.prisma.$transaction(async (tx) => {
           // Demote old parent (if any, and different terminal)
           await tx.pos.updateMany({
-            where: { locationId: existing.locationId, isParent: true, isDeleted: false, id: { not: id } },
+            where: {
+              locationId: existing.locationId,
+              isParent: true,
+              isDeleted: false,
+              id: { not: id },
+            },
             data: { isParent: false },
           });
           return tx.pos.update({
@@ -236,7 +240,8 @@ export class PosService {
             companyId: body.companyId ?? existing.companyId,
             terminalPin: hashedPin,
             // Allow explicit demotion to false; keep current value if undefined
-            isParent: body.isParent !== undefined ? body.isParent : existing.isParent,
+            isParent:
+              body.isParent !== undefined ? body.isParent : existing.isParent,
             status: body.status ?? existing.status,
           },
         });
@@ -289,20 +294,22 @@ export class PosService {
     ctx: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'pos', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'pos',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.pos.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'POS not found' };
 
       const removed = await this.prisma.pos.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       const response = { status: true, data: removed };
       runInBackground(
@@ -349,26 +356,24 @@ export class PosService {
     const hasContext = this.prisma.getTenantId();
     if (hasContext) {
       terminal = await this.prisma.pos.findFirst({
-        where: { terminalCode,
-            isDeleted: false
-        },
+        where: { terminalCode, isDeleted: false },
       });
 
       if (terminal?.companyId) {
         company = await this.prismaMaster.company.findUnique({
           where: { id: terminal.companyId },
-          include: { tenant: true }
+          include: { tenant: true },
         });
       }
     } else {
       // 2. No context? Attempt a global search across all companies
       // This is necessary for the initial terminal login where the client doesn't know its tenant yet.
       const companies = await this.prismaMaster.company.findMany({
-        where: { status: 'active' }
+        where: { status: 'active' },
       });
 
       for (const comp of companies) {
-        let dbUrl = comp.dbUrl;
+        const dbUrl = comp.dbUrl;
         let password = '';
 
         if (comp.dbPassword) {
@@ -400,7 +405,7 @@ export class PosService {
             if (terminal) {
               company = await this.prismaMaster.company.findUnique({
                 where: { id: comp.id },
-                include: { tenant: true }
+                include: { tenant: true },
               });
               break;
             }
@@ -454,7 +459,11 @@ export class PosService {
       where: { locationId, isParent: true, isDeleted: false, status: 'active' },
       include: { location: true },
     });
-    if (!parent) return { status: false, message: 'No parent terminal found for this location' };
+    if (!parent)
+      return {
+        status: false,
+        message: 'No parent terminal found for this location',
+      };
     return { status: true, data: parent };
   }
 }

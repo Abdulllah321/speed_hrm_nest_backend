@@ -18,7 +18,9 @@ export class CreateUnitOfMeasurementDto {
   status?: string;
 }
 
-export class UpdateUnitOfMeasurementDto extends PartialType(CreateUnitOfMeasurementDto) {}
+export class UpdateUnitOfMeasurementDto extends PartialType(
+  CreateUnitOfMeasurementDto,
+) {}
 
 export class BulkUpdateUnitOfMeasurementItemDto extends UpdateUnitOfMeasurementDto {
   @ApiProperty()

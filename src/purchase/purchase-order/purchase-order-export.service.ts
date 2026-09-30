@@ -30,7 +30,9 @@ export class PurchaseOrderExportService {
     private readonly uploadService: UploadService,
   ) {}
 
-  async queueExport(opts: QueuePurchaseOrderExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueuePurchaseOrderExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -48,7 +50,9 @@ export class PurchaseOrderExportService {
           fileName = `${po.poNumber}-${new Date().toISOString().slice(0, 10)}.xlsx`;
         }
       } catch (err: any) {
-        this.logger.warn(`Could not resolve PO number for export filename: ${err.message}`);
+        this.logger.warn(
+          `Could not resolve PO number for export filename: ${err.message}`,
+        );
       }
     }
 
@@ -88,15 +92,20 @@ export class PurchaseOrderExportService {
       },
     );
 
-    this.logger.log(`[PurchaseOrderExport] Queued job ${jobId} for user ${opts.userId}${opts.poId ? ` (PO: ${opts.poId})` : ''}`);
+    this.logger.log(
+      `[PurchaseOrderExport] Queued job ${jobId} for user ${opts.userId}${opts.poId ? ` (PO: ${opts.poId})` : ''}`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -116,7 +125,9 @@ export class PurchaseOrderExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -125,7 +136,10 @@ export class PurchaseOrderExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -137,8 +151,14 @@ export class PurchaseOrderExportService {
     const stat = fs.statSync(filePath);
     const stream = fs.createReadStream(filePath);
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

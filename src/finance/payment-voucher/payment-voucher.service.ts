@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePaymentVoucherDto } from './dto/create-payment-voucher.dto';
 import { UpdatePaymentVoucherDto } from './dto/update-payment-voucher.dto';
@@ -9,7 +14,10 @@ import { AccountRoleKey } from '../finance-account-config/dto/finance-account-co
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
-import { generateNextPvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
+import {
+  generateNextPvNumber,
+  generateNextFolioNumber,
+} from '../../common/utils/voucher-number.util';
 @Injectable()
 export class PaymentVoucherService {
   private readonly logger = new Logger(PaymentVoucherService.name);
@@ -21,7 +29,14 @@ export class PaymentVoucherService {
       return { in: ['pending_check', 'pending', 'PENDING_CHECK', 'PENDING'] };
     }
     if (s === 'pending_approval' || s === 'pending_approve') {
-      return { in: ['pending_approval', 'pending_approve', 'PENDING_APPROVAL', 'PENDING_APPROVE'] };
+      return {
+        in: [
+          'pending_approval',
+          'pending_approve',
+          'PENDING_APPROVAL',
+          'PENDING_APPROVE',
+        ],
+      };
     }
     if (s === 'approved') {
       return { in: ['approved', 'APPROVED'] };
@@ -40,24 +55,36 @@ export class PaymentVoucherService {
     private readonly accounting: AccountingService,
     private readonly financeConfig: FinanceAccountConfigService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async create(createPaymentVoucherDto: CreatePaymentVoucherDto) {
-    const { details, invoices, advanceApplications, ...data } = createPaymentVoucherDto;
+    const { details, invoices, advanceApplications, ...data } =
+      createPaymentVoucherDto;
 
-    const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
-    const totalCredit = details.reduce((sum, item) => sum + Number(item.credit || 0), 0);
+    const totalDebit = details.reduce(
+      (sum, item) => sum + Number(item.debit || 0),
+      0,
+    );
+    const totalCredit = details.reduce(
+      (sum, item) => sum + Number(item.credit || 0),
+      0,
+    );
 
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
       throw new Error('Total Debit must equal Total Credit');
     }
 
-    if (totalDebit === 0 && (!advanceApplications || advanceApplications.length === 0)) {
+    if (
+      totalDebit === 0 &&
+      (!advanceApplications || advanceApplications.length === 0)
+    ) {
       throw new Error('Transaction amount must be greater than 0');
     }
 
     // ── Validate advance applications ────────────────────────────────────────
-    const totalAdvanceApplied = advanceApplications?.reduce((s, a) => s + Number(a.appliedAmount), 0) ?? 0;
+    const totalAdvanceApplied =
+      advanceApplications?.reduce((s, a) => s + Number(a.appliedAmount), 0) ??
+      0;
 
     if (advanceApplications && advanceApplications.length > 0) {
       for (const app of advanceApplications) {
@@ -65,14 +92,23 @@ export class PaymentVoucherService {
           where: { id: app.advanceVoucherId },
           include: { advanceUsages: true },
         });
-        if (!advPV) throw new BadRequestException(`Advance voucher not found: ${app.advanceVoucherId}`);
-        if (!advPV.isAdvance) throw new BadRequestException(`Voucher ${advPV.pvNo} is not an advance payment`);
+        if (!advPV)
+          throw new BadRequestException(
+            `Advance voucher not found: ${app.advanceVoucherId}`,
+          );
+        if (!advPV.isAdvance)
+          throw new BadRequestException(
+            `Voucher ${advPV.pvNo} is not an advance payment`,
+          );
 
-        const alreadyUsed = advPV.advanceUsages.reduce((s, u) => s + Number(u.appliedAmount), 0);
+        const alreadyUsed = advPV.advanceUsages.reduce(
+          (s, u) => s + Number(u.appliedAmount),
+          0,
+        );
         const available = Number(advPV.creditAmount) - alreadyUsed;
         if (Number(app.appliedAmount) > available + 0.01) {
           throw new BadRequestException(
-            `Advance ${advPV.pvNo} only has ${available.toLocaleString()} available (requested ${app.appliedAmount})`
+            `Advance ${advPV.pvNo} only has ${available.toLocaleString()} available (requested ${app.appliedAmount})`,
           );
         }
       }
@@ -83,13 +119,21 @@ export class PaymentVoucherService {
       let totalInvoiceAmount = 0;
       for (const invoicePayment of invoices) {
         const invoice = await this.prisma.purchaseInvoice.findUnique({
-          where: { id: invoicePayment.purchaseInvoiceId }
+          where: { id: invoicePayment.purchaseInvoiceId },
         });
-        if (!invoice) throw new BadRequestException(`Purchase Invoice not found: ${invoicePayment.purchaseInvoiceId}`);
-        if (invoice.status !== 'APPROVED') throw new BadRequestException(`Invoice ${invoice.invoiceNumber} is not approved`);
-        if (Number(invoice.remainingAmount) < Number(invoicePayment.paidAmount)) {
+        if (!invoice)
           throw new BadRequestException(
-            `Payment ${invoicePayment.paidAmount} exceeds remaining ${invoice.remainingAmount} for ${invoice.invoiceNumber}`
+            `Purchase Invoice not found: ${invoicePayment.purchaseInvoiceId}`,
+          );
+        if (invoice.status !== 'APPROVED')
+          throw new BadRequestException(
+            `Invoice ${invoice.invoiceNumber} is not approved`,
+          );
+        if (
+          Number(invoice.remainingAmount) < Number(invoicePayment.paidAmount)
+        ) {
+          throw new BadRequestException(
+            `Payment ${invoicePayment.paidAmount} exceeds remaining ${invoice.remainingAmount} for ${invoice.invoiceNumber}`,
           );
         }
         totalInvoiceAmount += Number(invoicePayment.paidAmount);
@@ -99,24 +143,35 @@ export class PaymentVoucherService {
       const totalSettled = totalDebit + totalAdvanceApplied;
       if (totalInvoiceAmount > totalSettled + 0.01) {
         throw new BadRequestException(
-          `Invoice payments (${totalInvoiceAmount}) exceed total settled amount — cash (${totalDebit}) + advance (${totalAdvanceApplied}) = ${totalSettled}`
+          `Invoice payments (${totalInvoiceAmount}) exceed total settled amount — cash (${totalDebit}) + advance (${totalAdvanceApplied}) = ${totalSettled}`,
         );
       }
     }
 
     // ── Get ADVANCE TO SUPPLIERS account from finance configuration ─────────
-    const advanceAccountId = totalAdvanceApplied > 0
-      ? await this.financeConfig.resolveAccount(AccountRoleKey.ADVANCE_TO_SUPPLIERS)
-      : null;
+    const advanceAccountId =
+      totalAdvanceApplied > 0
+        ? await this.financeConfig.resolveAccount(
+            AccountRoleKey.ADVANCE_TO_SUPPLIERS,
+          )
+        : null;
 
     return this.prisma.$transaction(async (prisma) => {
-      const sequentialPvNo = await generateNextPvNumber(prisma, data.type, data.pvDate);
-      const sequentialFolio = await generateNextFolioNumber(prisma, data.pvDate);
+      const sequentialPvNo = await generateNextPvNumber(
+        prisma,
+        data.type,
+        data.pvDate,
+      );
+      const sequentialFolio = await generateNextFolioNumber(
+        prisma,
+        data.pvDate,
+      );
 
       // ── Derive creditAccountId from the first credit detail line ────────
       // This keeps the legacy scalar for backward compat (reports, supplier ledger)
-      const firstCreditDetail = details.find(d => Number(d.credit) > 0);
-      const resolvedCreditAccountId = firstCreditDetail?.accountId ?? data.creditAccountId;
+      const firstCreditDetail = details.find((d) => Number(d.credit) > 0);
+      const resolvedCreditAccountId =
+        firstCreditDetail?.accountId ?? data.creditAccountId;
       const resolvedCreditAmount = data.creditAmount || totalDebit || 0;
 
       const targetStatus = data.status || 'pending';
@@ -142,17 +197,17 @@ export class PaymentVoucherService {
           status: targetStatus,
           details: {
             create: details
-              .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
-              .map(d => ({
-                accountId:       d.accountId,
-                tagAccountId:    d.tagAccountId?.trim() || null,
-                debit:           Number(d.debit)  || 0,
-                credit:          Number(d.credit) || 0,
-                narration:       d.narration  || data.description || null,
-                refBillNo:       d.refBillNo  || data.refBillNo   || null,
-                refBillNo2:      d.refBillNo2 || null,
-                taxType:         d.taxType ?? data.taxType ?? 'Taxable',
-                cprNo:           d.cprNo || null,
+              .filter((d) => Number(d.debit) > 0 || Number(d.credit) > 0)
+              .map((d) => ({
+                accountId: d.accountId,
+                tagAccountId: d.tagAccountId?.trim() || null,
+                debit: Number(d.debit) || 0,
+                credit: Number(d.credit) || 0,
+                narration: d.narration || data.description || null,
+                refBillNo: d.refBillNo || data.refBillNo || null,
+                refBillNo2: d.refBillNo2 || null,
+                taxType: d.taxType ?? data.taxType ?? 'Taxable',
+                cprNo: d.cprNo || null,
               })),
           },
         },
@@ -171,7 +226,7 @@ export class PaymentVoucherService {
               paymentVoucherId: paymentVoucher.id,
               purchaseInvoiceId: invoicePayment.purchaseInvoiceId,
               paidAmount: invoicePayment.paidAmount,
-            }
+            },
           });
         }
       }
@@ -184,7 +239,7 @@ export class PaymentVoucherService {
               sourceAdvanceId: app.advanceVoucherId,
               appliedInVoucherId: paymentVoucher.id,
               appliedAmount: app.appliedAmount,
-            }
+            },
           });
         }
       }
@@ -209,11 +264,23 @@ export class PaymentVoucherService {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) {
-    const { type, status, fromDate, toDate, accountId, page, limit, search, sortBy, sortOrder } = filters || {};
+    const {
+      type,
+      status,
+      fromDate,
+      toDate,
+      accountId,
+      page,
+      limit,
+      search,
+      sortBy,
+      sortOrder,
+    } = filters || {};
 
     const where: any = {};
 
-    if (type && type !== 'all') where.type = { equals: type, mode: 'insensitive' };
+    if (type && type !== 'all')
+      where.type = { equals: type, mode: 'insensitive' };
     const statusWhere = this.buildStatusWhere(status);
     if (statusWhere) where.status = statusWhere;
 
@@ -239,17 +306,67 @@ export class PaymentVoucherService {
         { remarks: { contains: cleanSearch, mode: 'insensitive' } },
         { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
         { chequeNo: { contains: cleanSearch, mode: 'insensitive' } },
-        { creditAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } },
-        { creditAccount: { code: { contains: cleanSearch, mode: 'insensitive' } } },
+        {
+          creditAccount: {
+            name: { contains: cleanSearch, mode: 'insensitive' },
+          },
+        },
+        {
+          creditAccount: {
+            code: { contains: cleanSearch, mode: 'insensitive' },
+          },
+        },
         { supplier: { name: { contains: cleanSearch, mode: 'insensitive' } } },
         { supplier: { code: { contains: cleanSearch, mode: 'insensitive' } } },
-        { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
-        { details: { some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } } } },
-        { details: { some: { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } } } },
-        { details: { some: { account: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
-        { details: { some: { account: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
-        { details: { some: { tagAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
-        { details: { some: { tagAccount: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
+        {
+          details: {
+            some: { narration: { contains: cleanSearch, mode: 'insensitive' } },
+          },
+        },
+        {
+          details: {
+            some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
+          },
+        },
+        {
+          details: {
+            some: {
+              refBillNo2: { contains: cleanSearch, mode: 'insensitive' },
+            },
+          },
+        },
+        {
+          details: {
+            some: {
+              account: { name: { contains: cleanSearch, mode: 'insensitive' } },
+            },
+          },
+        },
+        {
+          details: {
+            some: {
+              account: { code: { contains: cleanSearch, mode: 'insensitive' } },
+            },
+          },
+        },
+        {
+          details: {
+            some: {
+              tagAccount: {
+                name: { contains: cleanSearch, mode: 'insensitive' },
+              },
+            },
+          },
+        },
+        {
+          details: {
+            some: {
+              tagAccount: {
+                code: { contains: cleanSearch, mode: 'insensitive' },
+              },
+            },
+          },
+        },
       ];
 
       const numericStr = cleanSearch.replace(/,/g, '');
@@ -263,10 +380,7 @@ export class PaymentVoucherService {
       }
 
       if (where.OR) {
-        where.AND = [
-          { OR: where.OR },
-          { OR: searchConditions },
-        ];
+        where.AND = [{ OR: where.OR }, { OR: searchConditions }];
         delete where.OR;
       } else {
         where.OR = searchConditions;
@@ -397,17 +511,17 @@ export class PaymentVoucherService {
             status: data.status,
             details: {
               create: details
-                .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
-                .map(d => ({
-                  accountId:       d.accountId,
-                  tagAccountId:    d.tagAccountId?.trim() || null,
-                  debit:           Number(d.debit)  || 0,
-                  credit:          Number(d.credit) || 0,
-                  narration:       d.narration  || data.description || null,
-                  refBillNo:       d.refBillNo  || data.refBillNo   || null,
-                  refBillNo2:      d.refBillNo2 || null,
-                  taxType:         d.taxType ?? data.taxType ?? 'Taxable',
-                  cprNo:           d.cprNo || null,
+                .filter((d) => Number(d.debit) > 0 || Number(d.credit) > 0)
+                .map((d) => ({
+                  accountId: d.accountId,
+                  tagAccountId: d.tagAccountId?.trim() || null,
+                  debit: Number(d.debit) || 0,
+                  credit: Number(d.credit) || 0,
+                  narration: d.narration || data.description || null,
+                  refBillNo: d.refBillNo || data.refBillNo || null,
+                  refBillNo2: d.refBillNo2 || null,
+                  taxType: d.taxType ?? data.taxType ?? 'Taxable',
+                  cprNo: d.cprNo || null,
                 })),
             },
           },
@@ -454,7 +568,7 @@ export class PaymentVoucherService {
 
   async remove(id: string) {
     const existing = await this.findOne(id);
-   
+
     return this.prisma.$transaction(async (prisma) => {
       if (existing.status === 'approved') {
         await this.unpostPaymentVoucherFromLedger(id, prisma);
@@ -483,33 +597,48 @@ export class PaymentVoucherService {
       select: { id: true },
     });
     if (existingTx) {
-      this.logger.warn(`Payment Voucher ${voucher.pvNo} (${voucherId}) already has posted GL entries. Skipping duplicate posting.`);
+      this.logger.warn(
+        `Payment Voucher ${voucher.pvNo} (${voucherId}) already has posted GL entries. Skipping duplicate posting.`,
+      );
       return;
     }
 
     const details = voucher.details;
-    const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
-    const totalCredit = details.reduce((sum, item) => sum + Number(item.credit || 0), 0);
+    const totalDebit = details.reduce(
+      (sum, item) => sum + Number(item.debit || 0),
+      0,
+    );
+    const totalCredit = details.reduce(
+      (sum, item) => sum + Number(item.credit || 0),
+      0,
+    );
 
     const invoices = await prisma.paymentVoucherToInvoice.findMany({
-      where: { paymentVoucherId: voucherId }
+      where: { paymentVoucherId: voucherId },
     });
 
     const advanceApplications = await prisma.advanceApplication.findMany({
-      where: { appliedInVoucherId: voucherId }
+      where: { appliedInVoucherId: voucherId },
     });
 
-    const totalAdvanceApplied = advanceApplications.reduce((s, a) => s + Number(a.appliedAmount), 0);
+    const totalAdvanceApplied = advanceApplications.reduce(
+      (s, a) => s + Number(a.appliedAmount),
+      0,
+    );
 
     // ── Update invoice payment statuses ─────────────────────────────────
     if (invoices && invoices.length > 0) {
       for (const invoicePayment of invoices) {
         const invoice = await prisma.purchaseInvoice.findUnique({
-          where: { id: invoicePayment.purchaseInvoiceId }
+          where: { id: invoicePayment.purchaseInvoiceId },
         });
         if (invoice) {
-          const newPaidAmount = Number(invoice.paidAmount) + Number(invoicePayment.paidAmount);
-          const newRemainingAmount = Number(invoice.totalAmount) - newPaidAmount - Number(invoice.returnAmount || 0);
+          const newPaidAmount =
+            Number(invoice.paidAmount) + Number(invoicePayment.paidAmount);
+          const newRemainingAmount =
+            Number(invoice.totalAmount) -
+            newPaidAmount -
+            Number(invoice.returnAmount || 0);
           let paymentStatus = 'UNPAID';
           if (newRemainingAmount <= 0.01) paymentStatus = 'FULLY_PAID';
           else if (newPaidAmount > 0) paymentStatus = 'PARTIALLY_PAID';
@@ -520,18 +649,25 @@ export class PaymentVoucherService {
               paidAmount: newPaidAmount,
               remainingAmount: Math.max(0, newRemainingAmount),
               paymentStatus: paymentStatus as any,
-            }
+            },
           });
         }
       }
     }
 
     // ── Apply advances: update source PV advanceApplied and post journals ──
-    const advanceAccountId = totalAdvanceApplied > 0
-      ? await this.financeConfig.resolveAccount(AccountRoleKey.ADVANCE_TO_SUPPLIERS)
-      : null;
+    const advanceAccountId =
+      totalAdvanceApplied > 0
+        ? await this.financeConfig.resolveAccount(
+            AccountRoleKey.ADVANCE_TO_SUPPLIERS,
+          )
+        : null;
 
-    if (advanceApplications && advanceApplications.length > 0 && advanceAccountId) {
+    if (
+      advanceApplications &&
+      advanceApplications.length > 0 &&
+      advanceAccountId
+    ) {
       for (const app of advanceApplications) {
         // Update advanceApplied on the source advance PV
         await prisma.paymentVoucher.update({
@@ -540,8 +676,9 @@ export class PaymentVoucherService {
         });
 
         // Journal: Dr A/P PARTIES (supplier payable) / Cr ADVANCE TO SUPPLIERS
-        const apParties = details.find(d => Number(d.debit) > 0);
-        const apPartiesAccountId = apParties?.accountId ?? voucher.creditAccountId;
+        const apParties = details.find((d) => Number(d.debit) > 0);
+        const apPartiesAccountId =
+          apParties?.accountId ?? voucher.creditAccountId;
         let apPartiesTagAccountId = apParties?.tagAccountId;
 
         if (!apPartiesTagAccountId && voucher.supplierId) {
@@ -563,42 +700,60 @@ export class PaymentVoucherService {
           }
         }
 
-        await this.accounting.postLines([
-          { accountId: apPartiesAccountId, tagAccountId: apPartiesTagAccountId ?? undefined, debit: Number(app.appliedAmount), credit: 0 },
-          { accountId: advanceAccountId, debit: 0, credit: Number(app.appliedAmount) },
-        ], {
-          sourceType: 'ADVANCE_APPLICATION',
-          sourceId: voucher.id,
-          sourceRef: `${voucher.pvNo}-ADV`,
-          description: `Advance applied from advance voucher`,
-          transactionDate: new Date(voucher.pvDate),
-        }, prisma);
+        await this.accounting.postLines(
+          [
+            {
+              accountId: apPartiesAccountId,
+              tagAccountId: apPartiesTagAccountId ?? undefined,
+              debit: Number(app.appliedAmount),
+              credit: 0,
+            },
+            {
+              accountId: advanceAccountId,
+              debit: 0,
+              credit: Number(app.appliedAmount),
+            },
+          ],
+          {
+            sourceType: 'ADVANCE_APPLICATION',
+            sourceId: voucher.id,
+            sourceRef: `${voucher.pvNo}-ADV`,
+            description: `Advance applied from advance voucher`,
+            transactionDate: new Date(voucher.pvDate),
+          },
+          prisma,
+        );
       }
     }
 
     // ── Post main journal lines ───────────────────────────────────────────
     if (totalDebit > 0) {
       const allLines = details
-        .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
-        .map(d => ({
-          accountId:       d.accountId,
-          tagAccountId:    d.tagAccountId?.trim() || undefined,
-          debit:           Number(d.debit)  || 0,
-          credit:          Number(d.credit) || 0,
-          narration:       d.narration  || voucher.description || undefined,
-          refBillNo:       d.refBillNo  || voucher.refBillNo   || undefined,
-          refBillNo2:      d.refBillNo2 || undefined,
-          taxType:         d.taxType ?? voucher.taxType ?? 'Taxable',
-          sourceDetailId:  d.id,
-          cprNo:           d.cprNo || undefined,
+        .filter((d) => Number(d.debit) > 0 || Number(d.credit) > 0)
+        .map((d) => ({
+          accountId: d.accountId,
+          tagAccountId: d.tagAccountId?.trim() || undefined,
+          debit: Number(d.debit) || 0,
+          credit: Number(d.credit) || 0,
+          narration: d.narration || voucher.description || undefined,
+          refBillNo: d.refBillNo || voucher.refBillNo || undefined,
+          refBillNo2: d.refBillNo2 || undefined,
+          taxType: d.taxType ?? voucher.taxType ?? 'Taxable',
+          sourceDetailId: d.id,
+          cprNo: d.cprNo || undefined,
         }));
-      await this.accounting.postLines(allLines, {
-        sourceType: 'PAYMENT_VOUCHER',
-        sourceId: voucher.id,
-        sourceRef: voucher.pvNo,
-        description: voucher.description || `Payment Voucher: ${voucher.pvNo}`,
-        transactionDate: new Date(voucher.pvDate),
-      }, prisma);
+      await this.accounting.postLines(
+        allLines,
+        {
+          sourceType: 'PAYMENT_VOUCHER',
+          sourceId: voucher.id,
+          sourceRef: voucher.pvNo,
+          description:
+            voucher.description || `Payment Voucher: ${voucher.pvNo}`,
+          transactionDate: new Date(voucher.pvDate),
+        },
+        prisma,
+      );
     }
 
     // ── Write supplier ledger entries ────────────────────────────────────
@@ -684,7 +839,11 @@ export class PaymentVoucherService {
   }
 
   async getNextPvNumber(type: string): Promise<{ nextPvNumber: string }> {
-    const nextPvNumber = await generateNextPvNumber(this.prisma, type, new Date());
+    const nextPvNumber = await generateNextPvNumber(
+      this.prisma,
+      type,
+      new Date(),
+    );
     return { nextPvNumber };
   }
 
@@ -699,8 +858,12 @@ export class PaymentVoucherService {
       pendingAmount,
     ] = await Promise.all([
       this.prisma.paymentVoucher.count({ where }),
-      this.prisma.paymentVoucher.count({ where: { ...where, status: 'pending' } }),
-      this.prisma.paymentVoucher.count({ where: { ...where, status: 'approved' } }),
+      this.prisma.paymentVoucher.count({
+        where: { ...where, status: 'pending' },
+      }),
+      this.prisma.paymentVoucher.count({
+        where: { ...where, status: 'approved' },
+      }),
       this.prisma.paymentVoucher.aggregate({
         where,
         _sum: { creditAmount: true },
@@ -730,9 +893,9 @@ export class PaymentVoucherService {
         where: {
           supplierId,
           paymentStatus: {
-            in: ['UNPAID', 'PARTIALLY_PAID']
+            in: ['UNPAID', 'PARTIALLY_PAID'],
           },
-          status: 'APPROVED'
+          status: 'APPROVED',
         },
         select: {
           id: true,
@@ -747,13 +910,13 @@ export class PaymentVoucherService {
           supplier: {
             select: {
               id: true,
-              name: true
-            }
-          }
+              name: true,
+            },
+          },
         },
         orderBy: {
-          invoiceDate: 'asc'
-        }
+          invoiceDate: 'asc',
+        },
       });
 
       console.log(`Found ${invoices.length} APPROVED pending invoices`);
@@ -775,9 +938,9 @@ export class PaymentVoucherService {
           purchaseInvoices: {
             where: {
               paymentStatus: {
-                in: ['UNPAID', 'PARTIALLY_PAID']
+                in: ['UNPAID', 'PARTIALLY_PAID'],
               },
-              status: 'APPROVED'
+              status: 'APPROVED',
             },
             select: {
               id: true,
@@ -785,57 +948,67 @@ export class PaymentVoucherService {
               status: true,
               paymentStatus: true,
               totalAmount: true,
-              remainingAmount: true
-            }
-          }
-        }
+              remainingAmount: true,
+            },
+          },
+        },
       });
 
       console.log(`SERVICE - Found ${allSuppliers.length} total suppliers`);
 
       // Filter suppliers that have pending invoices
       const suppliersWithPendingInvoices = allSuppliers
-        .filter(supplier => supplier.purchaseInvoices.length > 0)
-        .map(supplier => ({
+        .filter((supplier) => supplier.purchaseInvoices.length > 0)
+        .map((supplier) => ({
           id: supplier.id,
           name: supplier.name,
           code: supplier.code,
           _count: {
-            purchaseInvoices: supplier.purchaseInvoices.length
+            purchaseInvoices: supplier.purchaseInvoices.length,
           },
           // Debug info
-          invoices: supplier.purchaseInvoices
+          invoices: supplier.purchaseInvoices,
         }));
 
-      console.log(`SERVICE - Found ${suppliersWithPendingInvoices.length} suppliers with pending invoices:`);
+      console.log(
+        `SERVICE - Found ${suppliersWithPendingInvoices.length} suppliers with pending invoices:`,
+      );
 
-      suppliersWithPendingInvoices.forEach(supplier => {
-        console.log(`SERVICE - ${supplier.name} (${supplier.code}): ${supplier._count.purchaseInvoices} pending invoices`);
-        supplier.invoices.forEach(invoice => {
-          console.log(`SERVICE -   * ${invoice.invoiceNumber} - ${invoice.status} - ${invoice.paymentStatus} - ${invoice.remainingAmount}`);
+      suppliersWithPendingInvoices.forEach((supplier) => {
+        console.log(
+          `SERVICE - ${supplier.name} (${supplier.code}): ${supplier._count.purchaseInvoices} pending invoices`,
+        );
+        supplier.invoices.forEach((invoice) => {
+          console.log(
+            `SERVICE -   * ${invoice.invoiceNumber} - ${invoice.status} - ${invoice.paymentStatus} - ${invoice.remainingAmount}`,
+          );
         });
       });
 
       // Return without debug invoices info
-      const finalResult = suppliersWithPendingInvoices.map(supplier => ({
+      const finalResult = suppliersWithPendingInvoices.map((supplier) => ({
         id: supplier.id,
         name: supplier.name,
         code: supplier.code,
-        _count: supplier._count
+        _count: supplier._count,
       }));
 
       console.log('SERVICE - Final result to return:', finalResult);
       return finalResult;
-
     } catch (error) {
-      console.error('SERVICE - Error getting suppliers with pending invoices:', error);
+      console.error(
+        'SERVICE - Error getting suppliers with pending invoices:',
+        error,
+      );
       throw error;
     }
   }
 
-
-
-  async updateCpr(id: string, dto: UpdateVoucherCprDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async updateCpr(
+    id: string,
+    dto: UpdateVoucherCprDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const voucher = await this.prisma.paymentVoucher.findUnique({
       where: { id },
       include: { details: true },
@@ -848,9 +1021,11 @@ export class PaymentVoucherService {
     return this.prisma.$transaction(async (prisma) => {
       // 1. Update CPR number on PaymentVoucherDetail rows
       for (const item of dto.details) {
-        const detail = voucher.details.find(d => d.id === item.id);
+        const detail = voucher.details.find((d) => d.id === item.id);
         if (!detail) {
-          throw new BadRequestException(`Voucher detail row with ID ${item.id} not found in this voucher`);
+          throw new BadRequestException(
+            `Voucher detail row with ID ${item.id} not found in this voucher`,
+          );
         }
 
         await prisma.paymentVoucherDetail.update({
@@ -889,17 +1064,19 @@ export class PaymentVoucherService {
       runInBackground(
         'Update Payment Voucher CPR Numbers',
         this.activityLogs.log({
-          userId:      ctx?.userId,
-          action:      'update',
-          module:      'finance',
-          entity:      'PaymentVoucher',
-          entityId:    id,
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'finance',
+          entity: 'PaymentVoucher',
+          entityId: id,
           description: `Updated CPR numbers for payment voucher ${voucher.pvNo}`,
-          oldValues:   JSON.stringify(voucher.details.map(d => ({ id: d.id, cprNo: d.cprNo }))),
-          newValues:   JSON.stringify(dto.details),
-          ipAddress:   ctx?.ipAddress,
-          userAgent:   ctx?.userAgent,
-          status:      'success',
+          oldValues: JSON.stringify(
+            voucher.details.map((d) => ({ id: d.id, cprNo: d.cprNo })),
+          ),
+          newValues: JSON.stringify(dto.details),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
         }),
       );
 
@@ -922,24 +1099,28 @@ export class PaymentVoucherService {
           select: {
             id: true,
             name: true,
-            code: true
-          }
-        }
-      }
+            code: true,
+          },
+        },
+      },
     });
 
     return {
       message: 'Debug invoice data',
       totalInvoices: invoices.length,
-      invoices: invoices
+      invoices: invoices,
     };
   }
 
   async testSuppliers() {
     const allSuppliers = await this.prisma.supplier.findMany({
-      select: { id: true, name: true, code: true }
+      select: { id: true, name: true, code: true },
     });
-    return { message: 'Test endpoint working', totalSuppliers: allSuppliers.length, suppliers: allSuppliers };
+    return {
+      message: 'Test endpoint working',
+      totalSuppliers: allSuppliers.length,
+      suppliers: allSuppliers,
+    };
   }
 
   // Get unapplied advance payment vouchers for a supplier
@@ -953,8 +1134,11 @@ export class PaymentVoucherService {
     });
 
     return advances
-      .map(pv => {
-        const used = pv.advanceUsages.reduce((s, u) => s + Number(u.appliedAmount), 0);
+      .map((pv) => {
+        const used = pv.advanceUsages.reduce(
+          (s, u) => s + Number(u.appliedAmount),
+          0,
+        );
         const available = Number(pv.creditAmount) - used;
         return {
           pvId: pv.id,
@@ -965,16 +1149,24 @@ export class PaymentVoucherService {
           availableAmount: available,
         };
       })
-      .filter(pv => pv.availableAmount > 0.01);
+      .filter((pv) => pv.availableAmount > 0.01);
   }
 
   // Quick supplier balance summary — called on supplier selection in the form
   async getSupplierSummary(supplierId: string) {
     const supplier = await this.prisma.supplier.findUnique({
       where: { id: supplierId },
-      select: { id: true, name: true, code: true, currentBalance: true, advanceBalance: true, openingBalance: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        currentBalance: true,
+        advanceBalance: true,
+        openingBalance: true,
+      },
     });
-    if (!supplier) throw new NotFoundException(`Supplier ${supplierId} not found`);
+    if (!supplier)
+      throw new NotFoundException(`Supplier ${supplierId} not found`);
 
     // Compute live advance balance from PVs in case ledger hasn't been seeded yet
     const advances = await this.prisma.paymentVoucher.findMany({
@@ -982,13 +1174,20 @@ export class PaymentVoucherService {
       include: { advanceUsages: true },
     });
     const liveAdvanceBalance = advances.reduce((sum, pv) => {
-      const used = pv.advanceUsages.reduce((s, u) => s + Number(u.appliedAmount), 0);
+      const used = pv.advanceUsages.reduce(
+        (s, u) => s + Number(u.appliedAmount),
+        0,
+      );
       return sum + Math.max(0, Number(pv.creditAmount) - used);
     }, 0);
 
     // Compute live AP balance from purchase invoices
     const invoiceAgg = await this.prisma.purchaseInvoice.aggregate({
-      where: { supplierId, status: 'APPROVED', paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] } },
+      where: {
+        supplierId,
+        status: 'APPROVED',
+        paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] },
+      },
       _sum: { remainingAmount: true },
     });
     const liveApBalance = Number(invoiceAgg._sum.remainingAmount ?? 0);
@@ -997,18 +1196,30 @@ export class PaymentVoucherService {
       supplierId: supplier.id,
       name: supplier.name,
       code: supplier.code,
-      apBalance: liveApBalance,          // total outstanding payable
+      apBalance: liveApBalance, // total outstanding payable
       advanceBalance: liveAdvanceBalance, // unapplied advance available
     };
   }
 
   // Get full supplier ledger statement
-  async getSupplierLedger(supplierId: string, fromDate?: string, toDate?: string) {
+  async getSupplierLedger(
+    supplierId: string,
+    fromDate?: string,
+    toDate?: string,
+  ) {
     const supplier = await this.prisma.supplier.findUnique({
       where: { id: supplierId },
-      select: { id: true, name: true, code: true, currentBalance: true, advanceBalance: true, openingBalance: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        currentBalance: true,
+        advanceBalance: true,
+        openingBalance: true,
+      },
     });
-    if (!supplier) throw new NotFoundException(`Supplier ${supplierId} not found`);
+    if (!supplier)
+      throw new NotFoundException(`Supplier ${supplierId} not found`);
 
     const where: any = { supplierId };
     if (fromDate || toDate) {
@@ -1026,10 +1237,20 @@ export class PaymentVoucherService {
       supplier,
       entries,
       summary: {
-        totalInvoiced: entries.filter(e => e.entryType === 'PURCHASE_INVOICE').reduce((s, e) => s + Number(e.credit), 0),
-        totalPaid: entries.filter(e => ['PAYMENT_VOUCHER', 'ADVANCE_APPLICATION'].includes(e.entryType)).reduce((s, e) => s + Number(e.debit), 0),
-        totalAdvancePaid: entries.filter(e => e.entryType === 'ADVANCE_PAYMENT').reduce((s, e) => s + Number(e.advanceDebit), 0),
-        totalAdvanceApplied: entries.filter(e => e.entryType === 'ADVANCE_APPLICATION').reduce((s, e) => s + Number(e.advanceCredit), 0),
+        totalInvoiced: entries
+          .filter((e) => e.entryType === 'PURCHASE_INVOICE')
+          .reduce((s, e) => s + Number(e.credit), 0),
+        totalPaid: entries
+          .filter((e) =>
+            ['PAYMENT_VOUCHER', 'ADVANCE_APPLICATION'].includes(e.entryType),
+          )
+          .reduce((s, e) => s + Number(e.debit), 0),
+        totalAdvancePaid: entries
+          .filter((e) => e.entryType === 'ADVANCE_PAYMENT')
+          .reduce((s, e) => s + Number(e.advanceDebit), 0),
+        totalAdvanceApplied: entries
+          .filter((e) => e.entryType === 'ADVANCE_APPLICATION')
+          .reduce((s, e) => s + Number(e.advanceCredit), 0),
         currentBalance: Number(supplier.currentBalance),
         advanceBalance: Number(supplier.advanceBalance),
       },
@@ -1037,7 +1258,14 @@ export class PaymentVoucherService {
   }
 
   // Called by PurchaseInvoiceService when a PI is approved — writes ledger credit entry
-  async recordInvoiceInLedger(prismaClient: any, supplierId: string, invoiceId: string, invoiceRef: string, amount: number, invoiceDate: Date) {
+  async recordInvoiceInLedger(
+    prismaClient: any,
+    supplierId: string,
+    invoiceId: string,
+    invoiceRef: string,
+    amount: number,
+    invoiceDate: Date,
+  ) {
     const supplier = await prismaClient.supplier.findUnique({
       where: { id: supplierId },
       select: { currentBalance: true, advanceBalance: true },
@@ -1083,7 +1311,10 @@ export class PaymentVoucherService {
     });
 
     const details = voucher.details;
-    const totalDebit = details.reduce((sum: number, item: any) => sum + Number(item.debit || 0), 0);
+    const totalDebit = details.reduce(
+      (sum: number, item: any) => sum + Number(item.debit || 0),
+      0,
+    );
 
     const invoices = await prisma.paymentVoucherToInvoice.findMany({
       where: { paymentVoucherId: voucherId },
@@ -1100,8 +1331,14 @@ export class PaymentVoucherService {
           where: { id: invoicePayment.purchaseInvoiceId },
         });
         if (invoice) {
-          const newPaidAmount = Math.max(0, Number(invoice.paidAmount) - Number(invoicePayment.paidAmount));
-          const newRemainingAmount = Number(invoice.totalAmount) - newPaidAmount - Number(invoice.returnAmount || 0);
+          const newPaidAmount = Math.max(
+            0,
+            Number(invoice.paidAmount) - Number(invoicePayment.paidAmount),
+          );
+          const newRemainingAmount =
+            Number(invoice.totalAmount) -
+            newPaidAmount -
+            Number(invoice.returnAmount || 0);
           let paymentStatus = 'UNPAID';
           if (newRemainingAmount <= 0.01) paymentStatus = 'FULLY_PAID';
           else if (newPaidAmount > 0) paymentStatus = 'PARTIALLY_PAID';
@@ -1168,16 +1405,33 @@ export class PaymentVoucherService {
 
     // 4. Unpost GL transactions
     if (existingTx) {
-      await this.accounting.unpostLines(['PAYMENT_VOUCHER', 'ADVANCE_APPLICATION'], voucherId, prisma);
+      await this.accounting.unpostLines(
+        ['PAYMENT_VOUCHER', 'ADVANCE_APPLICATION'],
+        voucherId,
+        prisma,
+      );
     }
   }
 
-  async updateStatus(id: string, status: string, remarks?: string, ctx?: { userId?: string }) {
+  async updateStatus(
+    id: string,
+    status: string,
+    remarks?: string,
+    ctx?: { userId?: string },
+  ) {
     const existing = await this.findOne(id);
 
-    const validStatuses = ['draft', 'pending_check', 'pending_approval', 'approved', 'rejected'];
+    const validStatuses = [
+      'draft',
+      'pending_check',
+      'pending_approval',
+      'approved',
+      'rejected',
+    ];
     if (!validStatuses.includes(status)) {
-      throw new BadRequestException('Invalid status. Must be draft, pending_check, pending_approval, approved, or rejected');
+      throw new BadRequestException(
+        'Invalid status. Must be draft, pending_check, pending_approval, approved, or rejected',
+      );
     }
 
     const updateData: any = { status };
@@ -1218,11 +1472,18 @@ export class PaymentVoucherService {
   }
 
   async unapprove(id: string, remarks?: string, ctx?: { userId?: string }) {
-    return this.updateStatus(id, 'pending_check', remarks || 'Unapproved voucher', ctx);
+    return this.updateStatus(
+      id,
+      'pending_check',
+      remarks || 'Unapproved voucher',
+      ctx,
+    );
   }
 
   async markAsPrinted(id: string, ctx?: { userId?: string }) {
-    const existing = await this.prisma.paymentVoucher.findUnique({ where: { id } });
+    const existing = await this.prisma.paymentVoucher.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException(`Payment Voucher with ID ${id} not found`);
     }

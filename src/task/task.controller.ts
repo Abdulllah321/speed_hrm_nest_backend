@@ -1,8 +1,23 @@
 import {
-  Body, Controller, Delete, Get, Param, Post, Put,
-  Query, Req, UseGuards, UseInterceptors,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiConsumes } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiConsumes,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -30,7 +45,12 @@ export class TaskController {
   ) {}
 
   private ctx(req: any) {
-    return { userId: req.user?.userId, employeeId: req.user?.employeeId, ipAddress: req.ip, userAgent: req.headers['user-agent'] };
+    return {
+      userId: req.user?.userId,
+      employeeId: req.user?.employeeId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    };
   }
 
   // ─── Core CRUD ────────────────────────────────────────────────────────────────
@@ -54,7 +74,15 @@ export class TaskController {
     @Query('dueBefore') dueBefore?: string,
     @Query('parentTaskId') parentTaskId?: string,
   ) {
-    return this.service.list({ projectId, listId, assigneeId, status, priority, dueBefore, parentTaskId });
+    return this.service.list({
+      projectId,
+      listId,
+      assigneeId,
+      status,
+      priority,
+      dueBefore,
+      parentTaskId,
+    });
   }
 
   @Post()
@@ -69,7 +97,8 @@ export class TaskController {
   @ApiOperation({ summary: 'Get tasks assigned to current user' })
   myTasks(@Req() req) {
     const employeeId = req.user?.employeeId;
-    if (!employeeId) return { status: false, message: 'Employee ID not found in token' };
+    if (!employeeId)
+      return { status: false, message: 'Employee ID not found in token' };
     return this.service.myTasks(employeeId);
   }
 
@@ -89,14 +118,18 @@ export class TaskController {
 
   @Post('bulk')
   @Permissions('task.update')
-  @ApiOperation({ summary: 'Bulk action: change_status | change_priority | reassign | delete' })
+  @ApiOperation({
+    summary: 'Bulk action: change_status | change_priority | reassign | delete',
+  })
   bulkAction(@Body() body: BulkTaskActionDto, @Req() req) {
     return this.service.bulkAction(body, this.ctx(req));
   }
 
   @Get(':id')
   @Permissions('task.read')
-  @ApiOperation({ summary: 'Get task detail with subtasks, assignees, attachments' })
+  @ApiOperation({
+    summary: 'Get task detail with subtasks, assignees, attachments',
+  })
   getOne(@Param('id') id: string) {
     return this.service.getOne(id);
   }
@@ -119,8 +152,14 @@ export class TaskController {
 
   @Put(':id/status')
   @Permissions('task.update')
-  @ApiOperation({ summary: 'Change task status (triggers notifications + KPI hook)' })
-  changeStatus(@Param('id') id: string, @Body() body: ChangeTaskStatusDto, @Req() req) {
+  @ApiOperation({
+    summary: 'Change task status (triggers notifications + KPI hook)',
+  })
+  changeStatus(
+    @Param('id') id: string,
+    @Body() body: ChangeTaskStatusDto,
+    @Req() req,
+  ) {
     return this.service.changeStatus(id, body, this.ctx(req));
   }
 
@@ -129,7 +168,11 @@ export class TaskController {
   @Put(':id/assignees')
   @Permissions('task.assign')
   @ApiOperation({ summary: 'Update task assignees' })
-  updateAssignees(@Param('id') id: string, @Body() body: UpdateAssigneesDto, @Req() req) {
+  updateAssignees(
+    @Param('id') id: string,
+    @Body() body: UpdateAssigneesDto,
+    @Req() req,
+  ) {
     return this.service.updateAssignees(id, body, this.ctx(req));
   }
 
@@ -144,24 +187,37 @@ export class TaskController {
       const file = await req.file();
       if (!file) return { status: false, message: 'No file provided' };
 
-      const uploaded = await this.uploadService.uploadFile(file, req.user?.userId);
+      const uploaded = await this.uploadService.uploadFile(
+        file,
+        req.user?.userId,
+      );
       if (!uploaded.status) return uploaded;
 
-      return this.service.addAttachment(taskId, {
-        fileName: uploaded.data.filename,
-        fileUrl: uploaded.data.url,
-        fileSize: uploaded.data.size,
-        mimeType: uploaded.data.mimetype,
-      }, this.ctx(req));
+      return this.service.addAttachment(
+        taskId,
+        {
+          fileName: uploaded.data.filename,
+          fileUrl: uploaded.data.url,
+          fileSize: uploaded.data.size,
+          mimeType: uploaded.data.mimetype,
+        },
+        this.ctx(req),
+      );
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Upload failed' };
+      return {
+        status: false,
+        message: error instanceof Error ? error.message : 'Upload failed',
+      };
     }
   }
 
   @Delete(':id/attachments/:attachId')
   @Permissions('task.update')
   @ApiOperation({ summary: 'Remove attachment from task' })
-  removeAttachment(@Param('id') taskId: string, @Param('attachId') attachId: string) {
+  removeAttachment(
+    @Param('id') taskId: string,
+    @Param('attachId') attachId: string,
+  ) {
     return this.service.removeAttachment(taskId, attachId);
   }
 
@@ -177,14 +233,22 @@ export class TaskController {
   @Post(':id/comments')
   @Permissions('task.read')
   @ApiOperation({ summary: 'Add comment to task' })
-  createComment(@Param('id') id: string, @Body() body: CreateCommentDto, @Req() req) {
+  createComment(
+    @Param('id') id: string,
+    @Body() body: CreateCommentDto,
+    @Req() req,
+  ) {
     return this.service.createComment(id, body, this.ctx(req));
   }
 
   @Put('comments/:commentId')
   @Permissions('task.read')
   @ApiOperation({ summary: 'Edit a comment' })
-  updateComment(@Param('commentId') commentId: string, @Body() body: UpdateCommentDto, @Req() req) {
+  updateComment(
+    @Param('commentId') commentId: string,
+    @Body() body: UpdateCommentDto,
+    @Req() req,
+  ) {
     return this.service.updateComment(commentId, body, this.ctx(req));
   }
 
@@ -209,7 +273,11 @@ export class TaskController {
   @Post(':id/review')
   @Permissions('task.review')
   @ApiOperation({ summary: 'Submit quality review for a completed task' })
-  createReview(@Param('id') id: string, @Body() body: { rating: number; feedback?: string }, @Req() req) {
+  createReview(
+    @Param('id') id: string,
+    @Body() body: { rating: number; feedback?: string },
+    @Req() req,
+  ) {
     return this.service.createReview(id, body, this.ctx(req));
   }
 

@@ -14,8 +14,7 @@ export class InventoryService {
     private prismaMaster: PrismaMasterService,
     private encryptionService: EncryptionService,
     private activityLogs: ActivityLogsService,
-  ) { }
-
+  ) {}
 
   async getStockLevel(itemId: string, warehouseId: string): Promise<any> {
     const inventory = await this.prisma.inventoryItem.groupBy({
@@ -35,14 +34,11 @@ export class InventoryService {
       where: {
         itemId,
         warehouseId,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gte: new Date() } }
-        ]
+        OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
       },
       _sum: {
         quantity: true,
-      }
+      },
     });
     const reservedQty = Number(reservations._sum.quantity || 0);
     const netQty = Math.max(0, physicalQty - reservedQty);
@@ -64,9 +60,7 @@ export class InventoryService {
       where: { itemId, status: 'AVAILABLE' },
     });
 
-    const locIds = items
-      .map((i) => i.locationId)
-      .filter(Boolean) as string[];
+    const locIds = items.map((i) => i.locationId).filter(Boolean) as string[];
 
     const allLocationBrands =
       locIds.length > 0
@@ -88,7 +82,8 @@ export class InventoryService {
       if (!inv.locationId) return true; // Warehouse stock is always eligible
       const registeredBrands = locBrandMap.get(inv.locationId);
       if (!registeredBrands || registeredBrands.length === 0) return true; // Unrestricted location
-      if (item?.brandId && !registeredBrands.includes(item.brandId)) return false; // Location is not authorized for this brand
+      if (item?.brandId && !registeredBrands.includes(item.brandId))
+        return false; // Location is not authorized for this brand
       return true;
     });
 
@@ -110,19 +105,17 @@ export class InventoryService {
         }
 
         let quantity = Number(item.quantity);
-        if (!item.locationId) { // It is warehouse stock
+        if (!item.locationId) {
+          // It is warehouse stock
           const reservations = await this.prisma.stockReserve.aggregate({
             where: {
               itemId: item.itemId,
               warehouseId: item.warehouseId,
-              OR: [
-                { expiresAt: null },
-                { expiresAt: { gte: new Date() } }
-              ]
+              OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
             },
             _sum: {
               quantity: true,
-            }
+            },
           });
           const reservedQty = Number(reservations._sum.quantity || 0);
           quantity = Math.max(0, quantity - reservedQty);
@@ -142,9 +135,7 @@ export class InventoryService {
     return enriched;
   }
 
-  async findSpecificBatch(
-    itemId: string,
-  ): Promise<InventoryItem[]> {
+  async findSpecificBatch(itemId: string): Promise<InventoryItem[]> {
     return this.prisma.inventoryItem.findMany({
       where: { itemId },
     });
@@ -159,7 +150,7 @@ export class InventoryService {
       categoryIds?: string[];
       silhouetteIds?: string[];
       genderIds?: string[];
-    }
+    },
   ) {
     const filterWhere: any = {};
     if (filters?.brandIds?.length) {
@@ -175,19 +166,22 @@ export class InventoryService {
         filterWhere.brandId = { in: brandIds };
       }
     }
-    if (filters?.categoryIds?.length) filterWhere.categoryId = { in: filters.categoryIds };
-    if (filters?.silhouetteIds?.length) filterWhere.silhouetteId = { in: filters.silhouetteIds };
-    if (filters?.genderIds?.length) filterWhere.genderId = { in: filters.genderIds };
+    if (filters?.categoryIds?.length)
+      filterWhere.categoryId = { in: filters.categoryIds };
+    if (filters?.silhouetteIds?.length)
+      filterWhere.silhouetteId = { in: filters.silhouetteIds };
+    if (filters?.genderIds?.length)
+      filterWhere.genderId = { in: filters.genderIds };
 
     const items = await this.prisma.item.findMany({
       where: {
         OR: query
           ? [
-            { id: query },
-            { sku: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
-            { barCode: { contains: query, mode: 'insensitive' } },
-          ]
+              { id: query },
+              { sku: { contains: query, mode: 'insensitive' } },
+              { description: { contains: query, mode: 'insensitive' } },
+              { barCode: { contains: query, mode: 'insensitive' } },
+            ]
           : undefined,
         isActive: true,
         ...filterWhere,
@@ -248,21 +242,18 @@ export class InventoryService {
         where: {
           itemId: { in: itemIds },
           warehouseId,
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gte: new Date() } }
-          ]
+          OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
         },
         _sum: { quantity: true },
       });
 
       const resMap = new Map(
-        reservations.map((r) => [r.itemId, Number(r._sum.quantity) || 0])
+        reservations.map((r) => [r.itemId, Number(r._sum.quantity) || 0]),
       );
       reservedMap = resMap;
 
       physicalMap = new Map(
-        stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0])
+        stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0]),
       );
 
       stockMap = new Map(
@@ -279,16 +270,18 @@ export class InventoryService {
           itemId: { in: itemIds },
           status: 'AVAILABLE',
         },
-        select: { itemId: true, quantity: true, warehouseId: true, locationId: true },
+        select: {
+          itemId: true,
+          quantity: true,
+          warehouseId: true,
+          locationId: true,
+        },
       });
 
       const reservations = await this.prisma.stockReserve.findMany({
         where: {
           itemId: { in: itemIds },
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gte: new Date() } }
-          ]
+          OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
         },
         select: { itemId: true, warehouseId: true, quantity: true },
       });
@@ -297,14 +290,20 @@ export class InventoryService {
       for (const res of reservations) {
         const key = `${res.itemId}_${res.warehouseId}`;
         resMap.set(key, (resMap.get(key) || 0) + Number(res.quantity));
-        reservedMap.set(res.itemId, (reservedMap.get(res.itemId) || 0) + Number(res.quantity));
+        reservedMap.set(
+          res.itemId,
+          (reservedMap.get(res.itemId) || 0) + Number(res.quantity),
+        );
       }
 
       const globalMap = new Map<string, number>();
       const globalPhysMap = new Map<string, number>();
       for (const inv of inventoryItems) {
         const pQty = Number(inv.quantity);
-        globalPhysMap.set(inv.itemId, (globalPhysMap.get(inv.itemId) || 0) + pQty);
+        globalPhysMap.set(
+          inv.itemId,
+          (globalPhysMap.get(inv.itemId) || 0) + pQty,
+        );
 
         let qty = pQty;
         if (!inv.locationId) {
@@ -335,7 +334,9 @@ export class InventoryService {
     return result;
   }
 
-  async getStocksByCenter(centerId: string): Promise<{ items: Array<{ BarCode: string; ExStock: number }> }> {
+  async getStocksByCenter(
+    centerId: string,
+  ): Promise<{ items: Array<{ BarCode: string; ExStock: number }> }> {
     if (!centerId) {
       return { items: [] };
     }
@@ -355,9 +356,16 @@ export class InventoryService {
 
       if (defaultCompany && defaultCompany.tenant) {
         let dbUrl = defaultCompany.dbUrl || '';
-        if (defaultCompany.dbPassword && defaultCompany.dbUser && defaultCompany.dbHost && defaultCompany.dbName) {
+        if (
+          defaultCompany.dbPassword &&
+          defaultCompany.dbUser &&
+          defaultCompany.dbHost &&
+          defaultCompany.dbName
+        ) {
           try {
-            const plainPassword = this.encryptionService.decrypt(defaultCompany.dbPassword);
+            const plainPassword = this.encryptionService.decrypt(
+              defaultCompany.dbPassword,
+            );
             const encodedPassword = encodeURIComponent(String(plainPassword));
             const port = defaultCompany.dbPort || 5432;
             dbUrl = `postgresql://${encodeURIComponent(defaultCompany.dbUser)}:${encodedPassword}@${defaultCompany.dbHost}:${port}/${encodeURIComponent(defaultCompany.dbName)}?schema=public&connection_limit=3&pool_timeout=15`;
@@ -380,8 +388,12 @@ export class InventoryService {
     return this.executeStockQuery(cleanCenterId);
   }
 
-  private async executeStockQuery(cleanCenterId: string): Promise<{ items: Array<{ BarCode: string; ExStock: number }> }> {
-    const items = await this.prisma.$queryRaw<Array<{ BarCode: string; ExStock: number }>>`
+  private async executeStockQuery(
+    cleanCenterId: string,
+  ): Promise<{ items: Array<{ BarCode: string; ExStock: number }> }> {
+    const items = await this.prisma.$queryRaw<
+      Array<{ BarCode: string; ExStock: number }>
+    >`
       WITH target_center AS (
         SELECT id AS loc_id, warehouse_id AS wh_id
         FROM "Location"
@@ -434,7 +446,4 @@ export class InventoryService {
 
     return { items: items || [] };
   }
-
-
 }
-

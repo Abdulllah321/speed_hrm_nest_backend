@@ -62,7 +62,10 @@ export class CreateLoanRequestItemDto {
   @Min(0)
   paidAmount?: number;
 
-  @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'with_payroll',
+    enum: ['with_payroll', 'separately'],
+  })
   @IsOptional()
   @IsString()
   disbursementType?: string;
@@ -146,7 +149,10 @@ export class UpdateLoanRequestDto {
   @IsString()
   status?: string; // pending, approved, rejected, disbursed, completed, cancelled
 
-  @ApiPropertyOptional({ example: 'with_payroll', enum: ['with_payroll', 'separately'] })
+  @ApiPropertyOptional({
+    example: 'with_payroll',
+    enum: ['with_payroll', 'separately'],
+  })
   @IsOptional()
   @IsString()
   disbursementType?: string;

@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePurchaseInvoiceDto, UpdatePurchaseInvoiceDto } from './dto';
 import { AccountingService } from '../../finance/accounting/accounting.service';
@@ -9,7 +13,10 @@ import { MovementType, Prisma } from '@prisma/client';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
-import { generateNextJvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
+import {
+  generateNextJvNumber,
+  generateNextFolioNumber,
+} from '../../common/utils/voucher-number.util';
 
 @Injectable()
 export class PurchaseInvoiceService {
@@ -21,34 +28,47 @@ export class PurchaseInvoiceService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createDto: CreatePurchaseInvoiceDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createDto: CreatePurchaseInvoiceDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       // Validate business rules
       await this.validateBusinessRules(createDto);
 
       // Calculate totals
-      const { subtotal, taxAmount, advanceTaxRate, advanceTaxAmount, totalAmount } = this.calculateTotals(createDto);
+      const {
+        subtotal,
+        taxAmount,
+        advanceTaxRate,
+        advanceTaxAmount,
+        totalAmount,
+      } = this.calculateTotals(createDto);
 
       // Derive invoiceType if not explicitly provided
-      const invoiceType = createDto.invoiceType
-        ?? (createDto.grnId ? 'GRN_BASED' : createDto.landedCostId ? 'LANDED_COST_BASED' : 'DIRECT');
+      const invoiceType =
+        createDto.invoiceType ??
+        (createDto.grnId
+          ? 'GRN_BASED'
+          : createDto.landedCostId
+            ? 'LANDED_COST_BASED'
+            : 'DIRECT');
 
       // Resolve true UUIDs for all items to fix legacy string IDs
-      const resolvedItems = await Promise.all(createDto.items.map(async (item) => {
-        const itemRecord = await this.prisma.item.findFirst({
-          where: {
-            OR: [
-              { id: item.itemId },
-              { itemId: item.itemId }
-            ]
-          },
-          select: { id: true },
-        });
-        return {
-          ...item,
-          trueItemId: itemRecord ? itemRecord.id : item.itemId
-        } as any;
-      }));
+      const resolvedItems = await Promise.all(
+        createDto.items.map(async (item) => {
+          const itemRecord = await this.prisma.item.findFirst({
+            where: {
+              OR: [{ id: item.itemId }, { itemId: item.itemId }],
+            },
+            select: { id: true },
+          });
+          return {
+            ...item,
+            trueItemId: itemRecord ? itemRecord.id : item.itemId,
+          } as any;
+        }),
+      );
 
       const created = await this.prisma.purchaseInvoice.create({
         data: {
@@ -69,14 +89,17 @@ export class PurchaseInvoiceService {
           remainingAmount: totalAmount,
           notes: createDto.notes,
           staxEInvoiceNumber: createDto.staxEInvoiceNumber,
-          staxEInvoiceDate: createDto.staxEInvoiceDate ? new Date(createDto.staxEInvoiceDate) : null,
+          staxEInvoiceDate: createDto.staxEInvoiceDate
+            ? new Date(createDto.staxEInvoiceDate)
+            : null,
           status: createDto.status || 'DRAFT',
           items: {
             create: resolvedItems.map((item: any) => {
               const lineTotal = item.quantity * item.unitPrice;
-              const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
-              const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
-              
+              const itemTaxAmount = (lineTotal * (item.taxRate || 0)) / 100;
+              const itemDiscountAmount =
+                (lineTotal * (item.discountRate || 0)) / 100;
+
               return {
                 itemId: item.trueItemId,
                 grnItemId: item.grnItemId,
@@ -144,18 +167,20 @@ export class PurchaseInvoiceService {
 
   async findAll(page = 1, limit = 10, filters?: any) {
     const skip = (page - 1) * limit;
-    
+
     const where: any = {};
     if (filters?.supplierId) where.supplierId = filters.supplierId;
     if (filters?.status) where.status = filters.status;
     if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus;
     if (filters?.invoiceType) where.invoiceType = filters.invoiceType;
-    
+
     if (filters?.search) {
       where.OR = [
         { invoiceNumber: { contains: filters.search, mode: 'insensitive' } },
         { notes: { contains: filters.search, mode: 'insensitive' } },
-        { supplier: { name: { contains: filters.search, mode: 'insensitive' } } },
+        {
+          supplier: { name: { contains: filters.search, mode: 'insensitive' } },
+        },
       ];
     }
 
@@ -262,37 +287,71 @@ export class PurchaseInvoiceService {
     return invoice;
   }
 
-  async update(id: string, updateDto: UpdatePurchaseInvoiceDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdatePurchaseInvoiceDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existingInvoice = await this.findOne(id);
 
-      if (existingInvoice.status === 'APPROVED' && updateDto.status !== 'CANCELLED') {
+      if (
+        existingInvoice.status === 'APPROVED' &&
+        updateDto.status !== 'CANCELLED'
+      ) {
         throw new BadRequestException('Cannot modify approved invoice');
       }
 
       // If updating items, advanceTaxRate, or discountAmount, recalculate totals
       let updateData: any = { ...updateDto };
 
-      if (updateDto.invoiceDate) updateData.invoiceDate = new Date(updateDto.invoiceDate);
-      if (updateDto.dueDate !== undefined) updateData.dueDate = updateDto.dueDate ? new Date(updateDto.dueDate) : null;
-      if (updateDto.staxEInvoiceDate !== undefined) updateData.staxEInvoiceDate = updateDto.staxEInvoiceDate ? new Date(updateDto.staxEInvoiceDate) : null;
-      if (updateDto.staxEInvoiceNumber !== undefined) updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber || null;
-      if (updateDto.notes !== undefined) updateData.notes = updateDto.notes || null;
-      
-      if (updateDto.items || updateDto.advanceTaxRate !== undefined || updateDto.discountAmount !== undefined) {
+      if (updateDto.invoiceDate)
+        updateData.invoiceDate = new Date(updateDto.invoiceDate);
+      if (updateDto.dueDate !== undefined)
+        updateData.dueDate = updateDto.dueDate
+          ? new Date(updateDto.dueDate)
+          : null;
+      if (updateDto.staxEInvoiceDate !== undefined)
+        updateData.staxEInvoiceDate = updateDto.staxEInvoiceDate
+          ? new Date(updateDto.staxEInvoiceDate)
+          : null;
+      if (updateDto.staxEInvoiceNumber !== undefined)
+        updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber || null;
+      if (updateDto.notes !== undefined)
+        updateData.notes = updateDto.notes || null;
+
+      if (
+        updateDto.items ||
+        updateDto.advanceTaxRate !== undefined ||
+        updateDto.discountAmount !== undefined
+      ) {
         const dtoForCalc = {
-          items: updateDto.items || existingInvoice.items.map(item => ({
-            itemId: item.itemId,
-            quantity: Number(item.quantity),
-            unitPrice: Number(item.unitPrice),
-            taxRate: Number(item.taxRate),
-            discountRate: Number(item.discountRate),
-          })),
-          discountAmount: updateDto.discountAmount !== undefined ? updateDto.discountAmount : Number(existingInvoice.discountAmount),
-          advanceTaxRate: updateDto.advanceTaxRate !== undefined ? updateDto.advanceTaxRate : Number(existingInvoice.advanceTaxRate),
+          items:
+            updateDto.items ||
+            existingInvoice.items.map((item) => ({
+              itemId: item.itemId,
+              quantity: Number(item.quantity),
+              unitPrice: Number(item.unitPrice),
+              taxRate: Number(item.taxRate),
+              discountRate: Number(item.discountRate),
+            })),
+          discountAmount:
+            updateDto.discountAmount !== undefined
+              ? updateDto.discountAmount
+              : Number(existingInvoice.discountAmount),
+          advanceTaxRate:
+            updateDto.advanceTaxRate !== undefined
+              ? updateDto.advanceTaxRate
+              : Number(existingInvoice.advanceTaxRate),
         } as CreatePurchaseInvoiceDto;
 
-        const { subtotal, taxAmount, advanceTaxRate, advanceTaxAmount, totalAmount } = this.calculateTotals(dtoForCalc);
+        const {
+          subtotal,
+          taxAmount,
+          advanceTaxRate,
+          advanceTaxAmount,
+          totalAmount,
+        } = this.calculateTotals(dtoForCalc);
         updateData = {
           ...updateData,
           subtotal,
@@ -315,30 +374,30 @@ export class PurchaseInvoiceService {
 
       if (updateDto.items) {
         // Resolve true UUIDs for update items
-        const resolvedItemsForUpdate = await Promise.all(updateDto.items.map(async (item) => {
-          const itemRecord = await this.prisma.item.findFirst({
-            where: {
-              OR: [
-                { id: item.itemId },
-                { itemId: item.itemId }
-              ]
-            },
-            select: { id: true },
-          });
-          return {
-            ...item,
-            trueItemId: itemRecord ? itemRecord.id : item.itemId
-          } as any;
-        }));
+        const resolvedItemsForUpdate = await Promise.all(
+          updateDto.items.map(async (item) => {
+            const itemRecord = await this.prisma.item.findFirst({
+              where: {
+                OR: [{ id: item.itemId }, { itemId: item.itemId }],
+              },
+              select: { id: true },
+            });
+            return {
+              ...item,
+              trueItemId: itemRecord ? itemRecord.id : item.itemId,
+            } as any;
+          }),
+        );
 
         finalUpdateData = {
           ...finalUpdateData,
           items: {
             create: resolvedItemsForUpdate.map((item: any) => {
               const lineTotal = item.quantity * item.unitPrice;
-              const itemTaxAmount = lineTotal * (item.taxRate || 0) / 100;
-              const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
-              
+              const itemTaxAmount = (lineTotal * (item.taxRate || 0)) / 100;
+              const itemDiscountAmount =
+                (lineTotal * (item.discountRate || 0)) / 100;
+
               return {
                 itemId: item.trueItemId,
                 grnItemId: item.grnItemId,
@@ -353,7 +412,7 @@ export class PurchaseInvoiceService {
                 discountAmount: itemDiscountAmount,
               };
             }),
-          }
+          },
         };
       }
 
@@ -417,7 +476,10 @@ export class PurchaseInvoiceService {
    * - Invoices with payments cannot be deleted
    * - APPROVED invoices are protected from deletion
    */
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const invoice = await this.findOne(id);
 
@@ -504,31 +566,37 @@ export class PurchaseInvoiceService {
       },
     });
 
-    const processedGrns = grns.map(grn => ({
-      ...grn,
-      items: grn.items.map(item => {
-        // Calculate total invoiced quantity for this GRN item
-        const invoicedQty = item.purchaseInvoiceItems.reduce(
-          (sum, invoiceItem) => sum + Number(invoiceItem.quantity), 
-          0
-        );
-        const availableQty = Number(item.receivedQty) - invoicedQty;
+    const processedGrns = grns
+      .map((grn) => ({
+        ...grn,
+        items: grn.items
+          .map((item) => {
+            // Calculate total invoiced quantity for this GRN item
+            const invoicedQty = item.purchaseInvoiceItems.reduce(
+              (sum, invoiceItem) => sum + Number(invoiceItem.quantity),
+              0,
+            );
+            const availableQty = Number(item.receivedQty) - invoicedQty;
 
-        // Find corresponding PO item to get unit price
-        const poItem = grn.purchaseOrder?.items.find(poi => poi.itemId === item.itemId);
-        const unitPrice = poItem ? Number(poItem.unitPrice) : 0;
+            // Find corresponding PO item to get unit price
+            const poItem = grn.purchaseOrder?.items.find(
+              (poi) => poi.itemId === item.itemId,
+            );
+            const unitPrice = poItem ? Number(poItem.unitPrice) : 0;
 
-        return {
-          ...item,
-          availableQty: Math.max(0, availableQty), // Ensure non-negative
-          unitPrice, // Add unit price from PO
-          item: {
-            sku: item.item.sku,
-            taxRate1: item.item.taxRate1,
-          },
-        };
-      }).filter(item => item.availableQty > 0), // Only return items with available quantity
-    })).filter(grn => grn.items.length > 0); // Only return GRNs with available items
+            return {
+              ...item,
+              availableQty: Math.max(0, availableQty), // Ensure non-negative
+              unitPrice, // Add unit price from PO
+              item: {
+                sku: item.item.sku,
+                taxRate1: item.item.taxRate1,
+              },
+            };
+          })
+          .filter((item) => item.availableQty > 0), // Only return items with available quantity
+      }))
+      .filter((grn) => grn.items.length > 0); // Only return GRNs with available items
 
     return processedGrns;
   }
@@ -568,9 +636,9 @@ export class PurchaseInvoiceService {
     });
 
     // Calculate available quantities for each Landed Cost item
-    const processedLandedCosts = landedCosts.map(lc => ({
+    const processedLandedCosts = landedCosts.map((lc) => ({
       ...lc,
-      items: lc.items.map(item => ({
+      items: lc.items.map((item) => ({
         ...item,
         availableQty: Number(item.qty),
         item: {
@@ -602,18 +670,23 @@ export class PurchaseInvoiceService {
       // Validate quantities against GRN items
       for (const item of createDto.items) {
         if (item.grnItemId) {
-          const grnItem = grn.items.find(gi => gi.id === item.grnItemId);
+          const grnItem = grn.items.find((gi) => gi.id === item.grnItemId);
           if (!grnItem) {
-            throw new BadRequestException(`GRN item ${item.grnItemId} not found`);
+            throw new BadRequestException(
+              `GRN item ${item.grnItemId} not found`,
+            );
           }
 
           // Check if quantity exceeds available quantity
-          const existingInvoiceQty = await this.getInvoicedQuantity(item.grnItemId, 'grn');
+          const existingInvoiceQty = await this.getInvoicedQuantity(
+            item.grnItemId,
+            'grn',
+          );
           const availableQty = Number(grnItem.receivedQty) - existingInvoiceQty;
-          
+
           if (item.quantity > availableQty) {
             throw new BadRequestException(
-              `Invoice quantity ${item.quantity} exceeds available quantity ${availableQty} for item ${item.itemId}`
+              `Invoice quantity ${item.quantity} exceeds available quantity ${availableQty} for item ${item.itemId}`,
             );
           }
         }
@@ -631,24 +704,38 @@ export class PurchaseInvoiceService {
         throw new BadRequestException('Landed Cost not found');
       }
 
-      if (!landedCost.status || !['DRAFT', 'SUBMITTED', 'APPROVED', 'POSTED', 'VALUED'].includes(landedCost.status)) {
-        throw new BadRequestException('Landed Cost must have a valid status to create invoice');
+      if (
+        !landedCost.status ||
+        !['DRAFT', 'SUBMITTED', 'APPROVED', 'POSTED', 'VALUED'].includes(
+          landedCost.status,
+        )
+      ) {
+        throw new BadRequestException(
+          'Landed Cost must have a valid status to create invoice',
+        );
       }
 
       // Validate quantities against Landed Cost items
       for (const item of createDto.items) {
         if (item.landedCostItemId) {
-          const lcItem = landedCost.items.find(lci => lci.id === item.landedCostItemId);
+          const lcItem = landedCost.items.find(
+            (lci) => lci.id === item.landedCostItemId,
+          );
           if (!lcItem) {
-            throw new BadRequestException(`Landed Cost item ${item.landedCostItemId} not found`);
+            throw new BadRequestException(
+              `Landed Cost item ${item.landedCostItemId} not found`,
+            );
           }
 
-          const existingInvoiceQty = await this.getInvoicedQuantity(item.landedCostItemId, 'landedCost');
+          const existingInvoiceQty = await this.getInvoicedQuantity(
+            item.landedCostItemId,
+            'landedCost',
+          );
           const availableQty = Number(lcItem.qty) - existingInvoiceQty;
-          
+
           if (item.quantity > availableQty) {
             throw new BadRequestException(
-              `Invoice quantity ${item.quantity} exceeds available quantity ${availableQty} for item ${item.itemId}`
+              `Invoice quantity ${item.quantity} exceeds available quantity ${availableQty} for item ${item.itemId}`,
             );
           }
         }
@@ -659,7 +746,9 @@ export class PurchaseInvoiceService {
     const isDirect = !createDto.grnId && !createDto.landedCostId;
     if (isDirect) {
       if (!createDto.warehouseId) {
-        throw new BadRequestException('warehouseId is required for Direct Purchase Invoices');
+        throw new BadRequestException(
+          'warehouseId is required for Direct Purchase Invoices',
+        );
       }
       const warehouse = await this.prisma.warehouse.findUnique({
         where: { id: createDto.warehouseId },
@@ -674,13 +763,19 @@ export class PurchaseInvoiceService {
           select: { id: true },
         });
         if (!exists) {
-          throw new BadRequestException(`Item ${item.itemId} not found in master`);
+          throw new BadRequestException(
+            `Item ${item.itemId} not found in master`,
+          );
         }
         if (item.quantity <= 0) {
-          throw new BadRequestException(`Quantity must be greater than 0 for item ${item.itemId}`);
+          throw new BadRequestException(
+            `Quantity must be greater than 0 for item ${item.itemId}`,
+          );
         }
         if (item.unitPrice <= 0) {
-          throw new BadRequestException(`Unit price must be greater than 0 for item ${item.itemId}`);
+          throw new BadRequestException(
+            `Unit price must be greater than 0 for item ${item.itemId}`,
+          );
         }
       }
     }
@@ -695,10 +790,12 @@ export class PurchaseInvoiceService {
     }
   }
 
-  private async getInvoicedQuantity(itemId: string, type: 'grn' | 'landedCost'): Promise<number> {
-    const whereClause = type === 'grn' 
-      ? { grnItemId: itemId }
-      : { landedCostItemId: itemId };
+  private async getInvoicedQuantity(
+    itemId: string,
+    type: 'grn' | 'landedCost',
+  ): Promise<number> {
+    const whereClause =
+      type === 'grn' ? { grnItemId: itemId } : { landedCostItemId: itemId };
 
     const result = await this.prisma.purchaseInvoiceItem.aggregate({
       where: whereClause,
@@ -708,31 +805,38 @@ export class PurchaseInvoiceService {
     return Number(result._sum.quantity) || 0;
   }
 
-  private calculateTotals(dto: CreatePurchaseInvoiceDto | UpdatePurchaseInvoiceDto, existingAdvanceTaxRate?: number) {
+  private calculateTotals(
+    dto: CreatePurchaseInvoiceDto | UpdatePurchaseInvoiceDto,
+    existingAdvanceTaxRate?: number,
+  ) {
     let subtotal = 0;
     let taxAmount = 0;
 
     const items = dto.items || [];
     for (const item of items) {
       const lineTotal = item.quantity * item.unitPrice;
-      const itemDiscountAmount = lineTotal * (item.discountRate || 0) / 100;
+      const itemDiscountAmount = (lineTotal * (item.discountRate || 0)) / 100;
       const discountedAmount = lineTotal - itemDiscountAmount;
-      const itemTaxAmount = discountedAmount * (item.taxRate || 0) / 100;
+      const itemTaxAmount = (discountedAmount * (item.taxRate || 0)) / 100;
 
       subtotal = subtotal + discountedAmount;
       taxAmount = taxAmount + itemTaxAmount;
     }
 
-    const totalDiscountAmount = dto.discountAmount !== undefined ? dto.discountAmount : 0;
+    const totalDiscountAmount =
+      dto.discountAmount !== undefined ? dto.discountAmount : 0;
     const baseTotal = subtotal + taxAmount - totalDiscountAmount;
 
     let advanceTaxRate = 0.5;
     if (dto.advanceTaxRate !== undefined && dto.advanceTaxRate !== null) {
       advanceTaxRate = dto.advanceTaxRate;
-    } else if (existingAdvanceTaxRate !== undefined && existingAdvanceTaxRate !== null) {
+    } else if (
+      existingAdvanceTaxRate !== undefined &&
+      existingAdvanceTaxRate !== null
+    ) {
       advanceTaxRate = existingAdvanceTaxRate;
     }
-    const advanceTaxAmount = baseTotal * advanceTaxRate / 100;
+    const advanceTaxAmount = (baseTotal * advanceTaxRate) / 100;
 
     const totalAmount = baseTotal + advanceTaxAmount;
 
@@ -748,7 +852,7 @@ export class PurchaseInvoiceService {
   async getNextInvoiceNumber(): Promise<{ nextInvoiceNumber: string }> {
     const currentYear = new Date().getFullYear();
     const prefix = 'PI';
-    
+
     const lastInvoice = await this.prisma.purchaseInvoice.findFirst({
       where: {
         invoiceNumber: {
@@ -762,7 +866,9 @@ export class PurchaseInvoiceService {
 
     let nextNumber = 1;
     if (lastInvoice) {
-      const lastNumber = parseInt(lastInvoice.invoiceNumber.split('-').pop() || '0');
+      const lastNumber = parseInt(
+        lastInvoice.invoiceNumber.split('-').pop() || '0',
+      );
       nextNumber = lastNumber + 1;
     }
 
@@ -772,7 +878,7 @@ export class PurchaseInvoiceService {
 
   async getSummary(supplierId?: string) {
     const where = supplierId ? { supplierId } : {};
-    
+
     const [
       totalInvoices,
       draftInvoices,
@@ -782,8 +888,12 @@ export class PurchaseInvoiceService {
       pendingAmount,
     ] = await Promise.all([
       this.prisma.purchaseInvoice.count({ where }),
-      this.prisma.purchaseInvoice.count({ where: { ...where, status: 'DRAFT' } }),
-      this.prisma.purchaseInvoice.count({ where: { ...where, status: 'APPROVED' } }),
+      this.prisma.purchaseInvoice.count({
+        where: { ...where, status: 'DRAFT' },
+      }),
+      this.prisma.purchaseInvoice.count({
+        where: { ...where, status: 'APPROVED' },
+      }),
       this.prisma.purchaseInvoice.aggregate({
         where,
         _sum: { totalAmount: true },
@@ -808,12 +918,17 @@ export class PurchaseInvoiceService {
     };
   }
 
-  async approve(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async approve(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const invoice = await this.findOne(id);
 
       if (invoice.status === 'APPROVED' || invoice.status === 'CANCELLED') {
-        throw new BadRequestException('Invoice is already approved or cancelled');
+        throw new BadRequestException(
+          'Invoice is already approved or cancelled',
+        );
       }
 
       // Fetch supplier with linked payable accounts
@@ -822,7 +937,9 @@ export class PurchaseInvoiceService {
       });
 
       if (!supplier) {
-        throw new BadRequestException('Supplier not found for this purchase invoice.');
+        throw new BadRequestException(
+          'Supplier not found for this purchase invoice.',
+        );
       }
 
       return this.prisma.$transaction(async (tx) => {
@@ -853,7 +970,8 @@ export class PurchaseInvoiceService {
           // Gracefully ignore if not configured
         }
 
-        let payableAccounts: { accountId: string; tagAccountId?: string }[] = [];
+        const payableAccounts: { accountId: string; tagAccountId?: string }[] =
+          [];
 
         if (apPartiesAccountId && supplier) {
           const tagAccount = await tx.chartOfAccount.findFirst({
@@ -879,22 +997,28 @@ export class PurchaseInvoiceService {
           // Build and post journal lines only if finance configuration is present
           if (purchasesAccountId && payableAccounts.length > 0) {
             const creditPerAccount = totalAmount / payableAccounts.length;
-            const creditLines = payableAccounts.map(acc => ({
+            const creditLines = payableAccounts.map((acc) => ({
               accountId: acc.accountId,
               tagAccountId: acc.tagAccountId,
               debit: 0,
               credit: creditPerAccount,
             }));
 
-            const debitLines = [{ accountId: purchasesAccountId, debit: totalAmount, credit: 0 }];
+            const debitLines = [
+              { accountId: purchasesAccountId, debit: totalAmount, credit: 0 },
+            ];
 
-            await this.accounting.postLines([...debitLines, ...creditLines], {
-              sourceType: 'PURCHASE_INVOICE',
-              sourceId: id,
-              sourceRef: invoice.invoiceNumber,
-              description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
-              transactionDate: new Date(),
-            }, tx);
+            await this.accounting.postLines(
+              [...debitLines, ...creditLines],
+              {
+                sourceType: 'PURCHASE_INVOICE',
+                sourceId: id,
+                sourceRef: invoice.invoiceNumber,
+                description: `Purchase Invoice approved: ${invoice.invoiceNumber}`,
+                transactionDate: new Date(),
+              },
+              tx,
+            );
           }
         } else {
           // Generate auto draft Journal Voucher for LOCAL purchase
@@ -907,13 +1031,15 @@ export class PurchaseInvoiceService {
             include: {
               item: {
                 include: {
-                  brand: true
-                }
-              }
-            }
+                  brand: true,
+                },
+              },
+            },
           });
 
-          const brandGroups: { [brandName: string]: { quantity: number; lineTotalExclTax: number } } = {};
+          const brandGroups: {
+            [brandName: string]: { quantity: number; lineTotalExclTax: number };
+          } = {};
           for (const item of itemsWithBrand) {
             const brandName = item.item.brand?.name || 'Unknown';
             if (!brandGroups[brandName]) {
@@ -923,36 +1049,50 @@ export class PurchaseInvoiceService {
             const price = Number(item.unitPrice);
             const discount = Number(item.discountAmount || 0);
             brandGroups[brandName].quantity += qty;
-            brandGroups[brandName].lineTotalExclTax += (qty * price - discount);
+            brandGroups[brandName].lineTotalExclTax += qty * price - discount;
           }
 
           const detailsData: any[] = [];
-          const roundToTwo = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
-          const totalQuantity = itemsWithBrand.reduce((sum, item) => sum + Number(item.quantity), 0);
+          const roundToTwo = (num: number) =>
+            Math.round((num + Number.EPSILON) * 100) / 100;
+          const totalQuantity = itemsWithBrand.reduce(
+            (sum, item) => sum + Number(item.quantity),
+            0,
+          );
           const brandListStr = Object.keys(brandGroups).join(' & ');
 
           // 1. Debit lines for purchases (60020002) grouped by brand
           const purchasesParent = await tx.chartOfAccount.findFirst({
-            where: { code: '60020002' }
+            where: { code: '60020002' },
           });
           if (!purchasesParent) {
-            throw new BadRequestException('Purchases Local account (60020002) not found in Chart of Accounts.');
+            throw new BadRequestException(
+              'Purchases Local account (60020002) not found in Chart of Accounts.',
+            );
           }
 
           for (const [brandName, group] of Object.entries(brandGroups)) {
             const tagAccount = await tx.chartOfAccount.findFirst({
               where: {
                 parentId: purchasesParent.id,
-                name: { equals: brandName, mode: 'insensitive' }
-              }
+                name: { equals: brandName, mode: 'insensitive' },
+              },
             });
             if (!tagAccount) {
-              throw new BadRequestException(`Tag account for brand "${brandName}" not found under Purchases Local account (60020002).`);
+              throw new BadRequestException(
+                `Tag account for brand "${brandName}" not found under Purchases Local account (60020002).`,
+              );
             }
 
             let brandDebitValue = group.lineTotalExclTax;
-            if (Number(invoice.discountAmount) > 0 && Number(invoice.subtotal) > 0) {
-              brandDebitValue = brandDebitValue - (brandDebitValue / Number(invoice.subtotal)) * Number(invoice.discountAmount);
+            if (
+              Number(invoice.discountAmount) > 0 &&
+              Number(invoice.subtotal) > 0
+            ) {
+              brandDebitValue =
+                brandDebitValue -
+                (brandDebitValue / Number(invoice.subtotal)) *
+                  Number(invoice.discountAmount);
             }
 
             detailsData.push({
@@ -970,20 +1110,24 @@ export class PurchaseInvoiceService {
           // 2. Sales tax line (31070003) - Debit
           if (Number(invoice.taxAmount) > 0) {
             const taxParent = await tx.chartOfAccount.findFirst({
-              where: { code: '31070003' }
+              where: { code: '31070003' },
             });
             if (!taxParent) {
-              throw new BadRequestException('Sales Tax account (31070003) not found in Chart of Accounts.');
+              throw new BadRequestException(
+                'Sales Tax account (31070003) not found in Chart of Accounts.',
+              );
             }
 
             const tagAccount = await tx.chartOfAccount.findFirst({
               where: {
                 parentId: taxParent.id,
-                code: supplier.code
-              }
+                code: supplier.code,
+              },
             });
             if (!tagAccount) {
-              throw new BadRequestException(`Tag account with code "${supplier.code}" not found under Sales Tax account (31070003).`);
+              throw new BadRequestException(
+                `Tag account with code "${supplier.code}" not found under Sales Tax account (31070003).`,
+              );
             }
 
             detailsData.push({
@@ -1001,20 +1145,24 @@ export class PurchaseInvoiceService {
           // 3. Advance tax line (31080002) - Debit
           if (Number(invoice.advanceTaxAmount) > 0) {
             const advTaxParent = await tx.chartOfAccount.findFirst({
-              where: { code: '31080002' }
+              where: { code: '31080002' },
             });
             if (!advTaxParent) {
-              throw new BadRequestException('Advance Tax account (31080002) not found in Chart of Accounts.');
+              throw new BadRequestException(
+                'Advance Tax account (31080002) not found in Chart of Accounts.',
+              );
             }
 
             const tagAccount = await tx.chartOfAccount.findFirst({
               where: {
                 parentId: advTaxParent.id,
-                code: supplier.code
-              }
+                code: supplier.code,
+              },
             });
             if (!tagAccount) {
-              throw new BadRequestException(`Tag account with code "${supplier.code}" not found under Advance Tax account (31080002).`);
+              throw new BadRequestException(
+                `Tag account with code "${supplier.code}" not found under Advance Tax account (31080002).`,
+              );
             }
 
             detailsData.push({
@@ -1031,23 +1179,30 @@ export class PurchaseInvoiceService {
 
           // 4. Bills payable line (12010004) - Credit
           const billsPayableParent = await tx.chartOfAccount.findFirst({
-            where: { code: '12010004' }
+            where: { code: '12010004' },
           });
           if (!billsPayableParent) {
-            throw new BadRequestException('Bills Payable-Local account (12010004) not found in Chart of Accounts.');
+            throw new BadRequestException(
+              'Bills Payable-Local account (12010004) not found in Chart of Accounts.',
+            );
           }
 
           const bpTagAccount = await tx.chartOfAccount.findFirst({
             where: {
               parentId: billsPayableParent.id,
-              code: supplier.code
-            }
+              code: supplier.code,
+            },
           });
           if (!bpTagAccount) {
-            throw new BadRequestException(`Tag account with code "${supplier.code}" not found under Bills Payable-Local account (12010004).`);
+            throw new BadRequestException(
+              `Tag account with code "${supplier.code}" not found under Bills Payable-Local account (12010004).`,
+            );
           }
 
-          const valueInclSalesTax = Number(invoice.subtotal) + Number(invoice.taxAmount) - Number(invoice.discountAmount);
+          const valueInclSalesTax =
+            Number(invoice.subtotal) +
+            Number(invoice.taxAmount) -
+            Number(invoice.discountAmount);
           detailsData.push({
             accountId: billsPayableParent.id,
             tagAccountId: bpTagAccount.id,
@@ -1083,9 +1238,13 @@ export class PurchaseInvoiceService {
 
           const diff = roundToTwo(totalCreditSum - totalDebitSum);
           if (Math.abs(diff) > 0 && detailsData.length > 0) {
-            const firstPurchaseLine = detailsData.find(d => d.accountId === purchasesParent.id);
+            const firstPurchaseLine = detailsData.find(
+              (d) => d.accountId === purchasesParent.id,
+            );
             if (firstPurchaseLine) {
-              firstPurchaseLine.debit = roundToTwo(firstPurchaseLine.debit + diff);
+              firstPurchaseLine.debit = roundToTwo(
+                firstPurchaseLine.debit + diff,
+              );
             }
           }
 
@@ -1098,7 +1257,7 @@ export class PurchaseInvoiceService {
               description: `Auto Generated JV from Approved Purchase Invoice ${invoice.invoiceNumber}`,
               status: 'pending', // Draft
               details: {
-                create: detailsData.map(d => ({
+                create: detailsData.map((d) => ({
                   accountId: d.accountId,
                   tagAccountId: d.tagAccountId,
                   debit: d.debit,
@@ -1119,7 +1278,8 @@ export class PurchaseInvoiceService {
           select: { currentBalance: true, advanceBalance: true },
         });
         if (supplierForLedger) {
-          const newBalance = Number(supplierForLedger.currentBalance) + totalAmount;
+          const newBalance =
+            Number(supplierForLedger.currentBalance) + totalAmount;
           await tx.supplierLedger.create({
             data: {
               supplierId: invoice.supplierId,
@@ -1143,7 +1303,10 @@ export class PurchaseInvoiceService {
         }
 
         // ── DIRECT invoice: update warehouse inventory on approval ────────────
-        if ((invoice as any).invoiceType === 'DIRECT' && (invoice as any).warehouseId) {
+        if (
+          (invoice as any).invoiceType === 'DIRECT' &&
+          (invoice as any).warehouseId
+        ) {
           const warehouseId = (invoice as any).warehouseId as string;
           for (const item of invoice.items) {
             const qty = new Prisma.Decimal(item.quantity);
@@ -1165,7 +1328,12 @@ export class PurchaseInvoiceService {
 
             // Upsert InventoryItem (warehouse stock)
             const existing = await tx.inventoryItem.findFirst({
-              where: { warehouseId, locationId: null, itemId: item.itemId, status: 'AVAILABLE' },
+              where: {
+                warehouseId,
+                locationId: null,
+                itemId: item.itemId,
+                status: 'AVAILABLE',
+              },
             });
             if (existing) {
               await tx.inventoryItem.update({
@@ -1174,7 +1342,13 @@ export class PurchaseInvoiceService {
               });
             } else {
               await tx.inventoryItem.create({
-                data: { warehouseId, locationId: null, itemId: item.itemId, quantity: qty, status: 'AVAILABLE' },
+                data: {
+                  warehouseId,
+                  locationId: null,
+                  itemId: item.itemId,
+                  quantity: qty,
+                  status: 'AVAILABLE',
+                },
               });
             }
           }
@@ -1219,7 +1393,11 @@ export class PurchaseInvoiceService {
     }
   }
 
-  async cancel(id: string, reason?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async cancel(
+    id: string,
+    reason?: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const invoice = await this.findOne(id);
 
@@ -1239,7 +1417,9 @@ export class PurchaseInvoiceService {
           });
 
           if (!supplier) {
-            throw new BadRequestException('Supplier not found for this purchase invoice.');
+            throw new BadRequestException(
+              'Supplier not found for this purchase invoice.',
+            );
           }
 
           let purchasesAccount: string | null = null;
@@ -1260,7 +1440,10 @@ export class PurchaseInvoiceService {
             // Gracefully ignore if not configured
           }
 
-          let payableAccounts: { accountId: string; tagAccountId?: string }[] = [];
+          const payableAccounts: {
+            accountId: string;
+            tagAccountId?: string;
+          }[] = [];
 
           if (apPartiesAccountId && supplier) {
             const tagAccount = await tx.chartOfAccount.findFirst({
@@ -1289,7 +1472,7 @@ export class PurchaseInvoiceService {
 
               const originalLines = [
                 { accountId: purchasesAccount, debit: totalAmount, credit: 0 },
-                ...payableAccounts.map(acc => ({
+                ...payableAccounts.map((acc) => ({
                   accountId: acc.accountId,
                   tagAccountId: acc.tagAccountId,
                   debit: 0,
@@ -1297,18 +1480,25 @@ export class PurchaseInvoiceService {
                 })),
               ];
 
-              await this.accounting.reverseLines(originalLines, {
-                sourceType: 'PURCHASE_INVOICE',
-                sourceId: id,
-                sourceRef: invoice.invoiceNumber,
-                description: `Purchase Invoice cancelled: ${invoice.invoiceNumber}`,
-                transactionDate: new Date(),
-              }, tx);
+              await this.accounting.reverseLines(
+                originalLines,
+                {
+                  sourceType: 'PURCHASE_INVOICE',
+                  sourceId: id,
+                  sourceRef: invoice.invoiceNumber,
+                  description: `Purchase Invoice cancelled: ${invoice.invoiceNumber}`,
+                  transactionDate: new Date(),
+                },
+                tx,
+              );
             }
           }
 
           // ── DIRECT invoice: reverse warehouse inventory on cancellation ──────
-          if ((invoice as any).invoiceType === 'DIRECT' && (invoice as any).warehouseId) {
+          if (
+            (invoice as any).invoiceType === 'DIRECT' &&
+            (invoice as any).warehouseId
+          ) {
             const warehouseId = (invoice as any).warehouseId as string;
             for (const item of invoice.items) {
               const qty = new Prisma.Decimal(item.quantity).negated();
@@ -1328,12 +1518,19 @@ export class PurchaseInvoiceService {
 
               // Decrement InventoryItem
               const existing = await tx.inventoryItem.findFirst({
-                where: { warehouseId, locationId: null, itemId: item.itemId, status: 'AVAILABLE' },
+                where: {
+                  warehouseId,
+                  locationId: null,
+                  itemId: item.itemId,
+                  status: 'AVAILABLE',
+                },
               });
               if (existing) {
                 await tx.inventoryItem.update({
                   where: { id: existing.id },
-                  data: { quantity: { decrement: new Prisma.Decimal(item.quantity) } },
+                  data: {
+                    quantity: { decrement: new Prisma.Decimal(item.quantity) },
+                  },
                 });
               }
             }
@@ -1344,7 +1541,9 @@ export class PurchaseInvoiceService {
           where: { id },
           data: {
             status: 'CANCELLED',
-            ...(reason && { notes: `${invoice.notes || ''}\nCancellation Reason: ${reason}` }),
+            ...(reason && {
+              notes: `${invoice.notes || ''}\nCancellation Reason: ${reason}`,
+            }),
           },
           include: { supplier: true, grn: true, landedCost: true, items: true },
         });
@@ -1358,7 +1557,10 @@ export class PurchaseInvoiceService {
             entity: 'PurchaseInvoice',
             entityId: id,
             description: `Cancelled purchase invoice ${invoice.invoiceNumber}. Reason: ${reason || 'N/A'}`,
-            newValues: JSON.stringify({ status: 'CANCELLED', cancellationReason: reason }),
+            newValues: JSON.stringify({
+              status: 'CANCELLED',
+              cancellationReason: reason,
+            }),
             ipAddress: ctx?.ipAddress,
             userAgent: ctx?.userAgent,
             status: 'success',
@@ -1378,7 +1580,10 @@ export class PurchaseInvoiceService {
           entityId: id,
           description: `Failed to cancel purchase invoice. Reason: ${reason || 'N/A'}`,
           errorMessage: error?.message,
-          newValues: JSON.stringify({ status: 'CANCELLED', cancellationReason: reason }),
+          newValues: JSON.stringify({
+            status: 'CANCELLED',
+            cancellationReason: reason,
+          }),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',
@@ -1387,5 +1592,4 @@ export class PurchaseInvoiceService {
       throw error;
     }
   }
-  
 }

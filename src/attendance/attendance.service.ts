@@ -132,7 +132,10 @@ export class AttendanceService {
             if (policy.dayOverrides) {
               const overrides = policy.dayOverrides as any;
               if (Array.isArray(overrides)) {
-                const group = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+                const group = overrides.find(
+                  (g: any) =>
+                    g && Array.isArray(g.days) && g.days.includes(dayName),
+                );
                 if (group) {
                   isOff = !group.enabled;
                 }
@@ -451,7 +454,9 @@ export class AttendanceService {
       const overrides = policy.dayOverrides as any;
       let override: any = null;
       if (Array.isArray(overrides)) {
-        override = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+        override = overrides.find(
+          (g: any) => g && Array.isArray(g.days) && g.days.includes(dayName),
+        );
       } else if (typeof overrides === 'object') {
         override = (overrides as any)[dayName];
       }
@@ -1357,7 +1362,10 @@ export class AttendanceService {
   /**
    * Helper to check if a date is a weekly off day for a specific employee
    */
-  private async isDateWeeklyOff(employeeId: string, date: Date): Promise<boolean> {
+  private async isDateWeeklyOff(
+    employeeId: string,
+    date: Date,
+  ): Promise<boolean> {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       select: { workingHoursPolicyId: true },
@@ -1373,16 +1381,19 @@ export class AttendanceService {
     const dateEnd = new Date(date);
     dateEnd.setHours(23, 59, 59, 999);
 
-    const assignment = await this.prisma.workingHoursPolicyAssignment.findFirst({
-      where: {
-        employeeId,
-        startDate: { lte: dateEnd },
-        endDate: { gte: dateStart },
+    const assignment = await this.prisma.workingHoursPolicyAssignment.findFirst(
+      {
+        where: {
+          employeeId,
+          startDate: { lte: dateEnd },
+          endDate: { gte: dateStart },
+        },
+        orderBy: { createdAt: 'desc' },
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    );
 
-    const policyId = assignment?.workingHoursPolicyId || employee.workingHoursPolicyId;
+    const policyId =
+      assignment?.workingHoursPolicyId || employee.workingHoursPolicyId;
     const policy = await this.prisma.workingHoursPolicy.findUnique({
       where: { id: policyId },
     });
@@ -1410,7 +1421,9 @@ export class AttendanceService {
     if (policy.dayOverrides) {
       const overrides = policy.dayOverrides as any;
       if (Array.isArray(overrides)) {
-        const group = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+        const group = overrides.find(
+          (g: any) => g && Array.isArray(g.days) && g.days.includes(dayName),
+        );
         if (group) {
           isOff = !group.enabled;
         }
@@ -1447,7 +1460,9 @@ export class AttendanceService {
       // Check if this date is actually a weekly off day for the employee
       const isWeeklyOff = await this.isDateWeeklyOff(employeeId, date);
       if (!isWeeklyOff) {
-        console.log(`🔍 [SANDWICH RULE] Skipping ${date.toISOString().split('T')[0]} because it is NOT a weekly off day`);
+        console.log(
+          `🔍 [SANDWICH RULE] Skipping ${date.toISOString().split('T')[0]} because it is NOT a weekly off day`,
+        );
         continue;
       }
 
@@ -2168,13 +2183,16 @@ export class AttendanceService {
             const dayName = dayNames[date.getDay()];
             // Default weekly off for default policy: Saturday/Sunday
             isWeeklyOff = policy.isDefault
-              ? (dayName === 'saturday' || dayName === 'sunday')
+              ? dayName === 'saturday' || dayName === 'sunday'
               : false;
 
             if (policy.dayOverrides) {
               const overrides = policy.dayOverrides as any;
               if (Array.isArray(overrides)) {
-                const group = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+                const group = overrides.find(
+                  (g: any) =>
+                    g && Array.isArray(g.days) && g.days.includes(dayName),
+                );
                 if (group) {
                   isWeeklyOff = !group.enabled;
                 }

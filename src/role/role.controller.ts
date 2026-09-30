@@ -27,7 +27,7 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/roles')
 export class RoleController {
-  constructor(private readonly roleService: RoleService,) {}
+  constructor(private readonly roleService: RoleService) {}
 
   @Post()
   @Permissions('role.create')
@@ -58,7 +58,11 @@ export class RoleController {
   @Patch(':id')
   @Permissions('role.update')
   @ApiOperation({ summary: 'Update a role' })
-  update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto, @Req() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updateRoleDto: UpdateRoleDto,
+    @Req() req: any,
+  ) {
     const ctx = {
       userId: req.user?.id,
       ipAddress: req.ip,

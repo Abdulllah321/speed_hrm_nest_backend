@@ -165,7 +165,8 @@ export class NetSalesSummaryExportService {
   private readonly logger = new Logger(NetSalesSummaryExportService.name);
 
   constructor(
-    @InjectQueue('net-sales-summary-export') private readonly exportQueue: Queue,
+    @InjectQueue('net-sales-summary-export')
+    private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly prismaMaster: PrismaMasterService,
     private readonly uploadService: UploadService,
@@ -250,8 +251,12 @@ export class NetSalesSummaryExportService {
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number; message?: string }> {
-    const job = (await this.exportQueue.getJob(jobId)) || (await this.exportQueue.getJob(`preview-${jobId}`));
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number; message?: string }> {
+    const job =
+      (await this.exportQueue.getJob(jobId)) ||
+      (await this.exportQueue.getJob(`preview-${jobId}`));
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
     const rawProg: any = job.progress();
@@ -259,21 +264,32 @@ export class NetSalesSummaryExportService {
       typeof rawProg === 'number'
         ? rawProg
         : typeof rawProg === 'object' && rawProg?.percent !== undefined
-        ? Number(rawProg.percent)
-        : 0;
-    const message = typeof rawProg === 'object' && rawProg?.message ? String(rawProg.message) : undefined;
+          ? Number(rawProg.percent)
+          : 0;
+    const message =
+      typeof rawProg === 'object' && rawProg?.message
+        ? String(rawProg.message)
+        : undefined;
     return { state, progress, message };
   }
 
   async getJobQueueStatus(jobId: string) {
-    const job = (await this.exportQueue.getJob(`preview-${jobId}`)) || (await this.exportQueue.getJob(jobId));
+    const job =
+      (await this.exportQueue.getJob(`preview-${jobId}`)) ||
+      (await this.exportQueue.getJob(jobId));
     if (!job) {
       return { status: 'completed', progress: 100 };
     }
     const state = await job.getState();
     const progressData = job.progress();
-    const progress = typeof progressData === 'number' ? progressData : (progressData as any)?.percent || 0;
-    const message = typeof progressData === 'object' ? (progressData as any)?.message : undefined;
+    const progress =
+      typeof progressData === 'number'
+        ? progressData
+        : (progressData as any)?.percent || 0;
+    const message =
+      typeof progressData === 'object'
+        ? (progressData as any)?.message
+        : undefined;
     return {
       status: state,
       progress: progress || (state === 'completed' ? 100 : 0),
@@ -291,7 +307,9 @@ export class NetSalesSummaryExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     try {
@@ -300,30 +318,48 @@ export class NetSalesSummaryExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export history download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
       const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(
+        s3Key,
+        record.fileName,
+      );
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
     const filePath = path.join(process.cwd(), record.filePath);
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
     const stat = fs.statSync(filePath);
     const stream = fs.createReadStream(filePath);
     const isPdf = record.fileName.endsWith('.pdf');
 
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
 
@@ -332,25 +368,40 @@ export class NetSalesSummaryExportService {
 
   getPreviewFilePath(jobId: string): string {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
-    const ndjsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      previewDir,
+      `net-sales-summary-preview-${jobId}.ndjson.gz`,
+    );
     if (fs.existsSync(ndjsonPath)) return ndjsonPath;
-    const jsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
+    const jsonPath = path.join(
+      previewDir,
+      `net-sales-summary-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) return jsonPath;
     return ndjsonPath;
   }
 
   getPreviewNdjsonFilePath(jobId: string): string {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
-    return path.join(previewDir, `net-sales-summary-preview-${jobId}.ndjson.gz`);
+    return path.join(
+      previewDir,
+      `net-sales-summary-preview-${jobId}.ndjson.gz`,
+    );
   }
 
-  async saveReportPreviewResult(jobId: string, result: NetSalesSummaryReportResult): Promise<void> {
+  async saveReportPreviewResult(
+    jobId: string,
+    result: NetSalesSummaryReportResult,
+  ): Promise<void> {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
     await fs.promises.mkdir(previewDir, { recursive: true });
 
     // 1. Save compressed preview JSON directly (capped to 5,000 records for instant <5ms frontend preview loading)
     try {
-      const jsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
+      const jsonPath = path.join(
+        previewDir,
+        `net-sales-summary-preview-${jobId}.json.gz`,
+      );
       const previewResult = {
         ...result,
         flatItems: (result.flatItems || []).slice(0, 5000),
@@ -359,7 +410,9 @@ export class NetSalesSummaryExportService {
       const compressedJson = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
       await fs.promises.writeFile(jsonPath, compressedJson);
     } catch (err: any) {
-      this.logger.warn(`Failed to save compressed preview JSON for ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Failed to save compressed preview JSON for ${jobId}: ${err.message}`,
+      );
     }
 
     // 2. Stream complete un-truncated NDJSON to disk with fine-grained 1500-item chunks
@@ -443,10 +496,18 @@ export class NetSalesSummaryExportService {
     });
   }
 
-  async getReportPreviewResult(jobId: string): Promise<NetSalesSummaryReportResult | null> {
+  async getReportPreviewResult(
+    jobId: string,
+  ): Promise<NetSalesSummaryReportResult | null> {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
-    const jsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.json.gz`);
-    const ndjsonPath = path.join(previewDir, `net-sales-summary-preview-${jobId}.ndjson.gz`);
+    const jsonPath = path.join(
+      previewDir,
+      `net-sales-summary-preview-${jobId}.json.gz`,
+    );
+    const ndjsonPath = path.join(
+      previewDir,
+      `net-sales-summary-preview-${jobId}.ndjson.gz`,
+    );
 
     // Poll for up to 15 seconds in case file is currently being flushed to disk by background processor
     for (let attempt = 0; attempt < 30; attempt++) {
@@ -457,7 +518,9 @@ export class NetSalesSummaryExportService {
           const parsed = JSON.parse(decompressed.toString('utf8'));
           return parsed.data || parsed;
         } catch (err: any) {
-          this.logger.warn(`Attempt ${attempt}: Error reading json.gz for ${jobId}: ${err.message}`);
+          this.logger.warn(
+            `Attempt ${attempt}: Error reading json.gz for ${jobId}: ${err.message}`,
+          );
         }
       }
       if (attempt < 29) {
@@ -554,7 +617,10 @@ export class NetSalesSummaryExportService {
     const isSeparate = reportType === 'separate';
     const now = new Date();
 
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -578,10 +644,20 @@ export class NetSalesSummaryExportService {
     let startDate: Date;
     let endDate: Date;
 
-    if (fiscalYear === '2026-2027' || fiscalYear === '26-27' || fiscalYear === 'fy-26-27' || fiscalYear === 'current') {
+    if (
+      fiscalYear === '2026-2027' ||
+      fiscalYear === '26-27' ||
+      fiscalYear === 'fy-26-27' ||
+      fiscalYear === 'current'
+    ) {
       startDate = new Date(Date.UTC(2026, 6, 1, 0, 0, 0, 0));
       endDate = new Date(Date.UTC(2027, 5, 30, 23, 59, 59, 999));
-    } else if (fiscalYear === '2025-2026' || fiscalYear === '25-26' || fiscalYear === 'fy-25-26' || fiscalYear === 'previous') {
+    } else if (
+      fiscalYear === '2025-2026' ||
+      fiscalYear === '25-26' ||
+      fiscalYear === 'fy-25-26' ||
+      fiscalYear === 'previous'
+    ) {
       startDate = new Date(Date.UTC(2025, 6, 1, 0, 0, 0, 0));
       endDate = new Date(Date.UTC(2026, 5, 30, 23, 59, 59, 999));
     } else if (fiscalYear === 'all-time') {
@@ -601,31 +677,52 @@ export class NetSalesSummaryExportService {
       endDate.setHours(23, 59, 59, 999);
     }
 
-    const locIds = locationIds && locationIds.length > 0
-      ? locationIds
-      : locationId
-        ? locationId.split(',').map((s) => s.trim()).filter(Boolean)
-        : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
+    const locIds =
+      locationIds && locationIds.length > 0
+        ? locationIds
+        : locationId
+          ? locationId
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
 
     await onProgress?.(10, 'Loading store metadata and users...');
 
-    const [allLocations, cashiersList, allSizes, allColors] = await Promise.all([
-      prisma.location.findMany({ select: { id: true, name: true, code: true } }),
-      this.prismaMaster?.user?.findMany
-        ? this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } })
-        : (prisma as any).user?.findMany
-        ? (prisma as any).user.findMany({ select: { id: true, firstName: true, lastName: true } })
-        : Promise.resolve([]),
-      prisma.size.findMany({ select: { id: true, name: true } }),
-      prisma.color.findMany({ select: { id: true, name: true } }),
-    ]);
+    const [allLocations, cashiersList, allSizes, allColors] = await Promise.all(
+      [
+        prisma.location.findMany({
+          select: { id: true, name: true, code: true },
+        }),
+        this.prismaMaster?.user?.findMany
+          ? this.prismaMaster.user.findMany({
+              select: { id: true, firstName: true, lastName: true },
+            })
+          : (prisma as any).user?.findMany
+            ? (prisma as any).user.findMany({
+                select: { id: true, firstName: true, lastName: true },
+              })
+            : Promise.resolve([]),
+        prisma.size.findMany({ select: { id: true, name: true } }),
+        prisma.color.findMany({ select: { id: true, name: true } }),
+      ],
+    );
 
     const locationMap = new Map<string, string>();
     for (const l of allLocations) locationMap.set(l.id, l.name);
 
     const cashierMap = new Map<string, string>();
-    for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+    for (const u of cashiersList)
+      cashierMap.set(
+        u.id,
+        `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier',
+      );
 
     const sizeMap = new Map<string, string>();
     for (const s of allSizes) sizeMap.set(s.id, s.name);
@@ -658,22 +755,47 @@ export class NetSalesSummaryExportService {
       netSalesAmount: 0,
     });
 
-    const addTotals = (target: NetSalesSummaryTotals, source: NetSalesSummaryTotals) => {
+    const addTotals = (
+      target: NetSalesSummaryTotals,
+      source: NetSalesSummaryTotals,
+    ) => {
       target.orderCount += source.orderCount;
       target.totalItemsSold += source.totalItemsSold;
       target.totalItemsReturned += source.totalItemsReturned;
       target.netItems += source.netItems;
-      target.retailSalesValue = Number((target.retailSalesValue + source.retailSalesValue).toFixed(2));
-      target.wostAmount = Number((target.wostAmount + source.wostAmount).toFixed(2));
-      target.discountAmount = Number((target.discountAmount + source.discountAmount).toFixed(2));
-      target.discountWostAmount = Number(((target.discountWostAmount || 0) + (source.discountWostAmount || 0)).toFixed(2));
-      target.valueExSalesTax = Number((target.valueExSalesTax + source.valueExSalesTax).toFixed(2));
-      target.taxAmount = Number((target.taxAmount + source.taxAmount).toFixed(2));
-      target.valueInclSalesTax = Number((target.valueInclSalesTax + source.valueInclSalesTax).toFixed(2));
+      target.retailSalesValue = Number(
+        (target.retailSalesValue + source.retailSalesValue).toFixed(2),
+      );
+      target.wostAmount = Number(
+        (target.wostAmount + source.wostAmount).toFixed(2),
+      );
+      target.discountAmount = Number(
+        (target.discountAmount + source.discountAmount).toFixed(2),
+      );
+      target.discountWostAmount = Number(
+        (
+          (target.discountWostAmount || 0) + (source.discountWostAmount || 0)
+        ).toFixed(2),
+      );
+      target.valueExSalesTax = Number(
+        (target.valueExSalesTax + source.valueExSalesTax).toFixed(2),
+      );
+      target.taxAmount = Number(
+        (target.taxAmount + source.taxAmount).toFixed(2),
+      );
+      target.valueInclSalesTax = Number(
+        (target.valueInclSalesTax + source.valueInclSalesTax).toFixed(2),
+      );
 
-      target.grossSalesAmount = Number((target.grossSalesAmount + source.grossSalesAmount).toFixed(2));
-      target.returnAmount = Number((target.returnAmount + source.returnAmount).toFixed(2));
-      target.netSalesAmount = Number((target.netSalesAmount + source.netSalesAmount).toFixed(2));
+      target.grossSalesAmount = Number(
+        (target.grossSalesAmount + source.grossSalesAmount).toFixed(2),
+      );
+      target.returnAmount = Number(
+        (target.returnAmount + source.returnAmount).toFixed(2),
+      );
+      target.netSalesAmount = Number(
+        (target.netSalesAmount + source.netSalesAmount).toFixed(2),
+      );
     };
 
     // Overall accumulator variables matching NetSalesListExportService 1:1
@@ -703,7 +825,10 @@ export class NetSalesSummaryExportService {
     let netReturnAmount = 0;
 
     const flatItemsMap = new Map<string, NetSalesSummaryFlatRecord>();
-    const globalCategoryNodesMap = new Map<string, NetSalesSummaryCategoryNode>();
+    const globalCategoryNodesMap = new Map<
+      string,
+      NetSalesSummaryCategoryNode
+    >();
     const locationNodesMap = new Map<string, NetSalesSummaryLocationNode>();
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -714,7 +839,17 @@ export class NetSalesSummaryExportService {
     const salesWhere: any = {
       orderNumber: { not: { startsWith: 'RET-' } },
       status: {
-        notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'],
+        notIn: [
+          'hold',
+          'hold_expired',
+          'hold_cancelled',
+          'voided',
+          'cancelled',
+          'VOIDED',
+          'CANCELLED',
+          'draft',
+          'DRAFT',
+        ],
       },
       createdAt: { gte: startDate, lte: endDate },
     };
@@ -723,12 +858,17 @@ export class NetSalesSummaryExportService {
     if (cashierUserId) salesWhere.cashierUserId = cashierUserId;
     if (fbrOnly) salesWhere.fbrInvoiceNumber = { not: null };
     if (paymentModeGroup && paymentModeGroup !== 'all') {
-      salesWhere.paymentMethod = { equals: paymentModeGroup, mode: 'insensitive' };
+      salesWhere.paymentMethod = {
+        equals: paymentModeGroup,
+        mode: 'insensitive',
+      };
     }
     if (minAmount !== undefined || maxAmount !== undefined) {
       salesWhere.grandTotal = {};
-      if (minAmount !== undefined) salesWhere.grandTotal.gte = Number(minAmount);
-      if (maxAmount !== undefined) salesWhere.grandTotal.lte = Number(maxAmount);
+      if (minAmount !== undefined)
+        salesWhere.grandTotal.gte = Number(minAmount);
+      if (maxAmount !== undefined)
+        salesWhere.grandTotal.lte = Number(maxAmount);
     }
     if (search && search.trim()) {
       const s = search.trim();
@@ -740,7 +880,9 @@ export class NetSalesSummaryExportService {
       ];
     }
 
-    const totalSalesOrders = await prisma.salesOrder.count({ where: salesWhere });
+    const totalSalesOrders = await prisma.salesOrder.count({
+      where: salesWhere,
+    });
     const CHUNK_SIZE = 1500;
     let processedSales = 0;
 
@@ -796,18 +938,29 @@ export class NetSalesSummaryExportService {
 
       for (const order of chunkOrders) {
         const notesStr = order.notes || '';
-        const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
-        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+        const locName = order.locationId
+          ? locationMap.get(order.locationId) || 'Main Outlet'
+          : 'Main Outlet';
+        const locKey = order.locationId
+          ? `loc:${order.locationId}`
+          : 'main-outlet';
         const docNo = order.orderNumber || 'N/A';
-        const docDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : 'N/A';
-        const docMonth = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
-        const createdAt = order.createdAt ? new Date(order.createdAt).toISOString() : new Date().toISOString();
+        const docDate = order.createdAt
+          ? new Date(order.createdAt).toISOString().split('T')[0]
+          : 'N/A';
+        const docMonth =
+          docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
+        const createdAt = order.createdAt
+          ? new Date(order.createdAt).toISOString()
+          : new Date().toISOString();
 
         let salesPerson = 'Default Cashier';
         if (order.cashierUserId && cashierMap.has(order.cashierUserId)) {
           salesPerson = cashierMap.get(order.cashierUserId)!;
         } else if (notesStr) {
-          const spMatch = notesStr.match(/(?:SalesPerson|Cashier):\s*([^|\]]+)/i);
+          const spMatch = notesStr.match(
+            /(?:SalesPerson|Cashier):\s*([^|\]]+)/i,
+          );
           if (spMatch) salesPerson = spMatch[1].trim();
         }
 
@@ -846,14 +999,20 @@ export class NetSalesSummaryExportService {
           const valueExcl = priceWost * qty;
 
           const rawDiscAmt = Number(it.discountAmount || 0);
-          const discPct = Number(it.discountPercent || (lineRetailGross > 0 && rawDiscAmt > 0 ? (rawDiscAmt / valueExcl) * 100 : 0));
+          const discPct = Number(
+            it.discountPercent ||
+              (lineRetailGross > 0 && rawDiscAmt > 0
+                ? (rawDiscAmt / valueExcl) * 100
+                : 0),
+          );
 
           let discAmtWost = 0;
           let discAmtRetail = 0;
 
           if (discPct > 0) {
-            discAmtRetail = Math.round((lineRetailGross * (discPct / 100)) * 100) / 100;
-            discAmtWost = Math.round((valueExcl * (discPct / 100)) * 100) / 100;
+            discAmtRetail =
+              Math.round(lineRetailGross * (discPct / 100) * 100) / 100;
+            discAmtWost = Math.round(valueExcl * (discPct / 100) * 100) / 100;
           } else if (rawDiscAmt > 0) {
             discAmtWost = rawDiscAmt;
             discAmtRetail = Math.round(rawDiscAmt * 1.18 * 100) / 100;
@@ -865,8 +1024,14 @@ export class NetSalesSummaryExportService {
 
           const amountAfterDiscount = Math.max(0, valueExcl - discAmtWost);
           const calculatedTaxPct = Number(it.taxPercent || 18);
-          const taxAmount = Number(it.taxAmount || Math.round(amountAfterDiscount * (calculatedTaxPct / 100) * 100) / 100);
-          const lineTotal = Number(it.lineTotal || (lineRetailGross - discAmtRetail));
+          const taxAmount = Number(
+            it.taxAmount ||
+              Math.round(amountAfterDiscount * (calculatedTaxPct / 100) * 100) /
+                100,
+          );
+          const lineTotal = Number(
+            it.lineTotal || lineRetailGross - discAmtRetail,
+          );
 
           docQty += qty;
           docTax += taxAmount;
@@ -888,8 +1053,16 @@ export class NetSalesSummaryExportService {
           });
         }
 
-        const orderNet = Number(order.grandTotal !== null && order.grandTotal !== undefined ? order.grandTotal : docNet);
-        const orderTax = Number(order.taxAmount !== null && order.taxAmount !== undefined ? order.taxAmount : docTax);
+        const orderNet = Number(
+          order.grandTotal !== null && order.grandTotal !== undefined
+            ? order.grandTotal
+            : docNet,
+        );
+        const orderTax = Number(
+          order.taxAmount !== null && order.taxAmount !== undefined
+            ? order.taxAmount
+            : docTax,
+        );
 
         if (lineItemCalcs.length === 0) {
           const grossWostFallback = orderWost > 0 ? orderWost : orderNet / 1.18;
@@ -927,10 +1100,18 @@ export class NetSalesSummaryExportService {
           });
         }
 
-        const grossWost = orderWost > 0 ? orderWost : (ordCompWost > 0 ? ordCompWost : orderNet / 1.18);
-        const retailGross = ordRetailGross > 0 ? ordRetailGross : (grossWost * 1.18);
-        const totalDiscWost = orderDiscWost > 0 ? orderDiscWost : ordCompDiscWost;
-        const totalDiscRetail = ordRetailDisc > 0 ? ordRetailDisc : (totalDiscWost * 1.18);
+        const grossWost =
+          orderWost > 0
+            ? orderWost
+            : ordCompWost > 0
+              ? ordCompWost
+              : orderNet / 1.18;
+        const retailGross =
+          ordRetailGross > 0 ? ordRetailGross : grossWost * 1.18;
+        const totalDiscWost =
+          orderDiscWost > 0 ? orderDiscWost : ordCompDiscWost;
+        const totalDiscRetail =
+          ordRetailDisc > 0 ? ordRetailDisc : totalDiscWost * 1.18;
 
         totalDocuments += 1;
         salesOrderCount += 1;
@@ -943,20 +1124,42 @@ export class NetSalesSummaryExportService {
         netSalesAmount += orderNet;
 
         for (const calc of lineItemCalcs) {
-          const { item: it, qty, unitPrice, lineRetailGross, valExcl, discAmtRetail, discAmtWost, amountAfterDiscount, calculatedTaxPct, taxAmount, lineTotal } = calc;
+          const {
+            item: it,
+            qty,
+            unitPrice,
+            lineRetailGross,
+            valExcl,
+            discAmtRetail,
+            discAmtWost,
+            amountAfterDiscount,
+            calculatedTaxPct,
+            taxAmount,
+            lineTotal,
+          } = calc;
           const itemObj = it.item;
 
           const catName = itemObj?.category?.name || 'Unassigned Category';
           const brandName = itemObj?.brand?.name || 'Default Brand';
           const divisionName = itemObj?.division?.name || 'Default Division';
           const genderName = itemObj?.gender?.name || 'Default Gender';
-          const silhouetteName = itemObj?.silhouette?.name || 'Default Silhouette';
-          const sizeName = itemObj?.size?.name || (itemObj?.sizeId ? sizeMap.get(itemObj.sizeId) : '') || 'Default';
-          const colorName = itemObj?.color?.name || (itemObj?.colorId ? colorMap.get(itemObj.colorId) : '') || 'Default';
+          const silhouetteName =
+            itemObj?.silhouette?.name || 'Default Silhouette';
+          const sizeName =
+            itemObj?.size?.name ||
+            (itemObj?.sizeId ? sizeMap.get(itemObj.sizeId) : '') ||
+            'Default';
+          const colorName =
+            itemObj?.color?.name ||
+            (itemObj?.colorId ? colorMap.get(itemObj.colorId) : '') ||
+            'Default';
           const sku = itemObj?.sku || itemObj?.barCode || 'NO-SKU';
           const barCode = itemObj?.barCode || itemObj?.sku || '-';
           const description = itemObj?.description || itemObj?.sku || 'Article';
-          const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
+          const taxRateName =
+            calculatedTaxPct > 0
+              ? `${calculatedTaxPct}% Sales Tax Group`
+              : '0% Tax Exempt Group';
 
           const lineTotals: NetSalesSummaryTotals = {
             orderCount: 1,
@@ -1021,17 +1224,41 @@ export class NetSalesSummaryExportService {
 
           existingRecord.soldQty += qty;
           existingRecord.netQty += qty;
-          existingRecord.retailSalesValue = Number(((existingRecord.retailSalesValue || 0) + lineRetailGross).toFixed(2));
-          existingRecord.wostAmount = Number(((existingRecord.wostAmount || 0) + valExcl).toFixed(2));
-          existingRecord.grossAmount = Number((existingRecord.grossAmount + lineRetailGross).toFixed(2));
-          existingRecord.discountAmount = Number((existingRecord.discountAmount + discAmtRetail).toFixed(2));
-          existingRecord.discountWostAmount = Number(((existingRecord.discountWostAmount || 0) + discAmtWost).toFixed(2));
-          existingRecord.valueExSalesTax = Number(((existingRecord.valueExSalesTax || 0) + amountAfterDiscount).toFixed(2));
-          existingRecord.taxAmount = Number((existingRecord.taxAmount + taxAmount).toFixed(2));
-          existingRecord.valueInclSalesTax = Number(((existingRecord.valueInclSalesTax || 0) + lineTotal).toFixed(2));
-          existingRecord.netAmount = Number((existingRecord.netAmount + lineTotal).toFixed(2));
+          existingRecord.retailSalesValue = Number(
+            ((existingRecord.retailSalesValue || 0) + lineRetailGross).toFixed(
+              2,
+            ),
+          );
+          existingRecord.wostAmount = Number(
+            ((existingRecord.wostAmount || 0) + valExcl).toFixed(2),
+          );
+          existingRecord.grossAmount = Number(
+            (existingRecord.grossAmount + lineRetailGross).toFixed(2),
+          );
+          existingRecord.discountAmount = Number(
+            (existingRecord.discountAmount + discAmtRetail).toFixed(2),
+          );
+          existingRecord.discountWostAmount = Number(
+            ((existingRecord.discountWostAmount || 0) + discAmtWost).toFixed(2),
+          );
+          existingRecord.valueExSalesTax = Number(
+            (
+              (existingRecord.valueExSalesTax || 0) + amountAfterDiscount
+            ).toFixed(2),
+          );
+          existingRecord.taxAmount = Number(
+            (existingRecord.taxAmount + taxAmount).toFixed(2),
+          );
+          existingRecord.valueInclSalesTax = Number(
+            ((existingRecord.valueInclSalesTax || 0) + lineTotal).toFixed(2),
+          );
+          existingRecord.netAmount = Number(
+            (existingRecord.netAmount + lineTotal).toFixed(2),
+          );
           if (existingRecord.soldQty > 0) {
-            existingRecord.unitPrice = Number((existingRecord.grossAmount / existingRecord.soldQty).toFixed(2));
+            existingRecord.unitPrice = Number(
+              (existingRecord.grossAmount / existingRecord.soldQty).toFixed(2),
+            );
           }
 
           let globalCat = globalCategoryNodesMap.get(catName);
@@ -1050,7 +1277,9 @@ export class NetSalesSummaryExportService {
           addTotals(globalCat.totals, lineTotals);
 
           if (isSeparate && locNode) {
-            let locCat = locNode.categories.find((c) => c.categoryName === catName);
+            let locCat = locNode.categories.find(
+              (c) => c.categoryName === catName,
+            );
             if (!locCat) {
               locCat = {
                 categoryName: catName,
@@ -1069,14 +1298,21 @@ export class NetSalesSummaryExportService {
       }
 
       processedSales += chunkOrders.length;
-      const pct = 20 + Math.floor((processedSales / (totalSalesOrders || 1)) * 35);
-      await onProgress?.(pct, `Processed ${processedSales.toLocaleString()} of ${totalSalesOrders.toLocaleString()} sales orders...`);
+      const pct =
+        20 + Math.floor((processedSales / (totalSalesOrders || 1)) * 35);
+      await onProgress?.(
+        pct,
+        `Processed ${processedSales.toLocaleString()} of ${totalSalesOrders.toLocaleString()} sales orders...`,
+      );
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // STEP 2: Process Gross Sales Returns (pos_returns)
     // ─────────────────────────────────────────────────────────────────────────────
-    await onProgress?.(55, 'Querying return and refund records from database...');
+    await onProgress?.(
+      55,
+      'Querying return and refund records from database...',
+    );
 
     const returnWhere: any = {
       createdAt: { gte: startDate, lte: endDate },
@@ -1141,7 +1377,9 @@ export class NetSalesSummaryExportService {
 
       for (const ret of returns) {
         const sampleLocId = ret.locationId || ret.salesOrder?.locationId;
-        const locName = sampleLocId ? locationMap.get(sampleLocId) || 'Main Outlet' : 'Main Outlet';
+        const locName = sampleLocId
+          ? locationMap.get(sampleLocId) || 'Main Outlet'
+          : 'Main Outlet';
         const locKey = sampleLocId ? `loc:${sampleLocId}` : 'main-outlet';
         const cashierId = ret.cashierUserId || ret.salesOrder?.cashierUserId;
         let salesPerson = 'Default Cashier';
@@ -1149,11 +1387,17 @@ export class NetSalesSummaryExportService {
           salesPerson = cashierMap.get(cashierId)!;
         }
 
-        const retNo = ret.returnNumber || ret.voucher?.code || `SR-${ret.id.slice(0, 8)}`;
+        const retNo =
+          ret.returnNumber || ret.voucher?.code || `SR-${ret.id.slice(0, 8)}`;
         processedReturnDocNumbers.add(retNo);
-        const docDate = ret.createdAt ? new Date(ret.createdAt).toISOString().split('T')[0] : 'N/A';
-        const docMonth = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
-        const createdAt = ret.createdAt ? new Date(ret.createdAt).toISOString() : new Date().toISOString();
+        const docDate = ret.createdAt
+          ? new Date(ret.createdAt).toISOString().split('T')[0]
+          : 'N/A';
+        const docMonth =
+          docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
+        const createdAt = ret.createdAt
+          ? new Date(ret.createdAt).toISOString()
+          : new Date().toISOString();
 
         let locNode = locationNodesMap.get(locKey);
         if (isSeparate && !locNode) {
@@ -1179,14 +1423,42 @@ export class NetSalesSummaryExportService {
 
         for (const it of ret.items || []) {
           const qty = Math.abs(Number(it.quantity) || 1);
-          const unitPrice = Number((it as any).originalUnitPrice || (it as any).refundPerUnit || (it as any).originalPaidPerUnit || 0);
-          const unitPriceWost = Number(((it as any).unitPriceWost ? Number((it as any).unitPriceWost) : unitPrice / 1.18).toFixed(2));
-          const valExcl = Number(((it as any).lineTotalWost ? Number((it as any).lineTotalWost) : qty * unitPriceWost).toFixed(2));
-          const disc = Number(it.discountPercent ? (unitPrice * qty * Number(it.discountPercent)) / 100 : 0);
-          const discWost = Number(((it as any).discountWost ? Number((it as any).discountWost) : disc / 1.18).toFixed(2));
-          const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
+          const unitPrice = Number(
+            (it as any).originalUnitPrice ||
+              (it as any).refundPerUnit ||
+              (it as any).originalPaidPerUnit ||
+              0,
+          );
+          const unitPriceWost = Number(
+            ((it as any).unitPriceWost
+              ? Number((it as any).unitPriceWost)
+              : unitPrice / 1.18
+            ).toFixed(2),
+          );
+          const valExcl = Number(
+            ((it as any).lineTotalWost
+              ? Number((it as any).lineTotalWost)
+              : qty * unitPriceWost
+            ).toFixed(2),
+          );
+          const disc = Number(
+            it.discountPercent
+              ? (unitPrice * qty * Number(it.discountPercent)) / 100
+              : 0,
+          );
+          const discWost = Number(
+            ((it as any).discountWost
+              ? Number((it as any).discountWost)
+              : disc / 1.18
+            ).toFixed(2),
+          );
+          const amtAfterDisc = Number(
+            Math.max(0, valExcl - discWost).toFixed(2),
+          );
           const tax = Number(it.taxAmount || 0);
-          const lineTotal = Number(it.lineTotal || (unitPrice * qty - disc + tax));
+          const lineTotal = Number(
+            it.lineTotal || unitPrice * qty - disc + tax,
+          );
 
           retTotalQty += qty;
           retGross += unitPrice * qty;
@@ -1211,7 +1483,9 @@ export class NetSalesSummaryExportService {
 
         if (retLineCalcs.length === 0) {
           const totalRefAmt = Number(ret.totalRefundAmount || 0);
-          const wostAmt = Number((ret as any).subtotalWost || (totalRefAmt / 1.18).toFixed(2));
+          const wostAmt = Number(
+            (ret as any).subtotalWost || (totalRefAmt / 1.18).toFixed(2),
+          );
           retTotalQty = 1;
           retGross = totalRefAmt;
           retWost = wostAmt;
@@ -1243,21 +1517,41 @@ export class NetSalesSummaryExportService {
         netReturnAmount += totalRefundAmt;
 
         for (const calc of retLineCalcs) {
-          const { it, qty, unitPrice, valExcl, disc, discWost, amtAfterDisc, tax, lineTotal } = calc;
+          const {
+            it,
+            qty,
+            unitPrice,
+            valExcl,
+            disc,
+            discWost,
+            amtAfterDisc,
+            tax,
+            lineTotal,
+          } = calc;
           const itemObj = it.item;
 
           const catName = itemObj?.category?.name || 'Unassigned Category';
           const brandName = itemObj?.brand?.name || 'Default Brand';
           const divisionName = itemObj?.division?.name || 'Default Division';
           const genderName = itemObj?.gender?.name || 'Default Gender';
-          const silhouetteName = itemObj?.silhouette?.name || 'Default Silhouette';
-          const sizeName = itemObj?.size?.name || (itemObj?.sizeId ? sizeMap.get(itemObj.sizeId) : '') || 'Default';
-          const colorName = itemObj?.color?.name || (itemObj?.colorId ? colorMap.get(itemObj.colorId) : '') || 'Default';
+          const silhouetteName =
+            itemObj?.silhouette?.name || 'Default Silhouette';
+          const sizeName =
+            itemObj?.size?.name ||
+            (itemObj?.sizeId ? sizeMap.get(itemObj.sizeId) : '') ||
+            'Default';
+          const colorName =
+            itemObj?.color?.name ||
+            (itemObj?.colorId ? colorMap.get(itemObj.colorId) : '') ||
+            'Default';
           const sku = itemObj?.sku || itemObj?.barCode || 'NO-SKU';
           const barCode = itemObj?.barCode || itemObj?.sku || '-';
           const description = itemObj?.description || itemObj?.sku || 'Article';
           const calculatedTaxPct = Number(it.taxPercent || 18);
-          const taxRateName = calculatedTaxPct > 0 ? `${calculatedTaxPct}% Sales Tax Group` : '0% Tax Exempt Group';
+          const taxRateName =
+            calculatedTaxPct > 0
+              ? `${calculatedTaxPct}% Sales Tax Group`
+              : '0% Tax Exempt Group';
 
           const lineReturnTotals: NetSalesSummaryTotals = {
             orderCount: 0,
@@ -1322,15 +1616,35 @@ export class NetSalesSummaryExportService {
 
           existingRecord.returnQty += qty;
           existingRecord.netQty -= qty;
-          existingRecord.retailSalesValue = Number(((existingRecord.retailSalesValue || 0) - unitPrice * qty).toFixed(2));
-          existingRecord.wostAmount = Number(((existingRecord.wostAmount || 0) - valExcl).toFixed(2));
-          existingRecord.returnAmount = Number((existingRecord.returnAmount + lineTotal).toFixed(2));
-          existingRecord.discountAmount = Number((existingRecord.discountAmount - disc).toFixed(2));
-          existingRecord.discountWostAmount = Number(((existingRecord.discountWostAmount || 0) - discWost).toFixed(2));
-          existingRecord.valueExSalesTax = Number(((existingRecord.valueExSalesTax || 0) - amtAfterDisc).toFixed(2));
-          existingRecord.taxAmount = Number((existingRecord.taxAmount - tax).toFixed(2));
-          existingRecord.valueInclSalesTax = Number(((existingRecord.valueInclSalesTax || 0) - lineTotal).toFixed(2));
-          existingRecord.netAmount = Number((existingRecord.netAmount - lineTotal).toFixed(2));
+          existingRecord.retailSalesValue = Number(
+            ((existingRecord.retailSalesValue || 0) - unitPrice * qty).toFixed(
+              2,
+            ),
+          );
+          existingRecord.wostAmount = Number(
+            ((existingRecord.wostAmount || 0) - valExcl).toFixed(2),
+          );
+          existingRecord.returnAmount = Number(
+            (existingRecord.returnAmount + lineTotal).toFixed(2),
+          );
+          existingRecord.discountAmount = Number(
+            (existingRecord.discountAmount - disc).toFixed(2),
+          );
+          existingRecord.discountWostAmount = Number(
+            ((existingRecord.discountWostAmount || 0) - discWost).toFixed(2),
+          );
+          existingRecord.valueExSalesTax = Number(
+            ((existingRecord.valueExSalesTax || 0) - amtAfterDisc).toFixed(2),
+          );
+          existingRecord.taxAmount = Number(
+            (existingRecord.taxAmount - tax).toFixed(2),
+          );
+          existingRecord.valueInclSalesTax = Number(
+            ((existingRecord.valueInclSalesTax || 0) - lineTotal).toFixed(2),
+          );
+          existingRecord.netAmount = Number(
+            (existingRecord.netAmount - lineTotal).toFixed(2),
+          );
 
           let globalCat = globalCategoryNodesMap.get(catName);
           if (!globalCat) {
@@ -1348,7 +1662,9 @@ export class NetSalesSummaryExportService {
           addTotals(globalCat.totals, lineReturnTotals);
 
           if (isSeparate && locNode) {
-            let locCat = locNode.categories.find((c) => c.categoryName === catName);
+            let locCat = locNode.categories.find(
+              (c) => c.categoryName === catName,
+            );
             if (!locCat) {
               locCat = {
                 categoryName: catName,
@@ -1367,8 +1683,12 @@ export class NetSalesSummaryExportService {
       }
 
       processedReturns += returns.length;
-      const pct = 55 + Math.floor((processedReturns / (totalReturns || 1)) * 25);
-      await onProgress?.(pct, `Processed ${processedReturns.toLocaleString()} of ${totalReturns.toLocaleString()} return documents...`);
+      const pct =
+        55 + Math.floor((processedReturns / (totalReturns || 1)) * 25);
+      await onProgress?.(
+        pct,
+        `Processed ${processedReturns.toLocaleString()} of ${totalReturns.toLocaleString()} return documents...`,
+      );
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -1382,7 +1702,10 @@ export class NetSalesSummaryExportService {
       claimWhere.salesOrder = { locationId: locationWhere };
     }
     if (cashierUserId) {
-      claimWhere.salesOrder = { ...(claimWhere.salesOrder || {}), cashierUserId };
+      claimWhere.salesOrder = {
+        ...(claimWhere.salesOrder || {}),
+        cashierUserId,
+      };
     }
 
     let posClaims: any[] = [];
@@ -1432,16 +1755,23 @@ export class NetSalesSummaryExportService {
       if (processedReturnDocNumbers.has(clmNo)) continue;
 
       const locId = clm.salesOrder?.locationId;
-      const locName = locId ? locationMap.get(locId) || 'Main Outlet' : 'Main Outlet';
+      const locName = locId
+        ? locationMap.get(locId) || 'Main Outlet'
+        : 'Main Outlet';
       const locKey = locId ? `loc:${locId}` : 'main-outlet';
       const cashierId = clm.salesOrder?.cashierUserId;
       let salesPerson = 'Default Cashier';
       if (cashierId && cashierMap.has(cashierId)) {
         salesPerson = cashierMap.get(cashierId)!;
       }
-      const docDate = clm.createdAt ? new Date(clm.createdAt).toISOString().split('T')[0] : 'N/A';
-      const docMonth = docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
-      const createdAt = clm.createdAt ? new Date(clm.createdAt).toISOString() : new Date().toISOString();
+      const docDate = clm.createdAt
+        ? new Date(clm.createdAt).toISOString().split('T')[0]
+        : 'N/A';
+      const docMonth =
+        docDate && docDate !== 'N/A' ? docDate.slice(0, 7) : 'all';
+      const createdAt = clm.createdAt
+        ? new Date(clm.createdAt).toISOString()
+        : new Date().toISOString();
       const approvedAmt = Number(clm.approvedAmount || clm.claimedAmount || 0);
       const valExcl = Number((approvedAmt / 1.18).toFixed(2));
 
@@ -1473,7 +1803,7 @@ export class NetSalesSummaryExportService {
 
       for (const it of clmItems) {
         const qty = Number(it.claimedQty || 1);
-        const unitPrice = Number(it.unitPaidPrice || (approvedAmt / claimQty));
+        const unitPrice = Number(it.unitPaidPrice || approvedAmt / claimQty);
         const lineValExcl = Number((qty * (unitPrice / 1.18)).toFixed(2));
         const lineTotal = Number(it.claimedAmount || qty * unitPrice);
         const itemObj = it.item;
@@ -1482,12 +1812,20 @@ export class NetSalesSummaryExportService {
         const brandName = itemObj?.brand?.name || 'Default Brand';
         const divisionName = itemObj?.division?.name || 'Default Division';
         const genderName = itemObj?.gender?.name || 'Default Gender';
-        const silhouetteName = itemObj?.silhouette?.name || 'Default Silhouette';
-        const sizeName = itemObj?.size?.name || (itemObj?.sizeId ? sizeMap.get(itemObj.sizeId) : '') || 'Default';
-        const colorName = itemObj?.color?.name || (itemObj?.colorId ? colorMap.get(itemObj.colorId) : '') || 'Default';
+        const silhouetteName =
+          itemObj?.silhouette?.name || 'Default Silhouette';
+        const sizeName =
+          itemObj?.size?.name ||
+          (itemObj?.sizeId ? sizeMap.get(itemObj.sizeId) : '') ||
+          'Default';
+        const colorName =
+          itemObj?.color?.name ||
+          (itemObj?.colorId ? colorMap.get(itemObj.colorId) : '') ||
+          'Default';
         const sku = itemObj?.sku || itemObj?.barCode || 'NO-SKU';
         const barCode = itemObj?.barCode || itemObj?.sku || '-';
-        const description = itemObj?.description || itemObj?.sku || 'Claim Article';
+        const description =
+          itemObj?.description || itemObj?.sku || 'Claim Article';
 
         const lineClaimTotals: NetSalesSummaryTotals = {
           orderCount: 0,
@@ -1552,12 +1890,24 @@ export class NetSalesSummaryExportService {
 
         existingRecord.returnQty += qty;
         existingRecord.netQty -= qty;
-        existingRecord.retailSalesValue = Number(((existingRecord.retailSalesValue || 0) - lineTotal).toFixed(2));
-        existingRecord.wostAmount = Number(((existingRecord.wostAmount || 0) - lineValExcl).toFixed(2));
-        existingRecord.returnAmount = Number((existingRecord.returnAmount + lineTotal).toFixed(2));
-        existingRecord.valueExSalesTax = Number(((existingRecord.valueExSalesTax || 0) - lineValExcl).toFixed(2));
-        existingRecord.valueInclSalesTax = Number(((existingRecord.valueInclSalesTax || 0) - lineTotal).toFixed(2));
-        existingRecord.netAmount = Number((existingRecord.netAmount - lineTotal).toFixed(2));
+        existingRecord.retailSalesValue = Number(
+          ((existingRecord.retailSalesValue || 0) - lineTotal).toFixed(2),
+        );
+        existingRecord.wostAmount = Number(
+          ((existingRecord.wostAmount || 0) - lineValExcl).toFixed(2),
+        );
+        existingRecord.returnAmount = Number(
+          (existingRecord.returnAmount + lineTotal).toFixed(2),
+        );
+        existingRecord.valueExSalesTax = Number(
+          ((existingRecord.valueExSalesTax || 0) - lineValExcl).toFixed(2),
+        );
+        existingRecord.valueInclSalesTax = Number(
+          ((existingRecord.valueInclSalesTax || 0) - lineTotal).toFixed(2),
+        );
+        existingRecord.netAmount = Number(
+          (existingRecord.netAmount - lineTotal).toFixed(2),
+        );
 
         let globalCat = globalCategoryNodesMap.get(catName);
         if (!globalCat) {
@@ -1575,7 +1925,9 @@ export class NetSalesSummaryExportService {
         addTotals(globalCat.totals, lineClaimTotals);
 
         if (isSeparate && locNode) {
-          let locCat = locNode.categories.find((c) => c.categoryName === catName);
+          let locCat = locNode.categories.find(
+            (c) => c.categoryName === catName,
+          );
           if (!locCat) {
             locCat = {
               categoryName: catName,
@@ -1599,13 +1951,25 @@ export class NetSalesSummaryExportService {
     await onProgress?.(88, 'Aggregating net sales summary...');
 
     const netItems = totalItemsSold - totalItemsReturned;
-    const netGrossAmount = Number((grossSalesAmount - grossReturnAmount).toFixed(2));
-    const netWostAmount = Number((wostSalesAmount - wostReturnAmount).toFixed(2));
-    const netDiscountAmount = Number((discountSalesAmount - discountReturnAmount).toFixed(2));
-    const netDiscountWostAmount = Number((discountWostSalesAmount - discountWostReturnAmount).toFixed(2));
-    const netAmountAfterDiscount = Number((Math.max(0, netWostAmount - netDiscountWostAmount)).toFixed(2));
+    const netGrossAmount = Number(
+      (grossSalesAmount - grossReturnAmount).toFixed(2),
+    );
+    const netWostAmount = Number(
+      (wostSalesAmount - wostReturnAmount).toFixed(2),
+    );
+    const netDiscountAmount = Number(
+      (discountSalesAmount - discountReturnAmount).toFixed(2),
+    );
+    const netDiscountWostAmount = Number(
+      (discountWostSalesAmount - discountWostReturnAmount).toFixed(2),
+    );
+    const netAmountAfterDiscount = Number(
+      Math.max(0, netWostAmount - netDiscountWostAmount).toFixed(2),
+    );
     const netTaxAmount = Number((taxSalesAmount - taxReturnAmount).toFixed(2));
-    const totalNetAmount = Number((netSalesAmount - netReturnAmount).toFixed(2));
+    const totalNetAmount = Number(
+      (netSalesAmount - netReturnAmount).toFixed(2),
+    );
 
     const grandTotals: NetSalesSummaryTotals = {
       orderCount: salesOrderCount,
@@ -1628,20 +1992,28 @@ export class NetSalesSummaryExportService {
       for (const locNode of locationNodesMap.values()) {
         const t = locNode.totals;
         t.netItems = t.totalItemsSold - t.totalItemsReturned;
-        t.netSalesAmount = Number((t.grossSalesAmount - t.returnAmount).toFixed(2));
+        t.netSalesAmount = Number(
+          (t.grossSalesAmount - t.returnAmount).toFixed(2),
+        );
       }
     }
 
     const flatItems = Array.from(flatItemsMap.values());
-    await onProgress?.(95, 'Finalizing net sales summary aggregation and saving preview...');
+    await onProgress?.(
+      95,
+      'Finalizing net sales summary aggregation and saving preview...',
+    );
 
     return {
       reportType,
-      locations: isSeparate ? Array.from(locationNodesMap.values()) : undefined,
+      locations: Array.from(locationNodesMap.values()),
       categories: Array.from(globalCategoryNodesMap.values()),
       flatItems,
       grandTotals,
-      dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      },
       locationNames,
     };
   }
@@ -1667,7 +2039,11 @@ export class NetSalesSummaryExportService {
         id: jobId,
         userId,
         fileName: body.fileName,
-        filePath: path.join('uploads', 'exports', `temp-${jobId}-${body.fileName}`),
+        filePath: path.join(
+          'uploads',
+          'exports',
+          `temp-${jobId}-${body.fileName}`,
+        ),
         moduleName: 'NET_SALES_SUMMARY_REPORT',
         status: 'PENDING',
       },
@@ -1678,7 +2054,8 @@ export class NetSalesSummaryExportService {
       jobId,
       tempFilePath,
       body.fileName,
-      body.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      body.mimeType ||
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
 
     return {
@@ -1698,7 +2075,9 @@ export class NetSalesSummaryExportService {
   ): Promise<void> {
     const filePath = this.getPreviewFilePath(jobId);
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Net sales summary preview result not found or expired');
+      throw new NotFoundException(
+        'Net sales summary preview result not found or expired',
+      );
     }
 
     const exportType = options.exportType || 'flat';
@@ -1707,12 +2086,21 @@ export class NetSalesSummaryExportService {
 
     const passThrough = new PassThrough();
     if (typeof res.header === 'function') {
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
       res.header('Content-Disposition', `attachment; filename="${fileName}"`);
       res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
@@ -1728,11 +2116,15 @@ export class NetSalesSummaryExportService {
       useSharedStrings: false,
     });
 
-    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Net Sales Flat' : 'Net Sales Summary');
+    const sheet = workbook.addWorksheet(
+      exportType === 'flat' ? 'Net Sales Flat' : 'Net Sales Summary',
+    );
     const q = (options.search || '').trim().toLowerCase();
     const locSet =
       options.locationId && options.locationId !== 'all'
-        ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
+        ? new Set(
+            options.locationId.split(',').map((s) => s.trim().toLowerCase()),
+          )
         : null;
 
     if (exportType === 'flat') {
@@ -1762,7 +2154,11 @@ export class NetSalesSummaryExportService {
         { header: 'Discount Amount', key: 'discountAmount', width: 14 },
         { header: 'Value Excl. Sales Tax', key: 'valueExSalesTax', width: 16 },
         { header: 'Sales Tax Amount', key: 'taxAmount', width: 14 },
-        { header: 'Value Incl. Sales Tax / Net Revenue', key: 'valueInclSalesTax', width: 18 },
+        {
+          header: 'Value Incl. Sales Tax / Net Revenue',
+          key: 'valueInclSalesTax',
+          width: 18,
+        },
       ];
 
       let totalSold = 0;
@@ -1808,7 +2204,9 @@ export class NetSalesSummaryExportService {
 
               const sold = Number(item.soldQty || 0);
               const ret = Number(item.returnQty || 0);
-              const netQty = Number(item.netQty !== undefined ? item.netQty : sold - ret);
+              const netQty = Number(
+                item.netQty !== undefined ? item.netQty : sold - ret,
+              );
               const retail = Number(item.retailSalesValue || 0);
               const wost = Number(item.wostAmount || 0);
               const disc = Number(item.discountAmount || 0);
@@ -1832,7 +2230,9 @@ export class NetSalesSummaryExportService {
                 docDate: item.docDate ? item.docDate.slice(0, 10) : '-',
                 docNo: item.docNo || '-',
                 salesPerson: item.salesPerson || '-',
-                taxRate: item.taxRateName || (item.taxRatePercent ? `${item.taxRatePercent}%` : '-'),
+                taxRate:
+                  item.taxRateName ||
+                  (item.taxRatePercent ? `${item.taxRatePercent}%` : '-'),
                 brandName: item.brandName || '-',
                 divisionName: item.divisionName || '-',
                 categoryName: item.categoryName || '-',
@@ -1876,9 +2276,13 @@ export class NetSalesSummaryExportService {
       summaryRow.commit();
     } else {
       const result = await this.getReportPreviewResult(jobId);
-      const hasLocNodes = Boolean(result?.locations && result.locations.length > 0);
+      const hasLocNodes = Boolean(
+        result?.locations && result.locations.length > 0,
+      );
       sheet.columns = [
-        ...(hasLocNodes ? [{ header: 'Outlet / Location', key: 'locationName', width: 22 }] : []),
+        ...(hasLocNodes
+          ? [{ header: 'Outlet / Location', key: 'locationName', width: 22 }]
+          : []),
         { header: 'Category', key: 'categoryName', width: 22 },
         { header: 'Brand', key: 'brandName', width: 18 },
         { header: 'Division', key: 'divisionName', width: 16 },
@@ -1892,7 +2296,11 @@ export class NetSalesSummaryExportService {
         { header: 'Discount Amount', key: 'discountAmount', width: 14 },
         { header: 'Value Excl. Sales Tax', key: 'valueExSalesTax', width: 16 },
         { header: 'Sales Tax Amount', key: 'taxAmount', width: 14 },
-        { header: 'Value Incl. Sales Tax / Net Revenue', key: 'valueInclSalesTax', width: 18 },
+        {
+          header: 'Value Incl. Sales Tax / Net Revenue',
+          key: 'valueInclSalesTax',
+          width: 18,
+        },
       ];
 
       if (hasLocNodes && result?.locations) {

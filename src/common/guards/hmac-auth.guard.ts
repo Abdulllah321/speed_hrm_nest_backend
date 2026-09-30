@@ -23,7 +23,9 @@ export class HmacAuthGuard implements CanActivate {
 
     if (!signature) {
       this.logger.warn('HMAC verification failed: Missing x-signature header');
-      throw new UnauthorizedException('Missing HMAC signature header (x-signature)');
+      throw new UnauthorizedException(
+        'Missing HMAC signature header (x-signature)',
+      );
     }
 
     const timestamp =
@@ -37,9 +39,16 @@ export class HmacAuthGuard implements CanActivate {
       const currentTime = Math.floor(Date.now() / 1000);
       const toleranceInSeconds = 300; // 5 minutes
 
-      if (isNaN(requestTime) || Math.abs(currentTime - requestTime) > toleranceInSeconds) {
-        this.logger.warn(`HMAC verification failed: Request timestamp drift too high (${timestamp})`);
-        throw new UnauthorizedException('HMAC signature expired or invalid timestamp');
+      if (
+        isNaN(requestTime) ||
+        Math.abs(currentTime - requestTime) > toleranceInSeconds
+      ) {
+        this.logger.warn(
+          `HMAC verification failed: Request timestamp drift too high (${timestamp})`,
+        );
+        throw new UnauthorizedException(
+          'HMAC signature expired or invalid timestamp',
+        );
       }
     }
 
@@ -52,8 +61,7 @@ export class HmacAuthGuard implements CanActivate {
       (request.params?.center_id as string) ||
       '';
 
-    const secretKey =
-      process.env.HMAC_SECRET || 'hmac_secret_key_2026';
+    const secretKey = process.env.HMAC_SECRET || 'hmac_secret_key_2026';
 
     // Construct data string to verify
     // If timestamp is present: "centerId:timestamp", else "centerId"

@@ -30,9 +30,11 @@ export const PermissionGuard = (
 
       // If user is admin/super-admin, or has '*' permission, bypass checks
       const role = (
-        typeof user.roleName === 'string' ? user.roleName :
-        typeof user.role === 'string' ? user.role :
-        user.role?.name || ''
+        typeof user.roleName === 'string'
+          ? user.roleName
+          : typeof user.role === 'string'
+            ? user.role
+            : user.role?.name || ''
       ).toLowerCase();
 
       if (

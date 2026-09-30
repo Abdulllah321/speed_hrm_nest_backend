@@ -5,7 +5,6 @@ import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 import { MasterDeleteGuardService } from '../../common/services/master-delete-guard.service';
 
-
 @Injectable()
 export class EmployeeStatusService {
   constructor(
@@ -17,16 +16,14 @@ export class EmployeeStatusService {
   async list() {
     const items = await this.prisma.employeeStatus.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
     const item = await this.prisma.employeeStatus.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Status not found' };
     return { status: true, data: item };
@@ -76,7 +73,8 @@ export class EmployeeStatusService {
           module: 'employee-statuses',
           entity: 'EmployeeStatus',
           description: 'Failed to create employee status',
-          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage:
+            error instanceof Error ? error.message : 'Unknown error',
           newValues: JSON.stringify(data),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
@@ -98,9 +96,7 @@ export class EmployeeStatusService {
   ) {
     try {
       const existing = await this.prisma.employeeStatus.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const item = await this.prisma.employeeStatus.update({
         where: { id },
@@ -138,7 +134,8 @@ export class EmployeeStatusService {
           entity: 'EmployeeStatus',
           entityId: id,
           description: 'Failed to update employee status',
-          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage:
+            error instanceof Error ? error.message : 'Unknown error',
           newValues: JSON.stringify(data),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
@@ -158,18 +155,24 @@ export class EmployeeStatusService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'employeeStatus', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'employeeStatus',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.employeeStatus.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      await this.prisma.employeeStatus.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
-      const response = { status: true, message: 'Employee status deleted successfully' };
+      await this.prisma.employeeStatus.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
+      const response = {
+        status: true,
+        message: 'Employee status deleted successfully',
+      };
       runInBackground(
         'Delete Employee Status',
         this.activityLogs.log({
@@ -196,7 +199,8 @@ export class EmployeeStatusService {
           entity: 'EmployeeStatus',
           entityId: id,
           description: 'Failed to delete employee status',
-          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage:
+            error instanceof Error ? error.message : 'Unknown error',
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           status: 'failure',

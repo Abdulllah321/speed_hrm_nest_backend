@@ -4,7 +4,6 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 
-
 @Injectable()
 export class BankService {
   constructor(
@@ -15,15 +14,15 @@ export class BankService {
   async list() {
     const items = await this.prisma.bank.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
-    const item = await this.prisma.bank.findFirst({ where: { id,
-        isDeleted: false
-    } });
+    const item = await this.prisma.bank.findFirst({
+      where: { id, isDeleted: false },
+    });
     if (!item) return { status: false, message: 'Bank not found' };
     return { status: true, data: item };
   }
@@ -47,7 +46,11 @@ export class BankService {
           createdById: ctx.userId,
         },
       });
-      const response = { status: true, data: created, message: 'Created successfully' };
+      const response = {
+        status: true,
+        data: created,
+        message: 'Created successfully',
+      };
       runInBackground(
         'Create Bank',
         this.activityLogs.log({
@@ -153,9 +156,7 @@ export class BankService {
   ) {
     try {
       const existing = await this.prisma.bank.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Bank not found' };
       const updated = await this.prisma.bank.update({
@@ -171,7 +172,11 @@ export class BankService {
           updatedById: ctx.userId,
         },
       });
-      const response = { status: true, data: updated, message: 'Updated successfully' };
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Updated successfully',
+      };
       runInBackground(
         'Update Bank',
         this.activityLogs.log({
@@ -216,14 +221,13 @@ export class BankService {
   ) {
     try {
       const existing = await this.prisma.bank.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) return { status: false, message: 'Bank not found' };
-      await this.prisma.bank.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      await this.prisma.bank.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, message: 'Deleted successfully' };
       runInBackground(
         'Delete Bank',
@@ -327,9 +331,10 @@ export class BankService {
   ) {
     if (!ids?.length) return { status: false, message: 'No items to delete' };
     try {
-      await this.prisma.bank.updateMany({ where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      await this.prisma.bank.updateMany({
+        where: { id: { in: ids } },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, message: 'Deleted successfully' };
       runInBackground(
         'Bulk Delete Banks',

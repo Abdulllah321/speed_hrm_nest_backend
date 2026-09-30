@@ -653,6 +653,19 @@ model Brand {
   stockRequisitions StockRequisition[]
   locationBrands    LocationBrand[]
   supplierBrands    SupplierBrand[]
+  userBrands        UserBrand[]
+}
+
+model UserBrand {
+  id        String   @id @default(uuid())
+  userId    String
+  brandId   String
+  createdAt DateTime @default(now())
+
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, brandId])
+  @@index([userId])
 }
 
 model Division {

@@ -21,7 +21,11 @@ import { UploadModule } from '../upload/upload.module';
     BullModule.registerQueue({ name: 'loan-request-export' }),
   ],
   controllers: [LoanRequestController, LoanRequestExportController],
-  providers: [LoanRequestService, LoanRequestExportService, LoanRequestExportProcessor],
+  providers: [
+    LoanRequestService,
+    LoanRequestExportService,
+    LoanRequestExportProcessor,
+  ],
   exports: [LoanRequestService],
 })
 export class LoanRequestModule {}

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { MovementType } from '@prisma/client';
 import { StockLedgerService } from '../../warehouse/stock-ledger/stock-ledger.service';
@@ -12,11 +16,15 @@ export class DeliveryChallanService {
     private prisma: PrismaService,
     private stockLedgerService: StockLedgerService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
-  async create(createData: CreateDeliveryChallanDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createData: CreateDeliveryChallanDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
-      const { salesOrderId, driverName, vehicleNo, transportMode, items } = createData;
+      const { salesOrderId, driverName, vehicleNo, transportMode, items } =
+        createData;
 
       const result = await this.prisma.$transaction(async (tx) => {
         // Get sales order details
@@ -38,7 +46,9 @@ export class DeliveryChallanService {
         }
 
         if (salesOrder.status !== 'WAREHOUSE_VERIFIED') {
-          throw new BadRequestException('Sales order must be warehouse verified to create delivery challan');
+          throw new BadRequestException(
+            'Sales order must be warehouse verified to create delivery challan',
+          );
         }
 
         // Generate challan number (PI format: DC-FY-0001)
@@ -47,7 +57,7 @@ export class DeliveryChallanService {
         const currentMonth = now.getMonth();
         const startY = currentMonth >= 6 ? currentYear : currentYear - 1;
         const fyStr = `${String(startY).slice(-2)}-${String(startY + 1).slice(-2)}`;
-        
+
         const prefix = `DC-${fyStr}`;
         const lastChallan = await tx.deliveryChallan.findFirst({
           where: {
@@ -58,7 +68,10 @@ export class DeliveryChallanService {
 
         let nextChallanSeq = 1;
         if (lastChallan?.challanNo) {
-          const lastSeq = parseInt(lastChallan.challanNo.split('-').pop() || '0', 10);
+          const lastSeq = parseInt(
+            lastChallan.challanNo.split('-').pop() || '0',
+            10,
+          );
           if (!isNaN(lastSeq)) {
             nextChallanSeq = lastSeq + 1;
           }
@@ -66,29 +79,42 @@ export class DeliveryChallanService {
         const challanNo = `${prefix}-${String(nextChallanSeq).padStart(4, '0')}`;
 
         // Simple retail totals for delivery challan
-        const itemRecords = await Promise.all(items.map(async (item: any) => {
-          const salesOrderItem = salesOrder.items.find((soItem: any) => soItem.itemId === item.itemId);
-          const itemRecord = salesOrderItem?.item || await tx.item.findUnique({
-            where: { id: item.itemId },
-            select: { unitCost: true }
-          });
+        const itemRecords = await Promise.all(
+          items.map(async (item: any) => {
+            const salesOrderItem = salesOrder.items.find(
+              (soItem: any) => soItem.itemId === item.itemId,
+            );
+            const itemRecord =
+              salesOrderItem?.item ||
+              (await tx.item.findUnique({
+                where: { id: item.itemId },
+                select: { unitCost: true },
+              }));
 
-          const retailPrice = Number(item.salePrice || 0);
-          const deliveredQty = Number(item.deliveredQty || 0);
-          const total = deliveredQty * retailPrice;
+            const retailPrice = Number(item.salePrice || 0);
+            const deliveredQty = Number(item.deliveredQty || 0);
+            const total = deliveredQty * retailPrice;
 
-          return {
-            itemId: item.itemId,
-            orderedQty: salesOrderItem?.quantity || deliveredQty,
-            deliveredQty,
-            costPrice: salesOrderItem?.costPrice || (itemRecord as any)?.unitCost || 0,
-            salePrice: retailPrice,
-            total,
-          };
-        }));
+            return {
+              itemId: item.itemId,
+              orderedQty: salesOrderItem?.quantity || deliveredQty,
+              deliveredQty,
+              costPrice:
+                salesOrderItem?.costPrice || (itemRecord as any)?.unitCost || 0,
+              salePrice: retailPrice,
+              total,
+            };
+          }),
+        );
 
-        const totalAmount = itemRecords.reduce((sum: number, it: any) => sum + it.total, 0);
-        const totalQty = items.reduce((sum: number, item: any) => sum + item.deliveredQty, 0);
+        const totalAmount = itemRecords.reduce(
+          (sum: number, it: any) => sum + it.total,
+          0,
+        );
+        const totalQty = items.reduce(
+          (sum: number, item: any) => sum + item.deliveredQty,
+          0,
+        );
 
         // Resolve warehouse (fallback to Logistic Area if not assigned on sales order)
         let warehouseId = salesOrder.warehouseId;
@@ -107,7 +133,9 @@ export class DeliveryChallanService {
         }
 
         if (!warehouseId) {
-          throw new BadRequestException('Warehouse not found. Please ensure a Logistic Area warehouse exists.');
+          throw new BadRequestException(
+            'Warehouse not found. Please ensure a Logistic Area warehouse exists.',
+          );
         }
 
         const challan = await tx.deliveryChallan.create({
@@ -148,15 +176,18 @@ export class DeliveryChallanService {
         // Create stock ledger entries for inventory outbound (Physical delivery)
         for (const item of items) {
           // Create stock ledger entry
-          await this.stockLedgerService.createEntry({
-            itemId: item.itemId,
-            warehouseId: warehouseId as string,
-            qty: -Number(item.deliveredQty),
-            movementType: MovementType.OUTBOUND,
-            referenceType: 'DELIVERY_CHALLAN',
-            referenceId: challan.id,
-            rate: Number(item.salePrice),
-          }, tx);
+          await this.stockLedgerService.createEntry(
+            {
+              itemId: item.itemId,
+              warehouseId: warehouseId as string,
+              qty: -Number(item.deliveredQty),
+              movementType: MovementType.OUTBOUND,
+              referenceType: 'DELIVERY_CHALLAN',
+              referenceId: challan.id,
+              rate: Number(item.salePrice),
+            },
+            tx,
+          );
         }
 
         return challan;
@@ -216,7 +247,14 @@ export class DeliveryChallanService {
     const data = await this.prisma.deliveryChallan.findMany({
       where,
       include: {
-        customer: { select: { id: true, name: true, traderId: true, subCode: true } as any },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            traderId: true,
+            subCode: true,
+          } as any,
+        },
         warehouse: { select: { id: true, name: true } },
         salesOrder: { select: { id: true, orderNo: true } },
         _count: { select: { invoices: true } },
@@ -251,8 +289,8 @@ export class DeliveryChallanService {
             invoiceNo: true,
             grandTotal: true,
             createdAt: true,
-          }
-        }
+          },
+        },
       },
     });
 
@@ -263,7 +301,11 @@ export class DeliveryChallanService {
     return { status: true, data: challan };
   }
 
-  async update(id: string, updateData: any, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateData: any,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existingResponse = await this.findOne(id);
       const existing = existingResponse.data;
@@ -324,13 +366,18 @@ export class DeliveryChallanService {
     }
   }
 
-  async deliver(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async deliver(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const challanResponse = await this.findOne(id);
       const challan = challanResponse.data;
 
       if (challan.status !== 'PENDING') {
-        throw new BadRequestException('Only pending challans can be marked as delivered');
+        throw new BadRequestException(
+          'Only pending challans can be marked as delivered',
+        );
       }
 
       const updated = await this.prisma.deliveryChallan.update({
@@ -377,7 +424,10 @@ export class DeliveryChallanService {
     }
   }
 
-  async cancel(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async cancel(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const challanResponse = await this.findOne(id);
       const challan = challanResponse.data;
@@ -387,21 +437,26 @@ export class DeliveryChallanService {
       }
 
       if (challan.status === 'INVOICED') {
-        throw new BadRequestException('Cannot cancel an invoiced challan. Delete the invoice first.');
+        throw new BadRequestException(
+          'Cannot cancel an invoiced challan. Delete the invoice first.',
+        );
       }
 
       const result = await this.prisma.$transaction(async (tx) => {
         // Reverse stock ledger entries
         for (const item of challan.items) {
-          await this.stockLedgerService.createEntry({
-            itemId: item.itemId,
-            warehouseId: challan.warehouseId as string,
-            qty: Number(item.deliveredQty),
-            movementType: MovementType.INBOUND,
-            referenceType: 'DELIVERY_CHALLAN_CANCEL',
-            referenceId: challan.id,
-            rate: Number(item.salePrice),
-          }, tx);
+          await this.stockLedgerService.createEntry(
+            {
+              itemId: item.itemId,
+              warehouseId: challan.warehouseId as string,
+              qty: Number(item.deliveredQty),
+              movementType: MovementType.INBOUND,
+              referenceType: 'DELIVERY_CHALLAN_CANCEL',
+              referenceId: challan.id,
+              rate: Number(item.salePrice),
+            },
+            tx,
+          );
         }
 
         return await tx.deliveryChallan.update({
@@ -447,7 +502,11 @@ export class DeliveryChallanService {
     }
   }
 
-  async createInvoice(id: string, data: any, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async createInvoice(
+    id: string,
+    data: any,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const directQuery = await this.prisma.deliveryChallan.findUnique({
         where: { id },
@@ -456,21 +515,28 @@ export class DeliveryChallanService {
           status: true,
           challanNo: true,
           invoices: {
-            select: { id: true, invoiceNo: true }
-          }
-        }
+            select: { id: true, invoiceNo: true },
+          },
+        },
       });
 
       const deliveryChallanResponse = await this.findOne(id);
       const deliveryChallan = deliveryChallanResponse.data;
 
       // Check if already invoiced
-      if (deliveryChallan.status === 'INVOICED' || (deliveryChallan.invoices && deliveryChallan.invoices.length > 0)) {
-        throw new BadRequestException('This delivery challan has already been invoiced');
+      if (
+        deliveryChallan.status === 'INVOICED' ||
+        (deliveryChallan.invoices && deliveryChallan.invoices.length > 0)
+      ) {
+        throw new BadRequestException(
+          'This delivery challan has already been invoiced',
+        );
       }
 
       if (deliveryChallan.status !== 'DELIVERED') {
-        throw new BadRequestException(`Only delivered challans can be invoiced. Current status: ${deliveryChallan.status}`);
+        throw new BadRequestException(
+          `Only delivered challans can be invoiced. Current status: ${deliveryChallan.status}`,
+        );
       }
 
       const result = await this.prisma.$transaction(async (tx) => {
@@ -494,7 +560,10 @@ export class DeliveryChallanService {
 
         let nextInvSeq = 1;
         if (lastInvoice?.invoiceNo) {
-          const lastSeq = parseInt(lastInvoice.invoiceNo.split('-').pop() || '0', 10);
+          const lastSeq = parseInt(
+            lastInvoice.invoiceNo.split('-').pop() || '0',
+            10,
+          );
           if (!isNaN(lastSeq)) {
             nextInvSeq = lastSeq + 1;
           }
@@ -502,46 +571,63 @@ export class DeliveryChallanService {
         const invoiceNo = `${prefix}-${String(nextInvSeq).padStart(4, '0')}`;
 
         // Calculate correct invoice totals using FBR WOST logic (customer margin & discount at invoice time)
-        const baseMargin = data?.baseMargin !== undefined
-          ? Number(data.baseMargin)
-          : Number((deliveryChallan.customer as any)?.baseMargin ?? (deliveryChallan.salesOrder as any)?.baseMargin ?? 0);
-        const cashMargin = data?.cashMargin !== undefined
-          ? Number(data.cashMargin)
-          : Number((deliveryChallan.customer as any)?.cashMargin ?? (deliveryChallan.salesOrder as any)?.cashMargin ?? 0);
+        const baseMargin =
+          data?.baseMargin !== undefined
+            ? Number(data.baseMargin)
+            : Number(
+                (deliveryChallan.customer as any)?.baseMargin ??
+                  (deliveryChallan.salesOrder as any)?.baseMargin ??
+                  0,
+              );
+        const cashMargin =
+          data?.cashMargin !== undefined
+            ? Number(data.cashMargin)
+            : Number(
+                (deliveryChallan.customer as any)?.cashMargin ??
+                  (deliveryChallan.salesOrder as any)?.cashMargin ??
+                  0,
+              );
         const marginPct = baseMargin + cashMargin;
-        const orderDiscount = data?.discount !== undefined
-          ? Number(data.discount)
-          : Number((deliveryChallan.salesOrder as any)?.discount ?? 0);
+        const orderDiscount =
+          data?.discount !== undefined
+            ? Number(data.discount)
+            : Number((deliveryChallan.salesOrder as any)?.discount ?? 0);
 
-        const itemRecords = await Promise.all(deliveryChallan.items.map(async (item: any) => {
-          const itemRecord = await tx.item.findUnique({
-            where: { id: item.itemId },
-            select: { unitCost: true, taxRate1: true }
-          });
+        const itemRecords = await Promise.all(
+          deliveryChallan.items.map(async (item: any) => {
+            const itemRecord = await tx.item.findUnique({
+              where: { id: item.itemId },
+              select: { unitCost: true, taxRate1: true },
+            });
 
-          const retailPrice = Number(item.salePrice || 0);
-          const itemTaxRate = Number(itemRecord?.taxRate1 ?? 18);
-          const quantity = Number(item.deliveredQty || 0);
+            const retailPrice = Number(item.salePrice || 0);
+            const itemTaxRate = Number(itemRecord?.taxRate1 ?? 18);
+            const quantity = Number(item.deliveredQty || 0);
 
-          const wostUnit = retailPrice / (1 + itemTaxRate / 100);
-          const wostTotal = wostUnit * quantity;
+            const wostUnit = retailPrice / (1 + itemTaxRate / 100);
+            const wostTotal = wostUnit * quantity;
 
-          return {
-            itemId: item.itemId,
-            quantity,
-            costPrice: itemRecord?.unitCost || 0,
-            salePrice: retailPrice,
-            taxRate: itemTaxRate,
-            wostTotal
-          };
-        }));
+            return {
+              itemId: item.itemId,
+              quantity,
+              costPrice: itemRecord?.unitCost || 0,
+              salePrice: retailPrice,
+              taxRate: itemTaxRate,
+              wostTotal,
+            };
+          }),
+        );
 
-        const grossTotal = itemRecords.reduce((sum, it) => sum + it.wostTotal, 0);
+        const grossTotal = itemRecords.reduce(
+          (sum, it) => sum + it.wostTotal,
+          0,
+        );
         const baseMarginAmount = (grossTotal * baseMargin) / 100;
         const cashMarginAmount = (grossTotal * cashMargin) / 100;
         const subtotal = grossTotal - baseMarginAmount - cashMarginAmount;
 
-        const orderDiscountPct = subtotal > 0 ? (orderDiscount / subtotal) * 100 : 0;
+        const orderDiscountPct =
+          subtotal > 0 ? (orderDiscount / subtotal) * 100 : 0;
 
         let taxAmount = 0;
         const processedItems = itemRecords.map((item) => {
@@ -551,7 +637,7 @@ export class DeliveryChallanService {
           // Apply additional order discount percentage to the afterDiscount base
           const discountedBase = afterDiscount * (1 - orderDiscountPct / 100);
           const itemTaxAmount = discountedBase * (item.taxRate / 100);
-          const itemTotal = (discountedBase + itemTaxAmount);
+          const itemTotal = discountedBase + itemTaxAmount;
 
           taxAmount += itemTaxAmount;
 
@@ -565,7 +651,7 @@ export class DeliveryChallanService {
           };
         });
 
-        const grandTotal = (subtotal - orderDiscount) + taxAmount;
+        const grandTotal = subtotal - orderDiscount + taxAmount;
 
         const invoice = await tx.eRPSalesInvoice.create({
           data: {
@@ -579,12 +665,16 @@ export class DeliveryChallanService {
             cashMargin,
             baseMarginAmount,
             cashMarginAmount,
-            taxRate: Number(data?.taxRate !== undefined ? data.taxRate : deliveryChallan.salesOrder?.taxRate || 0),
+            taxRate: Number(
+              data?.taxRate !== undefined
+                ? data.taxRate
+                : deliveryChallan.salesOrder?.taxRate || 0,
+            ),
             taxAmount,
             discount: orderDiscount,
             grandTotal,
             balanceAmount: grandTotal,
-            paymentStatus: "UNPAID",
+            paymentStatus: 'UNPAID',
             items: {
               create: processedItems.map((item: any) => ({
                 itemId: item.itemId,

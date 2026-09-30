@@ -9,7 +9,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PrismaMasterService } from '../../database/prisma-master.service';
 import { ExportHistoryService } from '../../warehouse/export-history/export-history.service';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { WholesaleInvoiceRegisterService, WholesaleInvoiceRegisterResult } from './wholesale-invoice-register.service';
+import {
+  WholesaleInvoiceRegisterService,
+  WholesaleInvoiceRegisterResult,
+} from './wholesale-invoice-register.service';
 
 interface WholesaleInvoiceExportJobData {
   jobId: string;
@@ -48,14 +51,62 @@ const COLUMNS = [
   { header: 'Product', key: 'description', width: 25, align: 'left' },
   { header: 'Color', key: 'colorName', width: 14, align: 'center' },
   { header: 'Size', key: 'sizeName', width: 10, align: 'center' },
-  { header: 'Qty', key: 'quantity', width: 10, align: 'right', numFmt: '#,##0' },
-  { header: 'Selling Price', key: 'unitPrice', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Excl Tax', key: 'wostAmount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount', key: 'discountAmount', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sales Tax', key: 'taxAmount', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Add. Tax', key: 'addTaxAmount', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Tax Payable', key: 'taxPayable', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Incl Tax', key: 'subTotal', width: 20, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Qty',
+    key: 'quantity',
+    width: 10,
+    align: 'right',
+    numFmt: '#,##0',
+  },
+  {
+    header: 'Selling Price',
+    key: 'unitPrice',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Excl Tax',
+    key: 'wostAmount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount',
+    key: 'discountAmount',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Sales Tax',
+    key: 'taxAmount',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Add. Tax',
+    key: 'addTaxAmount',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Tax Payable',
+    key: 'taxPayable',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Incl Tax',
+    key: 'subTotal',
+    width: 20,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
 ];
 
 @Processor('sales-invoice-export')
@@ -72,16 +123,20 @@ export class WholesaleInvoiceRegisterProcessor {
         const { exec } = require('child_process');
         exec(
           'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
-          () => {}
+          () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
 
   @Process('generate-wholesale-invoice-register-preview')
-  async handleGeneratePreview(job: Job<WholesaleInvoicePreviewJobData>): Promise<void> {
+  async handleGeneratePreview(
+    job: Job<WholesaleInvoicePreviewJobData>,
+  ): Promise<void> {
     const {
       jobId,
       tenantId,
@@ -94,36 +149,52 @@ export class WholesaleInvoiceRegisterProcessor {
       fiscalYear,
       year,
     } = job.data;
-    this.logger.log(`[WholesaleInvoicePreview ${jobId}] Starting background wholesale-invoice preview computation`);
+    this.logger.log(
+      `[WholesaleInvoicePreview ${jobId}] Starting background wholesale-invoice preview computation`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      await job.progress({ percent: 10, message: 'Queueing wholesale invoice register preview computation task...' });
+      await job.progress({
+        percent: 10,
+        message:
+          'Queueing wholesale invoice register preview computation task...',
+      });
 
-      const result = await this.wholesaleInvoiceService.generateWholesaleInvoiceRegisterDataInternal(
-        prisma as any,
-        {
-          customerId,
-          startDate,
-          endDate,
-          reportType,
-          search,
-          fiscalYear,
-          year,
-          onProgress: async (percent, message) => {
-            await job.progress({ percent, message });
+      const result =
+        await this.wholesaleInvoiceService.generateWholesaleInvoiceRegisterDataInternal(
+          prisma as any,
+          {
+            customerId,
+            startDate,
+            endDate,
+            reportType,
+            search,
+            fiscalYear,
+            year,
+            onProgress: async (percent, message) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
       await this.wholesaleInvoiceService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Successfully generated wholesale-invoice preview result' });
-      this.logger.log(`[WholesaleInvoicePreview ${jobId}] Successfully generated and saved preview result`);
+      await job.progress({
+        percent: 100,
+        message: 'Successfully generated wholesale-invoice preview result',
+      });
+      this.logger.log(
+        `[WholesaleInvoicePreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[WholesaleInvoicePreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      this.logger.error(
+        `[WholesaleInvoicePreview ${jobId}] Exception in background computation: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
@@ -151,7 +222,9 @@ export class WholesaleInvoiceRegisterProcessor {
       },
       async () => {
         const reportLabel = 'Wholesale Invoice Register';
-        this.logger.log(`[WholesaleInvoiceExport ${jobId}] Starting ${format.toUpperCase()} export for ${reportLabel}`);
+        this.logger.log(
+          `[WholesaleInvoiceExport ${jobId}] Starting ${format.toUpperCase()} export for ${reportLabel}`,
+        );
 
         const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
         const prismaMaster = new PrismaMasterService();
@@ -161,30 +234,45 @@ export class WholesaleInvoiceRegisterProcessor {
         const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
         try {
-          await job.progress({ percent: 15, message: 'Loading details & parameters...' });
+          await job.progress({
+            percent: 15,
+            message: 'Loading details & parameters...',
+          });
 
-          const result = await this.wholesaleInvoiceService.generateWholesaleInvoiceRegisterDataInternal(
-            prisma as any,
-            {
-              customerId,
-              startDate,
-              endDate,
-              search,
-              onProgress: async (percent, message) => {
-                 await job.progress({ percent: 15 + percent * 0.35, message });
-              }
-            },
-          );
+          const result =
+            await this.wholesaleInvoiceService.generateWholesaleInvoiceRegisterDataInternal(
+              prisma as any,
+              {
+                customerId,
+                startDate,
+                endDate,
+                search,
+                onProgress: async (percent, message) => {
+                  await job.progress({ percent: 15 + percent * 0.35, message });
+                },
+              },
+            );
 
           const rows = result.flatItems || [];
           const grandTotals = result.grandTotals;
 
-          await job.progress({ percent: 50, message: `Loaded ${rows.length.toLocaleString()} rows. Aggregating totals...` });
+          await job.progress({
+            percent: 50,
+            message: `Loaded ${rows.length.toLocaleString()} rows. Aggregating totals...`,
+          });
 
           if (format === 'pdf') {
-            const fromStr = startDate ? new Date(startDate).toLocaleDateString() : '';
+            const fromStr = startDate
+              ? new Date(startDate).toLocaleDateString()
+              : '';
             const toStr = endDate ? new Date(endDate).toLocaleDateString() : '';
-            const html = this.buildPdfHtml(rows, fromStr, toStr, grandTotals, reportLabel);
+            const html = this.buildPdfHtml(
+              rows,
+              fromStr,
+              toStr,
+              grandTotals,
+              reportLabel,
+            );
 
             const launchArgs = [
               '--no-sandbox',
@@ -194,7 +282,8 @@ export class WholesaleInvoiceRegisterProcessor {
               '--disable-gpu',
             ];
             const browser = await puppeteer.launch({
-              executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+              executablePath:
+                process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
               headless: true,
               args: launchArgs,
             });
@@ -208,11 +297,17 @@ export class WholesaleInvoiceRegisterProcessor {
               const pdfBuffer = await page.pdf({
                 format: 'A4',
                 landscape: true,
-                margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+                margin: {
+                  top: '15mm',
+                  bottom: '15mm',
+                  left: '10mm',
+                  right: '10mm',
+                },
                 printBackground: true,
                 displayHeaderFooter: true,
                 headerTemplate: `<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">${reportLabel}</div>`,
-                footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+                footerTemplate:
+                  '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
               });
 
               fs.writeFileSync(filePath, pdfBuffer);
@@ -228,19 +323,36 @@ export class WholesaleInvoiceRegisterProcessor {
             });
 
             const ws = workbook.addWorksheet(reportLabel.slice(0, 30), {
-              pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+              pageSetup: {
+                paperSize: 9,
+                orientation: 'landscape',
+                fitToPage: true,
+                fitToWidth: 1,
+              },
             });
 
-            ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
+            ws.columns = COLUMNS.map((c) => ({ key: c.key, width: c.width }));
 
             // Add Header Row
             const headerRow = ws.getRow(1);
             COLUMNS.forEach((col, idx) => {
               const cell = headerRow.getCell(idx + 1);
               cell.value = col.header;
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF1E293B' },
+              };
               cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-              cell.alignment = { horizontal: col.align === 'right' ? 'right' : (col.align === 'center' ? 'center' : 'left'), vertical: 'middle' };
+              cell.alignment = {
+                horizontal:
+                  col.align === 'right'
+                    ? 'right'
+                    : col.align === 'center'
+                      ? 'center'
+                      : 'left',
+                vertical: 'middle',
+              };
             });
             headerRow.height = 24;
             headerRow.commit();
@@ -257,8 +369,15 @@ export class WholesaleInvoiceRegisterProcessor {
 
             for (const r of rows) {
               processedRows++;
-              if (processedRows % 250 === 0 || processedRows === totalRowsCount) {
-                const pct = 50 + Math.floor((processedRows / Math.max(1, totalRowsCount)) * 45);
+              if (
+                processedRows % 250 === 0 ||
+                processedRows === totalRowsCount
+              ) {
+                const pct =
+                  50 +
+                  Math.floor(
+                    (processedRows / Math.max(1, totalRowsCount)) * 45,
+                  );
                 await job.progress({
                   percent: Math.min(95, pct),
                   message: `Streaming row ${processedRows.toLocaleString()} of ${totalRowsCount.toLocaleString()}...`,
@@ -289,7 +408,12 @@ export class WholesaleInvoiceRegisterProcessor {
                 const cell = row.getCell(colNum);
                 cell.border = borderThin;
                 cell.alignment = {
-                  horizontal: COLUMNS[colNum - 1].align === 'right' ? 'right' : (COLUMNS[colNum - 1].align === 'center' ? 'center' : 'left'),
+                  horizontal:
+                    COLUMNS[colNum - 1].align === 'right'
+                      ? 'right'
+                      : COLUMNS[colNum - 1].align === 'center'
+                        ? 'center'
+                        : 'left',
                   vertical: 'middle',
                 };
                 const c = COLUMNS[colNum - 1];
@@ -332,7 +456,12 @@ export class WholesaleInvoiceRegisterProcessor {
               };
               const c = COLUMNS[colNum - 1];
               cell.alignment = {
-                horizontal: c.align === 'right' ? 'right' : (c.align === 'center' ? 'center' : 'left'),
+                horizontal:
+                  c.align === 'right'
+                    ? 'right'
+                    : c.align === 'center'
+                      ? 'center'
+                      : 'left',
                 vertical: 'middle',
               };
               if (c.numFmt && cell.value !== '') {
@@ -347,10 +476,14 @@ export class WholesaleInvoiceRegisterProcessor {
 
           await job.progress(95);
 
-          const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-          const fileName = format === 'pdf'
-            ? `wholesale-invoice-register-report-${new Date().toISOString().slice(0, 10)}.pdf`
-            : `wholesale-invoice-register-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+          const mimeType =
+            format === 'pdf'
+              ? 'application/pdf'
+              : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          const fileName =
+            format === 'pdf'
+              ? `wholesale-invoice-register-report-${new Date().toISOString().slice(0, 10)}.pdf`
+              : `wholesale-invoice-register-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
           await this.exportHistoryService.completeAndUploadExport(
             prisma,
@@ -372,9 +505,14 @@ export class WholesaleInvoiceRegisterProcessor {
           });
 
           await job.progress(100);
-          this.logger.log(`[WholesaleInvoiceExport ${jobId}] Finished processing successfully`);
+          this.logger.log(
+            `[WholesaleInvoiceExport ${jobId}] Finished processing successfully`,
+          );
         } catch (err) {
-          this.logger.error(`[WholesaleInvoiceExport ${jobId}] Failed: ${err.message}`, err.stack);
+          this.logger.error(
+            `[WholesaleInvoiceExport ${jobId}] Failed: ${err.message}`,
+            err.stack,
+          );
           await this.exportHistoryService.failExport(prisma, jobId);
           throw err;
         } finally {
@@ -389,10 +527,16 @@ export class WholesaleInvoiceRegisterProcessor {
     fromDateStr: string,
     toDateStr: string,
     grandTotals: any,
-    reportLabel: string
+    reportLabel: string,
   ): string {
     let rowsHtml = '';
-    const formatVal = (val: number) => val === 0 ? '-' : val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formatVal = (val: number) =>
+      val === 0
+        ? '-'
+        : val.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
 
     for (const r of data) {
       rowsHtml += `

@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { TransferRequestService } from './transfer-request.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -10,7 +20,9 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/transfer-request')
 export class TransferRequestController {
-    constructor(private readonly transferRequestService: TransferRequestService,) { }
+  constructor(
+    private readonly transferRequestService: TransferRequestService,
+  ) {}
 
     @Post()
     @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create')
@@ -45,165 +57,263 @@ export class TransferRequestController {
         return { status: true, data, message: 'Transfer request created successfully' };
     }
 
-    @Get()
-    @Permissions('pos.inventory.receiving.view', 'pos.inventory.returns.view', 'pos.inventory.inbound.view', 'pos.inventory.outbound.view', 'pos.inventory.receipt.view', 'erp.inventory.stock-transfer.read')
-    @ApiOperation({ summary: 'Get transfer requests' })
-    async getRequests(
-        @Query('warehouseId') warehouseId?: string,
-        @Query('status') status?: string,
-        @Query('id') id?: string,
-        @Query('transferType') transferType?: string,
-        @Query('search') search?: string,
-        @Query('dateFrom') dateFrom?: string,
-        @Query('dateTo') dateTo?: string,
-        @Query('dispatchType') dispatchType?: string,
-        @Query('page') page?: string,
-        @Query('limit') limit?: string,
-    ) {
-        const result = await this.transferRequestService.getRequests(
-            warehouseId,
-            status,
-            id,
-            transferType,
-            search,
-            dateFrom,
-            dateTo,
-            dispatchType,
-            page ? parseInt(page, 10) : undefined,
-            limit ? parseInt(limit, 10) : undefined,
-        );
-        return { status: true, data: result.data, meta: result.meta };
-    }
+  @Get()
+  @Permissions(
+    'pos.inventory.receiving.view',
+    'pos.inventory.returns.view',
+    'pos.inventory.inbound.view',
+    'pos.inventory.outbound.view',
+    'pos.inventory.receipt.view',
+    'erp.inventory.stock-transfer.read',
+  )
+  @ApiOperation({ summary: 'Get transfer requests' })
+  async getRequests(
+    @Query('warehouseId') warehouseId?: string,
+    @Query('status') status?: string,
+    @Query('id') id?: string,
+    @Query('transferType') transferType?: string,
+    @Query('search') search?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('dispatchType') dispatchType?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.transferRequestService.getRequests(
+      warehouseId,
+      status,
+      id,
+      transferType,
+      search,
+      dateFrom,
+      dateTo,
+      dispatchType,
+      page ? parseInt(page, 10) : undefined,
+      limit ? parseInt(limit, 10) : undefined,
+    );
+    return { status: true, data: result.data, meta: result.meta };
+  }
 
+  @Get('incoming')
+  @Permissions('pos.inventory.receiving.view')
+  @ApiOperation({ summary: 'Get incoming pending requests for a location' })
+  async getIncoming(@Query('locationId') locationId: string) {
+    const data =
+      await this.transferRequestService.getIncomingRequests(locationId);
+    return { status: true, data };
+  }
 
-    @Get('incoming')
-    @Permissions('pos.inventory.receiving.view')
-    @ApiOperation({ summary: 'Get incoming pending requests for a location' })
-    async getIncoming(@Query('locationId') locationId: string) {
-        const data = await this.transferRequestService.getIncomingRequests(locationId);
-        return { status: true, data };
-    }
+  @Get('return-requests')
+  @Permissions('pos.inventory.returns.view')
+  @ApiOperation({
+    summary: 'Get return requests for a location (outlet to warehouse)',
+  })
+  async getReturnRequests(@Query('locationId') locationId: string) {
+    const data =
+      await this.transferRequestService.getReturnRequests(locationId);
+    return { status: true, data };
+  }
 
-    @Get('return-requests')
-    @Permissions('pos.inventory.returns.view')
-    @ApiOperation({ summary: 'Get return requests for a location (outlet to warehouse)' })
-    async getReturnRequests(@Query('locationId') locationId: string) {
-        const data = await this.transferRequestService.getReturnRequests(locationId);
-        return { status: true, data };
-    }
+  @Get('outbound-requests')
+  @Permissions('pos.inventory.outbound.view')
+  @ApiOperation({
+    summary: 'Get outbound requests for source approval (outlet to outlet)',
+  })
+  async getOutboundRequests(
+    @Query('locationId') locationId: string,
+    @Query('status') status?: string,
+  ) {
+    const data = await this.transferRequestService.getOutboundRequests(
+      locationId,
+      status,
+    );
+    return { status: true, data };
+  }
 
-    @Get('outbound-requests')
-    @Permissions('pos.inventory.outbound.view')
-    @ApiOperation({ summary: 'Get outbound requests for source approval (outlet to outlet)' })
-    async getOutboundRequests(
-        @Query('locationId') locationId: string,
-        @Query('status') status?: string
-    ) {
-        const data = await this.transferRequestService.getOutboundRequests(locationId, status);
-        return { status: true, data };
-    }
+  @Get('inbound-requests')
+  @Permissions('pos.inventory.inbound.view')
+  @ApiOperation({
+    summary:
+      'Get inbound requests for destination acceptance (outlet to outlet)',
+  })
+  async getInboundRequests(
+    @Query('locationId') locationId: string,
+    @Query('status') status?: string,
+  ) {
+    const data = await this.transferRequestService.getInboundRequests(
+      locationId,
+      status,
+    );
+    return { status: true, data };
+  }
 
-    @Get('inbound-requests')
-    @Permissions('pos.inventory.inbound.view')
-    @ApiOperation({ summary: 'Get inbound requests for destination acceptance (outlet to outlet)' })
-    async getInboundRequests(
-        @Query('locationId') locationId: string,
-        @Query('status') status?: string
-    ) {
-        const data = await this.transferRequestService.getInboundRequests(locationId, status);
-        return { status: true, data };
-    }
+  @Get('next-transfer-number')
+  @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create')
+  @ApiOperation({ summary: 'Get next sequential stock transfer number' })
+  async getNextTransferNumber() {
+    const data = await this.transferRequestService.getNextTransferNumber();
+    return { status: true, data };
+  }
 
-    @Get('next-transfer-number')
-    @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create')
-    @ApiOperation({ summary: 'Get next sequential stock transfer number' })
-    async getNextTransferNumber() {
-        const data = await this.transferRequestService.getNextTransferNumber();
-        return { status: true, data };
-    }
+  @Patch(':id/status')
+  @Permissions(
+    'pos.inventory.transfer.create',
+    'erp.inventory.transfer.create',
+    'erp.inventory.transfer.check',
+    'erp.inventory.transfer.authorize',
+    'pos.inventory.transfer.check',
+    'pos.inventory.transfer.authorize',
+  )
+  @ApiOperation({ summary: 'Update transfer request status' })
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: { status: string; approvedById?: string },
+    @Req() req: any,
+  ) {
+    const data = await this.transferRequestService.updateStatus(
+      id,
+      dto.status,
+      dto.approvedById,
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        userPermissions: req.user?.permissions,
+        roleName: req.user?.roleName,
+      },
+    );
+    return {
+      status: true,
+      data,
+      message: `Request ${dto.status} successfully`,
+    };
+  }
 
-    @Patch(':id/status')
-    @Permissions(
-        'pos.inventory.transfer.create',
-        'erp.inventory.transfer.create',
-        'erp.inventory.transfer.check',
-        'erp.inventory.transfer.authorize',
-        'pos.inventory.transfer.check',
-        'pos.inventory.transfer.authorize'
-    )
-    @ApiOperation({ summary: 'Update transfer request status' })
-    async updateStatus(@Param('id') id: string, @Body() dto: { status: string; approvedById?: string }, @Req() req: any) {
-        const data = await this.transferRequestService.updateStatus(id, dto.status, dto.approvedById, {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-            userPermissions: req.user?.permissions,
-            roleName: req.user?.roleName,
-        });
-        return { status: true, data, message: `Request ${dto.status} successfully` };
-    }
+  @Post(':id/accept')
+  @Permissions(
+    'pos.inventory.receiving.accept',
+    'pos.inventory.inbound.accept',
+    'pos.inventory.returns.approve',
+  )
+  @ApiOperation({ summary: 'Accept and execute transfer movement' })
+  async accept(
+    @Param('id') id: string,
+    @Body() dto: { userId?: string },
+    @Req() req: any,
+  ) {
+    const data = await this.transferRequestService.acceptRequest(
+      id,
+      dto.userId,
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
+    return {
+      status: true,
+      data,
+      message: 'Transfer accepted and stock moved successfully',
+    };
+  }
 
-    @Post(':id/accept')
-    @Permissions('pos.inventory.receiving.accept', 'pos.inventory.inbound.accept', 'pos.inventory.returns.approve')
-    @ApiOperation({ summary: 'Accept and execute transfer movement' })
-    async accept(@Param('id') id: string, @Body() dto: { userId?: string }, @Req() req: any) {
-        const data = await this.transferRequestService.acceptRequest(id, dto.userId, {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-        return { status: true, data, message: 'Transfer accepted and stock moved successfully' };
-    }
+  @Post(':id/approve-source')
+  @Permissions('pos.inventory.outbound.approve')
+  @ApiOperation({
+    summary: 'Approve transfer at source outlet (outlet to outlet only)',
+  })
+  async approveSource(
+    @Param('id') id: string,
+    @Body()
+    dto: { userId?: string; items?: { itemId: string; quantity: number }[] },
+    @Req() req: any,
+  ) {
+    const data = await this.transferRequestService.approveSource(
+      id,
+      dto.userId,
+      dto.items,
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
+    return {
+      status: true,
+      data,
+      message: 'Source approval completed. Awaiting destination acceptance.',
+    };
+  }
 
-    @Post(':id/approve-source')
-    @Permissions('pos.inventory.outbound.approve')
-    @ApiOperation({ summary: 'Approve transfer at source outlet (outlet to outlet only)' })
-    async approveSource(@Param('id') id: string, @Body() dto: { userId?: string; items?: { itemId: string; quantity: number }[] }, @Req() req: any) {
-        const data = await this.transferRequestService.approveSource(id, dto.userId, dto.items, {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-        return { status: true, data, message: 'Source approval completed. Awaiting destination acceptance.' };
-    }
+  @Post(':id/acknowledge-claim')
+  @Permissions(
+    'erp.inventory.claims.acknowledge',
+    'erp.inventory.transfer.approve',
+  )
+  @ApiOperation({
+    summary: 'PLM acknowledges receipt of claim items and updates inventory',
+  })
+  async acknowledgeClaim(
+    @Param('id') id: string,
+    @Body() dto: { userId?: string },
+    @Req() req: any,
+  ) {
+    const data = await this.transferRequestService.acknowledgeClaim(
+      id,
+      dto.userId,
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
+    return {
+      status: true,
+      data,
+      message: 'Claim acknowledged successfully. PLM inventory updated.',
+    };
+  }
 
-    @Post(':id/acknowledge-claim')
-    @Permissions('erp.inventory.claims.acknowledge', 'erp.inventory.transfer.approve')
-    @ApiOperation({ summary: 'PLM acknowledges receipt of claim items and updates inventory' })
-    async acknowledgeClaim(@Param('id') id: string, @Body() dto: { userId?: string }, @Req() req: any) {
-        const data = await this.transferRequestService.acknowledgeClaim(id, dto.userId, {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-        return { status: true, data, message: 'Claim acknowledged successfully. PLM inventory updated.' };
-    }
-
-    @Patch(':id/dispatch')
-    @Permissions('pos.inventory.transfer.create', 'erp.inventory.transfer.create', 'pos.inventory.outbound.approve')
-    @ApiOperation({ summary: 'Update transfer request dispatch and courier details' })
-    async updateDispatch(
-        @Param('id') id: string,
-        @Body() dto: {
-            dispatchType?: string;
-            courierName?: string;
-            trackingNumber?: string;
-            dispatchDate?: Date | string;
-            estimatedDeliveryDate?: Date | string;
-            riderName?: string;
-            riderPhone?: string;
-            vehicleNumber?: string;
-            receiverPerson?: string;
-            shippingCost?: number;
-            dispatchNotes?: string;
-        },
-        @Req() req: any
-    ) {
-        const data = await this.transferRequestService.updateDispatchDetails(id, dto, {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        });
-        return { status: true, data, message: 'Courier & dispatch details updated successfully' };
-    }
+  @Patch(':id/dispatch')
+  @Permissions(
+    'pos.inventory.transfer.create',
+    'erp.inventory.transfer.create',
+    'pos.inventory.outbound.approve',
+  )
+  @ApiOperation({
+    summary: 'Update transfer request dispatch and courier details',
+  })
+  async updateDispatch(
+    @Param('id') id: string,
+    @Body()
+    dto: {
+      dispatchType?: string;
+      courierName?: string;
+      trackingNumber?: string;
+      dispatchDate?: Date | string;
+      estimatedDeliveryDate?: Date | string;
+      riderName?: string;
+      riderPhone?: string;
+      vehicleNumber?: string;
+      receiverPerson?: string;
+      shippingCost?: number;
+      dispatchNotes?: string;
+    },
+    @Req() req: any,
+  ) {
+    const data = await this.transferRequestService.updateDispatchDetails(
+      id,
+      dto,
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
+    return {
+      status: true,
+      data,
+      message: 'Courier & dispatch details updated successfully',
+    };
+  }
 }

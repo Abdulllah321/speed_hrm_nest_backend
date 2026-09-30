@@ -28,12 +28,15 @@ export class CprTaxExportController {
    */
   @Post()
   @Permissions('hr.payroll.read')
-  @ApiOperation({ summary: 'Queue a CPR tax export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue a CPR tax export job (returns immediately, notifies when done)',
+  })
   async queueExport(
     @Req() req: any,
     @Query('search') search?: string,
-    @Query('month')  month?: string,
-    @Query('year')   year?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
     @Query('months') months?: string,
     @Query('employeeIds') employeeIds?: string,
   ) {
@@ -48,7 +51,8 @@ export class CprTaxExportController {
 
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -76,7 +80,10 @@ export class CprTaxExportController {
       await this.exportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { SalesReturnService } from './sales-return.service';
 import { CreateSalesReturnDto } from './dto/create-sales-return.dto';
 import { UpdateSalesReturnDto } from './dto/update-sales-return.dto';
@@ -43,7 +53,11 @@ export class SalesReturnController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDto: UpdateSalesReturnDto, @Req() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateSalesReturnDto,
+    @Req() req: any,
+  ) {
     const ctx = {
       userId: req.user?.id || req.user?.sub,
       ipAddress: req.ip,
@@ -63,7 +77,12 @@ export class SalesReturnController {
       ipAddress: req.ip,
       userAgent: req.headers?.['user-agent'],
     };
-    return this.salesReturnService.updateStatus(id, body.status, body.approvedBy, ctx);
+    return this.salesReturnService.updateStatus(
+      id,
+      body.status,
+      body.approvedBy,
+      ctx,
+    );
   }
 
   @Delete(':id')

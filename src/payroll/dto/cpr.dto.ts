@@ -263,7 +263,10 @@ export class PreviewCprDto {
   @IsOptional()
   locationId?: string;
 
-  @ApiProperty({ description: 'Array of selected Employee IDs', required: false })
+  @ApiProperty({
+    description: 'Array of selected Employee IDs',
+    required: false,
+  })
   @IsOptional()
   employeeIds?: string[];
 }
@@ -278,4 +281,3 @@ export class ConfirmBatchCprDto {
   @IsNotEmpty()
   records: CreateCprDto[];
 }
-

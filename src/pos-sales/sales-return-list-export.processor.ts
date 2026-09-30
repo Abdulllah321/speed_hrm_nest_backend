@@ -49,9 +49,19 @@ export interface SalesReturnListPreviewJobData {
 }
 
 const FLAT_COLUMNS = [
-  { header: 'Outlet / Location', key: 'locationName', width: 22, align: 'left' },
+  {
+    header: 'Outlet / Location',
+    key: 'locationName',
+    width: 22,
+    align: 'left',
+  },
   { header: 'Return #', key: 'returnNumber', width: 18, align: 'left' },
-  { header: 'Original Invoice #', key: 'originalOrderNumber', width: 18, align: 'left' },
+  {
+    header: 'Original Invoice #',
+    key: 'originalOrderNumber',
+    width: 18,
+    align: 'left',
+  },
   { header: 'Sub Type', key: 'subTypeLabel', width: 16, align: 'center' },
   { header: 'Return Date', key: 'returnDate', width: 20, align: 'center' },
   { header: 'Cashier', key: 'cashierName', width: 16, align: 'left' },
@@ -61,30 +71,118 @@ const FLAT_COLUMNS = [
   { header: 'Customer Code', key: 'customerCode', width: 14, align: 'left' },
   { header: 'Refund Mode', key: 'refundMode', width: 14, align: 'center' },
   { header: 'Return Reason', key: 'returnReason', width: 24, align: 'left' },
-  { header: 'Voucher Issued Code', key: 'voucherCode', width: 20, align: 'left' },
-  { header: 'Voucher Issued Amount', key: 'voucherAmount', width: 20, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Voucher Issued Code',
+    key: 'voucherCode',
+    width: 20,
+    align: 'left',
+  },
+  {
+    header: 'Voucher Issued Amount',
+    key: 'voucherAmount',
+    width: 20,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'SKU', key: 'sku', width: 16, align: 'left' },
   { header: 'Barcode', key: 'barCode', width: 16, align: 'left' },
   { header: 'Description', key: 'description', width: 26, align: 'left' },
   { header: 'Size', key: 'sizeName', width: 10, align: 'center' },
   { header: 'Color', key: 'colorName', width: 12, align: 'center' },
-  { header: 'Return Quantity', key: 'quantity', width: 12, align: 'right', numFmt: '#,##0' },
-  { header: 'Unit Price', key: 'unitPrice', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Unit Price WOST', key: 'priceWost', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Excl.', key: 'valueExcl', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount %', key: 'discountPercent', width: 11, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount', key: 'discountAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount WOST', key: 'discountAmountWost', width: 13, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sales Tax', key: 'taxAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Incl. (Net Return)', key: 'lineTotal', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash Refund', key: 'cashRefund', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Card Refund', key: 'cardRefund', width: 14, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Return Quantity',
+    key: 'quantity',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0',
+  },
+  {
+    header: 'Unit Price',
+    key: 'unitPrice',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Unit Price WOST',
+    key: 'priceWost',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Excl.',
+    key: 'valueExcl',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount %',
+    key: 'discountPercent',
+    width: 11,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount',
+    key: 'discountAmount',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount WOST',
+    key: 'discountAmountWost',
+    width: 13,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Amount After Discount',
+    key: 'amountAfterDiscount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Sales Tax',
+    key: 'taxAmount',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Incl. (Net Return)',
+    key: 'lineTotal',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Cash Refund',
+    key: 'cashRefund',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Card Refund',
+    key: 'cardRefund',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
 ];
 
 const COLUMNS = [
   { header: 'Return #', key: 'returnNumber', width: 18, align: 'left' },
-  { header: 'Original Invoice #', key: 'originalOrderNumber', width: 18, align: 'left' },
+  {
+    header: 'Original Invoice #',
+    key: 'originalOrderNumber',
+    width: 18,
+    align: 'left',
+  },
   { header: 'Sub Type', key: 'subTypeLabel', width: 16, align: 'center' },
   { header: 'Return Date', key: 'date', width: 20, align: 'center' },
   { header: 'Location', key: 'location', width: 18, align: 'left' },
@@ -95,20 +193,103 @@ const COLUMNS = [
   { header: 'Customer Code', key: 'customerCode', width: 14, align: 'left' },
   { header: 'Refund Mode', key: 'refundMode', width: 14, align: 'center' },
   { header: 'Return Reason', key: 'reason', width: 24, align: 'left' },
-  { header: 'Voucher Issued Code', key: 'voucherCode', width: 20, align: 'left' },
-  { header: 'Voucher Issued Amount', key: 'voucherAmount', width: 20, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Return Quantity', key: 'quantity', width: 12, align: 'right', numFmt: '#,##0' },
-  { header: 'Unit Price WOST (Avg)', key: 'unitPriceWost', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Excl.', key: 'valueExcl', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount Total', key: 'discountTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount WOST', key: 'discountWost', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sales Tax', key: 'salesTax', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Incl. (Net Return)', key: 'netTotal', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash Refund', key: 'cashRefund', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Exchange Voucher Issued', key: 'exchangeVoucher', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Credit Voucher Issued', key: 'creditVoucher', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Claim Voucher Issued', key: 'claimVoucher', width: 18, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Voucher Issued Code',
+    key: 'voucherCode',
+    width: 20,
+    align: 'left',
+  },
+  {
+    header: 'Voucher Issued Amount',
+    key: 'voucherAmount',
+    width: 20,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Return Quantity',
+    key: 'quantity',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0',
+  },
+  {
+    header: 'Unit Price WOST (Avg)',
+    key: 'unitPriceWost',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Excl.',
+    key: 'valueExcl',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount Total',
+    key: 'discountTotal',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount WOST',
+    key: 'discountWost',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Amount After Discount',
+    key: 'amountAfterDiscount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Sales Tax',
+    key: 'salesTax',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Incl. (Net Return)',
+    key: 'netTotal',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Cash Refund',
+    key: 'cashRefund',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Exchange Voucher Issued',
+    key: 'exchangeVoucher',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Credit Voucher Issued',
+    key: 'creditVoucher',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Claim Voucher Issued',
+    key: 'claimVoucher',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
 ];
 
 @Processor('sales-return-list-export')
@@ -122,7 +303,9 @@ export class SalesReturnListExportProcessor {
   ) {}
 
   @Process('generate-sales-return-list-preview')
-  async handleGeneratePreview(job: Job<SalesReturnListPreviewJobData>): Promise<void> {
+  async handleGeneratePreview(
+    job: Job<SalesReturnListPreviewJobData>,
+  ): Promise<void> {
     const {
       jobId,
       tenantId,
@@ -145,44 +328,67 @@ export class SalesReturnListExportProcessor {
         : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      this.logger.log(`[SalesReturnListPreview ${jobId}] Starting background preview computation`);
-      await job.progress({ percent: 10, message: 'Queueing sales return list computation...' });
+      this.logger.log(
+        `[SalesReturnListPreview ${jobId}] Starting background preview computation`,
+      );
+      await job.progress({
+        percent: 10,
+        message: 'Queueing sales return list computation...',
+      });
 
       const onProgress = async (percent: number, message: string) => {
         if (this.salesReturnListExportService.isJobCancelled(jobId)) {
           throw new Error('JOB_CANCELLED');
         }
-        await job.progress({ percent: Math.min(95, Math.max(10, percent)), message });
+        await job.progress({
+          percent: Math.min(95, Math.max(10, percent)),
+          message,
+        });
       };
 
-      const result = await this.salesReturnListExportService.generateSalesReturnListReportDataInternal(
-        prisma as any,
-        {
-          locationId,
-          startDate,
-          endDate,
-          cashierUserId,
-          reportType,
-          search,
-          subType,
-          refundMode,
-          fiscalYear,
-          year,
-          previewJobId: jobId,
-          isAborted: () => this.salesReturnListExportService.isJobCancelled(jobId),
-          onProgress,
-        },
-      );
+      const result =
+        await this.salesReturnListExportService.generateSalesReturnListReportDataInternal(
+          prisma as any,
+          {
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            reportType,
+            search,
+            subType,
+            refundMode,
+            fiscalYear,
+            year,
+            previewJobId: jobId,
+            isAborted: () =>
+              this.salesReturnListExportService.isJobCancelled(jobId),
+            onProgress,
+          },
+        );
 
-      await this.salesReturnListExportService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Sales return list calculation complete.' });
-      this.logger.log(`[SalesReturnListPreview] Successfully completed and saved preview job ${jobId}`);
+      await this.salesReturnListExportService.saveReportPreviewResult(
+        jobId,
+        result,
+      );
+      await job.progress({
+        percent: 100,
+        message: 'Sales return list calculation complete.',
+      });
+      this.logger.log(
+        `[SalesReturnListPreview] Successfully completed and saved preview job ${jobId}`,
+      );
     } catch (err: any) {
       if (err.message === 'JOB_CANCELLED') {
-        this.logger.log(`[SalesReturnListPreview ${jobId}] Job was superseded or cancelled.`);
+        this.logger.log(
+          `[SalesReturnListPreview ${jobId}] Job was superseded or cancelled.`,
+        );
         return;
       }
-      this.logger.error(`[SalesReturnListPreview ${jobId}] Exception: ${err.message}`, err.stack);
+      this.logger.error(
+        `[SalesReturnListPreview ${jobId}] Exception: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
@@ -216,25 +422,29 @@ export class SalesReturnListExportProcessor {
     const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
     try {
-      await job.progress({ percent: 15, message: 'Loading return records for export...' });
+      await job.progress({
+        percent: 15,
+        message: 'Loading return records for export...',
+      });
 
-      const result = await this.salesReturnListExportService.generateSalesReturnListReportDataInternal(
-        prisma as any,
-        {
-          locationId,
-          locationIds: job.data.locationIds,
-          startDate,
-          endDate,
-          cashierUserId,
-          search,
-          subType,
-          refundMode,
-          exportType,
-          onProgress: async (p, m) => {
-            await job.progress({ percent: Math.min(85, p), message: m });
+      const result =
+        await this.salesReturnListExportService.generateSalesReturnListReportDataInternal(
+          prisma as any,
+          {
+            locationId,
+            locationIds: job.data.locationIds,
+            startDate,
+            endDate,
+            cashierUserId,
+            search,
+            subType,
+            refundMode,
+            exportType,
+            onProgress: async (p, m) => {
+              await job.progress({ percent: Math.min(85, p), message: m });
+            },
           },
-        },
-      );
+        );
 
       if (format === 'xlsx') {
         const isFlat = exportType === 'flat';
@@ -245,7 +455,9 @@ export class SalesReturnListExportProcessor {
         });
 
         const activeCols = isFlat ? FLAT_COLUMNS : COLUMNS;
-        const ws = workbook.addWorksheet(isFlat ? 'Flat Return Items' : 'Sales Returns');
+        const ws = workbook.addWorksheet(
+          isFlat ? 'Flat Return Items' : 'Sales Returns',
+        );
         ws.columns = activeCols.map((c) => ({ key: c.key, width: c.width }));
 
         // Header Row
@@ -253,10 +465,19 @@ export class SalesReturnListExportProcessor {
         activeCols.forEach((col, idx) => {
           const cell = headerRow.getCell(idx + 1);
           cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF1E293B' },
+          };
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
           cell.alignment = {
-            horizontal: col.align === 'right' ? 'right' : col.align === 'center' ? 'center' : 'left',
+            horizontal:
+              col.align === 'right'
+                ? 'right'
+                : col.align === 'center'
+                  ? 'center'
+                  : 'left',
             vertical: 'middle',
           };
         });
@@ -271,7 +492,12 @@ export class SalesReturnListExportProcessor {
                 returnNumber: ret.returnNumber,
                 originalOrderNumber: ret.originalOrderNumber || '-',
                 subTypeLabel: ret.subTypeLabel || ret.subType,
-                returnDate: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                returnDate: ret.createdAt
+                  ? new Date(ret.createdAt)
+                      .toISOString()
+                      .replace('T', ' ')
+                      .slice(0, 19)
+                  : '-',
                 cashierName: ret.cashierName || '-',
                 customerName: ret.customerName || 'Walk-in',
                 customerPhone: ret.customerPhone || '-',
@@ -307,7 +533,12 @@ export class SalesReturnListExportProcessor {
               returnNumber: ret.returnNumber,
               originalOrderNumber: ret.originalOrderNumber || '-',
               subTypeLabel: ret.subTypeLabel || ret.subType,
-              date: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+              date: ret.createdAt
+                ? new Date(ret.createdAt)
+                    .toISOString()
+                    .replace('T', ' ')
+                    .slice(0, 19)
+                : '-',
               location: ret.locationName || '-',
               cashier: ret.cashierName || '-',
               customer: ret.customerName || 'Walk-in',
@@ -319,7 +550,14 @@ export class SalesReturnListExportProcessor {
               voucherCode: ret.voucherCode || '-',
               voucherAmount: ret.voucherAmount || 0,
               quantity: ret.totals.totalItems,
-              unitPriceWost: ret.totals.totalItems > 0 ? Number((ret.totals.wostAmount / ret.totals.totalItems).toFixed(2)) : 0,
+              unitPriceWost:
+                ret.totals.totalItems > 0
+                  ? Number(
+                      (ret.totals.wostAmount / ret.totals.totalItems).toFixed(
+                        2,
+                      ),
+                    )
+                  : 0,
               valueExcl: ret.totals.wostAmount,
               discountTotal: ret.totals.discountAmount,
               discountWost: ret.totals.discountWostAmount,
@@ -370,7 +608,10 @@ export class SalesReturnListExportProcessor {
               voucherCode: '',
               voucherAmount: gt.voucherIssuedAmount,
               quantity: gt.totalItems,
-              unitPriceWost: gt.totalItems > 0 ? Number((gt.wostAmount / gt.totalItems).toFixed(2)) : 0,
+              unitPriceWost:
+                gt.totalItems > 0
+                  ? Number((gt.wostAmount / gt.totalItems).toFixed(2))
+                  : 0,
               valueExcl: gt.wostAmount,
               discountTotal: gt.discountAmount,
               discountWost: gt.discountWostAmount,
@@ -421,9 +662,14 @@ export class SalesReturnListExportProcessor {
       });
 
       await job.progress(100);
-      this.logger.log(`[SalesReturnListExport ${jobId}] Finished processing successfully`);
+      this.logger.log(
+        `[SalesReturnListExport ${jobId}] Finished processing successfully`,
+      );
     } catch (err: any) {
-      this.logger.error(`[SalesReturnListExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[SalesReturnListExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     }

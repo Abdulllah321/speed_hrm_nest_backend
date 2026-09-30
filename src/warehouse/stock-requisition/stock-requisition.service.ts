@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as xlsx from 'xlsx';
@@ -16,9 +20,12 @@ export class StockRequisitionService {
     private transferRequestService: TransferRequestService,
     private notifications: NotificationsService,
     private stockLedgerService: StockLedgerService,
-  ) { }
+  ) {}
 
-  private async getCurrentItemRate(tx: Prisma.TransactionClient, itemId: string): Promise<number> {
+  private async getCurrentItemRate(
+    tx: Prisma.TransactionClient,
+    itemId: string,
+  ): Promise<number> {
     const item = await tx.item.findUnique({
       where: { id: itemId },
       select: { unitCost: true },
@@ -29,7 +36,11 @@ export class StockRequisitionService {
   /**
    * Get net available stock of an item in a warehouse (physical AVAILABLE stock minus reserved stock).
    */
-  async getNetAvailableStock(tx: Prisma.TransactionClient, itemId: string, warehouseId: string): Promise<number> {
+  async getNetAvailableStock(
+    tx: Prisma.TransactionClient,
+    itemId: string,
+    warehouseId: string,
+  ): Promise<number> {
     // 1. Get physical AVAILABLE stock
     const stockItem = await tx.inventoryItem.findFirst({
       where: {
@@ -46,16 +57,15 @@ export class StockRequisitionService {
       where: {
         itemId,
         warehouseId,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gte: new Date() } }
-        ]
+        OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
       },
       _sum: {
         quantity: true,
       },
     });
-    const reservedQty = reservations._sum.quantity ? Number(reservations._sum.quantity) : 0;
+    const reservedQty = reservations._sum.quantity
+      ? Number(reservations._sum.quantity)
+      : 0;
 
     return Math.max(0, physicalQty - reservedQty);
   }
@@ -109,15 +119,24 @@ export class StockRequisitionService {
       // 1. Verify stock and block/reserve
       for (const reqItem of data.items) {
         if (reqItem.quantity <= 0) {
-          throw new BadRequestException(`Quantity for item ${reqItem.itemId} must be greater than zero`);
+          throw new BadRequestException(
+            `Quantity for item ${reqItem.itemId} must be greater than zero`,
+          );
         }
 
-        const netAvailable = await this.getNetAvailableStock(tx, reqItem.itemId, fromWarehouseId);
+        const netAvailable = await this.getNetAvailableStock(
+          tx,
+          reqItem.itemId,
+          fromWarehouseId,
+        );
         if (netAvailable < reqItem.quantity) {
-          const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { sku: true, description: true } });
+          const itemDetail = await tx.item.findUnique({
+            where: { id: reqItem.itemId },
+            select: { sku: true, description: true },
+          });
           throw new BadRequestException(
             `Insufficient stock for item ${itemDetail?.sku || reqItem.itemId} (${itemDetail?.description || ''}). ` +
-            `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
+              `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
           );
         }
       }
@@ -178,7 +197,9 @@ export class StockRequisitionService {
             category: 'warehouse',
             priority: 'high',
             actionType: 'NAVIGATE',
-            actionPayload: { url: '/erp/inventory/transactions/stock-requisition/pending' },
+            actionPayload: {
+              url: '/erp/inventory/transactions/stock-requisition/pending',
+            },
             entityType: 'StockRequisition',
             entityId: requisition.id,
             warehouseId: requisition.fromWarehouseId,
@@ -252,16 +273,26 @@ export class StockRequisitionService {
         // Verify stock availability
         for (const reqItem of data.items) {
           if (reqItem.quantity <= 0) {
-            throw new BadRequestException(`Quantity for item ${reqItem.itemId} must be greater than zero`);
+            throw new BadRequestException(
+              `Quantity for item ${reqItem.itemId} must be greater than zero`,
+            );
           }
 
-          const targetWarehouseId = data.fromWarehouseId ?? existing.fromWarehouseId;
-          const netAvailable = await this.getNetAvailableStock(tx, reqItem.itemId, targetWarehouseId);
+          const targetWarehouseId =
+            data.fromWarehouseId ?? existing.fromWarehouseId;
+          const netAvailable = await this.getNetAvailableStock(
+            tx,
+            reqItem.itemId,
+            targetWarehouseId,
+          );
           if (netAvailable < reqItem.quantity) {
-            const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { sku: true, description: true } });
+            const itemDetail = await tx.item.findUnique({
+              where: { id: reqItem.itemId },
+              select: { sku: true, description: true },
+            });
             throw new BadRequestException(
               `Insufficient stock for item ${itemDetail?.sku || reqItem.itemId} (${itemDetail?.description || ''}). ` +
-              `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
+                `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
             );
           }
         }
@@ -273,17 +304,24 @@ export class StockRequisitionService {
         data: {
           fromWarehouseId: data.fromWarehouseId ?? existing.fromWarehouseId,
           toLocationId: data.toLocationId ?? existing.toLocationId,
-          brandId: data.brandId !== undefined ? (data.brandId === 'none' ? null : data.brandId) : existing.brandId,
+          brandId:
+            data.brandId !== undefined
+              ? data.brandId === 'none'
+                ? null
+                : data.brandId
+              : existing.brandId,
           documentType: data.documentType ?? existing.documentType,
           remarks: data.remarks !== undefined ? data.remarks : existing.remarks,
           notes: data.notes !== undefined ? data.notes : existing.notes,
           financialYear: data.financialYear ?? existing.financialYear,
-          items: data.items ? {
-            create: data.items.map((item) => ({
-              itemId: item.itemId,
-              quantity: new Prisma.Decimal(item.quantity),
-            })),
-          } : undefined,
+          items: data.items
+            ? {
+                create: data.items.map((item) => ({
+                  itemId: item.itemId,
+                  quantity: new Prisma.Decimal(item.quantity),
+                })),
+              }
+            : undefined,
         },
         include: {
           items: {
@@ -298,8 +336,14 @@ export class StockRequisitionService {
       });
 
       // 4. Re-create StockReserve records
-      const itemsToReserve = data.items || existing.items.map((i) => ({ itemId: i.itemId, quantity: Number(i.quantity) }));
-      const targetWarehouseId = data.fromWarehouseId ?? existing.fromWarehouseId;
+      const itemsToReserve =
+        data.items ||
+        existing.items.map((i) => ({
+          itemId: i.itemId,
+          quantity: Number(i.quantity),
+        }));
+      const targetWarehouseId =
+        data.fromWarehouseId ?? existing.fromWarehouseId;
       for (const reqItem of itemsToReserve) {
         await tx.stockReserve.create({
           data: {
@@ -363,15 +407,24 @@ export class StockRequisitionService {
       for (const reqItem of existing.items) {
         const qty = Number(reqItem.quantity);
         if (qty <= 0) {
-          throw new BadRequestException(`Quantity for item ${reqItem.itemId} must be greater than zero`);
+          throw new BadRequestException(
+            `Quantity for item ${reqItem.itemId} must be greater than zero`,
+          );
         }
 
-        const netAvailable = await this.getNetAvailableStock(tx, reqItem.itemId, existing.fromWarehouseId);
+        const netAvailable = await this.getNetAvailableStock(
+          tx,
+          reqItem.itemId,
+          existing.fromWarehouseId,
+        );
         if (netAvailable < qty) {
-          const itemDetail = await tx.item.findUnique({ where: { id: reqItem.itemId }, select: { sku: true, description: true } });
+          const itemDetail = await tx.item.findUnique({
+            where: { id: reqItem.itemId },
+            select: { sku: true, description: true },
+          });
           throw new BadRequestException(
             `Insufficient stock for item ${itemDetail?.sku || reqItem.itemId} (${itemDetail?.description || ''}). ` +
-            `Available (unreserved): ${netAvailable}, Requested: ${qty}`,
+              `Available (unreserved): ${netAvailable}, Requested: ${qty}`,
           );
         }
       }
@@ -417,7 +470,9 @@ export class StockRequisitionService {
           category: 'warehouse',
           priority: 'high',
           actionType: 'NAVIGATE',
-          actionPayload: { url: '/erp/inventory/transactions/stock-requisition/pending' },
+          actionPayload: {
+            url: '/erp/inventory/transactions/stock-requisition/pending',
+          },
           entityType: 'StockRequisition',
           entityId: existing.id,
           warehouseId: existing.fromWarehouseId,
@@ -455,7 +510,9 @@ export class StockRequisitionService {
     }
 
     if (requisition.status !== 'PENDING' && requisition.status !== 'DRAFT') {
-      throw new BadRequestException(`Cannot cancel requisition in '${requisition.status}' status`);
+      throw new BadRequestException(
+        `Cannot cancel requisition in '${requisition.status}' status`,
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -588,7 +645,9 @@ export class StockRequisitionService {
     }
 
     if (requisition.status !== 'PENDING') {
-      throw new BadRequestException(`Requisition status is '${requisition.status}'. Only PENDING requisitions can be converted.`);
+      throw new BadRequestException(
+        `Requisition status is '${requisition.status}'. Only PENDING requisitions can be converted.`,
+      );
     }
 
     // Map requisition items for easy check
@@ -600,7 +659,10 @@ export class StockRequisitionService {
     for (const stnItem of data.items) {
       const origQty = reqItemMap.get(stnItem.itemId) || 0;
       if (stnItem.quantity > origQty) {
-        const itemInfo = await this.prisma.item.findUnique({ where: { id: stnItem.itemId }, select: { sku: true } });
+        const itemInfo = await this.prisma.item.findUnique({
+          where: { id: stnItem.itemId },
+          select: { sku: true },
+        });
         throw new BadRequestException(
           `Cannot increase quantity for item ${itemInfo?.sku || stnItem.itemId}. Original SRN quantity: ${origQty}, requested STN: ${stnItem.quantity}`,
         );
@@ -630,7 +692,10 @@ export class StockRequisitionService {
         });
         const physicalQty = stock ? Number(stock.quantity) : 0;
         if (physicalQty < stnItem.quantity) {
-          const itemDetail = await tx.item.findUnique({ where: { id: stnItem.itemId }, select: { sku: true } });
+          const itemDetail = await tx.item.findUnique({
+            where: { id: stnItem.itemId },
+            select: { sku: true },
+          });
           throw new BadRequestException(
             `Insufficient physical stock in warehouse for ${itemDetail?.sku || stnItem.itemId}. Available: ${physicalQty}, requested STN: ${stnItem.quantity}`,
           );
@@ -638,7 +703,8 @@ export class StockRequisitionService {
       }
 
       // 3. Create the TransferRequest (STN)
-      const { nextTransferNumber } = await this.transferRequestService.getNextTransferNumber(tx);
+      const { nextTransferNumber } =
+        await this.transferRequestService.getNextTransferNumber(tx);
       const requestNo = nextTransferNumber;
       const transfer = await tx.transferRequest.create({
         data: {
@@ -649,7 +715,8 @@ export class StockRequisitionService {
           status: 'PENDING', // PENDING means waiting for outlet to receive
           createdById: userId,
           stockRequisitionId: requisitionId,
-          notes: data.notes || `Generated from SRN ${requisition.requisitionNo}`,
+          notes:
+            data.notes || `Generated from SRN ${requisition.requisitionNo}`,
           items: {
             create: data.items
               .filter((item) => item.quantity > 0)
@@ -740,8 +807,13 @@ export class StockRequisitionService {
       });
 
       if (requisition.toLocationId && hasAnyQty) {
-        const totalPcs = data.items.reduce((sum, item) => sum + (item.quantity > 0 ? item.quantity : 0), 0);
-        const totalItemsCount = data.items.filter((item) => item.quantity > 0).length;
+        const totalPcs = data.items.reduce(
+          (sum, item) => sum + (item.quantity > 0 ? item.quantity : 0),
+          0,
+        );
+        const totalItemsCount = data.items.filter(
+          (item) => item.quantity > 0,
+        ).length;
 
         runInBackground(
           'Send POS Location Notification on STN Dispatch',
@@ -802,12 +874,36 @@ export class StockRequisitionService {
       const row = rows[r];
       if (!Array.isArray(row)) continue;
       const skuIdx = row.findIndex((cell) => {
-        const val = String(cell || '').toLowerCase().trim().replace(/[\s_-]+/g, '');
-        return ['sku', 'itemcode', 'barcode', 'barcodes', 'itemid', 'article', 'item', 'code'].includes(val);
+        const val = String(cell || '')
+          .toLowerCase()
+          .trim()
+          .replace(/[\s_-]+/g, '');
+        return [
+          'sku',
+          'itemcode',
+          'barcode',
+          'barcodes',
+          'itemid',
+          'article',
+          'item',
+          'code',
+        ].includes(val);
       });
       const qtyIdx = row.findIndex((cell) => {
-        const val = String(cell || '').toLowerCase().trim().replace(/[\s_-]+/g, '');
-        return ['quantity', 'qty', 'requisitionqty', 'reqqty', 'columni', 'count', 'units', 'transferqty'].includes(val);
+        const val = String(cell || '')
+          .toLowerCase()
+          .trim()
+          .replace(/[\s_-]+/g, '');
+        return [
+          'quantity',
+          'qty',
+          'requisitionqty',
+          'reqqty',
+          'columni',
+          'count',
+          'units',
+          'transferqty',
+        ].includes(val);
       });
 
       if (skuIdx !== -1) {
@@ -822,7 +918,12 @@ export class StockRequisitionService {
     // If no explicit quantity column found in header, and first data row has > 8 columns, check column index 8
     if (headerRowIndex === -1 && rows[0] && rows[0].length > 8) {
       qtyColIndex = 8;
-    } else if (headerRowIndex !== -1 && qtyColIndex === 1 && rows[headerRowIndex].length > 8 && !rows[headerRowIndex][1]) {
+    } else if (
+      headerRowIndex !== -1 &&
+      qtyColIndex === 1 &&
+      rows[headerRowIndex].length > 8 &&
+      !rows[headerRowIndex][1]
+    ) {
       qtyColIndex = 8;
     }
 
@@ -836,7 +937,10 @@ export class StockRequisitionService {
       let qtyRaw = row[qtyColIndex];
 
       // If quantity is undefined/empty in detected column, check second column as fallback
-      if ((qtyRaw === undefined || qtyRaw === null || qtyRaw === '') && row.length === 2) {
+      if (
+        (qtyRaw === undefined || qtyRaw === null || qtyRaw === '') &&
+        row.length === 2
+      ) {
         qtyRaw = row[1];
       }
 
@@ -851,7 +955,9 @@ export class StockRequisitionService {
     }
 
     if (itemsList.length === 0) {
-      throw new BadRequestException('No valid items and quantities found in the uploaded file. Please ensure columns have BarCode/SKU and Quantity.');
+      throw new BadRequestException(
+        'No valid items and quantities found in the uploaded file. Please ensure columns have BarCode/SKU and Quantity.',
+      );
     }
 
     // Extract unique lookup identifiers
@@ -904,9 +1010,15 @@ export class StockRequisitionService {
           description: dbItem.description,
           color: dbItem.color?.name || null,
           size: dbItem.size?.name || null,
-          category: dbItem.category ? { id: dbItem.category.id, name: dbItem.category.name } : null,
-          gender: dbItem.gender ? { id: dbItem.gender.id, name: dbItem.gender.name } : null,
-          segment: dbItem.segment ? { id: dbItem.segment.id, name: dbItem.segment.name } : null,
+          category: dbItem.category
+            ? { id: dbItem.category.id, name: dbItem.category.name }
+            : null,
+          gender: dbItem.gender
+            ? { id: dbItem.gender.id, name: dbItem.gender.name }
+            : null,
+          segment: dbItem.segment
+            ? { id: dbItem.segment.id, name: dbItem.segment.name }
+            : null,
           unitPrice: Number(dbItem.unitPrice || 0),
           quantity: totalQty,
         });
@@ -917,7 +1029,9 @@ export class StockRequisitionService {
     const skippedItems: any[] = [];
 
     // Check items not found in catalog
-    const notFoundIdentifiers = itemsList.filter((entry) => !itemMap.has(entry.sku.toLowerCase()));
+    const notFoundIdentifiers = itemsList.filter(
+      (entry) => !itemMap.has(entry.sku.toLowerCase()),
+    );
     for (const nf of notFoundIdentifiers) {
       skippedItems.push({
         sku: nf.sku,
@@ -956,10 +1070,7 @@ export class StockRequisitionService {
         where: {
           warehouseId,
           itemId: { in: resolvedItems.map((i) => i.itemId) },
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gte: new Date() } },
-          ],
+          OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
         },
         _sum: {
           quantity: true,
@@ -1025,16 +1136,26 @@ export class StockRequisitionService {
     startDate?: string;
     endDate?: string;
   }) {
-    const { locationId, fromWarehouseId, startDate: startStr, endDate: endStr } = query;
+    const {
+      locationId,
+      fromWarehouseId,
+      startDate: startStr,
+      endDate: endStr,
+    } = query;
 
     if (!locationId || !fromWarehouseId) {
-      throw new BadRequestException('locationId and fromWarehouseId are required');
+      throw new BadRequestException(
+        'locationId and fromWarehouseId are required',
+      );
     }
 
     const now = new Date();
 
     // Helper to parse dates robustly in local timezone if plain date strings are passed
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -1077,7 +1198,9 @@ export class StockRequisitionService {
       where: {
         salesOrder: {
           locationId,
-          status: { in: ['completed', 'partially_returned', 'exchanged', 'refunded'] },
+          status: {
+            in: ['completed', 'partially_returned', 'exchanged', 'refunded'],
+          },
           createdAt: { gte: startDate, lte: endDate },
         },
       },
@@ -1125,15 +1248,18 @@ export class StockRequisitionService {
 
     const returnedMap = new Map<string, number>();
     for (const ri of returnItems) {
-      // StockLedger might store returns as positive or negative depending on transaction type, 
+      // StockLedger might store returns as positive or negative depending on transaction type,
       // but usually for a return to store, it's a positive quantity addition to stock.
-      // In POS_RETURN, it's typically a receipt into the warehouse/store. 
+      // In POS_RETURN, it's typically a receipt into the warehouse/store.
       // Let's assume it's stored as absolute quantity or we take Math.abs
       returnedMap.set(ri.itemId, Math.abs(Number(ri._sum.qty || 0)));
     }
     for (const ci of approvedClaimItems) {
       const current = returnedMap.get(ci.itemId) || 0;
-      returnedMap.set(ci.itemId, current + Math.abs(Number(ci._sum.approvedQty || 0)));
+      returnedMap.set(
+        ci.itemId,
+        current + Math.abs(Number(ci._sum.approvedQty || 0)),
+      );
     }
 
     // 2. Fetch master items
@@ -1168,10 +1294,7 @@ export class StockRequisitionService {
       where: {
         itemId: { in: itemIds },
         warehouseId: fromWarehouseId,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gte: new Date() } }
-        ]
+        OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
       },
       _sum: {
         quantity: true,
@@ -1181,7 +1304,10 @@ export class StockRequisitionService {
     // Map stocks and reservations
     const physicalStockMap = new Map<string, number>();
     for (const stock of stockItems) {
-      physicalStockMap.set(stock.itemId, (physicalStockMap.get(stock.itemId) || 0) + Number(stock.quantity));
+      physicalStockMap.set(
+        stock.itemId,
+        (physicalStockMap.get(stock.itemId) || 0) + Number(stock.quantity),
+      );
     }
 
     const reservedStockMap = new Map<string, number>();
@@ -1190,40 +1316,52 @@ export class StockRequisitionService {
     }
 
     // 5. Combine and calculate replenishment qty
-    const candidates = items.map((item) => {
-      const salesEntry = salesItems.find((si) => si.itemId === item.id);
-      const grossSoldQty = salesEntry ? Number(salesEntry._sum.quantity || 0) : 0;
-      const returnedQty = returnedMap.get(item.id) || 0;
-      const soldQty = Math.max(0, grossSoldQty - returnedQty);
+    const candidates = items
+      .map((item) => {
+        const salesEntry = salesItems.find((si) => si.itemId === item.id);
+        const grossSoldQty = salesEntry
+          ? Number(salesEntry._sum.quantity || 0)
+          : 0;
+        const returnedQty = returnedMap.get(item.id) || 0;
+        const soldQty = Math.max(0, grossSoldQty - returnedQty);
 
-      const physicalQty = physicalStockMap.get(item.id) || 0;
-      const reservedQty = reservedStockMap.get(item.id) || 0;
-      const netAvailable = Math.max(0, physicalQty - reservedQty);
+        const physicalQty = physicalStockMap.get(item.id) || 0;
+        const reservedQty = reservedStockMap.get(item.id) || 0;
+        const netAvailable = Math.max(0, physicalQty - reservedQty);
 
-      const replenishQty = Math.min(soldQty, netAvailable);
+        const replenishQty = Math.min(soldQty, netAvailable);
 
-      return {
-        itemId: item.id,
-        sku: item.sku,
-        description: item.description || '',
-        color: item.color?.name || null,
-        size: item.size?.name || null,
-        category: item.category ? { id: item.category.id, name: item.category.name } : null,
-        gender: item.gender ? { id: item.gender.id, name: item.gender.name } : null,
-        segment: item.segment ? { id: item.segment.id, name: item.segment.name } : null,
-        unitPrice: Number(item.unitPrice || 0),
-        soldQty,
-        warehouseAvailableQty: netAvailable,
-        quantity: replenishQty, // Suggest this qty
-      };
-    }).filter(c => c.soldQty > 0);
+        return {
+          itemId: item.id,
+          sku: item.sku,
+          description: item.description || '',
+          color: item.color?.name || null,
+          size: item.size?.name || null,
+          category: item.category
+            ? { id: item.category.id, name: item.category.name }
+            : null,
+          gender: item.gender
+            ? { id: item.gender.id, name: item.gender.name }
+            : null,
+          segment: item.segment
+            ? { id: item.segment.id, name: item.segment.name }
+            : null,
+          unitPrice: Number(item.unitPrice || 0),
+          soldQty,
+          warehouseAvailableQty: netAvailable,
+          quantity: replenishQty, // Suggest this qty
+        };
+      })
+      .filter((c) => c.soldQty > 0);
 
     // Calculate Exact Global Net Sales for the period to match Net Sales Summary report exactly
     const allSalesItems = await this.prisma.salesOrderItem.aggregate({
       where: {
         salesOrder: {
           locationId,
-          status: { in: ['completed', 'partially_returned', 'exchanged', 'refunded'] },
+          status: {
+            in: ['completed', 'partially_returned', 'exchanged', 'refunded'],
+          },
           createdAt: { gte: startDate, lte: endDate },
         },
       },
@@ -1277,7 +1415,9 @@ export class StockRequisitionService {
 
     let nextNumber = 1;
     if (lastRequisition) {
-      const lastNumber = parseInt(lastRequisition.requisitionNo.split('-').pop() || '0');
+      const lastNumber = parseInt(
+        lastRequisition.requisitionNo.split('-').pop() || '0',
+      );
       if (!isNaN(lastNumber)) {
         nextNumber = lastNumber + 1;
       }
@@ -1287,4 +1427,3 @@ export class StockRequisitionService {
     return { nextRequisitionNumber };
   }
 }
-

@@ -27,7 +27,10 @@ export class JournalVoucherController {
 
   @Post()
   @Permissions('erp.finance.journal-voucher.create')
-  create(@Body() createJournalVoucherDto: CreateJournalVoucherDto, @Req() req: any) {
+  create(
+    @Body() createJournalVoucherDto: CreateJournalVoucherDto,
+    @Req() req: any,
+  ) {
     return this.journalVoucherService.create(createJournalVoucherDto, {
       userId: req.user?.id,
       ipAddress: req.ip,
@@ -50,7 +53,17 @@ export class JournalVoucherController {
   ) {
     const pageNum = page ? parseInt(page, 10) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : undefined;
-    return this.journalVoucherService.findAll({ status, fromDate, toDate, accountId, page: pageNum, limit: limitNum, search, sortBy, sortOrder });
+    return this.journalVoucherService.findAll({
+      status,
+      fromDate,
+      toDate,
+      accountId,
+      page: pageNum,
+      limit: limitNum,
+      search,
+      sortBy,
+      sortOrder,
+    });
   }
 
   @Get(':id')
@@ -80,7 +93,12 @@ export class JournalVoucherController {
     @Body() updateStatusDto: UpdateStatusDto,
     @Req() req: any,
   ) {
-    return this.journalVoucherService.updateStatus(id, updateStatusDto.status, updateStatusDto.remarks, { userId: req.user?.id });
+    return this.journalVoucherService.updateStatus(
+      id,
+      updateStatusDto.status,
+      updateStatusDto.remarks,
+      { userId: req.user?.id },
+    );
   }
 
   @Patch(':id/unapprove')
@@ -90,13 +108,17 @@ export class JournalVoucherController {
     @Body() body: { remarks?: string },
     @Req() req: any,
   ) {
-    return this.journalVoucherService.unapprove(id, body?.remarks, { userId: req.user?.id });
+    return this.journalVoucherService.unapprove(id, body?.remarks, {
+      userId: req.user?.id,
+    });
   }
 
   @Patch(':id/print')
   @Permissions('erp.finance.journal-voucher.read')
   markAsPrinted(@Param('id') id: string, @Req() req: any) {
-    return this.journalVoucherService.markAsPrinted(id, { userId: req.user?.id });
+    return this.journalVoucherService.markAsPrinted(id, {
+      userId: req.user?.id,
+    });
   }
 
   @Delete(':id')

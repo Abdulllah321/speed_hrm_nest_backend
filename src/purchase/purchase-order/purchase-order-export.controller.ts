@@ -29,10 +29,14 @@ export class PurchaseOrderExportController {
    */
   @Post()
   @Permissions('erp.procurement.po.read')
-  @ApiOperation({ summary: 'Queue a purchase order export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue a purchase order export job (returns immediately, notifies when done)',
+  })
   async queueExport(
     @Req() req: any,
-    @Body() body: {
+    @Body()
+    body: {
       poId?: string;
       status?: string;
       vendorId?: string;
@@ -61,7 +65,8 @@ export class PurchaseOrderExportController {
 
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -81,7 +86,8 @@ export class PurchaseOrderExportController {
 
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -109,7 +115,10 @@ export class PurchaseOrderExportController {
       await this.exportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

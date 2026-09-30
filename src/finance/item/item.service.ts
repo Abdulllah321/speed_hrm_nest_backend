@@ -100,6 +100,7 @@ export class ItemService {
   }
 
   async findAll(
+    user: any,
     page: number = 1,
     limit: number = 50,
     search?: string,
@@ -113,6 +114,22 @@ export class ItemService {
     },
   ) {
     const skip = (page - 1) * limit;
+
+    // ── RBAC / Brand Isolation ─────────────────────────────────────────
+    const roleName = user?.roleName?.toLowerCase();
+    const isAdmin =
+      roleName === 'super_admin' ||
+      roleName === 'super-admin' ||
+      roleName === 'admin';
+    let allowedBrandIds: string[] | null = null;
+
+    if (!isAdmin && user?.id) {
+      const userBrands = await this.prisma.userBrand.findMany({
+        where: { userId: user.id },
+        select: { brandId: true },
+      });
+      allowedBrandIds = userBrands.map((ub) => ub.brandId);
+    }
 
     // ── Allowed sortable columns (direct item fields) ──────────────────
     const directSortFields = new Set([
@@ -155,8 +172,31 @@ export class ItemService {
     }
 
     // Attribute filters — each is an AND condition (item must match ALL selected filters)
-    if (filters?.brandIds?.length) {
-      andClauses.push({ brandId: { in: filters.brandIds } });
+    let finalBrandFilter: string[] | undefined = filters?.brandIds;
+
+    if (allowedBrandIds !== null) {
+      if (finalBrandFilter?.length) {
+        // Intersect requested brands with allowed brands
+        finalBrandFilter = finalBrandFilter.filter((id) =>
+          allowedBrandIds!.includes(id),
+        );
+      } else {
+        finalBrandFilter = allowedBrandIds;
+      }
+
+      // If after checking they have no allowed brands, return empty
+      if (finalBrandFilter.length === 0) {
+        return {
+          status: true,
+          data: [],
+          meta: { total: 0, page, limit, totalPages: 0 },
+          message: 'No authorized brands assigned to user.',
+        };
+      }
+    }
+
+    if (finalBrandFilter?.length) {
+      andClauses.push({ brandId: { in: finalBrandFilter } });
     }
     if (filters?.categoryIds?.length) {
       andClauses.push({ categoryId: { in: filters.categoryIds } });
@@ -293,7 +333,9 @@ export class ItemService {
       });
 
       const allVariantIds = allVariantItems.map((i) => i.id.toLowerCase());
-      const snapshotMap = new Map(allVariantItems.map((i) => [i.id.toLowerCase(), i]));
+      const snapshotMap = new Map(
+        allVariantItems.map((i) => [i.id.toLowerCase(), i]),
+      );
 
       // ── 3. Build per-item override map and propagate to siblings ──
       const parentToOverrideMap = new Map<
@@ -309,7 +351,9 @@ export class ItemService {
           select: { id: true, sku: true },
         });
 
-        const idToParentMap = new Map(overrideItems.map((i) => [i.id.toLowerCase(), i.sku]));
+        const idToParentMap = new Map(
+          overrideItems.map((i) => [i.id.toLowerCase(), i.sku]),
+        );
 
         for (const ov of dto.overrides) {
           const parentSku = idToParentMap.get(ov.id.toLowerCase());
@@ -374,11 +418,14 @@ export class ItemService {
         overriddenIds.has(id),
       );
 
-      console.log('[bulkDiscount] Partition results (including all variants):', {
-        bulkIdsLength: bulkIds.length,
-        overriddenItemIdsLength: overriddenItemIds.length,
-        totalResolvedVariants: allVariantIds.length,
-      });
+      console.log(
+        '[bulkDiscount] Partition results (including all variants):',
+        {
+          bulkIdsLength: bulkIds.length,
+          overriddenItemIdsLength: overriddenItemIds.length,
+          totalResolvedVariants: allVariantIds.length,
+        },
+      );
 
       const discountType = dto.clearDiscount
         ? 'clear'
@@ -403,7 +450,10 @@ export class ItemService {
             await Promise.all(
               chunk.map((id) => {
                 const override = overrideMap.get(id)!;
-                console.log(`[bulkDiscount] Overriding item ${id}:`, { ...sharedData, ...override });
+                console.log(`[bulkDiscount] Overriding item ${id}:`, {
+                  ...sharedData,
+                  ...override,
+                });
                 return tx.item.update({
                   where: { id },
                   data: { ...sharedData, ...override },
@@ -644,8 +694,12 @@ export class ItemService {
       }
 
       // Normalize barcodes to uppercase and lowercase lists for fast case-insensitive exact match
-      const uppercaseBarcodes = barcodes.map((b) => b.trim().toUpperCase()).filter(Boolean);
-      const lowercaseBarcodes = barcodes.map((b) => b.trim().toLowerCase()).filter(Boolean);
+      const uppercaseBarcodes = barcodes
+        .map((b) => b.trim().toUpperCase())
+        .filter(Boolean);
+      const lowercaseBarcodes = barcodes
+        .map((b) => b.trim().toLowerCase())
+        .filter(Boolean);
 
       // 1. Fast exact lookup using B-Tree index scan (covers 99.9% of searches)
       const exactMatched = await this.prisma.item.findMany({
@@ -669,21 +723,27 @@ export class ItemService {
       let matchedSkus = exactMatched.map((m) => m.sku).filter(Boolean);
 
       // Determine which barcodes are still unmatched
-      const foundCodes = new Set([
-        ...exactMatched.map((m) => m.sku?.toUpperCase()),
-        ...exactMatched.map((m) => m.barCode?.toUpperCase()),
-        ...exactMatched.map((m) => m.itemId?.toUpperCase()),
-      ].filter(Boolean) as string[]);
+      const foundCodes = new Set(
+        [
+          ...exactMatched.map((m) => m.sku?.toUpperCase()),
+          ...exactMatched.map((m) => m.barCode?.toUpperCase()),
+          ...exactMatched.map((m) => m.itemId?.toUpperCase()),
+        ].filter(Boolean) as string[],
+      );
 
-      const remainingBarcodes = uppercaseBarcodes.filter((code) => !foundCodes.has(code));
+      const remainingBarcodes = uppercaseBarcodes.filter(
+        (code) => !foundCodes.has(code),
+      );
 
       // 2. Fallback prefix search only for the remaining unmatched codes
       if (remainingBarcodes.length > 0) {
-        const prefixConditions = remainingBarcodes.slice(0, 100).flatMap((code) => [
-          { sku: { startsWith: code, mode: 'insensitive' as const } },
-          { barCode: { startsWith: code, mode: 'insensitive' as const } },
-          { itemId: { startsWith: code, mode: 'insensitive' as const } },
-        ]);
+        const prefixConditions = remainingBarcodes
+          .slice(0, 100)
+          .flatMap((code) => [
+            { sku: { startsWith: code, mode: 'insensitive' as const } },
+            { barCode: { startsWith: code, mode: 'insensitive' as const } },
+            { itemId: { startsWith: code, mode: 'insensitive' as const } },
+          ]);
 
         const prefixMatched = await this.prisma.item.findMany({
           where: {
@@ -695,7 +755,7 @@ export class ItemService {
         });
 
         matchedSkus = matchedSkus.concat(
-          prefixMatched.map((m) => m.sku).filter(Boolean)
+          prefixMatched.map((m) => m.sku).filter(Boolean),
         );
       }
 

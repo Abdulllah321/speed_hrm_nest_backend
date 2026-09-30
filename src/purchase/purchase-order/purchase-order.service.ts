@@ -24,7 +24,7 @@ export class PurchaseOrderService {
     private activityLogs: ActivityLogsService,
     private prismaMaster: PrismaMasterService,
     private notifications: NotificationsService,
-  ) { }
+  ) {}
 
   /**
    * Generates the next sequential PO number for the current fiscal year.
@@ -92,11 +92,11 @@ export class PurchaseOrderService {
           include: {
             item: {
               include: {
-                brand: true
-              }
-            }
-          }
-        }
+                brand: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -126,7 +126,11 @@ export class PurchaseOrderService {
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id },
       include: {
-        items: { include: { item: { include: { size: true, color: true, brand: true } } } },
+        items: {
+          include: {
+            item: { include: { size: true, color: true, brand: true } },
+          },
+        },
         vendor: true,
         vendorQuotation: {
           include: {
@@ -147,14 +151,20 @@ export class PurchaseOrderService {
     return this.resolveUserNames(po);
   }
 
-  async create(createDto: CreatePurchaseOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createDto: CreatePurchaseOrderDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     if (createDto.vendorQuotationId) {
       return this.createFromQuotation(createDto, ctx);
     }
     return this.createDirect(createDto, ctx);
   }
 
-  private async createDirect(createDto: CreatePurchaseOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  private async createDirect(
+    createDto: CreatePurchaseOrderDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (
         !createDto.vendorId ||
@@ -194,7 +204,10 @@ export class PurchaseOrderService {
         let finalOrderType = createDto.orderType;
         let finalGoodsType = createDto.goodsType;
 
-        if ((!finalOrderType || !finalGoodsType) && createDto.purchaseRequisitionId) {
+        if (
+          (!finalOrderType || !finalGoodsType) &&
+          createDto.purchaseRequisitionId
+        ) {
           const pr = await tx.purchaseRequisition.findUnique({
             where: { id: createDto.purchaseRequisitionId },
           });
@@ -269,7 +282,10 @@ export class PurchaseOrderService {
     }
   }
 
-  private async createFromQuotation(createDto: CreatePurchaseOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  private async createFromQuotation(
+    createDto: CreatePurchaseOrderDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const quotation = await this.prisma.vendorQuotation.findUnique({
         where: { id: createDto.vendorQuotationId },
@@ -324,8 +340,14 @@ export class PurchaseOrderService {
             expectedDeliveryDate: createDto.expectedDeliveryDate
               ? new Date(createDto.expectedDeliveryDate)
               : null,
-            orderType: createDto.orderType || quotation.rfq?.purchaseRequisition?.type?.toUpperCase() || null,
-            goodsType: createDto.goodsType || quotation.rfq?.purchaseRequisition?.goodsType || null,
+            orderType:
+              createDto.orderType ||
+              quotation.rfq?.purchaseRequisition?.type?.toUpperCase() ||
+              null,
+            goodsType:
+              createDto.goodsType ||
+              quotation.rfq?.purchaseRequisition?.goodsType ||
+              null,
             status: 'PENDING_CHECKER',
             createdById: ctx?.userId || null,
             subtotal: quotation.subtotal,
@@ -401,7 +423,10 @@ export class PurchaseOrderService {
       const po = await this.prisma.purchaseOrder.findUnique({ where: { id } });
       if (!po) throw new NotFoundException('Purchase Order not found');
 
-      if (po.status !== 'PENDING_CHECKER' && po.status !== 'PENDING_AUTHORIZER') {
+      if (
+        po.status !== 'PENDING_CHECKER' &&
+        po.status !== 'PENDING_AUTHORIZER'
+      ) {
         throw new BadRequestException(
           `Purchase Order cannot be edited in status "${po.status}". Only PENDING_CHECKER or PENDING_AUTHORIZER orders can be edited.`,
         );
@@ -415,13 +440,17 @@ export class PurchaseOrderService {
           updateData.expectedDeliveryDate = dto.expectedDeliveryDate
             ? new Date(dto.expectedDeliveryDate)
             : null;
-        if (dto.orderType !== undefined) updateData.orderType = dto.orderType || null;
-        if (dto.goodsType !== undefined) updateData.goodsType = dto.goodsType || null;
+        if (dto.orderType !== undefined)
+          updateData.orderType = dto.orderType || null;
+        if (dto.goodsType !== undefined)
+          updateData.goodsType = dto.goodsType || null;
         if (dto.vendorId !== undefined) updateData.vendorId = dto.vendorId;
 
         if (dto.items && dto.items.length > 0) {
           // Delete all existing items then recreate
-          await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
+          await tx.purchaseOrderItem.deleteMany({
+            where: { purchaseOrderId: id },
+          });
 
           let subtotal = new Decimal(0);
           const itemsData = dto.items.map((item) => {
@@ -518,27 +547,47 @@ export class PurchaseOrderService {
       // Enforce hierarchical approvals
       if (po.status === 'PENDING_CHECKER') {
         if (status !== 'PENDING_AUTHORIZER' && status !== 'REJECTED') {
-          throw new BadRequestException(`Invalid status transition from PENDING_CHECKER to ${status}.`);
+          throw new BadRequestException(
+            `Invalid status transition from PENDING_CHECKER to ${status}.`,
+          );
         }
-        if (!isSuperAdmin && !userPermissions.includes('erp.procurement.po.check')) {
-          throw new BadRequestException('You do not have permission to check this Purchase Order (requires erp.procurement.po.check).');
+        if (
+          !isSuperAdmin &&
+          !userPermissions.includes('erp.procurement.po.check')
+        ) {
+          throw new BadRequestException(
+            'You do not have permission to check this Purchase Order (requires erp.procurement.po.check).',
+          );
         }
 
         updateData.checkedById = ctx?.userId || null;
         updateData.checkedAt = new Date();
       } else if (po.status === 'PENDING_AUTHORIZER') {
         if (status !== 'OPEN' && status !== 'REJECTED') {
-          throw new BadRequestException(`Invalid status transition from PENDING_AUTHORIZER to ${status}.`);
+          throw new BadRequestException(
+            `Invalid status transition from PENDING_AUTHORIZER to ${status}.`,
+          );
         }
-        if (!isSuperAdmin && !userPermissions.includes('erp.procurement.po.authorize')) {
-          throw new BadRequestException('You do not have permission to authorize this Purchase Order (requires erp.procurement.po.authorize).');
+        if (
+          !isSuperAdmin &&
+          !userPermissions.includes('erp.procurement.po.authorize')
+        ) {
+          throw new BadRequestException(
+            'You do not have permission to authorize this Purchase Order (requires erp.procurement.po.authorize).',
+          );
         }
 
         updateData.authorizedById = ctx?.userId || null;
         updateData.authorizedAt = new Date();
       } else {
-        if (!isSuperAdmin && status !== 'CLOSED' && status !== 'PARTIALLY_RECEIVED') {
-          throw new BadRequestException(`Purchase Order is in ${po.status} status and cannot be modified.`);
+        if (
+          !isSuperAdmin &&
+          status !== 'CLOSED' &&
+          status !== 'PARTIALLY_RECEIVED'
+        ) {
+          throw new BadRequestException(
+            `Purchase Order is in ${po.status} status and cannot be modified.`,
+          );
         }
       }
 
@@ -606,7 +655,10 @@ export class PurchaseOrderService {
     }
   }
 
-  async awardFromRfq(dto: AwardFromRfqDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async awardFromRfq(
+    dto: AwardFromRfqDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const rfq = await this.prisma.requestForQuotation.findUnique({
         where: { id: dto.rfqId },
@@ -711,8 +763,12 @@ export class PurchaseOrderService {
               expectedDeliveryDate: group.expectedDeliveryDate
                 ? new Date(group.expectedDeliveryDate)
                 : null,
-              orderType: group.orderType || rfq.purchaseRequisition?.type?.toUpperCase() || null,
-              goodsType: group.goodsType || rfq.purchaseRequisition?.goodsType || null,
+              orderType:
+                group.orderType ||
+                rfq.purchaseRequisition?.type?.toUpperCase() ||
+                null,
+              goodsType:
+                group.goodsType || rfq.purchaseRequisition?.goodsType || null,
               status: 'PENDING_CHECKER',
               createdById: ctx?.userId || null,
               subtotal,
@@ -771,7 +827,10 @@ export class PurchaseOrderService {
     }
   }
 
-  async createMultiDirect(dto: CreateMultiDirectPurchaseOrderDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async createMultiDirect(
+    dto: CreateMultiDirectPurchaseOrderDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       if (!dto.awards || dto.awards.length === 0) {
         throw new BadRequestException('No vendor groups provided');
@@ -878,7 +937,9 @@ export class PurchaseOrderService {
 
   private async resolveUserNames(po: any) {
     if (!po) return po;
-    const userIds = [po.createdById, po.checkedById, po.authorizedById].filter(Boolean) as string[];
+    const userIds = [po.createdById, po.checkedById, po.authorizedById].filter(
+      Boolean,
+    ) as string[];
     if (userIds.length === 0) return po;
 
     const users = await this.prismaMaster.user.findMany({
@@ -886,20 +947,28 @@ export class PurchaseOrderService {
       select: { id: true, firstName: true, lastName: true },
     });
 
-    const userMap = new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+    const userMap = new Map(
+      users.map((u) => [u.id, `${u.firstName} ${u.lastName}`]),
+    );
 
     return {
       ...po,
-      creatorName: po.createdById ? userMap.get(po.createdById) || 'Unknown User' : null,
-      checkerName: po.checkedById ? userMap.get(po.checkedById) || 'Unknown User' : null,
-      authorizerName: po.authorizedById ? userMap.get(po.authorizedById) || 'Unknown User' : null,
+      creatorName: po.createdById
+        ? userMap.get(po.createdById) || 'Unknown User'
+        : null,
+      checkerName: po.checkedById
+        ? userMap.get(po.checkedById) || 'Unknown User'
+        : null,
+      authorizerName: po.authorizedById
+        ? userMap.get(po.authorizedById) || 'Unknown User'
+        : null,
     };
   }
 
   private async resolveUserNamesForList(pos: any[]) {
     if (!pos || pos.length === 0) return pos;
     const userIdsSet = new Set<string>();
-    pos.forEach(po => {
+    pos.forEach((po) => {
       if (po.createdById) userIdsSet.add(po.createdById);
       if (po.checkedById) userIdsSet.add(po.checkedById);
       if (po.authorizedById) userIdsSet.add(po.authorizedById);
@@ -912,13 +981,21 @@ export class PurchaseOrderService {
       select: { id: true, firstName: true, lastName: true },
     });
 
-    const userMap = new Map(users.map(u => [u.id, `${u.firstName} ${u.lastName}`]));
+    const userMap = new Map(
+      users.map((u) => [u.id, `${u.firstName} ${u.lastName}`]),
+    );
 
-    return pos.map(po => ({
+    return pos.map((po) => ({
       ...po,
-      creatorName: po.createdById ? userMap.get(po.createdById) || 'Unknown User' : null,
-      checkerName: po.checkedById ? userMap.get(po.checkedById) || 'Unknown User' : null,
-      authorizerName: po.authorizedById ? userMap.get(po.authorizedById) || 'Unknown User' : null,
+      creatorName: po.createdById
+        ? userMap.get(po.createdById) || 'Unknown User'
+        : null,
+      checkerName: po.checkedById
+        ? userMap.get(po.checkedById) || 'Unknown User'
+        : null,
+      authorizerName: po.authorizedById
+        ? userMap.get(po.authorizedById) || 'Unknown User'
+        : null,
     }));
   }
 }

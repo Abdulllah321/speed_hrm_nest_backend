@@ -111,7 +111,15 @@ export class PosClaimsService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const { salesOrderId, claimType, reasonCode, reasonNotes, customerName, customerPhone, items } = dto;
+      const {
+        salesOrderId,
+        claimType,
+        reasonCode,
+        reasonNotes,
+        customerName,
+        customerPhone,
+        items,
+      } = dto;
 
       const order = await this.prisma.salesOrder.findUnique({
         where: { id: salesOrderId },
@@ -127,10 +135,13 @@ export class PosClaimsService {
         0,
       );
 
-      const customerPrefix = customerName || customerPhone
-        ? `[Customer: ${customerName || '-'} | Phone: ${customerPhone || '-'}]`
-        : '';
-      const fullNotes = [customerPrefix, reasonNotes].filter(Boolean).join('\n');
+      const customerPrefix =
+        customerName || customerPhone
+          ? `[Customer: ${customerName || '-'} | Phone: ${customerPhone || '-'}]`
+          : '';
+      const fullNotes = [customerPrefix, reasonNotes]
+        .filter(Boolean)
+        .join('\n');
 
       const claim = await this.prisma.posClaim.create({
         data: {
@@ -395,14 +406,21 @@ export class PosClaimsService {
             );
             if (!claimItem) continue;
 
-            const wasAlreadyDecided = ['APPROVED', 'PARTIALLY_APPROVED', 'REJECTED'].includes(claimItem.itemStatus);
+            const wasAlreadyDecided = [
+              'APPROVED',
+              'PARTIALLY_APPROVED',
+              'REJECTED',
+            ].includes(claimItem.itemStatus);
 
             let approvedQty = claimItem.approvedQty;
             let itemStatus = claimItem.itemStatus;
             let approvedAmount = new Decimal(claimItem.approvedAmount);
 
             if (wasAlreadyDecided) {
-              if (itemStatus === 'APPROVED' || itemStatus === 'PARTIALLY_APPROVED') {
+              if (
+                itemStatus === 'APPROVED' ||
+                itemStatus === 'PARTIALLY_APPROVED'
+              ) {
                 anyApproved = true;
               }
               totalApproved = totalApproved.add(approvedAmount);
@@ -436,7 +454,9 @@ export class PosClaimsService {
               }
             }
 
-            approvedAmount = new Decimal(claimItem.unitPaidPrice).mul(approvedQty);
+            approvedAmount = new Decimal(claimItem.unitPaidPrice).mul(
+              approvedQty,
+            );
 
             if (approvedQty > 0) {
               anyApproved = true;
@@ -463,8 +483,13 @@ export class PosClaimsService {
 
             if (itemStatus === 'PARTIALLY_APPROVED') {
               const remainingQty = claimItem.claimedQty - approvedQty;
-              const remainingClaimedAmt = new Decimal(claimItem.unitPaidPrice).mul(remainingQty);
-              const remainingStatus = (itemDecision as any).remainingStatus === 'PENDING' ? 'PENDING' : 'REJECTED';
+              const remainingClaimedAmt = new Decimal(
+                claimItem.unitPaidPrice,
+              ).mul(remainingQty);
+              const remainingStatus =
+                (itemDecision as any).remainingStatus === 'PENDING'
+                  ? 'PENDING'
+                  : 'REJECTED';
 
               if (remainingStatus === 'PENDING') {
                 anyPending = true;
@@ -752,7 +777,9 @@ export class PosClaimsService {
               });
             }
           } else {
-            console.log('⏭️ Skipping transfer creation: No newly approved items');
+            console.log(
+              '⏭️ Skipping transfer creation: No newly approved items',
+            );
           }
         },
         {

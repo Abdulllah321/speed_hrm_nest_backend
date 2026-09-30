@@ -39,34 +39,78 @@ const COLUMNS: {
   numFmt?: string;
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
-    // Identity
-    { header: 'Customer Code', key: 'code', width: 14, group: 'Identity', align: 'center' },
-    { header: 'Trader ID', key: 'traderId', width: 14, group: 'Identity', align: 'center' },
-    { header: 'Sub Code', key: 'subCode', width: 14, group: 'Identity', align: 'center' },
-    { header: 'Customer Name', key: 'name', width: 32, group: 'Identity' },
-    { header: 'Customer Type', key: 'customerType', width: 14, group: 'Identity', align: 'center' },
-    // Contact
-    { header: 'Contact Number', key: 'contactNo', width: 18, group: 'Contact' },
-    { header: 'Email', key: 'email', width: 28, group: 'Contact' },
-    { header: 'Address', key: 'address', width: 40, group: 'Contact' },
-    // Financial
-    { header: 'Balance', key: 'balance', width: 16, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-    // Audit
-    { header: 'Created At', key: 'createdAt', width: 18, group: 'Audit', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
-    { header: 'Updated At', key: 'updatedAt', width: 18, group: 'Audit', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
-  ];
+  // Identity
+  {
+    header: 'Customer Code',
+    key: 'code',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Trader ID',
+    key: 'traderId',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Sub Code',
+    key: 'subCode',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
+  { header: 'Customer Name', key: 'name', width: 32, group: 'Identity' },
+  {
+    header: 'Customer Type',
+    key: 'customerType',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
+  // Contact
+  { header: 'Contact Number', key: 'contactNo', width: 18, group: 'Contact' },
+  { header: 'Email', key: 'email', width: 28, group: 'Contact' },
+  { header: 'Address', key: 'address', width: 40, group: 'Contact' },
+  // Financial
+  {
+    header: 'Balance',
+    key: 'balance',
+    width: 16,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  // Audit
+  {
+    header: 'Created At',
+    key: 'createdAt',
+    width: 18,
+    group: 'Audit',
+    numFmt: 'dd-mmm-yyyy hh:mm',
+    align: 'center',
+  },
+  {
+    header: 'Updated At',
+    key: 'updatedAt',
+    width: 18,
+    group: 'Audit',
+    numFmt: 'dd-mmm-yyyy hh:mm',
+    align: 'center',
+  },
+];
 
 @Processor('customer-export')
 export class CustomerExportProcessor {
   private readonly logger = new Logger(CustomerExportProcessor.name);
 
-  constructor(
-    private readonly notificationsService: NotificationsService,
-  ) { }
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   @Process()
   async handleExport(job: Job<CustomerExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, search, customerType } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, search, customerType } =
+      job.data;
 
     this.logger.log(`[CustomerExport ${jobId}] Starting for user ${userId}`);
 
@@ -104,7 +148,12 @@ export class CustomerExportProcessor {
       });
 
       const ws = workbook.addWorksheet('Customers', {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
         views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
       });
 
@@ -123,7 +172,11 @@ export class CustomerExportProcessor {
         const cell = groupRow.getCell(idx + 1);
         const { start } = groups[col.group];
         if (idx + 1 === start) cell.value = col.group.toUpperCase();
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+        };
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
         cell.border = {
@@ -141,9 +194,20 @@ export class CustomerExportProcessor {
       COLUMNS.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
         cell.value = col.header;
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
-        cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 9,
+        };
+        cell.alignment = {
+          horizontal: col.align ?? 'left',
+          vertical: 'middle',
+        };
         cell.border = {
           top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
@@ -192,11 +256,24 @@ export class CustomerExportProcessor {
             const cell = dataRow.getCell(colIdx + 1);
             cell.value = rowData[col.key] ?? null;
             if (col.numFmt) cell.numFmt = col.numFmt;
-            cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` },
+            };
 
             if (col.key === 'balance') {
-              cell.font = { bold: hasBalance, size: 9, color: { argb: hasBalance ? `FF${BALANCE_FG}` : `FF${CURRENCY_FG}` } };
+              cell.font = {
+                bold: hasBalance,
+                size: 9,
+                color: {
+                  argb: hasBalance ? `FF${BALANCE_FG}` : `FF${CURRENCY_FG}`,
+                },
+              };
             } else {
               cell.font = { size: 9 };
             }
@@ -225,13 +302,27 @@ export class CustomerExportProcessor {
 
       // ── Summary sheet ────────────────────────────────────────────────────
       const summary = workbook.addWorksheet('Summary');
-      summary.columns = [{ key: 'label', width: 28 }, { key: 'value', width: 22 }];
+      summary.columns = [
+        { key: 'label', width: 28 },
+        { key: 'value', width: 22 },
+      ];
 
       const titleRow = summary.getRow(1);
       titleRow.getCell(1).value = 'Customer Export Summary';
-      titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
-      titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-      titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).font = {
+        bold: true,
+        size: 14,
+        color: { argb: 'FF1E293B' },
+      };
+      titleRow.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+      titleRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       titleRow.height = 28;
       titleRow.commit();
 
@@ -245,10 +336,18 @@ export class CustomerExportProcessor {
         const r = summary.getRow(idx + 2);
         r.getCell(1).value = label;
         r.getCell(1).font = { bold: true, size: 10 };
-        r.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.getCell(2).value = value;
         r.getCell(2).font = { size: 10 };
-        r.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(2).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.height = 18;
         r.commit();
       });
@@ -256,7 +355,9 @@ export class CustomerExportProcessor {
       await workbook.commit();
       await job.progress(100);
 
-      this.logger.log(`[CustomerExport ${jobId}] File written (${rowIdx} rows)`);
+      this.logger.log(
+        `[CustomerExport ${jobId}] File written (${rowIdx} rows)`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -270,9 +371,11 @@ export class CustomerExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[CustomerExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[CustomerExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.notificationsService.create({

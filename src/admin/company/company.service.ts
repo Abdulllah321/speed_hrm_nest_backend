@@ -36,7 +36,7 @@ export class CompanyService {
     private readonly prismaMaster: PrismaMasterService,
     private readonly tenantDb: TenantDatabaseService,
     private readonly activityLogsService: ActivityLogsService,
-  ) { }
+  ) {}
 
   /**
    * List all companies ordered by creation date (newest first)

@@ -44,7 +44,9 @@ const LEVEL_COLORS: Record<string, string> = {
 
 @Processor('stock-transaction-detail-export')
 export class StockTransactionDetailExportProcessor {
-  private readonly logger = new Logger(StockTransactionDetailExportProcessor.name);
+  private readonly logger = new Logger(
+    StockTransactionDetailExportProcessor.name,
+  );
 
   constructor(
     private readonly stockLedgerService: StockLedgerService,
@@ -59,12 +61,16 @@ export class StockTransactionDetailExportProcessor {
           'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
           (err: any) => {
             if (err) {
-              this.logger.warn(`Could not install Chromium dependencies automatically: ${err.message}`);
+              this.logger.warn(
+                `Could not install Chromium dependencies automatically: ${err.message}`,
+              );
             }
-          }
+          },
         );
       } catch (e: any) {
-        this.logger.warn(`Error trying to run chromium dependencies installer: ${e.message}`);
+        this.logger.warn(
+          `Error trying to run chromium dependencies installer: ${e.message}`,
+        );
       }
     }
   }
@@ -72,49 +78,103 @@ export class StockTransactionDetailExportProcessor {
   @Process('generate-report-preview')
   async handleReportPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
-    this.logger.log(`[ReportPreview ${jobId}] Starting background preview computation`);
+    this.logger.log(
+      `[ReportPreview ${jobId}] Starting background preview computation`,
+    );
     try {
-      await job.progress({ percent: 5, stage: "INIT", message: "Connecting to database & initializing query pipeline..." });
-      const prisma = (tenantId && tenantDbUrl)
-        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-        : new PrismaService({ tenantId, tenantDbUrl } as any);
+      await job.progress({
+        percent: 5,
+        stage: 'INIT',
+        message: 'Connecting to database & initializing query pipeline...',
+      });
+      const prisma =
+        tenantId && tenantDbUrl
+          ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+          : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      await job.progress({ percent: 25, stage: "FETCH_CATALOG", message: "Querying active catalog items & brand hierarchy..." });
+      await job.progress({
+        percent: 25,
+        stage: 'FETCH_CATALOG',
+        message: 'Querying active catalog items & brand hierarchy...',
+      });
 
-      await job.progress({ percent: 45, stage: "FETCH_TRANSACTIONS", message: "Extracting stock ledgers (GRN receipts, POS sales, transfers, adjustments)..." });
+      await job.progress({
+        percent: 45,
+        stage: 'FETCH_TRANSACTIONS',
+        message:
+          'Extracting stock ledgers (GRN receipts, POS sales, transfers, adjustments)...',
+      });
 
-      const data = await this.stockLedgerService.getStockTransactionDetailReport(
-        opts,
-        prisma,
-      );
+      const data =
+        await this.stockLedgerService.getStockTransactionDetailReport(
+          opts,
+          prisma,
+        );
 
       if (this.reportService.isJobCancelled(jobId)) {
-        this.logger.log(`[ReportPreview ${jobId}] Job was cancelled by user. Skipping result save.`);
+        this.logger.log(
+          `[ReportPreview ${jobId}] Job was cancelled by user. Skipping result save.`,
+        );
         return;
       }
 
-      await job.progress({ percent: 85, stage: "INDEX_PAYLOAD", message: "Indexing transactions, counting brands & caching report payload..." });
+      await job.progress({
+        percent: 85,
+        stage: 'INDEX_PAYLOAD',
+        message:
+          'Indexing transactions, counting brands & caching report payload...',
+      });
       this.reportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({ percent: 100, stage: "READY", message: "Report computation complete! Rendering table view..." });
-      this.logger.log(`[ReportPreview ${jobId}] Successfully generated and saved preview result`);
+      await job.progress({
+        percent: 100,
+        stage: 'READY',
+        message: 'Report computation complete! Rendering table view...',
+      });
+      this.logger.log(
+        `[ReportPreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[ReportPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[ReportPreview ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
 
   @Process({ concurrency: 1 })
-  async handleExport(job: Job<StockTransactionDetailExportJobData>): Promise<void> {
+  async handleExport(
+    job: Job<StockTransactionDetailExportJobData>,
+  ): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, warehouseId, itemId, startDate: startStr, endDate: endStr, format, search,
-      showBrand, showDivision, showCategory, showGender, showSilhouette, showArticle, showVariant
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      warehouseId,
+      itemId,
+      startDate: startStr,
+      endDate: endStr,
+      format,
+      search,
+      showBrand,
+      showDivision,
+      showCategory,
+      showGender,
+      showSilhouette,
+      showArticle,
+      showVariant,
     } = job.data;
-    this.logger.log(`[StockTransactionDetailExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
+    this.logger.log(
+      `[StockTransactionDetailExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
@@ -125,54 +185,90 @@ export class StockTransactionDetailExportProcessor {
       await job.progress(10);
 
       // Fetch location or warehouse name for the header
-      const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-      const whIds = warehouseId ? warehouseId.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const locIds = locationId
+        ? locationId
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      const whIds = warehouseId
+        ? warehouseId
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
 
       let targetName = '';
       if (locIds.length > 0) {
-        const locs = await prisma.location.findMany({ where: { id: { in: locIds } }, select: { name: true } });
-        targetName += locs.map(l => l.name).join(', ');
+        const locs = await prisma.location.findMany({
+          where: { id: { in: locIds } },
+          select: { name: true },
+        });
+        targetName += locs.map((l) => l.name).join(', ');
       }
       if (whIds.length > 0) {
         if (targetName) targetName += ' & ';
-        const whs = await prisma.warehouse.findMany({ where: { id: { in: whIds } }, select: { name: true } });
-        targetName += whs.map(w => w.name).join(', ');
+        const whs = await prisma.warehouse.findMany({
+          where: { id: { in: whIds } },
+          select: { name: true },
+        });
+        targetName += whs.map((w) => w.name).join(', ');
       }
       if (!targetName) targetName = 'All Locations & Warehouses';
 
       const now = new Date();
-      const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+      const startDate = startStr
+        ? new Date(startStr)
+        : new Date(now.getFullYear(), now.getMonth(), 1);
       const endDate = endStr ? new Date(endStr) : new Date(now);
 
       await job.progress(20);
 
       // Fetch aggregated report data
-      const { root, grandTotals } = await this.stockLedgerService.getStockTransactionDetailReport({
-        locationId,
-        warehouseId,
-        itemId,
-        search,
-        startDate: startStr,
-        endDate: endStr,
-        showBrand,
-        showDivision,
-        showCategory,
-        showGender,
-        showSilhouette,
-        showArticle,
-        showVariant,
-      }, prisma);
+      const { root, grandTotals } =
+        await this.stockLedgerService.getStockTransactionDetailReport(
+          {
+            locationId,
+            warehouseId,
+            itemId,
+            search,
+            startDate: startStr,
+            endDate: endStr,
+            showBrand,
+            showDivision,
+            showCategory,
+            showGender,
+            showSilhouette,
+            showArticle,
+            showVariant,
+          },
+          prisma,
+        );
 
       await job.progress(50);
 
       if (format === 'pdf') {
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(root, targetName, fromDateStr, toDateStr, grandTotals);
+        const html = this.buildPdfHtml(
+          root,
+          targetName,
+          fromDateStr,
+          toDateStr,
+          grandTotals,
+        );
 
-        const launchArgs = process.platform === 'linux'
-          ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
-          : [];
+        const launchArgs =
+          process.platform === 'linux'
+            ? [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+              ]
+            : [];
 
         const browser = await puppeteer.launch({
           headless: true,
@@ -188,7 +284,12 @@ export class StockTransactionDetailExportProcessor {
           const pdfBuffer = await page.pdf({
             format: 'A4',
             landscape: true,
-            margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+            margin: {
+              top: '15mm',
+              bottom: '15mm',
+              left: '10mm',
+              right: '10mm',
+            },
             printBackground: true,
             displayHeaderFooter: true,
             headerTemplate: `<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Pvt.) Limited | Stock Transaction Detail Report</div>`,
@@ -208,7 +309,12 @@ export class StockTransactionDetailExportProcessor {
         });
 
         const ws = workbook.addWorksheet('Transaction Details', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+          pageSetup: {
+            paperSize: 9,
+            orientation: 'landscape',
+            fitToPage: true,
+            fitToWidth: 1,
+          },
         });
 
         // 7 columns
@@ -225,12 +331,21 @@ export class StockTransactionDetailExportProcessor {
         // Format worksheet titles
         const titleRow = ws.getRow(1);
         titleRow.getCell(1).value = 'STOCK TRANSACTION DETAIL REPORT';
-        titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
+        titleRow.getCell(1).font = {
+          bold: true,
+          size: 14,
+          color: { argb: 'FF1E293B' },
+        };
         titleRow.commit();
 
         const infoRow = ws.getRow(2);
-        infoRow.getCell(1).value = `Location/Warehouse: ${targetName}  |  Period: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`;
-        infoRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF475569' } };
+        infoRow.getCell(1).value =
+          `Location/Warehouse: ${targetName}  |  Period: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`;
+        infoRow.getCell(1).font = {
+          italic: true,
+          size: 10,
+          color: { argb: 'FF475569' },
+        };
         infoRow.commit();
 
         // Write empty row
@@ -249,19 +364,28 @@ export class StockTransactionDetailExportProcessor {
 
         const writeNode = async (node: any, indent = 0) => {
           const row = ws.getRow(currentRowNum);
-          
+
           // Header Row for Group
           const labelPrefix = '  '.repeat(indent);
           const label = `${node.level.toUpperCase()}: ${node.value}`;
           row.getCell(1).value = labelPrefix + label;
           row.getCell(1).font = { bold: true, size: 10 };
-          row.getCell(8).value = `Open: ${node.totals.openingBalance}  |  Close: ${node.totals.closingBalance}  |  Transit: ${node.totals.inTransitQty}`;
-          row.getCell(8).font = { bold: true, size: 9, color: { argb: 'FF475569' } };
+          row.getCell(8).value =
+            `Open: ${node.totals.openingBalance}  |  Close: ${node.totals.closingBalance}  |  Transit: ${node.totals.inTransitQty}`;
+          row.getCell(8).font = {
+            bold: true,
+            size: 9,
+            color: { argb: 'FF475569' },
+          };
 
           const colFillColor = LEVEL_COLORS[node.level] || 'F1F5F9';
           for (let c = 1; c <= 8; c++) {
             const cell = row.getCell(c);
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${colFillColor}` } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${colFillColor}` },
+            };
             cell.border = borderThin;
           }
           row.height = 20;
@@ -272,12 +396,25 @@ export class StockTransactionDetailExportProcessor {
           if (node.transactions) {
             // Write ledger columns headers
             const ledgerHeaderRow = ws.getRow(currentRowNum);
-            const headers = ['Date', 'Doc Type', 'Store / Location', 'Doc Ref', 'Narration / Remarks', 'In', 'Out', 'Balance'];
+            const headers = [
+              'Date',
+              'Doc Type',
+              'Store / Location',
+              'Doc Ref',
+              'Narration / Remarks',
+              'In',
+              'Out',
+              'Balance',
+            ];
             headers.forEach((h, idx) => {
               const cell = ledgerHeaderRow.getCell(idx + 1);
               cell.value = h;
               cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF334155' },
+              };
               cell.alignment = { horizontal: idx >= 5 ? 'right' : 'left' };
               cell.border = borderThin;
             });
@@ -295,7 +432,7 @@ export class StockTransactionDetailExportProcessor {
             opRow.getCell(6).value = '-';
             opRow.getCell(7).value = '-';
             opRow.getCell(8).value = node.openingBalance;
-            
+
             for (let c = 1; c <= 8; c++) {
               const cell = opRow.getCell(c);
               cell.font = { size: 9, color: { argb: 'FF475569' } };
@@ -324,7 +461,11 @@ export class StockTransactionDetailExportProcessor {
                 cell.alignment = { horizontal: c >= 6 ? 'right' : 'left' };
                 cell.border = borderThin;
                 if (t.isInTransit) {
-                  cell.font = { italic: true, color: { argb: 'FFB45309' }, size: 9 }; // Amber italic for transit
+                  cell.font = {
+                    italic: true,
+                    color: { argb: 'FFB45309' },
+                    size: 9,
+                  }; // Amber italic for transit
                 }
               }
               txRow.height = 18;
@@ -373,11 +514,16 @@ export class StockTransactionDetailExportProcessor {
         const gtRow = ws.getRow(currentRowNum);
         gtRow.getCell(1).value = 'GRAND TOTALS';
         gtRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        gtRow.getCell(8).value = `Open: ${grandTotals.openingBalance}  |  Close: ${grandTotals.closingBalance}  |  Transit: ${grandTotals.inTransitQty}`;
+        gtRow.getCell(8).value =
+          `Open: ${grandTotals.openingBalance}  |  Close: ${grandTotals.closingBalance}  |  Transit: ${grandTotals.inTransitQty}`;
         gtRow.getCell(8).font = { bold: true, color: { argb: 'FFFFFFFF' } };
         for (let c = 1; c <= 8; c++) {
           const cell = gtRow.getCell(c);
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF1E293B' },
+          };
           cell.border = borderThin;
         }
         gtRow.height = 22;
@@ -389,9 +535,18 @@ export class StockTransactionDetailExportProcessor {
       await job.progress(95);
 
       // Complete and upload file to S3 via ExportHistoryService
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const fileName = `stock-transaction-details-${targetName}-${startDate.toISOString().slice(0, 10)}.${ext}`;
-      await this.exportHistoryService.completeAndUploadExport(prisma, jobId, filePath, fileName, mimeType);
+      await this.exportHistoryService.completeAndUploadExport(
+        prisma,
+        jobId,
+        filePath,
+        fileName,
+        mimeType,
+      );
 
       await job.progress(100);
 
@@ -406,11 +561,16 @@ export class StockTransactionDetailExportProcessor {
         actionPayload: JSON.stringify({ jobId }),
       });
 
-      this.logger.log(`[StockTransactionDetailExport ${jobId}] Export completed successfully and uploaded.`);
+      this.logger.log(
+        `[StockTransactionDetailExport ${jobId}] Export completed successfully and uploaded.`,
+      );
     } catch (err: any) {
-      this.logger.error(`[StockTransactionDetailExport ${jobId}] Processing failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[StockTransactionDetailExport ${jobId}] Processing failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma, jobId);
-      
+
       await this.notificationsService.create({
         userId,
         title: 'Report Generation Failed',
@@ -424,7 +584,13 @@ export class StockTransactionDetailExportProcessor {
     }
   }
 
-  private buildPdfHtml(root: any[], locationName: string, fromDateStr: string, toDateStr: string, grandTotals: any): string {
+  private buildPdfHtml(
+    root: any[],
+    locationName: string,
+    fromDateStr: string,
+    toDateStr: string,
+    grandTotals: any,
+  ): string {
     const renderNodeHtml = (node: any, indent = 0): string => {
       let html = '';
       const indentStyle = `padding-left: ${indent * 16}px;`;
@@ -483,7 +649,9 @@ export class StockTransactionDetailExportProcessor {
         for (const t of node.transactions) {
           const inVal = t.inQty === 0 ? '-' : t.inQty;
           const outVal = t.outQty === 0 ? '-' : t.outQty;
-          const inlineStyle = t.isInTransit ? 'font-style: italic; color: #b45309;' : '';
+          const inlineStyle = t.isInTransit
+            ? 'font-style: italic; color: #b45309;'
+            : '';
 
           html += `
             <tr style="font-size: 9px; height: 24px; ${inlineStyle}">

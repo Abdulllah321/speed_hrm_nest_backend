@@ -22,7 +22,10 @@ export class CreatePosDto {
   @IsOptional()
   terminalPin?: string;
 
-  @ApiProperty({ description: 'Unique Terminal Code (e.g. MAIN-01)', required: false })
+  @ApiProperty({
+    description: 'Unique Terminal Code (e.g. MAIN-01)',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   terminalCode?: string;
@@ -33,7 +36,8 @@ export class CreatePosDto {
   status?: string;
 
   @ApiProperty({
-    description: 'Whether this is the parent (master) terminal for the outlet. Parent terminals can open/close shifts and print reports.',
+    description:
+      'Whether this is the parent (master) terminal for the outlet. Parent terminals can open/close shifts and print reports.',
     default: false,
     required: false,
   })

@@ -18,7 +18,10 @@ export class CreateKpiTemplateDto {
   @IsString()
   description?: string;
 
-  @ApiProperty({ example: 'attendance', enum: ['attendance', 'performance', 'productivity', 'custom'] })
+  @ApiProperty({
+    example: 'attendance',
+    enum: ['attendance', 'performance', 'productivity', 'custom'],
+  })
   @IsNotEmpty()
   @IsString()
   @IsIn(['attendance', 'performance', 'productivity', 'custom'])
@@ -62,7 +65,9 @@ export class UpdateKpiTemplateDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ enum: ['attendance', 'performance', 'productivity', 'custom'] })
+  @ApiPropertyOptional({
+    enum: ['attendance', 'performance', 'productivity', 'custom'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['attendance', 'performance', 'productivity', 'custom'])
@@ -117,7 +122,10 @@ export class CreateKpiReviewDto {
   @IsString()
   period: string;
 
-  @ApiProperty({ example: 'quarterly', enum: ['monthly', 'quarterly', 'yearly'] })
+  @ApiProperty({
+    example: 'quarterly',
+    enum: ['monthly', 'quarterly', 'yearly'],
+  })
   @IsNotEmpty()
   @IsString()
   @IsIn(['monthly', 'quarterly', 'yearly'])
@@ -155,7 +163,9 @@ export class UpdateKpiReviewDto {
   @IsString()
   notes?: string;
 
-  @ApiPropertyOptional({ enum: ['pending', 'submitted', 'approved', 'rejected'] })
+  @ApiPropertyOptional({
+    enum: ['pending', 'submitted', 'approved', 'rejected'],
+  })
   @IsOptional()
   @IsString()
   @IsIn(['pending', 'submitted', 'approved', 'rejected'])

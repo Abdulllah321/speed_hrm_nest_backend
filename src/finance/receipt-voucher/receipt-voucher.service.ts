@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountingService } from '../accounting/accounting.service';
 import { CreateReceiptVoucherDto } from './dto/create-receipt-voucher.dto';
@@ -6,7 +10,10 @@ import { UpdateReceiptVoucherDto } from './dto/update-receipt-voucher.dto';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
-import { generateNextRvNumber, generateNextFolioNumber } from '../../common/utils/voucher-number.util';
+import {
+  generateNextRvNumber,
+  generateNextFolioNumber,
+} from '../../common/utils/voucher-number.util';
 
 @Injectable()
 export class ReceiptVoucherService {
@@ -19,15 +26,23 @@ export class ReceiptVoucherService {
   async create(dto: CreateReceiptVoucherDto, ctx?: { userId?: string }) {
     const { details, invoices, ...data } = dto;
 
-    const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
-    const totalCredit = details.reduce((sum, item) => sum + Number(item.credit || 0), 0);
+    const totalDebit = details.reduce(
+      (sum, item) => sum + Number(item.debit || 0),
+      0,
+    );
+    const totalCredit = details.reduce(
+      (sum, item) => sum + Number(item.credit || 0),
+      0,
+    );
 
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
       throw new BadRequestException('Total Debit must equal Total Credit');
     }
 
     if (totalDebit === 0) {
-      throw new BadRequestException('Transaction amount must be greater than 0');
+      throw new BadRequestException(
+        'Transaction amount must be greater than 0',
+      );
     }
 
     // ── Validate invoice receipts ────────────────────────────────────────────
@@ -37,29 +52,41 @@ export class ReceiptVoucherService {
         const si = await this.prisma.eRPSalesInvoice.findUnique({
           where: { id: inv.salesInvoiceId },
         });
-        if (!si) throw new BadRequestException(`Sales invoice not found: ${inv.salesInvoiceId}`);
-        if (si.status === 'CANCELLED') throw new BadRequestException(`Invoice ${si.invoiceNo} is cancelled`);
+        if (!si)
+          throw new BadRequestException(
+            `Sales invoice not found: ${inv.salesInvoiceId}`,
+          );
+        if (si.status === 'CANCELLED')
+          throw new BadRequestException(`Invoice ${si.invoiceNo} is cancelled`);
         if (Number(si.balanceAmount) < Number(inv.receivedAmount) - 0.01) {
           throw new BadRequestException(
-            `Receipt ${inv.receivedAmount} exceeds balance ${si.balanceAmount} for invoice ${si.invoiceNo}`
+            `Receipt ${inv.receivedAmount} exceeds balance ${si.balanceAmount} for invoice ${si.invoiceNo}`,
           );
         }
         totalInvoiceAmount += Number(inv.receivedAmount);
       }
       if (totalInvoiceAmount > totalDebit + 0.01) {
         throw new BadRequestException(
-          `Invoice receipts total (${totalInvoiceAmount}) cannot exceed voucher debit amount (${totalDebit})`
+          `Invoice receipts total (${totalInvoiceAmount}) cannot exceed voucher debit amount (${totalDebit})`,
         );
       }
     }
 
     return this.prisma.$transaction(async (prisma) => {
-      const finalRvNo = await generateNextRvNumber(prisma, data.type, data.rvDate);
-      const sequentialFolio = await generateNextFolioNumber(prisma, data.rvDate);
+      const finalRvNo = await generateNextRvNumber(
+        prisma,
+        data.type,
+        data.rvDate,
+      );
+      const sequentialFolio = await generateNextFolioNumber(
+        prisma,
+        data.rvDate,
+      );
 
       // Derive debitAccountId from the first debit detail line
-      const firstDebitDetail = details.find(d => Number(d.debit) > 0);
-      const resolvedDebitAccountId = firstDebitDetail?.accountId ?? data.debitAccountId;
+      const firstDebitDetail = details.find((d) => Number(d.debit) > 0);
+      const resolvedDebitAccountId =
+        firstDebitDetail?.accountId ?? data.debitAccountId;
       const resolvedDebitAmount = data.debitAmount || totalDebit || 0;
 
       const targetStatus = data.status || 'pending_check';
@@ -83,19 +110,19 @@ export class ReceiptVoucherService {
           description: data.description,
           status: targetStatus,
           makerId: data.makerId || ctx?.userId || null,
-          details: { 
+          details: {
             create: details
-              .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
-              .map(d => ({
-                accountId:       d.accountId,
-                tagAccountId:    d.tagAccountId?.trim() || null,
-                debit:           Number(d.debit) || 0,
-                credit:          Number(d.credit) || 0,
-                narration:       d.narration || data.description || null,
-                refBillNo:       d.refBillNo || data.refBillNo || null,
-                refBillNo2:      d.refBillNo2 || null,
+              .filter((d) => Number(d.debit) > 0 || Number(d.credit) > 0)
+              .map((d) => ({
+                accountId: d.accountId,
+                tagAccountId: d.tagAccountId?.trim() || null,
+                debit: Number(d.debit) || 0,
+                credit: Number(d.credit) || 0,
+                narration: d.narration || data.description || null,
+                refBillNo: d.refBillNo || data.refBillNo || null,
+                refBillNo2: d.refBillNo2 || null,
                 taxType: d.taxType ?? data.taxType ?? 'Taxable',
-              }))
+              })),
           },
         },
         include: {
@@ -133,7 +160,14 @@ export class ReceiptVoucherService {
       return { in: ['pending_check', 'pending', 'PENDING_CHECK', 'PENDING'] };
     }
     if (s === 'pending_approval' || s === 'pending_approve') {
-      return { in: ['pending_approval', 'pending_approve', 'PENDING_APPROVAL', 'PENDING_APPROVE'] };
+      return {
+        in: [
+          'pending_approval',
+          'pending_approve',
+          'PENDING_APPROVAL',
+          'PENDING_APPROVE',
+        ],
+      };
     }
     if (s === 'approved') {
       return { in: ['approved', 'APPROVED'] };
@@ -159,7 +193,18 @@ export class ReceiptVoucherService {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) {
-    const { type, status, fromDate, toDate, accountId, page, limit, search, sortBy, sortOrder } = filters || {};
+    const {
+      type,
+      status,
+      fromDate,
+      toDate,
+      accountId,
+      page,
+      limit,
+      search,
+      sortBy,
+      sortOrder,
+    } = filters || {};
 
     const where: any = {};
 
@@ -194,18 +239,74 @@ export class ReceiptVoucherService {
         { remarks: { contains: cleanSearch, mode: 'insensitive' } },
         { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
         { chequeNo: { contains: cleanSearch, mode: 'insensitive' } },
-        { debitAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } },
-        { debitAccount: { code: { contains: cleanSearch, mode: 'insensitive' } } },
+        {
+          debitAccount: {
+            name: { contains: cleanSearch, mode: 'insensitive' },
+          },
+        },
+        {
+          debitAccount: {
+            code: { contains: cleanSearch, mode: 'insensitive' },
+          },
+        },
         { customer: { name: { contains: cleanSearch, mode: 'insensitive' } } },
-        { customer: { traderId: { contains: cleanSearch, mode: 'insensitive' } } },
-        { customer: { subCode: { contains: cleanSearch, mode: 'insensitive' } } },
-        { details: { some: { narration: { contains: cleanSearch, mode: 'insensitive' } } } },
-        { details: { some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } } } },
-        { details: { some: { refBillNo2: { contains: cleanSearch, mode: 'insensitive' } } } },
-        { details: { some: { account: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
-        { details: { some: { account: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
-        { details: { some: { tagAccount: { name: { contains: cleanSearch, mode: 'insensitive' } } } } },
-        { details: { some: { tagAccount: { code: { contains: cleanSearch, mode: 'insensitive' } } } } },
+        {
+          customer: {
+            traderId: { contains: cleanSearch, mode: 'insensitive' },
+          },
+        },
+        {
+          customer: { subCode: { contains: cleanSearch, mode: 'insensitive' } },
+        },
+        {
+          details: {
+            some: { narration: { contains: cleanSearch, mode: 'insensitive' } },
+          },
+        },
+        {
+          details: {
+            some: { refBillNo: { contains: cleanSearch, mode: 'insensitive' } },
+          },
+        },
+        {
+          details: {
+            some: {
+              refBillNo2: { contains: cleanSearch, mode: 'insensitive' },
+            },
+          },
+        },
+        {
+          details: {
+            some: {
+              account: { name: { contains: cleanSearch, mode: 'insensitive' } },
+            },
+          },
+        },
+        {
+          details: {
+            some: {
+              account: { code: { contains: cleanSearch, mode: 'insensitive' } },
+            },
+          },
+        },
+        {
+          details: {
+            some: {
+              tagAccount: {
+                name: { contains: cleanSearch, mode: 'insensitive' },
+              },
+            },
+          },
+        },
+        {
+          details: {
+            some: {
+              tagAccount: {
+                code: { contains: cleanSearch, mode: 'insensitive' },
+              },
+            },
+          },
+        },
       ];
 
       const numericStr = cleanSearch.replace(/,/g, '');
@@ -219,10 +320,7 @@ export class ReceiptVoucherService {
       }
 
       if (where.OR) {
-        where.AND = [
-          { OR: where.OR },
-          { OR: searchConditions },
-        ];
+        where.AND = [{ OR: where.OR }, { OR: searchConditions }];
         delete where.OR;
       } else {
         where.OR = searchConditions;
@@ -278,10 +376,7 @@ export class ReceiptVoucherService {
     const whereClause: any = {
       details: {
         some: {
-          OR: [
-            { tagAccountId: null },
-            { tagAccountId: '' },
-          ],
+          OR: [{ tagAccountId: null }, { tagAccountId: '' }],
         },
       },
     };
@@ -303,7 +398,9 @@ export class ReceiptVoucherService {
     });
 
     const data = vouchers.map((rv) => {
-      const affectedDetails = rv.details.filter(d => !d.tagAccountId || d.tagAccountId.trim() === '');
+      const affectedDetails = rv.details.filter(
+        (d) => !d.tagAccountId || d.tagAccountId.trim() === '',
+      );
       return {
         id: rv.id,
         rvNo: rv.rvNo,
@@ -330,7 +427,10 @@ export class ReceiptVoucherService {
     return {
       status: true,
       totalVouchersWithMissingTag: data.length,
-      totalAffectedDetailLines: data.reduce((sum, v) => sum + v.missingTagDetailsCount, 0),
+      totalAffectedDetailLines: data.reduce(
+        (sum, v) => sum + v.missingTagDetailsCount,
+        0,
+      ),
       data,
     };
   }
@@ -345,7 +445,8 @@ export class ReceiptVoucherService {
         invoices: true,
       },
     });
-    if (!rv) throw new NotFoundException(`Receipt Voucher with ID ${id} not found`);
+    if (!rv)
+      throw new NotFoundException(`Receipt Voucher with ID ${id} not found`);
     return rv;
   }
 
@@ -362,7 +463,9 @@ export class ReceiptVoucherService {
       ...(data.billDate !== undefined && { billDate: data.billDate }),
       ...(data.chequeNo !== undefined && { chequeNo: data.chequeNo }),
       ...(data.chequeDate !== undefined && { chequeDate: data.chequeDate }),
-      ...(data.debitAccountId !== undefined && { debitAccountId: data.debitAccountId }),
+      ...(data.debitAccountId !== undefined && {
+        debitAccountId: data.debitAccountId,
+      }),
       ...(data.debitAmount !== undefined && { debitAmount: data.debitAmount }),
       ...(data.customerId !== undefined && { customerId: data.customerId }),
       ...(data.description !== undefined && { description: data.description }),
@@ -380,33 +483,43 @@ export class ReceiptVoucherService {
       let updated: any;
 
       if (details) {
-        await prisma.receiptVoucherDetail.deleteMany({ where: { receiptVoucherId: id } });
+        await prisma.receiptVoucherDetail.deleteMany({
+          where: { receiptVoucherId: id },
+        });
         updated = await prisma.receiptVoucher.update({
           where: { id },
           data: {
             ...scalarData,
             details: {
               create: details
-                .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
-                .map(d => ({
-                  accountId:       d.accountId,
-                  tagAccountId:    d.tagAccountId?.trim() || null,
-                  debit:           Number(d.debit) || 0,
-                  credit:          Number(d.credit) || 0,
-                  narration:       d.narration || data.description || null,
-                  refBillNo:       d.refBillNo || data.refBillNo || null,
-                  refBillNo2:      d.refBillNo2 || null,
+                .filter((d) => Number(d.debit) > 0 || Number(d.credit) > 0)
+                .map((d) => ({
+                  accountId: d.accountId,
+                  tagAccountId: d.tagAccountId?.trim() || null,
+                  debit: Number(d.debit) || 0,
+                  credit: Number(d.credit) || 0,
+                  narration: d.narration || data.description || null,
+                  refBillNo: d.refBillNo || data.refBillNo || null,
+                  refBillNo2: d.refBillNo2 || null,
                   taxType: d.taxType ?? data.taxType ?? 'Taxable',
                 })),
             },
           },
-          include: { details: { include: { account: true, tagAccount: true } }, debitAccount: true, customer: true },
+          include: {
+            details: { include: { account: true, tagAccount: true } },
+            debitAccount: true,
+            customer: true,
+          },
         });
       } else {
         updated = await prisma.receiptVoucher.update({
           where: { id },
           data: scalarData,
-          include: { details: { include: { account: true, tagAccount: true } }, debitAccount: true, customer: true },
+          include: {
+            details: { include: { account: true, tagAccount: true } },
+            debitAccount: true,
+            customer: true,
+          },
         });
       }
 
@@ -420,7 +533,7 @@ export class ReceiptVoucherService {
 
   async remove(id: string) {
     const existing = await this.findOne(id);
-   
+
     return this.prisma.$transaction(async (prisma) => {
       if (existing.status === 'approved') {
         await this.unpostReceiptVoucherFromLedger(id, prisma);
@@ -429,12 +542,25 @@ export class ReceiptVoucherService {
     });
   }
 
-  async updateStatus(id: string, status: string, remarks?: string, ctx?: { userId?: string }) {
+  async updateStatus(
+    id: string,
+    status: string,
+    remarks?: string,
+    ctx?: { userId?: string },
+  ) {
     const existing = await this.findOne(id);
 
-    const validStatuses = ['draft', 'pending_check', 'pending_approval', 'approved', 'rejected'];
+    const validStatuses = [
+      'draft',
+      'pending_check',
+      'pending_approval',
+      'approved',
+      'rejected',
+    ];
     if (!validStatuses.includes(status)) {
-      throw new BadRequestException('Invalid status. Must be draft, pending_check, pending_approval, approved, or rejected');
+      throw new BadRequestException(
+        'Invalid status. Must be draft, pending_check, pending_approval, approved, or rejected',
+      );
     }
 
     const updateData: any = { status };
@@ -478,7 +604,12 @@ export class ReceiptVoucherService {
   }
 
   async unapprove(id: string, remarks?: string, ctx?: { userId?: string }) {
-    return this.updateStatus(id, 'pending_check', remarks || 'Unapproved voucher', ctx);
+    return this.updateStatus(
+      id,
+      'pending_check',
+      remarks || 'Unapproved voucher',
+      ctx,
+    );
   }
 
   private async unpostReceiptVoucherFromLedger(voucherId: string, prisma: any) {
@@ -495,15 +626,21 @@ export class ReceiptVoucherService {
     // 1. Revert Sales Invoice payment amounts and statuses
     if (invoices && invoices.length > 0) {
       for (const inv of invoices) {
-        const si = await prisma.eRPSalesInvoice.findUnique({ where: { id: inv.salesInvoiceId } });
+        const si = await prisma.eRPSalesInvoice.findUnique({
+          where: { id: inv.salesInvoiceId },
+        });
         if (si) {
-          const newPaid = Math.max(0, Number(si.paidAmount) - Number(inv.receivedAmount));
+          const newPaid = Math.max(
+            0,
+            Number(si.paidAmount) - Number(inv.receivedAmount),
+          );
           const newBalance = Number(si.grandTotal) - newPaid;
           let paymentStatus = 'UNPAID';
           if (newBalance <= 0.01) paymentStatus = 'FULLY_PAID';
           else if (newPaid > 0) paymentStatus = 'PARTIALLY_PAID';
 
-          const invoiceStatus = newBalance <= 0.01 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'POSTED';
+          const invoiceStatus =
+            newBalance <= 0.01 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'POSTED';
 
           await prisma.eRPSalesInvoice.update({
             where: { id: inv.salesInvoiceId },
@@ -532,7 +669,10 @@ export class ReceiptVoucherService {
     if (!voucher) return;
 
     const details = voucher.details;
-    const totalDebit = details.reduce((sum, item) => sum + Number(item.debit || 0), 0);
+    const totalDebit = details.reduce(
+      (sum, item) => sum + Number(item.debit || 0),
+      0,
+    );
 
     const invoices = await prisma.receiptVoucherToInvoice.findMany({
       where: { receiptVoucherId: voucherId },
@@ -541,7 +681,9 @@ export class ReceiptVoucherService {
     // ── Update sales invoice payment statuses ────────────────────────────
     if (invoices && invoices.length > 0) {
       for (const inv of invoices) {
-        const si = await prisma.eRPSalesInvoice.findUnique({ where: { id: inv.salesInvoiceId } });
+        const si = await prisma.eRPSalesInvoice.findUnique({
+          where: { id: inv.salesInvoiceId },
+        });
         if (si) {
           const newPaid = Number(si.paidAmount) + Number(inv.receivedAmount);
           const newBalance = Number(si.grandTotal) - newPaid;
@@ -549,7 +691,8 @@ export class ReceiptVoucherService {
           if (newBalance <= 0.01) paymentStatus = 'FULLY_PAID';
           else if (newPaid > 0) paymentStatus = 'PARTIALLY_PAID';
 
-          const invoiceStatus = newBalance <= 0.01 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'PENDING';
+          const invoiceStatus =
+            newBalance <= 0.01 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'PENDING';
 
           await prisma.eRPSalesInvoice.update({
             where: { id: inv.salesInvoiceId },
@@ -578,25 +721,30 @@ export class ReceiptVoucherService {
       }
 
       const allLines = details
-        .filter(d => Number(d.debit) > 0 || Number(d.credit) > 0)
-        .map(d => ({
-          accountId:       d.accountId,
-          tagAccountId:    d.tagAccountId?.trim() || undefined,
-          debit:           Number(d.debit) || 0,
-          credit:          Number(d.credit) || 0,
-          narration:       d.narration || voucher.description || undefined,
-          refBillNo:       d.refBillNo || voucher.refBillNo || undefined,
-          refBillNo2:      d.refBillNo2 || undefined,
+        .filter((d) => Number(d.debit) > 0 || Number(d.credit) > 0)
+        .map((d) => ({
+          accountId: d.accountId,
+          tagAccountId: d.tagAccountId?.trim() || undefined,
+          debit: Number(d.debit) || 0,
+          credit: Number(d.credit) || 0,
+          narration: d.narration || voucher.description || undefined,
+          refBillNo: d.refBillNo || voucher.refBillNo || undefined,
+          refBillNo2: d.refBillNo2 || undefined,
           taxType: d.taxType ?? 'Taxable',
         }));
 
-      await this.accounting.postLines(allLines, {
-        sourceType: 'RECEIPT_VOUCHER',
-        sourceId: voucher.id,
-        sourceRef: voucher.rvNo,
-        description: voucher.description || `Receipt Voucher: ${voucher.rvNo}`,
-        transactionDate: new Date(voucher.rvDate),
-      }, prisma);
+      await this.accounting.postLines(
+        allLines,
+        {
+          sourceType: 'RECEIPT_VOUCHER',
+          sourceId: voucher.id,
+          sourceRef: voucher.rvNo,
+          description:
+            voucher.description || `Receipt Voucher: ${voucher.rvNo}`,
+          transactionDate: new Date(voucher.rvDate),
+        },
+        prisma,
+      );
     }
   }
 
@@ -631,7 +779,9 @@ export class ReceiptVoucherService {
   }
 
   async markAsPrinted(id: string, ctx?: { userId?: string }) {
-    const existing = await this.prisma.receiptVoucher.findUnique({ where: { id } });
+    const existing = await this.prisma.receiptVoucher.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException(`Receipt Voucher with ID ${id} not found`);
     }

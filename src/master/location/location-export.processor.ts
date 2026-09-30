@@ -40,38 +40,171 @@ const COLUMNS: {
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
   // Identity
-  { header: 'Location Code', key: 'code', width: 14, group: 'Identity', align: 'center' },
-  { header: 'Short Code', key: 'shortCode', width: 12, group: 'Identity', align: 'center' },
-  { header: 'Center ID', key: 'centerId', width: 14, group: 'Identity', align: 'center' },
+  {
+    header: 'Location Code',
+    key: 'code',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Short Code',
+    key: 'shortCode',
+    width: 12,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Center ID',
+    key: 'centerId',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
   { header: 'Location Name', key: 'name', width: 30, group: 'Identity' },
-  { header: 'Status', key: 'status', width: 12, group: 'Identity', align: 'center' },
-  { header: 'Stock Location', key: 'isStockLocation', width: 15, group: 'Identity', align: 'center' },
-  { header: 'Online Status', key: 'isOnline', width: 14, group: 'Identity', align: 'center' },
-  { header: 'Last Online At', key: 'lastOnlineAt', width: 18, group: 'Identity', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
+  {
+    header: 'Status',
+    key: 'status',
+    width: 12,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Stock Location',
+    key: 'isStockLocation',
+    width: 15,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Online Status',
+    key: 'isOnline',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Last Online At',
+    key: 'lastOnlineAt',
+    width: 18,
+    group: 'Identity',
+    numFmt: 'dd-mmm-yyyy hh:mm',
+    align: 'center',
+  },
 
   // Contact & Address
   { header: 'Phone', key: 'phone', width: 16, group: 'Contact & Address' },
   { header: 'Address', key: 'address', width: 34, group: 'Contact & Address' },
   { header: 'City', key: 'cityName', width: 18, group: 'Contact & Address' },
-  { header: 'Latitude', key: 'latitude', width: 14, group: 'Contact & Address', align: 'right' },
-  { header: 'Longitude', key: 'longitude', width: 14, group: 'Contact & Address', align: 'right' },
-  { header: 'Geo Fence', key: 'geoFenceEnabled', width: 12, group: 'Contact & Address', align: 'center' },
-  { header: 'Geo Radius (m)', key: 'geoFenceRadius', width: 16, group: 'Contact & Address', numFmt: '#,##0', align: 'right' },
-  { header: 'IP Whitelist', key: 'ipWhitelist', width: 22, group: 'Contact & Address' },
+  {
+    header: 'Latitude',
+    key: 'latitude',
+    width: 14,
+    group: 'Contact & Address',
+    align: 'right',
+  },
+  {
+    header: 'Longitude',
+    key: 'longitude',
+    width: 14,
+    group: 'Contact & Address',
+    align: 'right',
+  },
+  {
+    header: 'Geo Fence',
+    key: 'geoFenceEnabled',
+    width: 12,
+    group: 'Contact & Address',
+    align: 'center',
+  },
+  {
+    header: 'Geo Radius (m)',
+    key: 'geoFenceRadius',
+    width: 16,
+    group: 'Contact & Address',
+    numFmt: '#,##0',
+    align: 'right',
+  },
+  {
+    header: 'IP Whitelist',
+    key: 'ipWhitelist',
+    width: 22,
+    group: 'Contact & Address',
+  },
 
   // POS & Integration
-  { header: 'Registered Brands', key: 'brands', width: 26, group: 'POS & Integration' },
-  { header: 'POS Count', key: 'posCount', width: 12, group: 'POS & Integration', numFmt: '#,##0', align: 'right' },
-  { header: 'POS Terminals', key: 'posNames', width: 28, group: 'POS & Integration' },
-  { header: 'Cash GL Code', key: 'cashGLCode', width: 16, group: 'POS & Integration', align: 'center' },
-  { header: 'FBR Integration', key: 'fbrEnabled', width: 14, group: 'POS & Integration', align: 'center' },
-  { header: 'FBR BPOS ID', key: 'fbrBposId', width: 16, group: 'POS & Integration', align: 'center' },
-  { header: 'FBR Seller Name', key: 'fbrSellerName', width: 24, group: 'POS & Integration' },
-  { header: 'FBR NTN', key: 'fbrNtn', width: 16, group: 'POS & Integration', align: 'center' },
+  {
+    header: 'Registered Brands',
+    key: 'brands',
+    width: 26,
+    group: 'POS & Integration',
+  },
+  {
+    header: 'POS Count',
+    key: 'posCount',
+    width: 12,
+    group: 'POS & Integration',
+    numFmt: '#,##0',
+    align: 'right',
+  },
+  {
+    header: 'POS Terminals',
+    key: 'posNames',
+    width: 28,
+    group: 'POS & Integration',
+  },
+  {
+    header: 'Cash GL Code',
+    key: 'cashGLCode',
+    width: 16,
+    group: 'POS & Integration',
+    align: 'center',
+  },
+  {
+    header: 'FBR Integration',
+    key: 'fbrEnabled',
+    width: 14,
+    group: 'POS & Integration',
+    align: 'center',
+  },
+  {
+    header: 'FBR BPOS ID',
+    key: 'fbrBposId',
+    width: 16,
+    group: 'POS & Integration',
+    align: 'center',
+  },
+  {
+    header: 'FBR Seller Name',
+    key: 'fbrSellerName',
+    width: 24,
+    group: 'POS & Integration',
+  },
+  {
+    header: 'FBR NTN',
+    key: 'fbrNtn',
+    width: 16,
+    group: 'POS & Integration',
+    align: 'center',
+  },
 
   // Audit
-  { header: 'Created At', key: 'createdAt', width: 18, group: 'Audit', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
-  { header: 'Updated At', key: 'updatedAt', width: 18, group: 'Audit', numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
+  {
+    header: 'Created At',
+    key: 'createdAt',
+    width: 18,
+    group: 'Audit',
+    numFmt: 'dd-mmm-yyyy hh:mm',
+    align: 'center',
+  },
+  {
+    header: 'Updated At',
+    key: 'updatedAt',
+    width: 18,
+    group: 'Audit',
+    numFmt: 'dd-mmm-yyyy hh:mm',
+    align: 'center',
+  },
 ];
 
 @Processor('location-export')
@@ -82,7 +215,16 @@ export class LocationExportProcessor {
 
   @Process()
   async handleExport(job: Job<LocationExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, search, status, isOnline, isStockLocation } = job.data;
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      search,
+      status,
+      isOnline,
+      isStockLocation,
+    } = job.data;
 
     this.logger.log(`[LocationExport ${jobId}] Starting for user ${userId}`);
 
@@ -120,7 +262,9 @@ export class LocationExportProcessor {
       }
 
       if (isStockLocation !== undefined && isStockLocation !== '') {
-        andClauses.push({ isStockLocation: String(isStockLocation) === 'true' });
+        andClauses.push({
+          isStockLocation: String(isStockLocation) === 'true',
+        });
       }
 
       const where: any = { AND: andClauses };
@@ -136,7 +280,12 @@ export class LocationExportProcessor {
       });
 
       const ws = workbook.addWorksheet('Locations', {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
         views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
       });
 
@@ -177,9 +326,20 @@ export class LocationExportProcessor {
       COLUMNS.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
         cell.value = col.header;
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
-        cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 9,
+        };
+        cell.alignment = {
+          horizontal: col.align ?? 'left',
+          vertical: 'middle',
+        };
         cell.border = {
           top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
@@ -244,7 +404,9 @@ export class LocationExportProcessor {
             .map((lb: any) => lb.brand?.name)
             .filter(Boolean)
             .join(', ');
-          const posNames = (loc.pos || []).map((p: any) => p.name || p.posId).join(', ');
+          const posNames = (loc.pos || [])
+            .map((p: any) => p.name || p.posId)
+            .join(', ');
 
           const rowData: Record<string, any> = {
             code: loc.code || '',
@@ -283,7 +445,10 @@ export class LocationExportProcessor {
             const cell = dataRow.getCell(colIdx + 1);
             cell.value = rowData[col.key] ?? null;
             if (col.numFmt) cell.numFmt = col.numFmt;
-            cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
             cell.fill = {
               type: 'pattern',
               pattern: 'solid',
@@ -314,13 +479,27 @@ export class LocationExportProcessor {
 
       // ── Summary sheet ────────────────────────────────────────────────────
       const summary = workbook.addWorksheet('Summary');
-      summary.columns = [{ key: 'label', width: 28 }, { key: 'value', width: 26 }];
+      summary.columns = [
+        { key: 'label', width: 28 },
+        { key: 'value', width: 26 },
+      ];
 
       const titleRow = summary.getRow(1);
       titleRow.getCell(1).value = 'Location Export Summary';
-      titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
-      titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-      titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).font = {
+        bold: true,
+        size: 14,
+        color: { argb: 'FF1E293B' },
+      };
+      titleRow.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+      titleRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       titleRow.height = 28;
       titleRow.commit();
 
@@ -329,8 +508,18 @@ export class LocationExportProcessor {
         ['Total Locations', rowIdx],
         ['Search Filter', search ?? '(none)'],
         ['Status Filter', status ?? '(all)'],
-        ['Online Filter', isOnline ? (isOnline === 'true' ? 'Online' : 'Offline') : '(all)'],
-        ['Stock Location Filter', isStockLocation ? (isStockLocation === 'true' ? 'Stock' : 'Non-Stock') : '(all)'],
+        [
+          'Online Filter',
+          isOnline ? (isOnline === 'true' ? 'Online' : 'Offline') : '(all)',
+        ],
+        [
+          'Stock Location Filter',
+          isStockLocation
+            ? isStockLocation === 'true'
+              ? 'Stock'
+              : 'Non-Stock'
+            : '(all)',
+        ],
       ];
 
       summaryRows.forEach(([label, value], idx) => {
@@ -356,7 +545,9 @@ export class LocationExportProcessor {
       await workbook.commit();
       await job.progress(100);
 
-      this.logger.log(`[LocationExport ${jobId}] File written (${rowIdx} rows)`);
+      this.logger.log(
+        `[LocationExport ${jobId}] File written (${rowIdx} rows)`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -371,7 +562,10 @@ export class LocationExportProcessor {
         channels: ['inApp'],
       });
     } catch (error: any) {
-      this.logger.error(`[LocationExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[LocationExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.notificationsService.create({

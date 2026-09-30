@@ -105,5 +105,4 @@ export class CreateSupplierDto {
   @IsString()
   @IsOptional()
   ictNo?: string;
-
 }

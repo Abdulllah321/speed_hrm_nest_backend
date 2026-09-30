@@ -10,7 +10,17 @@ import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 @Module({
   imports: [DatabaseModule, ActivityLogsModule],
   controllers: [KpiController],
-  providers: [KpiService, KpiComputeService, KpiDashboardService, KpiApprovalService],
-  exports: [KpiService, KpiComputeService, KpiDashboardService, KpiApprovalService],
+  providers: [
+    KpiService,
+    KpiComputeService,
+    KpiDashboardService,
+    KpiApprovalService,
+  ],
+  exports: [
+    KpiService,
+    KpiComputeService,
+    KpiDashboardService,
+    KpiApprovalService,
+  ],
 })
 export class KpiModule {}

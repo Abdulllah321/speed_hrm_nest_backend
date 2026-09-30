@@ -15,7 +15,7 @@ export class DeductionService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async list(params?: {
     employeeId?: string;
@@ -123,12 +123,12 @@ export class DeductionService {
           ...d,
           employee: d.employee
             ? {
-              ...d.employee,
-              department: dept ? { id: dept.id, name: dept.name } : null,
-              subDepartment: subDept
-                ? { id: subDept.id, name: subDept.name }
-                : null,
-            }
+                ...d.employee,
+                department: dept ? { id: dept.id, name: dept.name } : null,
+                subDepartment: subDept
+                  ? { id: subDept.id, name: subDept.name }
+                  : null,
+              }
             : null,
           deductionHead: head ? { id: head.id, name: head.name } : null,
         };
@@ -184,43 +184,43 @@ export class DeductionService {
         await Promise.all([
           deduction.employee?.departmentId
             ? this.prisma.department.findUnique({
-              where: { id: deduction.employee.departmentId },
-              select: { id: true, name: true },
-            })
+                where: { id: deduction.employee.departmentId },
+                select: { id: true, name: true },
+              })
             : Promise.resolve(null),
           deduction.employee?.subDepartmentId
             ? this.prisma.subDepartment.findUnique({
-              where: { id: deduction.employee.subDepartmentId },
-              select: { id: true, name: true },
-            })
+                where: { id: deduction.employee.subDepartmentId },
+                select: { id: true, name: true },
+              })
             : Promise.resolve(null),
           deduction.deductionHeadId
             ? this.prisma.deductionHead.findUnique({
-              where: { id: deduction.deductionHeadId },
-              select: { id: true, name: true },
-            })
+                where: { id: deduction.deductionHeadId },
+                select: { id: true, name: true },
+              })
             : Promise.resolve(null),
           deduction.createdById
             ? this.prismaMaster.user.findUnique({
-              where: { id: deduction.createdById },
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            })
+                where: { id: deduction.createdById },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              })
             : Promise.resolve(null),
           deduction.updatedById
             ? this.prismaMaster.user.findUnique({
-              where: { id: deduction.updatedById },
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            })
+                where: { id: deduction.updatedById },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              })
             : Promise.resolve(null),
         ]);
 
@@ -228,14 +228,14 @@ export class DeductionService {
         ...deduction,
         employee: deduction.employee
           ? {
-            ...deduction.employee,
-            department: department
-              ? { id: department.id, name: department.name }
-              : null,
-            subDepartment: subDepartment
-              ? { id: subDepartment.id, name: subDepartment.name }
-              : null,
-          }
+              ...deduction.employee,
+              department: department
+                ? { id: department.id, name: department.name }
+                : null,
+              subDepartment: subDepartment
+                ? { id: subDepartment.id, name: subDepartment.name }
+                : null,
+            }
           : null,
         deductionHead: deductionHead
           ? { id: deductionHead.id, name: deductionHead.name }
@@ -365,7 +365,7 @@ export class DeductionService {
         runInBackground(
           'Create Deductions',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'create',
             module: 'deduction',
             entity: 'Deduction',
@@ -479,7 +479,7 @@ export class DeductionService {
         runInBackground(
           'Update Deduction',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'update',
             module: 'deduction',
             entity: 'Deduction',
@@ -521,14 +521,12 @@ export class DeductionService {
         where: { id },
       });
 
-      
-
       // Log activity
       if (ctx.userId) {
         runInBackground(
           'Delete Deduction',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'delete',
             module: 'deduction',
             entity: 'Deduction',
@@ -578,7 +576,7 @@ export class DeductionService {
         runInBackground(
           'Bulk Delete Deductions',
           this.activityLogs.log({
-          userId: ctx.userId,
+            userId: ctx.userId,
             action: 'delete',
             module: 'deduction',
             entity: 'Deduction',

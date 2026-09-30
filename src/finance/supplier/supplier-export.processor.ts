@@ -14,24 +14,24 @@ export interface SupplierExportJobData {
   tenantDbUrl: string;
   search?: string;
   status?: string; // 'active' | 'inactive'
-  type?: string;   // 'LOCAL' | 'IMPORT'
+  type?: string; // 'LOCAL' | 'IMPORT'
 }
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
 const SUBHEADER_BG = '1E3A5F';
 const SUBHEADER_FG = 'F1F5F9';
-const ALT_ROW_BG   = 'F0F4F8';
+const ALT_ROW_BG = 'F0F4F8';
 const BORDER_COLOR = 'CBD5E1';
-const ACTIVE_FG    = '15803D';
-const INACTIVE_FG  = 'B91C1C';
-const AMOUNT_FG    = '0F766E';
+const ACTIVE_FG = '15803D';
+const INACTIVE_FG = 'B91C1C';
+const AMOUNT_FG = '0F766E';
 
 const GROUP_COLORS: Record<string, string> = {
-  Identity:   '1E3A5F',
-  Contact:    '1E4D2B',
-  Tax:        '4A1942',
-  Financial:  '1A3A4A',
-  Audit:      '3D2B00',
+  Identity: '1E3A5F',
+  Contact: '1E4D2B',
+  Tax: '4A1942',
+  Financial: '1A3A4A',
+  Audit: '3D2B00',
 };
 
 const COLUMNS: {
@@ -43,48 +43,124 @@ const COLUMNS: {
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
   // Identity
-  { header: 'Code',            key: 'code',            width: 14, group: 'Identity',  align: 'center' },
-  { header: 'Name',            key: 'name',            width: 30, group: 'Identity' },
-  { header: 'Brand',           key: 'brand',           width: 18, group: 'Identity' },
-  { header: 'Nature',          key: 'nature',          width: 14, group: 'Identity' },
-  { header: 'Type',            key: 'type',            width: 10, group: 'Identity',  align: 'center' },
-  { header: 'Status',          key: 'status',          width: 10, group: 'Identity',  align: 'center' },
+  {
+    header: 'Code',
+    key: 'code',
+    width: 14,
+    group: 'Identity',
+    align: 'center',
+  },
+  { header: 'Name', key: 'name', width: 30, group: 'Identity' },
+  { header: 'Brand', key: 'brand', width: 18, group: 'Identity' },
+  { header: 'Nature', key: 'nature', width: 14, group: 'Identity' },
+  {
+    header: 'Type',
+    key: 'type',
+    width: 10,
+    group: 'Identity',
+    align: 'center',
+  },
+  {
+    header: 'Status',
+    key: 'status',
+    width: 10,
+    group: 'Identity',
+    align: 'center',
+  },
   // Contact
-  { header: 'Address',         key: 'address',         width: 30, group: 'Contact' },
-  { header: 'City',            key: 'city',            width: 16, group: 'Contact' },
-  { header: 'Country',         key: 'country',         width: 16, group: 'Contact' },
-  { header: 'Contact No',      key: 'contactNo',       width: 18, group: 'Contact' },
-  { header: 'Email',           key: 'email',           width: 26, group: 'Contact' },
-  { header: 'Website',         key: 'website',         width: 26, group: 'Contact' },
+  { header: 'Address', key: 'address', width: 30, group: 'Contact' },
+  { header: 'City', key: 'city', width: 16, group: 'Contact' },
+  { header: 'Country', key: 'country', width: 16, group: 'Contact' },
+  { header: 'Contact No', key: 'contactNo', width: 18, group: 'Contact' },
+  { header: 'Email', key: 'email', width: 26, group: 'Contact' },
+  { header: 'Website', key: 'website', width: 26, group: 'Contact' },
   // Tax
-  { header: 'CNIC No',         key: 'cnicNo',          width: 18, group: 'Tax',       align: 'center' },
-  { header: 'NTN No',          key: 'ntnNo',           width: 16, group: 'Tax',       align: 'center' },
-  { header: 'STRN No',         key: 'strnNo',          width: 16, group: 'Tax',       align: 'center' },
-  { header: 'SRB No',          key: 'srbNo',           width: 16, group: 'Tax',       align: 'center' },
-  { header: 'PRA No',          key: 'praNo',           width: 16, group: 'Tax',       align: 'center' },
-  { header: 'ICT No',          key: 'ictNo',           width: 16, group: 'Tax',       align: 'center' },
+  {
+    header: 'CNIC No',
+    key: 'cnicNo',
+    width: 18,
+    group: 'Tax',
+    align: 'center',
+  },
+  { header: 'NTN No', key: 'ntnNo', width: 16, group: 'Tax', align: 'center' },
+  {
+    header: 'STRN No',
+    key: 'strnNo',
+    width: 16,
+    group: 'Tax',
+    align: 'center',
+  },
+  { header: 'SRB No', key: 'srbNo', width: 16, group: 'Tax', align: 'center' },
+  { header: 'PRA No', key: 'praNo', width: 16, group: 'Tax', align: 'center' },
+  { header: 'ICT No', key: 'ictNo', width: 16, group: 'Tax', align: 'center' },
   // Financial
-  { header: 'Payment Terms',   key: 'paymentTerms',    width: 18, group: 'Financial' },
-  { header: 'Credit Limit',    key: 'creditLimit',     width: 16, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Opening Balance', key: 'openingBalance',  width: 18, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Current Balance', key: 'currentBalance',  width: 18, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Advance Balance', key: 'advanceBalance',  width: 18, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
+  {
+    header: 'Payment Terms',
+    key: 'paymentTerms',
+    width: 18,
+    group: 'Financial',
+  },
+  {
+    header: 'Credit Limit',
+    key: 'creditLimit',
+    width: 16,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Opening Balance',
+    key: 'openingBalance',
+    width: 18,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Current Balance',
+    key: 'currentBalance',
+    width: 18,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Advance Balance',
+    key: 'advanceBalance',
+    width: 18,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
   // Audit
-  { header: 'Created At',      key: 'createdAt',       width: 18, group: 'Audit',     numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
-  { header: 'Updated At',      key: 'updatedAt',       width: 18, group: 'Audit',     numFmt: 'dd-mmm-yyyy hh:mm', align: 'center' },
+  {
+    header: 'Created At',
+    key: 'createdAt',
+    width: 18,
+    group: 'Audit',
+    numFmt: 'dd-mmm-yyyy hh:mm',
+    align: 'center',
+  },
+  {
+    header: 'Updated At',
+    key: 'updatedAt',
+    width: 18,
+    group: 'Audit',
+    numFmt: 'dd-mmm-yyyy hh:mm',
+    align: 'center',
+  },
 ];
 
 @Processor('supplier-export')
 export class SupplierExportProcessor {
   private readonly logger = new Logger(SupplierExportProcessor.name);
 
-  constructor(
-    private readonly notificationsService: NotificationsService,
-  ) {}
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   @Process()
   async handleExport(job: Job<SupplierExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, search, status, type } = job.data;
+    const { jobId, userId, tenantId, tenantDbUrl, search, status, type } =
+      job.data;
 
     this.logger.log(`[SupplierExport ${jobId}] Starting for user ${userId}`);
 
@@ -101,18 +177,18 @@ export class SupplierExportProcessor {
         const t = search.trim();
         andClauses.push({
           OR: [
-            { name:      { contains: t, mode: 'insensitive' } },
-            { code:      { contains: t, mode: 'insensitive' } },
-            { email:     { contains: t, mode: 'insensitive' } },
+            { name: { contains: t, mode: 'insensitive' } },
+            { code: { contains: t, mode: 'insensitive' } },
+            { email: { contains: t, mode: 'insensitive' } },
             { contactNo: { contains: t, mode: 'insensitive' } },
-            { ntnNo:     { contains: t, mode: 'insensitive' } },
-            { cnicNo:    { contains: t, mode: 'insensitive' } },
+            { ntnNo: { contains: t, mode: 'insensitive' } },
+            { cnicNo: { contains: t, mode: 'insensitive' } },
           ],
         });
       }
-      if (status === 'active')   andClauses.push({ isActive: true });
+      if (status === 'active') andClauses.push({ isActive: true });
       if (status === 'inactive') andClauses.push({ isActive: false });
-      if (type)                  andClauses.push({ type });
+      if (type) andClauses.push({ type });
       const where: any = andClauses.length ? { AND: andClauses } : {};
 
       const total = await prisma.supplier.count({ where });
@@ -126,7 +202,12 @@ export class SupplierExportProcessor {
       });
 
       const ws = workbook.addWorksheet('Suppliers', {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
         views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
       });
 
@@ -145,14 +226,18 @@ export class SupplierExportProcessor {
         const cell = groupRow.getCell(idx + 1);
         const { start } = groups[col.group];
         if (idx + 1 === start) cell.value = col.group.toUpperCase();
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
-        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+        };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       groupRow.height = 22;
@@ -162,15 +247,26 @@ export class SupplierExportProcessor {
       const headerRow = ws.getRow(2);
       COLUMNS.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
-        cell.value     = col.header;
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font      = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
-        cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+        cell.value = col.header;
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 9,
+        };
+        cell.alignment = {
+          horizontal: col.align ?? 'left',
+          vertical: 'middle',
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       headerRow.height = 20;
@@ -193,58 +289,78 @@ export class SupplierExportProcessor {
         if (!chunk.length) break;
 
         for (const supplier of chunk) {
-          const isAlt      = rowIdx % 2 === 1;
+          const isAlt = rowIdx % 2 === 1;
           const isInactive = !supplier.isActive;
 
           const rowData: Record<string, any> = {
-            code:           supplier.code,
-            name:           supplier.name,
-            brand:          supplier.brand ?? '',
-            nature:         supplier.nature ?? '',
-            type:           supplier.type ?? '',
-            status:         supplier.isActive ? 'Active' : 'Inactive',
-            address:        supplier.address ?? '',
-            city:           supplier.city ?? '',
-            country:        supplier.country ?? '',
-            contactNo:      supplier.contactNo ?? '',
-            email:          supplier.email ?? '',
-            website:        supplier.website ?? '',
-            cnicNo:         supplier.cnicNo ?? '',
-            ntnNo:          supplier.ntnNo ?? '',
-            strnNo:         supplier.strnNo ?? '',
-            srbNo:          supplier.srbNo ?? '',
-            praNo:          supplier.praNo ?? '',
-            ictNo:          supplier.ictNo ?? '',
-            paymentTerms:   supplier.paymentTerms ?? '',
-            creditLimit:    Number(supplier.creditLimit ?? 0),
+            code: supplier.code,
+            name: supplier.name,
+            brand: supplier.brand ?? '',
+            nature: supplier.nature ?? '',
+            type: supplier.type ?? '',
+            status: supplier.isActive ? 'Active' : 'Inactive',
+            address: supplier.address ?? '',
+            city: supplier.city ?? '',
+            country: supplier.country ?? '',
+            contactNo: supplier.contactNo ?? '',
+            email: supplier.email ?? '',
+            website: supplier.website ?? '',
+            cnicNo: supplier.cnicNo ?? '',
+            ntnNo: supplier.ntnNo ?? '',
+            strnNo: supplier.strnNo ?? '',
+            srbNo: supplier.srbNo ?? '',
+            praNo: supplier.praNo ?? '',
+            ictNo: supplier.ictNo ?? '',
+            paymentTerms: supplier.paymentTerms ?? '',
+            creditLimit: Number(supplier.creditLimit ?? 0),
             openingBalance: Number(supplier.openingBalance ?? 0),
             currentBalance: Number(supplier.currentBalance ?? 0),
             advanceBalance: Number(supplier.advanceBalance ?? 0),
-            createdAt:      new Date(supplier.createdAt),
-            updatedAt:      new Date(supplier.updatedAt),
+            createdAt: new Date(supplier.createdAt),
+            updatedAt: new Date(supplier.updatedAt),
           };
 
           const dataRow = ws.getRow(rowIdx + 3);
           COLUMNS.forEach((col, colIdx) => {
             const cell = dataRow.getCell(colIdx + 1);
-            cell.value     = rowData[col.key] ?? null;
+            cell.value = rowData[col.key] ?? null;
             if (col.numFmt) cell.numFmt = col.numFmt;
-            cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` },
+            };
 
             if (col.key === 'status') {
-              cell.font = { bold: true, size: 9, color: { argb: isInactive ? `FF${INACTIVE_FG}` : `FF${ACTIVE_FG}` } };
-            } else if (['creditLimit', 'openingBalance', 'currentBalance', 'advanceBalance'].includes(col.key)) {
+              cell.font = {
+                bold: true,
+                size: 9,
+                color: {
+                  argb: isInactive ? `FF${INACTIVE_FG}` : `FF${ACTIVE_FG}`,
+                },
+              };
+            } else if (
+              [
+                'creditLimit',
+                'openingBalance',
+                'currentBalance',
+                'advanceBalance',
+              ].includes(col.key)
+            ) {
               cell.font = { size: 9, color: { argb: `FF${AMOUNT_FG}` } };
             } else {
               cell.font = { size: 9 };
             }
 
             cell.border = {
-              top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-              left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-              right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
             };
           });
           dataRow.height = 16;
@@ -264,31 +380,53 @@ export class SupplierExportProcessor {
 
       // ── Summary sheet ────────────────────────────────────────────────────
       const summary = workbook.addWorksheet('Summary');
-      summary.columns = [{ key: 'label', width: 28 }, { key: 'value', width: 22 }];
+      summary.columns = [
+        { key: 'label', width: 28 },
+        { key: 'value', width: 22 },
+      ];
 
       const titleRow = summary.getRow(1);
-      titleRow.getCell(1).value     = 'Supplier Export Summary';
-      titleRow.getCell(1).font      = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
-      titleRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-      titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).value = 'Supplier Export Summary';
+      titleRow.getCell(1).font = {
+        bold: true,
+        size: 14,
+        color: { argb: 'FF1E293B' },
+      };
+      titleRow.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+      titleRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       titleRow.height = 28;
       titleRow.commit();
 
       const summaryRows = [
-        ['Export Date',    new Date().toLocaleString('en-PK')],
+        ['Export Date', new Date().toLocaleString('en-PK')],
         ['Total Suppliers', rowIdx],
-        ['Search Filter',  search ?? '(none)'],
-        ['Status Filter',  status ?? '(all)'],
-        ['Type Filter',    type ?? '(all)'],
+        ['Search Filter', search ?? '(none)'],
+        ['Status Filter', status ?? '(all)'],
+        ['Type Filter', type ?? '(all)'],
       ];
       summaryRows.forEach(([label, value], idx) => {
         const r = summary.getRow(idx + 2);
         r.getCell(1).value = label;
-        r.getCell(1).font  = { bold: true, size: 10 };
-        r.getCell(1).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(1).font = { bold: true, size: 10 };
+        r.getCell(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.getCell(2).value = value;
-        r.getCell(2).font  = { size: 10 };
-        r.getCell(2).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(2).font = { size: 10 };
+        r.getCell(2).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.height = 18;
         r.commit();
       });
@@ -296,7 +434,9 @@ export class SupplierExportProcessor {
       await workbook.commit();
       await job.progress(100);
 
-      this.logger.log(`[SupplierExport ${jobId}] File written (${rowIdx} rows)`);
+      this.logger.log(
+        `[SupplierExport ${jobId}] File written (${rowIdx} rows)`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -310,9 +450,11 @@ export class SupplierExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[SupplierExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[SupplierExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.notificationsService.create({

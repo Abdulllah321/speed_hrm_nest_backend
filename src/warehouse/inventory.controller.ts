@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Query, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { HmacAuthGuard } from '../common/guards/hmac-auth.guard';
@@ -6,7 +14,7 @@ import { HmacAuthGuard } from '../common/guards/hmac-auth.guard';
 @ApiTags('Inventory')
 @Controller('api/inventory')
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService,) { }
+  constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('stock-level')
   @ApiOperation({
@@ -27,7 +35,9 @@ export class InventoryController {
   }
 
   @Get('search')
-  @ApiOperation({ summary: 'Search generic inventory items and aggregated stock' })
+  @ApiOperation({
+    summary: 'Search generic inventory items and aggregated stock',
+  })
   async searchInventory(
     @Query('q') query: string,
     @Query('warehouseId') warehouseId?: string,
@@ -39,17 +49,29 @@ export class InventoryController {
   ) {
     const filters = {
       brandIds: brandIds ? brandIds.split(',').filter(Boolean) : undefined,
-      categoryIds: categoryIds ? categoryIds.split(',').filter(Boolean) : undefined,
-      silhouetteIds: silhouetteIds ? silhouetteIds.split(',').filter(Boolean) : undefined,
+      categoryIds: categoryIds
+        ? categoryIds.split(',').filter(Boolean)
+        : undefined,
+      silhouetteIds: silhouetteIds
+        ? silhouetteIds.split(',').filter(Boolean)
+        : undefined,
       genderIds: genderIds ? genderIds.split(',').filter(Boolean) : undefined,
     };
-    const data = await this.inventoryService.searchInventory(query, warehouseId, locationId, filters);
+    const data = await this.inventoryService.searchInventory(
+      query,
+      warehouseId,
+      locationId,
+      filters,
+    );
     return { status: true, data };
   }
 
   @Get('stocks-by-center')
   @UseGuards(HmacAuthGuard)
-  @ApiOperation({ summary: 'Get stock per BarCode for a cost centre / location / warehouse (Query param center_id)' })
+  @ApiOperation({
+    summary:
+      'Get stock per BarCode for a cost centre / location / warehouse (Query param center_id)',
+  })
   async getStocksByCenterQuery(
     @Query('center_id') centerIdQuery?: string,
     @Query('centerId') centerIdAlt?: string,
@@ -60,12 +82,11 @@ export class InventoryController {
 
   @Get('stocks-by-center/:center_id')
   @UseGuards(HmacAuthGuard)
-  @ApiOperation({ summary: 'Get stock per BarCode for a cost centre / location / warehouse (URL param center_id)' })
-  async getStocksByCenterParam(
-    @Param('center_id') centerIdParam: string,
-  ) {
+  @ApiOperation({
+    summary:
+      'Get stock per BarCode for a cost centre / location / warehouse (URL param center_id)',
+  })
+  async getStocksByCenterParam(@Param('center_id') centerIdParam: string) {
     return this.inventoryService.getStocksByCenter(centerIdParam);
   }
 }
-
-

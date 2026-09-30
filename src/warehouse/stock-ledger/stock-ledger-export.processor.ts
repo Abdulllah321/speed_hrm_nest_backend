@@ -26,18 +26,18 @@ export interface StockLedgerExportJobData {
 // ── Colour palette ─────────────────────────────────────────────────────────────
 const SUBHEADER_BG = '1E3A5F';
 const SUBHEADER_FG = 'F1F5F9';
-const ALT_ROW_BG   = 'F0F4F8';
+const ALT_ROW_BG = 'F0F4F8';
 const BORDER_COLOR = 'CBD5E1';
-const ACTIVE_FG    = '15803D';
-const INACTIVE_FG  = 'B91C1C';
-const AMOUNT_FG    = '0F766E';
+const ACTIVE_FG = '15803D';
+const INACTIVE_FG = 'B91C1C';
+const AMOUNT_FG = '0F766E';
 
 const GROUP_COLORS: Record<string, string> = {
-  Item:       '1E3A5F',
-  Location:   '1E4D2B',
-  Details:    '4A1942',
-  Financial:  '1A3A4A',
-  Reference:  '3D2B00',
+  Item: '1E3A5F',
+  Location: '1E4D2B',
+  Details: '4A1942',
+  Financial: '1A3A4A',
+  Reference: '3D2B00',
 };
 
 const COLUMNS: {
@@ -49,40 +49,91 @@ const COLUMNS: {
   align?: ExcelJS.Alignment['horizontal'];
 }[] = [
   // Item Info
-  { header: 'SKU',             key: 'sku',             width: 16, group: 'Item',      align: 'center' },
-  { header: 'Description',     key: 'description',     width: 30, group: 'Item' },
+  { header: 'SKU', key: 'sku', width: 16, group: 'Item', align: 'center' },
+  { header: 'Description', key: 'description', width: 30, group: 'Item' },
   // Location Info
-  { header: 'Warehouse',       key: 'warehouse',       width: 20, group: 'Location' },
-  { header: 'Location',        key: 'location',        width: 20, group: 'Location' },
+  { header: 'Warehouse', key: 'warehouse', width: 20, group: 'Location' },
+  { header: 'Location', key: 'location', width: 20, group: 'Location' },
   // Details
-  { header: 'Movement Type',   key: 'movementType',    width: 16, group: 'Details',   align: 'center' },
-  { header: 'Quantity',        key: 'qty',             width: 14, group: 'Details',   numFmt: '#,##0.00', align: 'right' },
+  {
+    header: 'Movement Type',
+    key: 'movementType',
+    width: 16,
+    group: 'Details',
+    align: 'center',
+  },
+  {
+    header: 'Quantity',
+    key: 'qty',
+    width: 14,
+    group: 'Details',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
   // Financial
-  { header: 'Unit Price',      key: 'unitPrice',       width: 14, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
-  { header: 'Total Price',     key: 'totalPrice',      width: 16, group: 'Financial', numFmt: '#,##0.00', align: 'right' },
+  {
+    header: 'Unit Price',
+    key: 'unitPrice',
+    width: 14,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
+  {
+    header: 'Total Price',
+    key: 'totalPrice',
+    width: 16,
+    group: 'Financial',
+    numFmt: '#,##0.00',
+    align: 'right',
+  },
   // Reference
-  { header: 'Reference Type',  key: 'referenceType',   width: 18, group: 'Reference' },
-  { header: 'Reference',       key: 'referenceId',     width: 28, group: 'Reference' },
-  { header: 'Date & Time',     key: 'createdAt',       width: 20, group: 'Reference', numFmt: 'yyyy-mm-dd hh:mm', align: 'center' },
+  {
+    header: 'Reference Type',
+    key: 'referenceType',
+    width: 18,
+    group: 'Reference',
+  },
+  { header: 'Reference', key: 'referenceId', width: 28, group: 'Reference' },
+  {
+    header: 'Date & Time',
+    key: 'createdAt',
+    width: 20,
+    group: 'Reference',
+    numFmt: 'yyyy-mm-dd hh:mm',
+    align: 'center',
+  },
 ];
 
 @Processor('stock-ledger-export')
 export class StockLedgerExportProcessor {
   private readonly logger = new Logger(StockLedgerExportProcessor.name);
 
-  constructor(
-    private readonly notificationsService: NotificationsService,
-  ) {}
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   @Process()
   async handleExport(job: Job<StockLedgerExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, warehouseId, locationId, movementType, itemId, referenceType, search, startDate, endDate } = job.data;
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      warehouseId,
+      locationId,
+      movementType,
+      itemId,
+      referenceType,
+      search,
+      startDate,
+      endDate,
+    } = job.data;
 
     this.logger.log(`[StockLedgerExport ${jobId}] Starting for user ${userId}`);
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
@@ -114,7 +165,7 @@ export class StockLedgerExportProcessor {
 
       if (search) {
         const searchLower = search.toLowerCase().trim();
-        const cleanSearch = search.startsWith("#") ? search.slice(1) : search;
+        const cleanSearch = search.startsWith('#') ? search.slice(1) : search;
 
         // 1. Resolve matching locations
         const matchingLocations = await prisma.location.findMany({
@@ -125,38 +176,47 @@ export class StockLedgerExportProcessor {
 
         // 2. Resolve friendly reference types to enum values
         const REVERSE_REFERENCE_LABELS: Record<string, string[]> = {
-          "grn": ["GRN"],
-          "pos sale": ["POS_SALE"],
-          "pos return": ["POS_RETURN"],
-          "pos void": ["POS_VOID"],
-          "transfer": ["TRANSFER_REQUEST"],
-          "return transfer": ["RETURN_REQUEST"],
-          "outlet transfer in": ["OUTLET_TRANSFER_IN"],
-          "outlet transfer out": ["OUTLET_TRANSFER_OUT"],
-          "stock movement": ["STOCK_MOVEMENT"],
-          "return movement": ["RETURN_MOVEMENT"],
-          "adjustment": ["ADJUSTMENT"],
-          "landed cost": ["LANDED_COST"],
-          "opening bal": ["OPENING_BALANCE"],
-          "delivery challan": ["DELIVERY_CHALLAN"],
-          "purchase return": ["PURCHASE_RETURN", "PURCHASE_RETURN_LC", "PURCHASE_RETURN_GRN"],
-          "bulk upload": ["BULK_STOCK_UPLOAD"],
-          "pos claim return": ["POS_CLAIM_APPROVED"],
-          "claim acknowledged": ["CLAIM_ACKNOWLEDGED"],
+          grn: ['GRN'],
+          'pos sale': ['POS_SALE'],
+          'pos return': ['POS_RETURN'],
+          'pos void': ['POS_VOID'],
+          transfer: ['TRANSFER_REQUEST'],
+          'return transfer': ['RETURN_REQUEST'],
+          'outlet transfer in': ['OUTLET_TRANSFER_IN'],
+          'outlet transfer out': ['OUTLET_TRANSFER_OUT'],
+          'stock movement': ['STOCK_MOVEMENT'],
+          'return movement': ['RETURN_MOVEMENT'],
+          adjustment: ['ADJUSTMENT'],
+          'landed cost': ['LANDED_COST'],
+          'opening bal': ['OPENING_BALANCE'],
+          'delivery challan': ['DELIVERY_CHALLAN'],
+          'purchase return': [
+            'PURCHASE_RETURN',
+            'PURCHASE_RETURN_LC',
+            'PURCHASE_RETURN_GRN',
+          ],
+          'bulk upload': ['BULK_STOCK_UPLOAD'],
+          'pos claim return': ['POS_CLAIM_APPROVED'],
+          'claim acknowledged': ['CLAIM_ACKNOWLEDGED'],
         };
 
         const matchedEnumValues: string[] = [];
-        for (const [friendly, enums] of Object.entries(REVERSE_REFERENCE_LABELS)) {
-          if (friendly.includes(searchLower) || searchLower.includes(friendly)) {
+        for (const [friendly, enums] of Object.entries(
+          REVERSE_REFERENCE_LABELS,
+        )) {
+          if (
+            friendly.includes(searchLower) ||
+            searchLower.includes(friendly)
+          ) {
             matchedEnumValues.push(...enums);
           }
         }
 
         // 3. Resolve direction (movementType)
         let matchedMovementType: MovementType | undefined = undefined;
-        if (searchLower === "inbound" || searchLower === "in") {
+        if (searchLower === 'inbound' || searchLower === 'in') {
           matchedMovementType = MovementType.INBOUND;
-        } else if (searchLower === "outbound" || searchLower === "out") {
+        } else if (searchLower === 'outbound' || searchLower === 'out') {
           matchedMovementType = MovementType.OUTBOUND;
         }
 
@@ -170,9 +230,15 @@ export class StockLedgerExportProcessor {
           { warehouse: { name: { contains: search, mode: 'insensitive' } } },
           { referenceId: { contains: cleanSearch, mode: 'insensitive' } },
           { referenceType: { contains: search, mode: 'insensitive' } },
-          ...(locationIds.length > 0 ? [{ locationId: { in: locationIds } }] : []),
-          ...(matchedEnumValues.length > 0 ? [{ referenceType: { in: matchedEnumValues } }] : []),
-          ...(matchedMovementType ? [{ movementType: matchedMovementType }] : []),
+          ...(locationIds.length > 0
+            ? [{ locationId: { in: locationIds } }]
+            : []),
+          ...(matchedEnumValues.length > 0
+            ? [{ referenceType: { in: matchedEnumValues } }]
+            : []),
+          ...(matchedMovementType
+            ? [{ movementType: matchedMovementType }]
+            : []),
           ...(isSearchNum ? [{ qty: searchNum }] : []),
         ];
       }
@@ -188,7 +254,12 @@ export class StockLedgerExportProcessor {
       });
 
       const ws = workbook.addWorksheet('Stock Ledger', {
-        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+        pageSetup: {
+          paperSize: 9,
+          orientation: 'landscape',
+          fitToPage: true,
+          fitToWidth: 1,
+        },
         views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
       });
 
@@ -207,14 +278,18 @@ export class StockLedgerExportProcessor {
         const cell = groupRow.getCell(idx + 1);
         const { start } = groups[col.group];
         if (idx + 1 === start) cell.value = col.group.toUpperCase();
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
-        cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+        };
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       groupRow.height = 22;
@@ -224,15 +299,26 @@ export class StockLedgerExportProcessor {
       const headerRow = ws.getRow(2);
       COLUMNS.forEach((col, idx) => {
         const cell = headerRow.getCell(idx + 1);
-        cell.value     = col.header;
-        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
-        cell.font      = { bold: true, color: { argb: `FF${SUBHEADER_FG}` }, size: 9 };
-        cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-        cell.border    = {
-          top:    { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+        cell.value = col.header;
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${SUBHEADER_BG}` },
+        };
+        cell.font = {
+          bold: true,
+          color: { argb: `FF${SUBHEADER_FG}` },
+          size: 9,
+        };
+        cell.alignment = {
+          horizontal: col.align ?? 'left',
+          vertical: 'middle',
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin',   color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       });
       headerRow.height = 20;
@@ -262,7 +348,14 @@ export class StockLedgerExportProcessor {
             referenceId: true,
             locationId: true,
             createdAt: true,
-            item: { select: { itemId: true, sku: true, description: true, unitPrice: true } },
+            item: {
+              select: {
+                itemId: true,
+                sku: true,
+                description: true,
+                unitPrice: true,
+              },
+            },
             warehouse: { select: { name: true } },
           },
         });
@@ -270,7 +363,9 @@ export class StockLedgerExportProcessor {
         if (!chunk.length) break;
 
         // Enrich locations and reference numbers in the chunk
-        const locationIds = [...new Set(chunk.map((d) => d.locationId).filter(Boolean))] as string[];
+        const locationIds = [
+          ...new Set(chunk.map((d) => d.locationId).filter(Boolean)),
+        ] as string[];
         const locationMap = new Map<string, { name: string; code: string }>();
         if (locationIds.length > 0) {
           const locations = await prisma.location.findMany({
@@ -291,7 +386,16 @@ export class StockLedgerExportProcessor {
         for (const entry of chunk) {
           const refId = entry.referenceId;
           if (!refId) continue;
-          if (['TRANSFER_REQUEST', 'TRANSFER_IN', 'TRANSFER_OUT', 'RETURN_REQUEST', 'OUTLET_TRANSFER_IN', 'OUTLET_TRANSFER_OUT'].includes(entry.referenceType)) {
+          if (
+            [
+              'TRANSFER_REQUEST',
+              'TRANSFER_IN',
+              'TRANSFER_OUT',
+              'RETURN_REQUEST',
+              'OUTLET_TRANSFER_IN',
+              'OUTLET_TRANSFER_OUT',
+            ].includes(entry.referenceType)
+          ) {
             transferIds.push(refId);
           } else if (entry.referenceType === 'LANDED_COST') {
             lcIds.push(refId);
@@ -299,7 +403,9 @@ export class StockLedgerExportProcessor {
             saleIds.push(refId);
           } else if (entry.referenceType === 'GRN') {
             grnIds.push(refId);
-          } else if (['ADJUSTMENT', 'STOCK_ADJUSTMENT'].includes(entry.referenceType)) {
+          } else if (
+            ['ADJUSTMENT', 'STOCK_ADJUSTMENT'].includes(entry.referenceType)
+          ) {
             adjIds.push(refId);
           }
         }
@@ -349,7 +455,12 @@ export class StockLedgerExportProcessor {
           refMap.set(t.id, `${t.requestNo}${extra}`);
         }
         for (const lc of lcs) {
-          refMap.set(lc.id, lc.lcNo ? `${lc.landedCostNumber} (${lc.lcNo})` : lc.landedCostNumber);
+          refMap.set(
+            lc.id,
+            lc.lcNo
+              ? `${lc.landedCostNumber} (${lc.lcNo})`
+              : lc.landedCostNumber,
+          );
         }
         for (const s of sales) refMap.set(s.id, s.orderNumber);
         for (const g of grns) refMap.set(g.id, g.grnNumber);
@@ -357,7 +468,9 @@ export class StockLedgerExportProcessor {
 
         for (const entry of chunk) {
           const isAlt = rowIdx % 2 === 1;
-          const locationName = entry.locationId ? (locationMap.get(entry.locationId)?.name ?? '') : '';
+          const locationName = entry.locationId
+            ? (locationMap.get(entry.locationId)?.name ?? '')
+            : '';
 
           const qtyNum = Number(entry.qty ?? 0);
           const unitPriceNum = Number(entry.item?.unitPrice ?? 0);
@@ -371,7 +484,10 @@ export class StockLedgerExportProcessor {
             movementType: entry.movementType,
             qty: qtyNum,
             unitPrice: unitPriceNum || null,
-            totalPrice: entry.item?.unitPrice && entry.qty ? Math.abs(totalPriceNum) : null,
+            totalPrice:
+              entry.item?.unitPrice && entry.qty
+                ? Math.abs(totalPriceNum)
+                : null,
             referenceType: entry.referenceType,
             referenceId: refMap.get(entry.referenceId) || entry.referenceId,
             createdAt: new Date(entry.createdAt),
@@ -380,14 +496,25 @@ export class StockLedgerExportProcessor {
           const dataRow = ws.getRow(rowIdx + 3);
           COLUMNS.forEach((col, colIdx) => {
             const cell = dataRow.getCell(colIdx + 1);
-            cell.value     = rowData[col.key] ?? null;
+            cell.value = rowData[col.key] ?? null;
             if (col.numFmt) cell.numFmt = col.numFmt;
-            cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
-            cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+            cell.alignment = {
+              horizontal: col.align ?? 'left',
+              vertical: 'middle',
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` },
+            };
 
             if (col.key === 'qty') {
               const isOut = qtyNum < 0;
-              cell.font = { bold: true, size: 9, color: { argb: isOut ? `FF${INACTIVE_FG}` : `FF${ACTIVE_FG}` } };
+              cell.font = {
+                bold: true,
+                size: 9,
+                color: { argb: isOut ? `FF${INACTIVE_FG}` : `FF${ACTIVE_FG}` },
+              };
             } else if (['unitPrice', 'totalPrice'].includes(col.key)) {
               cell.font = { size: 9, color: { argb: `FF${AMOUNT_FG}` } };
             } else {
@@ -395,10 +522,10 @@ export class StockLedgerExportProcessor {
             }
 
             cell.border = {
-              top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-              left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
               bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-              right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+              right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
             };
           });
           dataRow.height = 16;
@@ -418,32 +545,54 @@ export class StockLedgerExportProcessor {
 
       // ── Summary sheet ────────────────────────────────────────────────────
       const summary = workbook.addWorksheet('Summary');
-      summary.columns = [{ key: 'label', width: 28 }, { key: 'value', width: 22 }];
+      summary.columns = [
+        { key: 'label', width: 28 },
+        { key: 'value', width: 22 },
+      ];
 
       const titleRow = summary.getRow(1);
-      titleRow.getCell(1).value     = 'Stock Ledger Export Summary';
-      titleRow.getCell(1).font      = { bold: true, size: 14, color: { argb: 'FF1E293B' } };
-      titleRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-      titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).value = 'Stock Ledger Export Summary';
+      titleRow.getCell(1).font = {
+        bold: true,
+        size: 14,
+        color: { argb: 'FF1E293B' },
+      };
+      titleRow.getCell(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
+      titleRow.getCell(1).alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+      };
       titleRow.height = 28;
       titleRow.commit();
 
       const summaryRows = [
-        ['Export Date',    new Date().toLocaleString('en-PK')],
-        ['Total Rows',     rowIdx],
-        ['Warehouse ID',   warehouseId ?? '(all)'],
-        ['Movement Type',  movementType ?? '(all)'],
-        ['Item ID',        itemId ?? '(all)'],
+        ['Export Date', new Date().toLocaleString('en-PK')],
+        ['Total Rows', rowIdx],
+        ['Warehouse ID', warehouseId ?? '(all)'],
+        ['Movement Type', movementType ?? '(all)'],
+        ['Item ID', itemId ?? '(all)'],
         ['Reference Type', referenceType ?? '(all)'],
       ];
       summaryRows.forEach(([label, value], idx) => {
         const r = summary.getRow(idx + 2);
         r.getCell(1).value = label;
-        r.getCell(1).font  = { bold: true, size: 10 };
-        r.getCell(1).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(1).font = { bold: true, size: 10 };
+        r.getCell(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.getCell(2).value = value;
-        r.getCell(2).font  = { size: 10 };
-        r.getCell(2).fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' } };
+        r.getCell(2).font = { size: 10 };
+        r.getCell(2).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: idx % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
         r.height = 18;
         r.commit();
       });
@@ -451,7 +600,9 @@ export class StockLedgerExportProcessor {
       await workbook.commit();
       await job.progress(100);
 
-      this.logger.log(`[StockLedgerExport ${jobId}] File written (${rowIdx} rows)`);
+      this.logger.log(
+        `[StockLedgerExport ${jobId}] File written (${rowIdx} rows)`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -465,9 +616,11 @@ export class StockLedgerExportProcessor {
         entityId: jobId,
         channels: ['inApp'],
       });
-
     } catch (error: any) {
-      this.logger.error(`[StockLedgerExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[StockLedgerExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.notificationsService.create({

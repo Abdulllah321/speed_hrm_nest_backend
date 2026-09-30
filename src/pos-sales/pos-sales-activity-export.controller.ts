@@ -43,7 +43,8 @@ export class PosSalesActivityExportController {
 
     // 1. Context from logged-in user
     if (req.user?.isPosUser || req.user?.isTerminal) {
-      if (!effectivePosId) effectivePosId = req.user.posId || req.user.terminalId;
+      if (!effectivePosId)
+        effectivePosId = req.user.posId || req.user.terminalId;
       effectiveLocationId = req.user.locationId;
     }
 
@@ -71,7 +72,8 @@ export class PosSalesActivityExportController {
 
     return {
       status: true,
-      message: "Activity log export queued. You'll receive a notification and can track progress.",
+      message:
+        "Activity log export queued. You'll receive a notification and can track progress.",
       data: result,
     };
   }
@@ -92,13 +94,18 @@ export class PosSalesActivityExportController {
    */
   @Get(':jobId/download')
   @Permissions('pos.sales.history.view')
-  @ApiOperation({ summary: 'Download completed POS sales activity export file' })
+  @ApiOperation({
+    summary: 'Download completed POS sales activity export file',
+  })
   async download(@Param('jobId') jobId: string, @Res() res: any) {
     try {
       await this.exportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

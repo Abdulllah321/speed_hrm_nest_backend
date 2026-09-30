@@ -27,7 +27,14 @@ export class KpiApprovalService {
       const review = await this.prisma.kpiReview.findUnique({
         where: { id: reviewId },
         include: {
-          employee: { select: { id: true, employeeName: true, reportingManager: true, userId: true } },
+          employee: {
+            select: {
+              id: true,
+              employeeName: true,
+              reportingManager: true,
+              userId: true,
+            },
+          },
           kpiTemplate: { select: { name: true } },
         },
       });
@@ -43,7 +50,11 @@ export class KpiApprovalService {
         include: { kpiTemplate: true },
       });
 
-      const response = { status: true, data: updated, message: 'Review submitted for approval' };
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Review submitted for approval',
+      };
 
       runInBackground(
         'Submit KPI Review',
@@ -65,7 +76,11 @@ export class KpiApprovalService {
 
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to submit review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to submit review',
+      };
     }
   }
 
@@ -79,14 +94,24 @@ export class KpiApprovalService {
       const review = await this.prisma.kpiReview.findUnique({
         where: { id: reviewId },
         include: {
-          employee: { select: { id: true, employeeName: true, userId: true, reportingManager: true } },
+          employee: {
+            select: {
+              id: true,
+              employeeName: true,
+              userId: true,
+              reportingManager: true,
+            },
+          },
           kpiTemplate: { select: { name: true } },
         },
       });
 
       if (!review) return { status: false, message: 'KPI review not found' };
       if (review.status !== 'submitted') {
-        return { status: false, message: `Review must be in "submitted" status to approve (current: ${review.status})` };
+        return {
+          status: false,
+          message: `Review must be in "submitted" status to approve (current: ${review.status})`,
+        };
       }
 
       const updated = await this.prisma.kpiReview.update({
@@ -100,7 +125,11 @@ export class KpiApprovalService {
         include: { kpiTemplate: true },
       });
 
-      const response = { status: true, data: updated, message: 'Review approved successfully' };
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Review approved successfully',
+      };
 
       runInBackground(
         'Approve KPI Review',
@@ -122,7 +151,11 @@ export class KpiApprovalService {
 
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to approve review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to approve review',
+      };
     }
   }
 
@@ -140,14 +173,24 @@ export class KpiApprovalService {
       const review = await this.prisma.kpiReview.findUnique({
         where: { id: reviewId },
         include: {
-          employee: { select: { id: true, employeeName: true, userId: true, reportingManager: true } },
+          employee: {
+            select: {
+              id: true,
+              employeeName: true,
+              userId: true,
+              reportingManager: true,
+            },
+          },
           kpiTemplate: { select: { name: true } },
         },
       });
 
       if (!review) return { status: false, message: 'KPI review not found' };
       if (review.status !== 'submitted') {
-        return { status: false, message: `Review must be in "submitted" status to reject (current: ${review.status})` };
+        return {
+          status: false,
+          message: `Review must be in "submitted" status to reject (current: ${review.status})`,
+        };
       }
 
       const updated = await this.prisma.kpiReview.update({
@@ -161,7 +204,11 @@ export class KpiApprovalService {
         include: { kpiTemplate: true },
       });
 
-      const response = { status: true, data: updated, message: 'Review rejected' };
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Review rejected',
+      };
 
       runInBackground(
         'Reject KPI Review',
@@ -183,14 +230,22 @@ export class KpiApprovalService {
 
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to reject review' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to reject review',
+      };
     }
   }
 
   /**
    * Bulk approve all submitted reviews for a period.
    */
-  async bulkApprove(period: string, employeeIds: string[] | undefined, ctx: Ctx) {
+  async bulkApprove(
+    period: string,
+    employeeIds: string[] | undefined,
+    ctx: Ctx,
+  ) {
     try {
       const where: any = { period, status: 'submitted' };
       if (employeeIds?.length) where.employeeId = { in: employeeIds };
@@ -204,12 +259,20 @@ export class KpiApprovalService {
       });
 
       if (reviews.length === 0) {
-        return { status: true, data: { approved: 0 }, message: 'No submitted reviews found for this period' };
+        return {
+          status: true,
+          data: { approved: 0 },
+          message: 'No submitted reviews found for this period',
+        };
       }
 
       await this.prisma.kpiReview.updateMany({
         where: { id: { in: reviews.map((r) => r.id) } },
-        data: { status: 'approved', reviewedById: ctx.userId, updatedById: ctx.userId },
+        data: {
+          status: 'approved',
+          reviewedById: ctx.userId,
+          updatedById: ctx.userId,
+        },
       });
 
       // Notify each employee
@@ -217,7 +280,11 @@ export class KpiApprovalService {
         reviews.map((r) => this.notifyEmployee(r, 'approved', ctx)),
       );
 
-      const response = { status: true, data: { approved: reviews.length }, message: `${reviews.length} review(s) approved` };
+      const response = {
+        status: true,
+        data: { approved: reviews.length },
+        message: `${reviews.length} review(s) approved`,
+      };
 
       runInBackground(
         'Bulk Approve KPI Reviews',
@@ -235,14 +302,23 @@ export class KpiApprovalService {
 
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to bulk approve reviews' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to bulk approve reviews',
+      };
     }
   }
 
   /**
    * List reviews pending approval (status = submitted), optionally filtered by period/department.
    */
-  async listPendingApproval(params?: { period?: string; departmentId?: string }) {
+  async listPendingApproval(params?: {
+    period?: string;
+    departmentId?: string;
+  }) {
     try {
       const where: any = { status: 'submitted' };
       if (params?.period) where.period = params.period;
@@ -250,33 +326,66 @@ export class KpiApprovalService {
       const reviews = await this.prisma.kpiReview.findMany({
         where,
         include: {
-          employee: { select: { id: true, employeeId: true, employeeName: true, departmentId: true } },
-          kpiTemplate: { select: { id: true, name: true, category: true, unit: true, weight: true } },
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              employeeName: true,
+              departmentId: true,
+            },
+          },
+          kpiTemplate: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
+              unit: true,
+              weight: true,
+            },
+          },
         },
         orderBy: { updatedAt: 'desc' },
       });
 
       // Enrich with department names
-      const deptIds = [...new Set(reviews.map((r) => r.employee?.departmentId).filter(Boolean))] as string[];
+      const deptIds = [
+        ...new Set(
+          reviews.map((r) => r.employee?.departmentId).filter(Boolean),
+        ),
+      ] as string[];
       const departments = deptIds.length
-        ? await this.prisma.department.findMany({ where: { id: { in: deptIds } }, select: { id: true, name: true } })
+        ? await this.prisma.department.findMany({
+            where: { id: { in: deptIds } },
+            select: { id: true, name: true },
+          })
         : [];
       const deptMap = new Map(departments.map((d) => [d.id, d.name]));
 
       let enriched = reviews.map((r) => ({
         ...r,
         employee: r.employee
-          ? { ...r.employee, departmentName: deptMap.get(r.employee.departmentId) || null }
+          ? {
+              ...r.employee,
+              departmentName: deptMap.get(r.employee.departmentId) || null,
+            }
           : null,
       }));
 
       if (params?.departmentId) {
-        enriched = enriched.filter((r) => r.employee?.departmentId === params.departmentId);
+        enriched = enriched.filter(
+          (r) => r.employee?.departmentId === params.departmentId,
+        );
       }
 
       return { status: true, data: enriched };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list pending approvals' };
+      return {
+        status: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to list pending approvals',
+      };
     }
   }
 
@@ -310,7 +419,12 @@ export class KpiApprovalService {
     }
   }
 
-  private async notifyEmployee(review: any, action: 'approved' | 'rejected', ctx: Ctx, reason?: string) {
+  private async notifyEmployee(
+    review: any,
+    action: 'approved' | 'rejected',
+    ctx: Ctx,
+    reason?: string,
+  ) {
     try {
       const employeeUserId = review.employee?.userId;
       if (!employeeUserId) return;
@@ -324,7 +438,8 @@ export class KpiApprovalService {
           where: { id: ctx.userId },
           select: { firstName: true, lastName: true },
         });
-        if (reviewer) reviewerName = `${reviewer.firstName} ${reviewer.lastName}`.trim();
+        if (reviewer)
+          reviewerName = `${reviewer.firstName} ${reviewer.lastName}`.trim();
       }
 
       await this.notifications.create({

@@ -10,7 +10,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -26,7 +31,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/task-projects')
 export class TaskProjectController {
-  constructor(private service: TaskProjectService,) {}
+  constructor(private service: TaskProjectService) {}
 
   @Get()
   @Permissions('task.project.read')
@@ -63,7 +68,11 @@ export class TaskProjectController {
   @Put(':id')
   @Permissions('task.project.update')
   @ApiOperation({ summary: 'Update task project' })
-  update(@Param('id') id: string, @Body() body: UpdateTaskProjectDto, @Req() req) {
+  update(
+    @Param('id') id: string,
+    @Body() body: UpdateTaskProjectDto,
+    @Req() req,
+  ) {
     return this.service.update(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -94,7 +103,11 @@ export class TaskProjectController {
   @Post(':id/members')
   @Permissions('task.project.manage-members')
   @ApiOperation({ summary: 'Add member to project' })
-  addMember(@Param('id') id: string, @Body() body: AddProjectMemberDto, @Req() req) {
+  addMember(
+    @Param('id') id: string,
+    @Body() body: AddProjectMemberDto,
+    @Req() req,
+  ) {
     return this.service.addMember(id, body, {
       userId: req.user?.userId,
       ipAddress: req.ip,
@@ -105,7 +118,11 @@ export class TaskProjectController {
   @Delete(':id/members/:employeeId')
   @Permissions('task.project.manage-members')
   @ApiOperation({ summary: 'Remove member from project' })
-  removeMember(@Param('id') id: string, @Param('employeeId') employeeId: string, @Req() req) {
+  removeMember(
+    @Param('id') id: string,
+    @Param('employeeId') employeeId: string,
+    @Req() req,
+  ) {
     return this.service.removeMember(id, employeeId, {
       userId: req.user?.userId,
       ipAddress: req.ip,

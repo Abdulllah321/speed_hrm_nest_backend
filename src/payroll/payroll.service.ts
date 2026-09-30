@@ -33,7 +33,7 @@ export class PayrollService {
     @Inject(forwardRef(() => EOBIService))
     private readonly eobiService: EOBIService,
     private readonly journalVoucherService: JournalVoucherService,
-  ) { }
+  ) {}
 
   async previewPayroll(month: string, year: string, employeeIds?: string[]) {
     this.logger.log(`Previewing payroll for ${month}/${year}`);
@@ -312,14 +312,23 @@ export class PayrollService {
       ),
       allowances: (() => {
         const empAllowances = allowances.filter((a) => a.employeeId === emp.id);
-        const specificAllowances = empAllowances.filter((a) => a.type !== 'recurring');
-        const recurringAllowances = empAllowances.filter((a) => a.type === 'recurring');
+        const specificAllowances = empAllowances.filter(
+          (a) => a.type !== 'recurring',
+        );
+        const recurringAllowances = empAllowances.filter(
+          (a) => a.type === 'recurring',
+        );
 
         // Group recurring allowances by allowanceHeadId and keep the one with the latest date/createdAt
         const latestRecurringMap = new Map<string, any>();
         for (const a of recurringAllowances) {
           const existing = latestRecurringMap.get(a.allowanceHeadId);
-          if (!existing || new Date(a.date) > new Date(existing.date) || (new Date(a.date).getTime() === new Date(existing.date).getTime() && a.createdAt > existing.createdAt)) {
+          if (
+            !existing ||
+            new Date(a.date) > new Date(existing.date) ||
+            (new Date(a.date).getTime() === new Date(existing.date).getTime() &&
+              a.createdAt > existing.createdAt)
+          ) {
             latestRecurringMap.set(a.allowanceHeadId, a);
           }
         }
@@ -399,11 +408,11 @@ export class PayrollService {
         joiningDate && joiningDate > monthStartDate
           ? joiningDate
           : new Date(monthStartDate);
-      
+
       // Set effectiveEnd to end of day to include the full last day
       const monthEndDateEndOfDay = new Date(monthEndDate);
       monthEndDateEndOfDay.setHours(23, 59, 59, 999);
-      
+
       const effectiveEnd =
         lastExitDate && lastExitDate < monthEndDateEndOfDay
           ? lastExitDate
@@ -440,13 +449,16 @@ export class PayrollService {
         );
 
       // Calculate retroactive arrears (tax-free)
-      const { incrementArrears, incrementArrearsMonths, incrementArrearsBreakup } =
-        this.calculateIncrementArrears(
-          employee,
-          monthStartDate,
-          monthEndDate,
-          previousPayrolls,
-        );
+      const {
+        incrementArrears,
+        incrementArrearsMonths,
+        incrementArrearsBreakup,
+      } = this.calculateIncrementArrears(
+        employee,
+        monthStartDate,
+        monthEndDate,
+        previousPayrolls,
+      );
 
       const combinedIncrementBreakup = [
         ...incrementBreakup,
@@ -572,7 +584,8 @@ export class PayrollService {
         .filter((allow: any) => allow.paymentMethod === 'with_salary')
         .map((allow: any) => {
           const name = allow.allowanceHead?.name || 'Unknown';
-          const isRecurring = allow.type === 'recurring' && name.toLowerCase() !== 'incentive';
+          const isRecurring =
+            allow.type === 'recurring' && name.toLowerCase() !== 'incentive';
           return {
             id: allow.id,
             name: name,
@@ -734,9 +747,9 @@ export class PayrollService {
             .minus(
               new Decimal(component.amount)
                 .div(totalPackageAmount)
-                .mul(attendanceDeduction)
+                .mul(attendanceDeduction),
             )
-            .toNumber()
+            .toNumber(),
         ),
       }));
 
@@ -777,7 +790,8 @@ export class PayrollService {
       // Gross = Sum of All Salary Breakup Components (after attendance adjustment) + AdHoc Allowances + Overtime + Bonus + Leave Encashment
       // All salary components are included in gross regardless of isDeductible flag
       // isDeductible flag is only used for EOBI/PF/Social Security base calculation
-      const adjustedTotalPackageAmount = totalPackageAmount.minus(attendanceDeduction);
+      const adjustedTotalPackageAmount =
+        totalPackageAmount.minus(attendanceDeduction);
       const grossSalary = adjustedTotalPackageAmount
         .add(totalAdHocAllowances)
         .add(overtimeAmount)
@@ -791,26 +805,32 @@ export class PayrollService {
 
       // Calculate taxable portions for current month
       const taxablePackageAmount = salaryBreakup
-        .filter(comp => comp.isTaxable !== false)
-        .reduce((sum, comp) => sum.add(new Decimal(comp.amount)), new Decimal(0));
+        .filter((comp) => comp.isTaxable !== false)
+        .reduce(
+          (sum, comp) => sum.add(new Decimal(comp.amount)),
+          new Decimal(0),
+        );
 
       const adjustedTaxablePackageAmount = adjustedSalaryBreakup
-        .filter(comp => comp.isTaxable !== false)
-        .reduce((sum, comp) => sum.add(new Decimal(comp.amount)), new Decimal(0));
+        .filter((comp) => comp.isTaxable !== false)
+        .reduce(
+          (sum, comp) => sum.add(new Decimal(comp.amount)),
+          new Decimal(0),
+        );
 
       const taxableAdHocAllowances = allowanceBreakup
-        .filter(a => a.isTaxable !== false)
+        .filter((a) => a.isTaxable !== false)
         .reduce((sum, a) => sum.add(new Decimal(a.amount)), new Decimal(0));
 
       const taxableBonusAmount = bonusBreakup
-        .filter(b => b.isTaxable !== false)
+        .filter((b) => b.isTaxable !== false)
         .reduce((sum, b) => sum.add(new Decimal(b.amount)), new Decimal(0));
-      
+
       // Combine all taxable components - use original salary breakup for regular projection
       const allTaxableComponents = [
-        ...salaryBreakup.filter(comp => comp.isTaxable !== false),
-        ...allowanceBreakup.filter(comp => comp.isTaxable !== false),
-        ...bonusBreakup.filter(comp => comp.isTaxable !== false),
+        ...salaryBreakup.filter((comp) => comp.isTaxable !== false),
+        ...allowanceBreakup.filter((comp) => comp.isTaxable !== false),
+        ...bonusBreakup.filter((comp) => comp.isTaxable !== false),
       ];
 
       // Add attendance deduction as a negative one-time taxable component
@@ -846,12 +866,10 @@ export class PayrollService {
           percentage: null,
         });
       }
-      
+
       // Check if employee has Internship / Intern status (Zero Tax)
       const empStatusName = String(
-        emp.employmentStatus?.status ||
-        employee.employmentStatus?.status ||
-        ''
+        emp.employmentStatus?.status || employee.employmentStatus?.status || '',
       ).toLowerCase();
       const isIntern = empStatusName.includes('intern');
 
@@ -886,15 +904,24 @@ export class PayrollService {
       // PF and EOBI should only be calculated from salary components marked as deductible
       // Pass adjustedSalaryBreakup array to calculate base amount from deductible components only (adjusted for attendance deduction)
       const { eobiDeduction, providentFundDeduction } =
-        await this.calculateEOBI_PF(employee, month, year, adjustedSalaryBreakup);
+        await this.calculateEOBI_PF(
+          employee,
+          month,
+          year,
+          adjustedSalaryBreakup,
+        );
 
       // H. Calculate Loans & Advances
-      const { loanDeduction, loanDisbursement, advanceSalaryDisbursement, advanceSalaryDeduction } =
-        await this.calculateLoansAndAdvances(
-          employee,
-          normalizedMonth,
-          normalizedYear,
-        );
+      const {
+        loanDeduction,
+        loanDisbursement,
+        advanceSalaryDisbursement,
+        advanceSalaryDeduction,
+      } = await this.calculateLoansAndAdvances(
+        employee,
+        normalizedMonth,
+        normalizedYear,
+      );
 
       // I. Other Ad-hoc Deductions
       const totalAdHocDeductions = this.calculateAdHocDeductions(
@@ -1044,7 +1071,9 @@ export class PayrollService {
           attendanceDeduction: new Decimal(d.attendanceDeduction),
           loanDeduction: new Decimal(d.loanDeduction),
           loanDisbursement: new Decimal(d.loanDisbursement || 0),
-          advanceSalaryDisbursement: new Decimal(d.advanceSalaryDisbursement || 0),
+          advanceSalaryDisbursement: new Decimal(
+            d.advanceSalaryDisbursement || 0,
+          ),
           advanceSalaryDeduction: new Decimal(d.advanceSalaryDeduction),
           eobiDeduction: new Decimal(d.eobiDeduction),
           providentFundDeduction: new Decimal(d.providentFundDeduction),
@@ -1100,30 +1129,43 @@ export class PayrollService {
       await this.updateLoanPaidAmountsForPayroll(details);
 
       // Add EOBI contributions for employees with EOBI enabled
-      await this.addEOBIContributionsForPayroll(payroll.id, month, year, details);
+      await this.addEOBIContributionsForPayroll(
+        payroll.id,
+        month,
+        year,
+        details,
+      );
 
       // Add Social Security contributions for employees with Social Security
-      await this.addSocialSecurityContributionsForPayroll(payroll.id, month, year, details);
+      await this.addSocialSecurityContributionsForPayroll(
+        payroll.id,
+        month,
+        year,
+        details,
+      );
 
       // Auto-generate / Upsert consolidated monthly draft Journal Voucher
       try {
         await this.upsertMonthlySalaryJournalVoucher(month, year, generatedBy);
       } catch (jvErr) {
-        this.logger.error(`Failed to auto-generate draft Journal Voucher for payroll: ${jvErr.message}`, jvErr.stack);
+        this.logger.error(
+          `Failed to auto-generate draft Journal Voucher for payroll: ${jvErr.message}`,
+          jvErr.stack,
+        );
       }
 
       // Log Component
       runInBackground(
         'Activity Log',
         this.activityLogs.log({
-        module: 'payroll',
-        action: 'generate',
-        entity: 'Payroll',
-        entityId: payroll.id,
-        description: `Confirmed payroll for ${month}/${year}`,
-        status: 'success',
-        userId: generatedBy,
-      }),
+          module: 'payroll',
+          action: 'generate',
+          entity: 'Payroll',
+          entityId: payroll.id,
+          description: `Confirmed payroll for ${month}/${year}`,
+          status: 'success',
+          userId: generatedBy,
+        }),
       );
 
       // Email/In-App notifications disabled per requirement
@@ -1142,14 +1184,14 @@ export class PayrollService {
       runInBackground(
         'Activity Log',
         this.activityLogs.log({
-        module: 'payroll',
-        action: 'generate',
-        entity: 'Payroll',
-        description: `Failed to confirm payroll for ${month}/${year}: ${error.message}`,
-        status: 'failure',
-        userId: generatedBy,
-        errorMessage: error.message,
-      }),
+          module: 'payroll',
+          action: 'generate',
+          entity: 'Payroll',
+          description: `Failed to confirm payroll for ${month}/${year}: ${error.message}`,
+          status: 'failure',
+          userId: generatedBy,
+          errorMessage: error.message,
+        }),
       );
 
       throw error instanceof BadRequestException
@@ -1161,19 +1203,19 @@ export class PayrollService {
   async getPayrollById(id: string) {
     const payroll = await this.prisma.payroll.findUnique({
       where: { id },
-      include: { 
-        details: { 
-          include: { 
+      include: {
+        details: {
+          include: {
             employee: {
               include: {
                 department: true,
                 subDepartment: true,
                 designation: true,
                 location: true,
-              }
-            } 
-          } 
-        } 
+              },
+            },
+          },
+        },
       },
     });
 
@@ -1184,24 +1226,27 @@ export class PayrollService {
     return payroll;
   }
 
-  async getPayrollByIdOrEmployeeId(id: string, filters: { year?: string; month?: string }) {
+  async getPayrollByIdOrEmployeeId(
+    id: string,
+    filters: { year?: string; month?: string },
+  ) {
     // First try to find as payroll ID
     try {
       const payroll = await this.prisma.payroll.findUnique({
         where: { id },
-        include: { 
-          details: { 
-            include: { 
+        include: {
+          details: {
+            include: {
               employee: {
                 include: {
                   department: true,
                   subDepartment: true,
                   designation: true,
                   location: true,
-                }
-              } 
-            } 
-          } 
+                },
+              },
+            },
+          },
         },
       });
 
@@ -1222,7 +1267,8 @@ export class PayrollService {
 
     if (filters.year || filters.month) {
       where.payroll = {
-        ...(filters.month && filters.month !== 'all' && { month: filters.month }),
+        ...(filters.month &&
+          filters.month !== 'all' && { month: filters.month }),
         ...(filters.year && filters.year !== 'all' && { year: filters.year }),
       };
     }
@@ -1236,18 +1282,17 @@ export class PayrollService {
             subDepartment: true,
             designation: true,
             location: true,
-          }
+          },
         },
         payroll: true,
       },
-      orderBy: [
-        { payroll: { year: 'desc' } },
-        { payroll: { month: 'desc' } },
-      ],
+      orderBy: [{ payroll: { year: 'desc' } }, { payroll: { month: 'desc' } }],
     });
 
     if (payrollDetails.length === 0) {
-      throw new BadRequestException(`No payroll found for ID ${id}. Please check if the ID is correct or if payroll has been generated.`);
+      throw new BadRequestException(
+        `No payroll found for ID ${id}. Please check if the ID is correct or if payroll has been generated.`,
+      );
     }
 
     return {
@@ -1284,27 +1329,31 @@ export class PayrollService {
           },
         },
       },
-      orderBy: [
-        { year: 'desc' },
-        { month: 'desc' },
-      ],
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
 
     return {
       payrolls,
       total: payrolls.length,
-      message: payrolls.length === 0 ? 'No payrolls found. Use /api/payroll/preview and /api/payroll/confirm to create payroll.' : undefined,
+      message:
+        payrolls.length === 0
+          ? 'No payrolls found. Use /api/payroll/preview and /api/payroll/confirm to create payroll.'
+          : undefined,
     };
   }
 
-  async getEmployeePayroll(employeeId: string, filters: { year?: string; month?: string }) {
+  async getEmployeePayroll(
+    employeeId: string,
+    filters: { year?: string; month?: string },
+  ) {
     const where: Prisma.PayrollDetailWhereInput = {
       employeeId: employeeId,
     };
 
     if (filters.year || filters.month) {
       where.payroll = {
-        ...(filters.month && filters.month !== 'all' && { month: filters.month }),
+        ...(filters.month &&
+          filters.month !== 'all' && { month: filters.month }),
         ...(filters.year && filters.year !== 'all' && { year: filters.year }),
       };
     }
@@ -1318,18 +1367,17 @@ export class PayrollService {
             subDepartment: true,
             designation: true,
             location: true,
-          }
+          },
         },
         payroll: true,
       },
-      orderBy: [
-        { payroll: { year: 'desc' } },
-        { payroll: { month: 'desc' } },
-      ],
+      orderBy: [{ payroll: { year: 'desc' } }, { payroll: { month: 'desc' } }],
     });
 
     if (payrollDetails.length === 0) {
-      throw new BadRequestException(`No payroll found for employee ID ${employeeId}`);
+      throw new BadRequestException(
+        `No payroll found for employee ID ${employeeId}`,
+      );
     }
 
     return {
@@ -1401,12 +1449,12 @@ export class PayrollService {
               <div class="section-title">Earnings</div>
               <div class="table-row"><span>Basic Salary</span> <span>${formatCurrency(detail.basicSalary)}</span></div>
               ${(detail.allowanceBreakup || [])
-        .map(
-          (a: any) => `
+                .map(
+                  (a: any) => `
                 <div class="table-row"><span>${a.name}</span> <span>${formatCurrency(a.amount)}</span></div>
               `,
-        )
-        .join('')}
+                )
+                .join('')}
               ${detail.overtimeAmount > 0 ? `<div class="table-row"><span>Overtime</span> <span>${formatCurrency(detail.overtimeAmount)}</span></div>` : ''}
               ${detail.bonusAmount > 0 ? `<div class="table-row"><span>Bonus</span> <span>${formatCurrency(detail.bonusAmount)}</span></div>` : ''}
               <div class="total-row"><span>Total Earnings</span> <span>${formatCurrency(Number(detail.basicSalary) + Number(detail.totalAllowances) + Number(detail.overtimeAmount) + Number(detail.bonusAmount))}</span></div>
@@ -1415,12 +1463,12 @@ export class PayrollService {
             <div style="flex: 1;">
               <div class="section-title">Deductions</div>
               ${(detail.deductionBreakup || [])
-        .map(
-          (d: any) => `
+                .map(
+                  (d: any) => `
                 <div class="table-row"><span>${d.name}</span> <span>${formatCurrency(d.amount)}</span></div>
               `,
-        )
-        .join('')}
+                )
+                .join('')}
               ${detail.taxDeduction > 0 ? `<div class="table-row"><span>Tax</span> <span>${formatCurrency(detail.taxDeduction)}</span></div>` : ''}
               ${detail.eobiDeduction > 0 ? `<div class="table-row"><span>EOBI</span> <span>${formatCurrency(detail.eobiDeduction)}</span></div>` : ''}
               ${detail.providentFundDeduction > 0 ? `<div class="table-row"><span>Provident Fund</span> <span>${formatCurrency(detail.providentFundDeduction)}</span></div>` : ''}
@@ -1467,7 +1515,9 @@ export class PayrollService {
     } else if (filters.month || filters.year) {
       where.payroll = {
         ...(filters.month &&
-          filters.month !== 'all' && { month: String(Number(filters.month)).padStart(2, '0') }),
+          filters.month !== 'all' && {
+            month: String(Number(filters.month)).padStart(2, '0'),
+          }),
         ...(filters.year && filters.year !== 'all' && { year: filters.year }),
       };
     }
@@ -1488,16 +1538,16 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-          departmentId: filters.departmentId,
-        }),
+            departmentId: filters.departmentId,
+          }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-          subDepartmentId: filters.subDepartmentId,
-        }),
+            subDepartmentId: filters.subDepartmentId,
+          }),
         ...(filters.locationId &&
           filters.locationId !== 'all' && {
-          locationId: filters.locationId,
-        }),
+            locationId: filters.locationId,
+          }),
       };
     }
 
@@ -1638,7 +1688,13 @@ export class PayrollService {
     bankName?: string;
   }) {
     const monthVariants = filters.month
-      ? Array.from(new Set([filters.month, String(parseInt(filters.month, 10)), filters.month.padStart(2, '0')]))
+      ? Array.from(
+          new Set([
+            filters.month,
+            String(parseInt(filters.month, 10)),
+            filters.month.padStart(2, '0'),
+          ]),
+        )
       : [];
 
     const payrollWhere: Prisma.PayrollWhereInput = {
@@ -1656,14 +1712,22 @@ export class PayrollService {
       payroll: payrollWhere,
     };
 
-    if (filters.bankName && filters.bankName !== 'all' && filters.bankName.trim() !== '') {
+    if (
+      filters.bankName &&
+      filters.bankName !== 'all' &&
+      filters.bankName.trim() !== ''
+    ) {
       const cleanBank = filters.bankName.trim();
       const shortBank = cleanBank.replace(/\s+bank$/i, '').trim();
       where.OR = [
         { bankName: { contains: cleanBank, mode: 'insensitive' } },
         { bankName: { contains: shortBank, mode: 'insensitive' } },
-        { employee: { bankName: { contains: cleanBank, mode: 'insensitive' } } },
-        { employee: { bankName: { contains: shortBank, mode: 'insensitive' } } },
+        {
+          employee: { bankName: { contains: cleanBank, mode: 'insensitive' } },
+        },
+        {
+          employee: { bankName: { contains: shortBank, mode: 'insensitive' } },
+        },
       ];
     }
 
@@ -1722,12 +1786,12 @@ export class PayrollService {
       where.employee = {
         ...(filters.departmentId &&
           filters.departmentId !== 'all' && {
-          departmentId: filters.departmentId,
-        }),
+            departmentId: filters.departmentId,
+          }),
         ...(filters.subDepartmentId &&
           filters.subDepartmentId !== 'all' && {
-          subDepartmentId: filters.subDepartmentId,
-        }),
+            subDepartmentId: filters.subDepartmentId,
+          }),
       };
     }
 
@@ -1811,23 +1875,23 @@ export class PayrollService {
     const [dept, subDept, des, grade] = await Promise.all([
       detail.employee.departmentId
         ? this.prisma.department.findUnique({
-          where: { id: detail.employee.departmentId },
-        })
+            where: { id: detail.employee.departmentId },
+          })
         : null,
       detail.employee.subDepartmentId
         ? this.prisma.subDepartment.findUnique({
-          where: { id: detail.employee.subDepartmentId },
-        })
+            where: { id: detail.employee.subDepartmentId },
+          })
         : null,
       detail.employee.designationId
         ? this.prisma.designation.findUnique({
-          where: { id: detail.employee.designationId },
-        })
+            where: { id: detail.employee.designationId },
+          })
         : null,
       detail.employee.employeeGradeId
         ? this.prisma.employeeGrade.findUnique({
-          where: { id: detail.employee.employeeGradeId },
-        })
+            where: { id: detail.employee.employeeGradeId },
+          })
         : null,
     ]);
 
@@ -1970,7 +2034,10 @@ export class PayrollService {
     // Only components with isDeductible = true will be included in EOBI/PF calculation
     const deductibleBaseAmount = salaryBreakup
       .filter((component) => component.isDeductible === true)
-      .reduce((sum, component) => sum.add(new Decimal(component.amount)), new Decimal(0));
+      .reduce(
+        (sum, component) => sum.add(new Decimal(component.amount)),
+        new Decimal(0),
+      );
 
     // If no deductible components, use 0 as base (no EOBI/PF deduction)
     if (deductibleBaseAmount.lte(0)) {
@@ -2159,10 +2226,7 @@ export class PayrollService {
     let advanceSalaryDisbursement = new Decimal(0);
     let advanceSalaryDeduction = new Decimal(0);
 
-    const normalizedMonthForComparison = String(Number(month)).padStart(
-      2,
-      '0',
-    );
+    const normalizedMonthForComparison = String(Number(month)).padStart(2, '0');
     const normalizedYearForComparison = String(year);
 
     // Loans
@@ -2186,7 +2250,9 @@ export class PayrollService {
         const dateA = a.repaymentStartMonthYear || '9999-12';
         const dateB = b.repaymentStartMonthYear || '9999-12';
         if (dateA !== dateB) return dateA.localeCompare(dateB);
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return (
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
       });
 
       // Initialize loan tracking variables with DB paidAmount
@@ -2205,7 +2271,10 @@ export class PayrollService {
         let matchesDisbursementMonth = false;
         if (loan.disbursedAt) {
           const disbursedDate = new Date(loan.disbursedAt);
-          const disbursedM = String(disbursedDate.getMonth() + 1).padStart(2, '0');
+          const disbursedM = String(disbursedDate.getMonth() + 1).padStart(
+            2,
+            '0',
+          );
           const disbursedY = String(disbursedDate.getFullYear());
           matchesDisbursementMonth =
             disbursedM === normalizedMonthForComparison &&
@@ -2220,7 +2289,10 @@ export class PayrollService {
             updatedY === normalizedYearForComparison;
         }
 
-        if (matchesDisbursementMonth && (loan as any).disbursementType !== 'separately') {
+        if (
+          matchesDisbursementMonth &&
+          (loan as any).disbursementType !== 'separately'
+        ) {
           loanDisbursement = loanDisbursement.add(new Decimal(loan.amount));
         }
 
@@ -2268,12 +2340,16 @@ export class PayrollService {
         const currentY = Number(year);
         const currentM = Number(month);
 
-        const diffMonths = (currentY - startYear) * 12 + (currentM - startMonth);
+        const diffMonths =
+          (currentY - startYear) * 12 + (currentM - startMonth);
 
         if (diffMonths >= 0 && diffMonths < totalInstallments) {
           const installment = tracker.amount.div(totalInstallments);
           const remainingBalance = tracker.amount.sub(tracker.totalDeducted);
-          const contribution = Decimal.max(0, Decimal.min(installment, remainingBalance));
+          const contribution = Decimal.max(
+            0,
+            Decimal.min(installment, remainingBalance),
+          );
 
           loanDeduction = loanDeduction.add(contribution);
         }
@@ -2300,7 +2376,9 @@ export class PayrollService {
             neededY === normalizedYearForComparison &&
             (advance as any).disbursementType !== 'separately'
           ) {
-            advanceSalaryDisbursement = advanceSalaryDisbursement.add(new Decimal(advance.amount));
+            advanceSalaryDisbursement = advanceSalaryDisbursement.add(
+              new Decimal(advance.amount),
+            );
           }
         }
 
@@ -2308,7 +2386,7 @@ export class PayrollService {
         const matchesMonth =
           advance.deductionMonth === normalizedMonthForComparison ||
           String(Number(advance.deductionMonth)).padStart(2, '0') ===
-          normalizedMonthForComparison;
+            normalizedMonthForComparison;
         const matchesYear =
           advance.deductionYear === normalizedYearForComparison ||
           String(advance.deductionYear) === normalizedYearForComparison;
@@ -2322,7 +2400,12 @@ export class PayrollService {
       }
     }
 
-    return { loanDeduction, loanDisbursement, advanceSalaryDisbursement, advanceSalaryDeduction };
+    return {
+      loanDeduction,
+      loanDisbursement,
+      advanceSalaryDisbursement,
+      advanceSalaryDeduction,
+    };
   }
 
   private async updateLoanPaidAmountsForPayroll(details: any[]) {
@@ -2392,13 +2475,18 @@ export class PayrollService {
       .filter((inc: any) => inc.currentMonth > payrollMonthYear)
       .sort(
         (a: any, b: any) =>
-          new Date(b.promotionDate).getTime() - new Date(a.promotionDate).getTime() ||
+          new Date(b.promotionDate).getTime() -
+            new Date(a.promotionDate).getTime() ||
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
 
     for (const inc of futureIncrements) {
-      const amount = inc.incrementAmount ? new Decimal(inc.incrementAmount) : new Decimal(0);
-      const percent = inc.incrementPercentage ? new Decimal(inc.incrementPercentage) : new Decimal(0);
+      const amount = inc.incrementAmount
+        ? new Decimal(inc.incrementAmount)
+        : new Decimal(0);
+      const percent = inc.incrementPercentage
+        ? new Decimal(inc.incrementPercentage)
+        : new Decimal(0);
       const type = inc.incrementType;
       const method = inc.incrementMethod;
 
@@ -2406,14 +2494,18 @@ export class PayrollService {
         if (method === 'Amount') {
           baselineSalary = baselineSalary.minus(amount);
         } else {
-          baselineSalary = baselineSalary.div(new Decimal(1).add(percent.div(100)));
+          baselineSalary = baselineSalary.div(
+            new Decimal(1).add(percent.div(100)),
+          );
         }
       } else {
         // Decrement
         if (method === 'Amount') {
           baselineSalary = baselineSalary.add(amount);
         } else {
-          baselineSalary = baselineSalary.div(new Decimal(1).minus(percent.div(100)));
+          baselineSalary = baselineSalary.div(
+            new Decimal(1).minus(percent.div(100)),
+          );
         }
       }
     }
@@ -2503,7 +2595,7 @@ export class PayrollService {
           0,
           Math.floor(
             (incrementDate.getTime() - lastDate.getTime()) /
-            (1000 * 60 * 60 * 24),
+              (1000 * 60 * 60 * 24),
           ),
         );
 
@@ -2543,7 +2635,7 @@ export class PayrollService {
         0,
         Math.floor(
           (monthEnd.getTime() - lastDate.getTime() + 1000 * 60 * 60 * 24) /
-          (1000 * 60 * 60 * 24),
+            (1000 * 60 * 60 * 24),
         ),
       );
       if (daysAfterLastIncrement > 0) {
@@ -2557,9 +2649,10 @@ export class PayrollService {
   }
 
   private getPaidPackageSalary(detail: any): Decimal {
-    const breakup = typeof detail.salaryBreakup === 'string'
-      ? JSON.parse(detail.salaryBreakup)
-      : (detail.salaryBreakup || []);
+    const breakup =
+      typeof detail.salaryBreakup === 'string'
+        ? JSON.parse(detail.salaryBreakup)
+        : detail.salaryBreakup || [];
 
     if (Array.isArray(breakup) && breakup.length > 0) {
       const sum = breakup.reduce((acc, b) => acc + Number(b.amount || 0), 0);
@@ -2574,7 +2667,11 @@ export class PayrollService {
     monthStartDate: Date,
     monthEndDate: Date,
     previousPayrolls: any[],
-  ): { incrementArrears: Decimal; incrementArrearsMonths: string; incrementArrearsBreakup: any[] } {
+  ): {
+    incrementArrears: Decimal;
+    incrementArrearsMonths: string;
+    incrementArrearsBreakup: any[];
+  } {
     let totalArrears = new Decimal(0);
     const arrearsBreakup: any[] = [];
     const retroactiveMonthsSet = new Set<string>();
@@ -2643,9 +2740,10 @@ export class PayrollService {
           // contains a record indicating that arrears for this specific month/year were paid.
           let alreadyPaid = false;
           for (const prevDetail of previousPayrolls) {
-            const prevIncBreakup = typeof prevDetail.incrementBreakup === 'string'
-              ? JSON.parse(prevDetail.incrementBreakup)
-              : (prevDetail.incrementBreakup || []);
+            const prevIncBreakup =
+              typeof prevDetail.incrementBreakup === 'string'
+                ? JSON.parse(prevDetail.incrementBreakup)
+                : prevDetail.incrementBreakup || [];
 
             if (Array.isArray(prevIncBreakup)) {
               const paidRecord = prevIncBreakup.find(
@@ -2653,7 +2751,7 @@ export class PayrollService {
                   b.type === 'Arrears' &&
                   b.month === payrollDetail.payroll.month &&
                   b.year === payrollDetail.payroll.year &&
-                  b.id === increment.id
+                  b.id === increment.id,
               );
               if (paidRecord) {
                 alreadyPaid = true;
@@ -2676,8 +2774,10 @@ export class PayrollService {
             })
             .sort(
               (a: any, b: any) =>
-                new Date(b.promotionDate).getTime() - new Date(a.promotionDate).getTime() ||
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                new Date(b.promotionDate).getTime() -
+                  new Date(a.promotionDate).getTime() ||
+                new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime(),
             );
 
           const revisedSalary =
@@ -2858,7 +2958,7 @@ export class PayrollService {
 
     // Iterate through EVERY day of the month to ensure complete coverage
     let sandwichAbsentCount = 0; // Track sandwich rule absences separately
-    
+
     for (let day = 1; day <= totalDaysInMonth; day++) {
       const checkDate = new Date(Number(year), Number(month) - 1, day);
 
@@ -2880,7 +2980,9 @@ export class PayrollService {
         const overrides = policy.dayOverrides;
         let dayConfig: any = null;
         if (Array.isArray(overrides)) {
-          dayConfig = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+          dayConfig = overrides.find(
+            (g: any) => g && Array.isArray(g.days) && g.days.includes(dayName),
+          );
         } else if (typeof overrides === 'object') {
           dayConfig = (overrides as any)[dayName];
         }
@@ -3234,7 +3336,9 @@ export class PayrollService {
         const overrides = policy.dayOverrides;
         let dayConfig: any = null;
         if (Array.isArray(overrides)) {
-          dayConfig = overrides.find((g: any) => g && Array.isArray(g.days) && g.days.includes(dayName));
+          dayConfig = overrides.find(
+            (g: any) => g && Array.isArray(g.days) && g.days.includes(dayName),
+          );
         } else if (typeof overrides === 'object') {
           dayConfig = (overrides as any)[dayName];
         }
@@ -3512,7 +3616,7 @@ export class PayrollService {
     // Determine tax year boundaries (July 1 to June 30)
     let taxYearStart: Date;
     let taxYearEnd: Date;
-    
+
     if (monthNum >= 7) {
       // July to December - tax year is current year to next year
       taxYearStart = new Date(yearNum, 6, 1);
@@ -3545,14 +3649,23 @@ export class PayrollService {
     }
 
     const effectiveStart = jDate && jDate > taxYearStart ? jDate : taxYearStart;
-    const effectiveEnd = exitDate && exitDate < taxYearEnd ? exitDate : taxYearEnd;
+    const effectiveEnd =
+      exitDate && exitDate < taxYearEnd ? exitDate : taxYearEnd;
 
     if (effectiveStart > effectiveEnd) {
       activeFiscalMonths = 0;
     } else {
       let totalMonths = 0;
-      let cur = new Date(effectiveStart.getFullYear(), effectiveStart.getMonth(), 1);
-      const lastMonth = new Date(effectiveEnd.getFullYear(), effectiveEnd.getMonth(), 1);
+      const cur = new Date(
+        effectiveStart.getFullYear(),
+        effectiveStart.getMonth(),
+        1,
+      );
+      const lastMonth = new Date(
+        effectiveEnd.getFullYear(),
+        effectiveEnd.getMonth(),
+        1,
+      );
 
       while (cur <= lastMonth) {
         const curYear = cur.getFullYear();
@@ -3560,12 +3673,18 @@ export class PayrollService {
         const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
 
         let startDay = 1;
-        if (curYear === effectiveStart.getFullYear() && curMonth === effectiveStart.getMonth()) {
+        if (
+          curYear === effectiveStart.getFullYear() &&
+          curMonth === effectiveStart.getMonth()
+        ) {
           startDay = effectiveStart.getDate();
         }
 
         let endDay = daysInMonth;
-        if (curYear === effectiveEnd.getFullYear() && curMonth === effectiveEnd.getMonth()) {
+        if (
+          curYear === effectiveEnd.getFullYear() &&
+          curMonth === effectiveEnd.getMonth()
+        ) {
           endDay = effectiveEnd.getDate();
         }
 
@@ -3582,23 +3701,25 @@ export class PayrollService {
     }
 
     // Fetch previous months' actual tax deducted in the current tax year
-    const previousPayrolls = passedPreviousPayrolls || await this.prisma.payrollDetail.findMany({
-      where: {
-        employeeId: employeeId,
-        payroll: {
-          status: 'confirmed',
-        },
-      },
-      include: {
-        payroll: {
-          select: {
-            month: true,
-            year: true,
-            status: true,
+    const previousPayrolls =
+      passedPreviousPayrolls ||
+      (await this.prisma.payrollDetail.findMany({
+        where: {
+          employeeId: employeeId,
+          payroll: {
+            status: 'confirmed',
           },
         },
-      },
-    });
+        include: {
+          payroll: {
+            select: {
+              month: true,
+              year: true,
+              status: true,
+            },
+          },
+        },
+      }));
 
     let ytdTaxDeducted = new Decimal(0);
     let ytdNonRecurringTaxable = new Decimal(0);
@@ -3609,7 +3730,7 @@ export class PayrollService {
       const payrollDate = new Date(
         parseInt(payroll.payroll.year),
         parseInt(payroll.payroll.month) - 1,
-        1
+        1,
       );
 
       // Check if payroll is within tax year and before current month
@@ -3635,7 +3756,9 @@ export class PayrollService {
         ytdTaxDeducted = ytdTaxDeducted.add(monthTaxSettled);
 
         if (payroll.attendanceDeduction) {
-          ytdAttendanceDeductions = ytdAttendanceDeductions.add(new Decimal(payroll.attendanceDeduction));
+          ytdAttendanceDeductions = ytdAttendanceDeductions.add(
+            new Decimal(payroll.attendanceDeduction),
+          );
         }
 
         // Sum up taxable non-recurring allowances
@@ -3643,16 +3766,22 @@ export class PayrollService {
         try {
           allowances = Array.isArray(payroll.allowanceBreakup)
             ? payroll.allowanceBreakup
-            : (typeof payroll.allowanceBreakup === 'string'
-                ? JSON.parse(payroll.allowanceBreakup)
-                : []);
+            : typeof payroll.allowanceBreakup === 'string'
+              ? JSON.parse(payroll.allowanceBreakup)
+              : [];
         } catch (e) {
           allowances = [];
         }
 
         for (const allow of allowances) {
-          if (allow && allow.isTaxable === true && allow.isRecurring === false) {
-            ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(new Decimal(allow.amount || 0));
+          if (
+            allow &&
+            allow.isTaxable === true &&
+            allow.isRecurring === false
+          ) {
+            ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(
+              new Decimal(allow.amount || 0),
+            );
           }
         }
 
@@ -3661,27 +3790,33 @@ export class PayrollService {
         try {
           bonuses = Array.isArray(payroll.bonusBreakup)
             ? payroll.bonusBreakup
-            : (typeof payroll.bonusBreakup === 'string'
-                ? JSON.parse(payroll.bonusBreakup)
-                : []);
+            : typeof payroll.bonusBreakup === 'string'
+              ? JSON.parse(payroll.bonusBreakup)
+              : [];
         } catch (e) {
           bonuses = [];
         }
 
         for (const bonus of bonuses) {
           if (bonus && bonus.isTaxable !== false) {
-            ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(new Decimal(bonus.amount || 0));
+            ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(
+              new Decimal(bonus.amount || 0),
+            );
           }
         }
 
         // Add taxable overtime
         if (payroll.overtimeAmount) {
-          ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(new Decimal(payroll.overtimeAmount));
+          ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(
+            new Decimal(payroll.overtimeAmount),
+          );
         }
 
         // Add taxable leave encashment
         if (payroll.leaveEncashmentAmount) {
-          ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(new Decimal(payroll.leaveEncashmentAmount));
+          ytdNonRecurringTaxable = ytdNonRecurringTaxable.add(
+            new Decimal(payroll.leaveEncashmentAmount),
+          );
         }
       }
     }
@@ -3745,25 +3880,25 @@ export class PayrollService {
     const cprRecord = await this.prisma.cprTax.findFirst({
       where: {
         employeeId: employeeId,
-        OR: [
-          { taxPeriod: targetTaxPeriod },
-          { carAmount: { not: null } },
-        ],
+        OR: [{ taxPeriod: targetTaxPeriod }, { carAmount: { not: null } }],
       },
-      orderBy: [
-        { taxPeriod: 'desc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ taxPeriod: 'desc' }, { createdAt: 'desc' }],
     });
 
     let carAmountVal = 0;
     let carBenefitVal = 0;
 
-    if (cprRecord && cprRecord.carAmount !== null && cprRecord.carAmount !== undefined) {
+    if (
+      cprRecord &&
+      cprRecord.carAmount !== null &&
+      cprRecord.carAmount !== undefined
+    ) {
       carAmountVal = Number(cprRecord.carAmount);
       if (carAmountVal > 0) {
         carBenefitVal = (carAmountVal * 0.05 * activeFiscalMonths) / 12;
-        annualTaxableIncome = annualTaxableIncome.add(new Decimal(carBenefitVal));
+        annualTaxableIncome = annualTaxableIncome.add(
+          new Decimal(carBenefitVal),
+        );
         taxableComponents.push({
           name: 'Car Perk Benefit (5%)',
           amount: carBenefitVal,
@@ -3787,7 +3922,8 @@ export class PayrollService {
     let remainingPayrolls = remainingMonths;
     if (exitDate && exitDate < taxYearEnd) {
       const exitMonthNum = exitDate.getMonth() + 1;
-      let exitTaxMonthNum = exitMonthNum >= 7 ? exitMonthNum - 6 : exitMonthNum + 6;
+      const exitTaxMonthNum =
+        exitMonthNum >= 7 ? exitMonthNum - 6 : exitMonthNum + 6;
       remainingPayrolls = Math.max(1, exitTaxMonthNum - taxMonthNum + 1);
     }
 
@@ -3951,7 +4087,7 @@ export class PayrollService {
   /**
    * Calculate Tax using Year-to-Date (YTD) Cumulative Method
    * Pakistan Tax Year: July 1 to June 30
-   * 
+   *
    * Method:
    * 1. Fetch all previous months' actual gross salary (from start of tax year to current month - 1)
    * 2. Add current month's actual gross (after attendance deduction)
@@ -3983,14 +4119,13 @@ export class PayrollService {
     lastExitDate?: string | Date | null,
     passedPreviousPayrolls?: any[],
   ): Promise<{ taxDeduction: Decimal; taxBreakup: any }> {
-    
     const monthNum = parseInt(currentMonth, 10);
     const yearNum = parseInt(currentYear, 10);
 
     // Determine tax year boundaries (July 1 to June 30)
     let taxYearStart: Date;
     let taxYearEnd: Date;
-    
+
     if (monthNum >= 7) {
       // July to December - tax year is current year to next year
       taxYearStart = new Date(yearNum, 6, 1); // July 1 current year
@@ -4002,23 +4137,25 @@ export class PayrollService {
     }
 
     // Step 1: Fetch previous months' actual payroll data (confirmed payrolls only)
-    const previousPayrolls = passedPreviousPayrolls || await this.prisma.payrollDetail.findMany({
-      where: {
-        employeeId: employeeId,
-        payroll: {
-          status: 'confirmed',
-        },
-      },
-      include: {
-        payroll: {
-          select: {
-            month: true,
-            year: true,
-            status: true,
+    const previousPayrolls =
+      passedPreviousPayrolls ||
+      (await this.prisma.payrollDetail.findMany({
+        where: {
+          employeeId: employeeId,
+          payroll: {
+            status: 'confirmed',
           },
         },
-      },
-    });
+        include: {
+          payroll: {
+            select: {
+              month: true,
+              year: true,
+              status: true,
+            },
+          },
+        },
+      }));
 
     // Filter payrolls within current tax year and before current month
     let ytdGrossIncome = new Decimal(0);
@@ -4029,22 +4166,25 @@ export class PayrollService {
       const payrollDate = new Date(
         parseInt(payroll.payroll.year),
         parseInt(payroll.payroll.month) - 1,
-        1
+        1,
       );
 
       // Check if payroll is within tax year and before current month
       if (payrollDate >= taxYearStart && payrollDate < currentMonthDate) {
-        const taxBreakupData = typeof payroll.taxBreakup === 'string' 
-          ? JSON.parse(payroll.taxBreakup) 
-          : (payroll.taxBreakup || {});
-        
+        const taxBreakupData =
+          typeof payroll.taxBreakup === 'string'
+            ? JSON.parse(payroll.taxBreakup)
+            : payroll.taxBreakup || {};
+
         let prevTaxableGross = new Decimal(payroll.grossSalary);
         if (taxBreakupData.currentMonthGross !== undefined) {
           prevTaxableGross = new Decimal(taxBreakupData.currentMonthGross);
         }
 
         ytdGrossIncome = ytdGrossIncome.add(prevTaxableGross);
-        ytdTaxDeducted = ytdTaxDeducted.add(new Decimal(payroll.taxDeduction || 0));
+        ytdTaxDeducted = ytdTaxDeducted.add(
+          new Decimal(payroll.taxDeduction || 0),
+        );
       }
     }
 
@@ -4054,26 +4194,30 @@ export class PayrollService {
       .add(currentMonthOvertime)
       .add(currentMonthBonus)
       .add(currentMonthLeaveEncashment);
-    
+
     ytdGrossIncome = ytdGrossIncome.add(currentMonthGross);
 
     // Step 3: Project remaining months (assume full salary)
     const projectedMonthlyGross = originalPackageAmount; // Use original package for projection
-    
+
     // Calculate how many months remaining in tax year after current month
     let remainingMonths = 0;
     const nextMonthDate = new Date(yearNum, monthNum, 1); // First day of next month
-    
+
     let projectionEndDate = taxYearEnd;
     if (lastExitDate) {
       const exitDateObj = new Date(lastExitDate);
       if (exitDateObj < taxYearEnd) {
         // Stop projection at the month of exit
-        projectionEndDate = new Date(exitDateObj.getFullYear(), exitDateObj.getMonth() + 1, 0); 
+        projectionEndDate = new Date(
+          exitDateObj.getFullYear(),
+          exitDateObj.getMonth() + 1,
+          0,
+        );
       }
     }
-    
-    let checkDate = new Date(nextMonthDate);
+
+    const checkDate = new Date(nextMonthDate);
     while (checkDate <= projectionEndDate) {
       remainingMonths++;
       checkDate.setMonth(checkDate.getMonth() + 1);
@@ -4141,11 +4285,11 @@ export class PayrollService {
         const excess = annualTaxableIncome.minus(new Decimal(slab.minAmount));
         percentageTaxAmount = excess.mul(new Decimal(slab.rate).div(100));
         const annualTax = fixedAmountTax.add(percentageTaxAmount);
-        
+
         // Step 6: Monthly tax = (Total Annual Tax - Pichla Deducted Tax) / Baqiya Mahine
         const remainingPayrolls = remainingMonths + 1; // +1 for the current month being processed
         taxDeduction = annualTax.minus(ytdTaxDeducted).div(remainingPayrolls);
-        
+
         if (taxDeduction.lt(0)) {
           taxDeduction = new Decimal(0); // Cannot be negative
         }
@@ -4220,9 +4364,7 @@ export class PayrollService {
 
       // For each employee with EOBI enabled, add contribution
       for (const employee of employees) {
-        const payrollDetail = details.find(
-          (d) => d.employeeId === employee.id,
-        );
+        const payrollDetail = details.find((d) => d.employeeId === employee.id);
 
         if (!payrollDetail) {
           continue;
@@ -4251,7 +4393,9 @@ export class PayrollService {
           });
         }
 
-        let employeeContribution = new Decimal(payrollDetail.eobiDeduction || 0);
+        let employeeContribution = new Decimal(
+          payrollDetail.eobiDeduction || 0,
+        );
         let employerContribution = new Decimal(0);
 
         if (eobiRecord) {
@@ -4313,7 +4457,9 @@ export class PayrollService {
             empCheck.socialSecurityInstitution &&
             empCheck.socialSecurityInstitution.contributionRate
           ) {
-            const rate = Number(empCheck.socialSecurityInstitution.contributionRate);
+            const rate = Number(
+              empCheck.socialSecurityInstitution.contributionRate,
+            );
             amount = rate;
           }
         }
@@ -4383,19 +4529,25 @@ export class PayrollService {
           let monthNum = parseInt(month, 10);
           if (isNaN(monthNum)) {
             const monthNames = [
-              'january', 'february', 'march', 'april', 'may', 'june',
-              'july', 'august', 'september', 'october', 'november', 'december'
+              'january',
+              'february',
+              'march',
+              'april',
+              'may',
+              'june',
+              'july',
+              'august',
+              'september',
+              'october',
+              'november',
+              'december',
             ];
             const idx = monthNames.indexOf(month.toString().toLowerCase());
             monthNum = idx !== -1 ? idx + 1 : 1;
           }
           const monthStr = monthNum.toString().padStart(2, '0');
           const yearStr = year.toString();
-          const date = new Date(
-            parseInt(yearStr, 10),
-            monthNum - 1,
-            28,
-          );
+          const date = new Date(parseInt(yearStr, 10), monthNum - 1, 28);
 
           const existingContrib =
             await this.prisma.socialSecurityContribution.findFirst({
@@ -4489,7 +4641,7 @@ export class PayrollService {
     const prevMonthName = monthNames[prevMonthNum - 1];
 
     // Fetch current month payroll
-    let currentPayroll = await this.prisma.payroll.findFirst({
+    const currentPayroll = await this.prisma.payroll.findFirst({
       where: { month: normMonth, year: normYear },
       include: {
         details: {
@@ -4513,13 +4665,15 @@ export class PayrollService {
     });
 
     let currentDetails: any[] = [];
-    const hasCurrentPayroll = !!(currentPayroll && currentPayroll.details?.length > 0);
+    const hasCurrentPayroll = !!(
+      currentPayroll && currentPayroll.details?.length > 0
+    );
     if (hasCurrentPayroll) {
       currentDetails = currentPayroll.details;
     }
 
     // Fetch previous month payroll
-    let prevPayroll = await this.prisma.payroll.findFirst({
+    const prevPayroll = await this.prisma.payroll.findFirst({
       where: { month: prevMonthStr, year: prevYearStr },
       include: {
         details: {
@@ -4555,7 +4709,7 @@ export class PayrollService {
     const prevPrevYearStr = String(prevPrevYearNum);
     const prevPrevMonthName = monthNames[prevPrevMonthNum - 1];
 
-    let prevPrevPayroll = await this.prisma.payroll.findFirst({
+    const prevPrevPayroll = await this.prisma.payroll.findFirst({
       where: { month: prevPrevMonthStr, year: prevPrevYearStr },
       include: { details: true },
     });
@@ -4563,9 +4717,6 @@ export class PayrollService {
     if (prevPrevPayroll && prevPrevPayroll.details?.length > 0) {
       prevPrevDetails = prevPrevPayroll.details;
     }
-
-
-
 
     // Lookup maps
     const currentEmpMap = new Map<string, any>();
@@ -4593,7 +4744,6 @@ export class PayrollService {
       (sum, d) => sum + Number(d.grossSalary || 0),
       0,
     );
-
 
     // 2. LEFT / RESIGNED EMPLOYEES
     const leftEmployees: any[] = [];
@@ -4726,8 +4876,6 @@ export class PayrollService {
       0,
     );
 
-
-
     // 6. DEDUCTIONS
     const currentLwp = currentDetails.reduce(
       (sum, d) => sum + Number(d.attendanceDeduction || 0),
@@ -4797,7 +4945,6 @@ export class PayrollService {
       upperSubtotalPrev +
       lowerSubtotalPrev -
       prevTotalDeductions;
-
 
     // 8. STATUTORY SUMMARY
     const [currentEobiContribs, prevEobiContribs] = await Promise.all([
@@ -4891,13 +5038,14 @@ export class PayrollService {
         prevAmount: lowerSubtotalPrev,
       },
 
-
-
       deductions: {
         lwp: { currentAmount: currentLwp, prevAmount: prevLwp },
         taxSalary: { currentAmount: currentTax, prevAmount: prevTax },
         taxBonus: { currentAmount: 0, prevAmount: 0 },
-        advanceSalary: { currentAmount: currentAdvance, prevAmount: prevAdvance },
+        advanceSalary: {
+          currentAmount: currentAdvance,
+          prevAmount: prevAdvance,
+        },
         loanToEmployees: { currentAmount: currentLoan, prevAmount: prevLoan },
         providentFund: { currentAmount: currentPf, prevAmount: prevPf },
         totalDeductions: {
@@ -4932,8 +5080,11 @@ export class PayrollService {
     };
   }
 
-
-  async exportPayrollReconciliationExcel(month: string, year: string, res: any) {
+  async exportPayrollReconciliationExcel(
+    month: string,
+    year: string,
+    res: any,
+  ) {
     const data = await this.getPayrollReconciliation(month, year);
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(
@@ -4945,7 +5096,15 @@ export class PayrollService {
     worksheet.addRow(['SUMMARY OF PAYROLL RECONCILIATION']);
     worksheet.addRow([`FOR ${data.currentMonthLabel.toUpperCase()}`]);
     worksheet.addRow(['', '', '', '', 'Current Month', '', 'Previous Month']);
-    worksheet.addRow(['DESCRIPTION', 'V.NO', 'CHEQUE NO', 'DATE', 'AMOUNT', '', 'AMOUNT']);
+    worksheet.addRow([
+      'DESCRIPTION',
+      'V.NO',
+      'CHEQUE NO',
+      'DATE',
+      'AMOUNT',
+      '',
+      'AMOUNT',
+    ]);
 
     worksheet.mergeCells('A1:G1');
     worksheet.mergeCells('A2:G2');
@@ -5029,8 +5188,6 @@ export class PayrollService {
       '',
       data.lowerSubtotal?.prevAmount || 0,
     ]);
-
-
 
     // Deductions section
     worksheet.addRow(['']);
@@ -5200,7 +5357,11 @@ export class PayrollService {
     res.send(buffer);
   }
 
-  async upsertMonthlySalaryJournalVoucher(month: string, year: string, userId?: string) {
+  async upsertMonthlySalaryJournalVoucher(
+    month: string,
+    year: string,
+    userId?: string,
+  ) {
     try {
       const normalizedMonthNum = Number(month);
       const normalizedMonthStr = String(normalizedMonthNum);
@@ -5208,7 +5369,20 @@ export class PayrollService {
       const yearStr = String(year);
       const yearShort = yearStr.length === 4 ? yearStr.substring(2) : yearStr;
 
-      const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthNames = [
+        'JAN',
+        'FEB',
+        'MAR',
+        'APR',
+        'MAY',
+        'JUN',
+        'JUL',
+        'AUG',
+        'SEP',
+        'OCT',
+        'NOV',
+        'DEC',
+      ];
       const monthAbbr = monthNames[normalizedMonthNum - 1] || 'JUL';
 
       // 1. Fetch all confirmed payroll headers for this month/year
@@ -5226,7 +5400,9 @@ export class PayrollService {
       });
 
       if (confirmedPayrolls.length === 0) {
-        this.logger.log(`No confirmed payrolls found for ${month}/${year}. Skipping JV creation.`);
+        this.logger.log(
+          `No confirmed payrolls found for ${month}/${year}. Skipping JV creation.`,
+        );
         return;
       }
 
@@ -5251,7 +5427,8 @@ export class PayrollService {
       }
 
       // 3. Helper to round to 2 decimals
-      const roundToTwo = (num: number): number => Math.round((num + Number.EPSILON) * 100) / 100;
+      const roundToTwo = (num: number): number =>
+        Math.round((num + Number.EPSILON) * 100) / 100;
 
       // 4. Resolve Parent Chart of Accounts by Code
       const parentCodes = {
@@ -5272,7 +5449,9 @@ export class PayrollService {
 
       const parentAccountsMap = new Map<string, any>();
       for (const [key, code] of Object.entries(parentCodes)) {
-        const acc = await this.prisma.chartOfAccount.findFirst({ where: { code } });
+        const acc = await this.prisma.chartOfAccount.findFirst({
+          where: { code },
+        });
         if (acc) {
           parentAccountsMap.set(key, acc);
         }
@@ -5281,29 +5460,39 @@ export class PayrollService {
       const isOfficeLoc = (code?: string, name?: string) => {
         const locCode = (code || '').toUpperCase();
         const locName = (name || '').toUpperCase();
-        if (locName.includes('CORPORATE') || locName.includes('OFFICE')) return true;
-        if (/^C[0-3]\d{4}$/.test(locCode) && !locCode.startsWith('CK')) return true;
+        if (locName.includes('CORPORATE') || locName.includes('OFFICE'))
+          return true;
+        if (/^C[0-3]\d{4}$/.test(locCode) && !locCode.startsWith('CK'))
+          return true;
         return false;
       };
 
-      const findTagAccount = async (primaryParent: any, secondaryParent: any, code?: string, name?: string) => {
+      const findTagAccount = async (
+        primaryParent: any,
+        secondaryParent: any,
+        code?: string,
+        name?: string,
+      ) => {
         const OR: any[] = [];
         if (code) OR.push({ code: { equals: code, mode: 'insensitive' } });
         if (name) OR.push({ name: { equals: name, mode: 'insensitive' } });
-        if (OR.length === 0) return { tagAccount: null, parentAccount: primaryParent };
+        if (OR.length === 0)
+          return { tagAccount: null, parentAccount: primaryParent };
 
         if (primaryParent) {
           const tagAcc = await this.prisma.chartOfAccount.findFirst({
             where: { parentId: primaryParent.id, OR },
           });
-          if (tagAcc) return { tagAccount: tagAcc, parentAccount: primaryParent };
+          if (tagAcc)
+            return { tagAccount: tagAcc, parentAccount: primaryParent };
         }
 
         if (secondaryParent) {
           const tagAcc = await this.prisma.chartOfAccount.findFirst({
             where: { parentId: secondaryParent.id, OR },
           });
-          if (tagAcc) return { tagAccount: tagAcc, parentAccount: secondaryParent };
+          if (tagAcc)
+            return { tagAccount: tagAcc, parentAccount: secondaryParent };
         }
 
         const globalTag = await this.prisma.chartOfAccount.findFirst({
@@ -5311,7 +5500,10 @@ export class PayrollService {
           include: { parent: true },
         });
         if (globalTag) {
-          return { tagAccount: globalTag, parentAccount: (globalTag as any).parent || primaryParent };
+          return {
+            tagAccount: globalTag,
+            parentAccount: (globalTag as any).parent || primaryParent,
+          };
         }
 
         return { tagAccount: null, parentAccount: primaryParent };
@@ -5328,9 +5520,18 @@ export class PayrollService {
 
       const jvLines: JVLineItem[] = [];
 
-      const locationGrossSalaries = new Map<string, { location: any; totalGross: number; incentiveAmount: number }>();
-      const locationEobiContributions = new Map<string, { location: any; totalEobi: number }>();
-      const locationPfContributions = new Map<string, { location: any; totalPf: number }>();
+      const locationGrossSalaries = new Map<
+        string,
+        { location: any; totalGross: number; incentiveAmount: number }
+      >();
+      const locationEobiContributions = new Map<
+        string,
+        { location: any; totalEobi: number }
+      >();
+      const locationPfContributions = new Map<
+        string,
+        { location: any; totalPf: number }
+      >();
 
       let bankTransferNetSum = 0;
       let cashChequeNetSum = 0;
@@ -5338,8 +5539,14 @@ export class PayrollService {
       let employerPfSum = 0;
       let employeePfSum = 0;
 
-      const employeeAdvanceDeductions = new Map<string, { employee: any; amount: number }>();
-      const employeeLoanDeductions = new Map<string, { employee: any; amount: number }>();
+      const employeeAdvanceDeductions = new Map<
+        string,
+        { employee: any; amount: number }
+      >();
+      const employeeLoanDeductions = new Map<
+        string,
+        { employee: any; amount: number }
+      >();
       const eobiRegionPayables = new Map<string, number>();
 
       // Fetch active EOBI region rates for dynamic region rate calculation (e.g. Islamabad = 1850, Punjab = 2400)
@@ -5374,9 +5581,14 @@ export class PayrollService {
           return 2220;
         }
 
-        const rec = activeEobiRecords.find((r) => r.region.toLowerCase() === region);
+        const rec = activeEobiRecords.find(
+          (r) => r.region.toLowerCase() === region,
+        );
         if (rec) {
-          return Number(rec.employerContribution || 0) + Number(rec.employeeContribution || 0);
+          return (
+            Number(rec.employerContribution || 0) +
+            Number(rec.employeeContribution || 0)
+          );
         }
         return 2400;
       };
@@ -5387,8 +5599,19 @@ export class PayrollService {
         const locName = (loc?.name || '').toUpperCase();
         const region = (emp?.eobiRegion || '').toLowerCase();
 
-        if (locCode === 'C40001' || locName.includes('LOGISTIC') || locName.includes('WAREHOUSE')) return 'WH';
-        if (locCode === 'SS1010' || locName.includes('LYALLPUR') || locName.includes('FAISALABAD') || locName.includes('FSD')) return 'FSD';
+        if (
+          locCode === 'C40001' ||
+          locName.includes('LOGISTIC') ||
+          locName.includes('WAREHOUSE')
+        )
+          return 'WH';
+        if (
+          locCode === 'SS1010' ||
+          locName.includes('LYALLPUR') ||
+          locName.includes('FAISALABAD') ||
+          locName.includes('FSD')
+        )
+          return 'FSD';
         if (
           locCode === 'N10004' ||
           locCode === 'N10005' ||
@@ -5404,7 +5627,8 @@ export class PayrollService {
           locName.includes('GIGA') ||
           locName.includes('CENTAURUS') ||
           region.includes('islamabad')
-        ) return 'ISB';
+        )
+          return 'ISB';
         if (
           locCode === 'N10002' ||
           locCode === 'N10003' ||
@@ -5426,8 +5650,11 @@ export class PayrollService {
           locName.includes('PACKAGES') ||
           locName.includes('XINHUA') ||
           locName.includes('MADISON') ||
-          (locCode.startsWith('C') && locCode !== 'C40001' && (region.includes('punjab') || region.includes('lahore')))
-        ) return 'LHR';
+          (locCode.startsWith('C') &&
+            locCode !== 'C40001' &&
+            (region.includes('punjab') || region.includes('lahore')))
+        )
+          return 'LHR';
 
         return 'KHI';
       };
@@ -5436,7 +5663,9 @@ export class PayrollService {
         const emp = d.employee;
 
         // Skip intern / internship employees from Journal Voucher
-        const statusName = String(emp?.employmentStatus?.status || '').toLowerCase();
+        const statusName = String(
+          emp?.employmentStatus?.status || '',
+        ).toLowerCase();
         if (statusName.includes('intern')) {
           continue;
         }
@@ -5447,9 +5676,17 @@ export class PayrollService {
         let itemIncentive = 0;
         if (Array.isArray(d.allowanceBreakup)) {
           for (const ab of d.allowanceBreakup as any[]) {
-            const nameLower = String(ab.name || ab.allowanceTypeName || '').toLowerCase();
-            const categoryLower = String(ab.allowanceTypeCategory || '').toLowerCase();
-            if (nameLower.includes('incentive') || categoryLower.includes('incentive') || nameLower.includes('commission')) {
+            const nameLower = String(
+              ab.name || ab.allowanceTypeName || '',
+            ).toLowerCase();
+            const categoryLower = String(
+              ab.allowanceTypeCategory || '',
+            ).toLowerCase();
+            if (
+              nameLower.includes('incentive') ||
+              categoryLower.includes('incentive') ||
+              nameLower.includes('commission')
+            ) {
               itemIncentive += Number(ab.amount || 0);
             }
           }
@@ -5466,7 +5703,11 @@ export class PayrollService {
         const eobiTotal = getEobiTotalRate(emp);
 
         if (!locationGrossSalaries.has(locId)) {
-          locationGrossSalaries.set(locId, { location: loc, totalGross: 0, incentiveAmount: 0 });
+          locationGrossSalaries.set(locId, {
+            location: loc,
+            totalGross: 0,
+            incentiveAmount: 0,
+          });
         }
         const locGroup = locationGrossSalaries.get(locId)!;
         locGroup.totalGross += gross;
@@ -5474,7 +5715,10 @@ export class PayrollService {
 
         if (eobiTotal > 0) {
           if (!locationEobiContributions.has(locId)) {
-            locationEobiContributions.set(locId, { location: loc, totalEobi: 0 });
+            locationEobiContributions.set(locId, {
+              location: loc,
+              totalEobi: 0,
+            });
           }
           locationEobiContributions.get(locId)!.totalEobi += eobiTotal;
         }
@@ -5499,7 +5743,10 @@ export class PayrollService {
 
         const eobiGroup = getEobiGroupCode(emp);
         const totalEobiForEmp = eobiTotal;
-        eobiRegionPayables.set(eobiGroup, (eobiRegionPayables.get(eobiGroup) || 0) + totalEobiForEmp);
+        eobiRegionPayables.set(
+          eobiGroup,
+          (eobiRegionPayables.get(eobiGroup) || 0) + totalEobiForEmp,
+        );
 
         if (advDed > 0) {
           const empKey = emp?.employeeId || d.employeeId;
@@ -5535,7 +5782,12 @@ export class PayrollService {
         const baseSalaryAmount = totalGross - incentiveAmount;
 
         if (primaryParent && roundToTwo(baseSalaryAmount) > 0) {
-          const { tagAccount, parentAccount } = await findTagAccount(primaryParent, secondaryParent, locCode, locName);
+          const { tagAccount, parentAccount } = await findTagAccount(
+            primaryParent,
+            secondaryParent,
+            locCode,
+            locName,
+          );
           jvLines.push({
             accountId: (parentAccount || primaryParent).id,
             tagAccountId: tagAccount?.id || null,
@@ -5547,7 +5799,12 @@ export class PayrollService {
 
         const accCommission = parentAccountsMap.get('apEmployeesCommission');
         if (accCommission && roundToTwo(incentiveAmount) > 0) {
-          const { tagAccount, parentAccount } = await findTagAccount(accCommission, null, locCode, locName);
+          const { tagAccount, parentAccount } = await findTagAccount(
+            accCommission,
+            null,
+            locCode,
+            locName,
+          );
           jvLines.push({
             accountId: (parentAccount || accCommission).id,
             tagAccountId: tagAccount?.id || null,
@@ -5572,7 +5829,12 @@ export class PayrollService {
         const secondaryParent = isOffice ? accStoreEobi : accOfficeEobi;
 
         if (primaryParent && roundToTwo(totalEobi) > 0) {
-          const { tagAccount, parentAccount } = await findTagAccount(primaryParent, secondaryParent, locCode, locName);
+          const { tagAccount, parentAccount } = await findTagAccount(
+            primaryParent,
+            secondaryParent,
+            locCode,
+            locName,
+          );
           jvLines.push({
             accountId: (parentAccount || primaryParent).id,
             tagAccountId: tagAccount?.id || null,
@@ -5597,7 +5859,12 @@ export class PayrollService {
         const secondaryParent = isOffice ? accStorePf : accOfficePf;
 
         if (primaryParent && roundToTwo(totalPf) > 0) {
-          const { tagAccount, parentAccount } = await findTagAccount(primaryParent, secondaryParent, locCode, locName);
+          const { tagAccount, parentAccount } = await findTagAccount(
+            primaryParent,
+            secondaryParent,
+            locCode,
+            locName,
+          );
           jvLines.push({
             accountId: (parentAccount || primaryParent).id,
             tagAccountId: tagAccount?.id || null,
@@ -5612,7 +5879,12 @@ export class PayrollService {
       const accApSalary = parentAccountsMap.get('apSalary');
       if (accApSalary) {
         if (roundToTwo(bankTransferNetSum) > 0) {
-          const { tagAccount: tagBank } = await findTagAccount(accApSalary, null, 'SP0001', 'SALARY P/A - A/C TRF');
+          const { tagAccount: tagBank } = await findTagAccount(
+            accApSalary,
+            null,
+            'SP0001',
+            'SALARY P/A - A/C TRF',
+          );
           jvLines.push({
             accountId: accApSalary.id,
             tagAccountId: tagBank?.id || null,
@@ -5623,7 +5895,12 @@ export class PayrollService {
         }
 
         if (roundToTwo(cashChequeNetSum) > 0) {
-          const { tagAccount: tagCash } = await findTagAccount(accApSalary, null, 'SP0002', 'SALARY P/A - CHQ/CSH');
+          const { tagAccount: tagCash } = await findTagAccount(
+            accApSalary,
+            null,
+            'SP0002',
+            'SALARY P/A - CHQ/CSH',
+          );
           jvLines.push({
             accountId: accApSalary.id,
             tagAccountId: tagCash?.id || null,
@@ -5636,7 +5913,12 @@ export class PayrollService {
 
       const accWhTax = parentAccountsMap.get('whTaxSalary');
       if (accWhTax && roundToTwo(taxDeductionSum) > 0) {
-        const { tagAccount: tagTax } = await findTagAccount(accWhTax, null, 'T00001', 'SALARY');
+        const { tagAccount: tagTax } = await findTagAccount(
+          accWhTax,
+          null,
+          'T00001',
+          'SALARY',
+        );
         jvLines.push({
           accountId: accWhTax.id,
           tagAccountId: tagTax?.id || null,
@@ -5648,7 +5930,12 @@ export class PayrollService {
 
       const accPf = parentAccountsMap.get('apProvidentFund');
       if (accPf) {
-        const { tagAccount: tagCo } = await findTagAccount(accPf, null, 'C00001', 'COMPANY');
+        const { tagAccount: tagCo } = await findTagAccount(
+          accPf,
+          null,
+          'C00001',
+          'COMPANY',
+        );
 
         if (roundToTwo(employerPfSum) > 0) {
           jvLines.push({
@@ -5678,7 +5965,12 @@ export class PayrollService {
           if (roundToTwo(amount) > 0) {
             const empCode = emp?.employeeId || empKey;
             const empName = emp?.employeeName || empKey;
-            const { tagAccount: tagEmp } = await findTagAccount(accAdvance, null, empCode, empName);
+            const { tagAccount: tagEmp } = await findTagAccount(
+              accAdvance,
+              null,
+              empCode,
+              empName,
+            );
             jvLines.push({
               accountId: accAdvance.id,
               tagAccountId: tagEmp?.id || null,
@@ -5692,7 +5984,12 @@ export class PayrollService {
 
       const accApEobi = parentAccountsMap.get('apEobi');
       if (accApEobi) {
-        const { tagAccount: tagCo } = await findTagAccount(accApEobi, null, 'C00001', 'COMPANY');
+        const { tagAccount: tagCo } = await findTagAccount(
+          accApEobi,
+          null,
+          'C00001',
+          'COMPANY',
+        );
         for (const [region, totalAmount] of eobiRegionPayables.entries()) {
           if (roundToTwo(totalAmount) > 0) {
             jvLines.push({
@@ -5713,7 +6010,12 @@ export class PayrollService {
           if (roundToTwo(amount) > 0) {
             const empCode = emp?.employeeId || empKey;
             const empName = emp?.employeeName || empKey;
-            const { tagAccount: tagEmp } = await findTagAccount(accLoan, null, empCode, empName);
+            const { tagAccount: tagEmp } = await findTagAccount(
+              accLoan,
+              null,
+              empCode,
+              empName,
+            );
             jvLines.push({
               accountId: accLoan.id,
               tagAccountId: tagEmp?.id || null,
@@ -5808,7 +6110,9 @@ export class PayrollService {
             },
           },
         });
-        this.logger.log(`Updated consolidated draft Journal Voucher for ${monthAbbr} ${yearStr}`);
+        this.logger.log(
+          `Updated consolidated draft Journal Voucher for ${monthAbbr} ${yearStr}`,
+        );
       } else {
         await this.journalVoucherService.create(
           {
@@ -5827,11 +6131,15 @@ export class PayrollService {
           },
           { userId },
         );
-        this.logger.log(`Created new consolidated draft Journal Voucher for ${monthAbbr} ${yearStr}`);
+        this.logger.log(
+          `Created new consolidated draft Journal Voucher for ${monthAbbr} ${yearStr}`,
+        );
       }
     } catch (error) {
-      this.logger.error(`Failed to upsert monthly salary Journal Voucher: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to upsert monthly salary Journal Voucher: ${error.message}`,
+        error.stack,
+      );
     }
   }
 }
-

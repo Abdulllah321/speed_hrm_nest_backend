@@ -44,17 +44,90 @@ const GROUP_COLORS: Record<string, string> = {
 };
 
 const COLUMNS = [
-  { header: 'Year | Month | Day | Document Type & # / Product', key: 'sku', width: 35, group: 'General' },
-  { header: 'Size', key: 'size', width: 10, group: 'General', align: 'center' as const },
-  { header: 'Qty', key: 'qty', width: 10, group: 'General', align: 'right' as const },
-  { header: 'Retail Price (Rs.)', key: 'retailPrice', width: 18, group: 'General', align: 'right' as const, numFmt: '#,##0.00' },
-  { header: 'Total Price WOST', key: 'totalPriceWost', width: 18, group: 'Sales', align: 'right' as const, numFmt: '#,##0.00' },
-  { header: 'Discount Amount (Rs.)', key: 'discountAmount', width: 20, group: 'Sales', align: 'right' as const, numFmt: '#,##0.00' },
-  { header: 'Value Excluding Sales Tax (Rs.)', key: 'valueExclTax', width: 25, group: 'Sales', align: 'right' as const, numFmt: '#,##0.00' },
-  { header: 'Sales Tax Amount (Rs.)', key: 'salesTaxAmount', width: 20, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
-  { header: 'Additional Sales Tax Amount (Rs.)', key: 'additionalSalesTaxAmount', width: 25, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
-  { header: 'Total Tax (Rs.)', key: 'totalTax', width: 18, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
-  { header: 'Value Including Sales Tax (Rs.)', key: 'valueInclTax', width: 25, group: 'Taxes', align: 'right' as const, numFmt: '#,##0.00' },
+  {
+    header: 'Year | Month | Day | Document Type & # / Product',
+    key: 'sku',
+    width: 35,
+    group: 'General',
+  },
+  {
+    header: 'Size',
+    key: 'size',
+    width: 10,
+    group: 'General',
+    align: 'center' as const,
+  },
+  {
+    header: 'Qty',
+    key: 'qty',
+    width: 10,
+    group: 'General',
+    align: 'right' as const,
+  },
+  {
+    header: 'Retail Price (Rs.)',
+    key: 'retailPrice',
+    width: 18,
+    group: 'General',
+    align: 'right' as const,
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Total Price WOST',
+    key: 'totalPriceWost',
+    width: 18,
+    group: 'Sales',
+    align: 'right' as const,
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount Amount (Rs.)',
+    key: 'discountAmount',
+    width: 20,
+    group: 'Sales',
+    align: 'right' as const,
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Excluding Sales Tax (Rs.)',
+    key: 'valueExclTax',
+    width: 25,
+    group: 'Sales',
+    align: 'right' as const,
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Sales Tax Amount (Rs.)',
+    key: 'salesTaxAmount',
+    width: 20,
+    group: 'Taxes',
+    align: 'right' as const,
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Additional Sales Tax Amount (Rs.)',
+    key: 'additionalSalesTaxAmount',
+    width: 25,
+    group: 'Taxes',
+    align: 'right' as const,
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Total Tax (Rs.)',
+    key: 'totalTax',
+    width: 18,
+    group: 'Taxes',
+    align: 'right' as const,
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Including Sales Tax (Rs.)',
+    key: 'valueInclTax',
+    width: 25,
+    group: 'Taxes',
+    align: 'right' as const,
+    numFmt: '#,##0.00',
+  },
 ];
 
 @Processor('net-sales-summary-export')
@@ -69,20 +142,28 @@ export class NetSalesSummaryExportProcessor {
     if (process.platform === 'linux') {
       try {
         const logger = new Logger('NetSalesSummaryExportProcessor');
-        logger.log('Checking and installing Chromium dependencies on Linux host...');
+        logger.log(
+          'Checking and installing Chromium dependencies on Linux host...',
+        );
         const { exec } = require('child_process');
         exec(
           'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
           (err: any) => {
             if (err) {
-              logger.warn(`Could not install Chromium dependencies automatically: ${err.message}. If not running as root, please install them manually.`);
+              logger.warn(
+                `Could not install Chromium dependencies automatically: ${err.message}. If not running as root, please install them manually.`,
+              );
             } else {
-              logger.log('Chromium dependencies verified/installed successfully.');
+              logger.log(
+                'Chromium dependencies verified/installed successfully.',
+              );
             }
-          }
+          },
         );
       } catch (e: any) {
-        this.logger.warn(`Error trying to run chromium dependencies installer: ${e.message}`);
+        this.logger.warn(
+          `Error trying to run chromium dependencies installer: ${e.message}`,
+        );
       }
     }
   }
@@ -107,42 +188,60 @@ export class NetSalesSummaryExportProcessor {
       fiscalYear,
       year,
     } = job.data;
-    this.logger.log(`[NetSalesSummaryPreview ${jobId}] Starting background net-sales-summary preview computation`);
+    this.logger.log(
+      `[NetSalesSummaryPreview ${jobId}] Starting background net-sales-summary preview computation`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      await job.progress({ percent: 10, message: 'Queueing net sales summary preview computation task...' });
+      await job.progress({
+        percent: 10,
+        message: 'Queueing net sales summary preview computation task...',
+      });
 
-      const result = await this.netSalesSummaryExportService.generateNetSalesSummaryReportDataInternal(
-        prisma as any,
-        {
-          locationId,
-          locationIds,
-          startDate,
-          endDate,
-          cashierUserId,
-          reportType,
-          search,
-          paymentModeGroup,
-          minAmount,
-          maxAmount,
-          fbrOnly,
-          fiscalYear,
-          year,
-          onProgress: async (percent, message) => {
-            await job.progress({ percent, message });
+      const result =
+        await this.netSalesSummaryExportService.generateNetSalesSummaryReportDataInternal(
+          prisma as any,
+          {
+            locationId,
+            locationIds,
+            startDate,
+            endDate,
+            cashierUserId,
+            reportType,
+            search,
+            paymentModeGroup,
+            minAmount,
+            maxAmount,
+            fbrOnly,
+            fiscalYear,
+            year,
+            onProgress: async (percent, message) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
-      await this.netSalesSummaryExportService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Successfully generated net-sales-summary preview result' });
-      this.logger.log(`[NetSalesSummaryPreview ${jobId}] Successfully generated and saved preview result`);
+      await this.netSalesSummaryExportService.saveReportPreviewResult(
+        jobId,
+        result,
+      );
+      await job.progress({
+        percent: 100,
+        message: 'Successfully generated net-sales-summary preview result',
+      });
+      this.logger.log(
+        `[NetSalesSummaryPreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[NetSalesSummaryPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      this.logger.error(
+        `[NetSalesSummaryPreview ${jobId}] Exception in background computation: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
@@ -150,11 +249,33 @@ export class NetSalesSummaryExportProcessor {
   @Process({ concurrency: 1 })
   async handleExport(job: Job<NetSalesSummaryExportJobData>): Promise<void> {
     const {
-      jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, cashierUserId, format, summaryOnly,
-      showSalesperson, showYear, showMonth, showDay, showDocument,
-      showBrand, showDivision, showSalesTax, showCategory, showGender, showSilhouette, showArticle, showVariant
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate: startStr,
+      endDate: endStr,
+      cashierUserId,
+      format,
+      summaryOnly,
+      showSalesperson,
+      showYear,
+      showMonth,
+      showDay,
+      showDocument,
+      showBrand,
+      showDivision,
+      showSalesTax,
+      showCategory,
+      showGender,
+      showSilhouette,
+      showArticle,
+      showVariant,
     } = job.data;
-    this.logger.log(`[NetSalesSummaryExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`);
+    this.logger.log(
+      `[NetSalesSummaryExport ${jobId}] Starting ${format.toUpperCase()} export for user ${userId}`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const prismaMaster = new PrismaMasterService();
@@ -166,8 +287,18 @@ export class NetSalesSummaryExportProcessor {
     try {
       await job.progress(5);
 
-      const locIds = locationId ? locationId.split(',').map(s => s.trim()).filter(Boolean) : [];
-      const locationWhere = locIds.length > 1 ? { in: locIds } : (locIds.length === 1 ? locIds[0] : undefined);
+      const locIds = locationId
+        ? locationId
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      const locationWhere =
+        locIds.length > 1
+          ? { in: locIds }
+          : locIds.length === 1
+            ? locIds[0]
+            : undefined;
 
       let locationName = '';
       if (locIds.length > 0) {
@@ -175,14 +306,17 @@ export class NetSalesSummaryExportProcessor {
           where: { id: { in: locIds } },
           select: { name: true },
         });
-        locationName = locs.map(l => l.name).join(', ');
+        locationName = locs.map((l) => l.name).join(', ');
       }
       if (!locationName) locationName = 'All Stores';
 
       const now = new Date();
 
       // Helper to parse dates robustly in local timezone if plain date strings are passed
-      const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+      const parseLocalDate = (
+        dateStr: string | undefined,
+        isEndOfDay = false,
+      ): Date => {
         if (!dateStr) {
           if (isEndOfDay) {
             const d = new Date(now);
@@ -192,7 +326,7 @@ export class NetSalesSummaryExportProcessor {
             return new Date(now.getFullYear(), now.getMonth(), 1);
           }
         }
-        
+
         // If it has a time indicator, parse it as-is (e.g. ISO string)
         if (dateStr.includes('T') || dateStr.includes('Z')) {
           const d = new Date(dateStr);
@@ -201,7 +335,7 @@ export class NetSalesSummaryExportProcessor {
           }
           return d;
         }
-        
+
         // Plain date string like YYYY-MM-DD
         const timePart = isEndOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
         return new Date(`${dateStr}${timePart}`);
@@ -217,7 +351,9 @@ export class NetSalesSummaryExportProcessor {
         where: {
           salesOrder: {
             ...(locationWhere && { locationId: locationWhere }),
-            status: { in: ['completed', 'partially_returned', 'refunded', 'exchanged'] },
+            status: {
+              in: ['completed', 'partially_returned', 'refunded', 'exchanged'],
+            },
             createdAt: { gte: startDate, lte: endDate },
             ...(cashierUserId ? { cashierUserId } : {}),
           },
@@ -272,7 +408,9 @@ export class NetSalesSummaryExportProcessor {
         },
       });
 
-      const salesOrderItemIds = approvedClaimItems.map(ci => ci.salesOrderItemId).filter(Boolean);
+      const salesOrderItemIds = approvedClaimItems
+        .map((ci) => ci.salesOrderItemId)
+        .filter(Boolean);
       const originalSalesOrderItems = salesOrderItemIds.length
         ? await prisma.salesOrderItem.findMany({
             where: { id: { in: salesOrderItemIds } },
@@ -305,7 +443,11 @@ export class NetSalesSummaryExportProcessor {
         },
       });
 
-      const referenceOrderIds = [...new Set(returnLedgerEntries.map(e => e.referenceId).filter(Boolean))];
+      const referenceOrderIds = [
+        ...new Set(
+          returnLedgerEntries.map((e) => e.referenceId).filter(Boolean),
+        ),
+      ];
       const [posReturnsForLedger, referenceOrders] = await Promise.all([
         referenceOrderIds.length
           ? (prisma as any).posReturn.findMany({
@@ -390,37 +532,45 @@ export class NetSalesSummaryExportProcessor {
       // Resolve cashier names if grouping by salesperson
       const cashierNameMap = new Map<string, string>();
       if (sSalesperson || levels.includes('salesperson')) {
-          const claimCashierIds = approvedClaimItems.map(ci => ci.claim.salesOrder?.cashierUserId).filter(Boolean);
-          const ledgerCashierIds = referenceOrders.map(o => o.cashierUserId).filter(Boolean);
-          const cashierUserIds = [...new Set([
-              ...orderItems.map(oi => oi.salesOrder?.cashierUserId).filter(Boolean),
-              ...claimCashierIds,
-              ...ledgerCashierIds
-          ])] as string[];
+        const claimCashierIds = approvedClaimItems
+          .map((ci) => ci.claim.salesOrder?.cashierUserId)
+          .filter(Boolean);
+        const ledgerCashierIds = referenceOrders
+          .map((o) => o.cashierUserId)
+          .filter(Boolean);
+        const cashierUserIds = [
+          ...new Set([
+            ...orderItems
+              .map((oi) => oi.salesOrder?.cashierUserId)
+              .filter(Boolean),
+            ...claimCashierIds,
+            ...ledgerCashierIds,
+          ]),
+        ] as string[];
         const cashierUsers = cashierUserIds.length
-            ? await prismaMaster.user.findMany({
-                where: { id: { in: cashierUserIds } },
-                select: { id: true, firstName: true, lastName: true },
-              })
-            : [];
-        const cashierEmployees = cashierUserIds.length
-            ? await prisma.employee.findMany({
-                where: {
-                    OR: [
-                        { id: { in: cashierUserIds } },
-                        { userId: { in: cashierUserIds } }
-                    ]
-                },
-                select: { id: true, userId: true, employeeName: true }
+          ? await prismaMaster.user.findMany({
+              where: { id: { in: cashierUserIds } },
+              select: { id: true, firstName: true, lastName: true },
             })
-            : [];
+          : [];
+        const cashierEmployees = cashierUserIds.length
+          ? await prisma.employee.findMany({
+              where: {
+                OR: [
+                  { id: { in: cashierUserIds } },
+                  { userId: { in: cashierUserIds } },
+                ],
+              },
+              select: { id: true, userId: true, employeeName: true },
+            })
+          : [];
 
         for (const u of cashierUsers) {
-            cashierNameMap.set(u.id, `${u.firstName} ${u.lastName}`);
+          cashierNameMap.set(u.id, `${u.firstName} ${u.lastName}`);
         }
         for (const emp of cashierEmployees) {
-            if (emp.userId) cashierNameMap.set(emp.userId, emp.employeeName);
-            cashierNameMap.set(emp.id, emp.employeeName);
+          if (emp.userId) cashierNameMap.set(emp.userId, emp.employeeName);
+          cashierNameMap.set(emp.id, emp.employeeName);
         }
       }
 
@@ -459,7 +609,7 @@ export class NetSalesSummaryExportProcessor {
         const retailPrice = Number(orderItem.unitPrice || 0);
         const taxRate = Number(orderItem.taxPercent || 0);
 
-        const taxDivisor = 1 + (taxRate / 100);
+        const taxDivisor = 1 + taxRate / 100;
         const wostPerUnit = retailPrice / taxDivisor;
         const totalPriceWost = qty * wostPerUnit;
         const discountAmount = Number(orderItem.discountAmount || 0);
@@ -485,29 +635,42 @@ export class NetSalesSummaryExportProcessor {
         for (let i = 0; i < levels.length; i++) {
           const levelName = levels[i];
           let nodeVal = '';
-          let extraFields: any = {};
+          const extraFields: any = {};
 
           if (levelName === 'salesperson') {
             const cid = orderItem.salesOrder?.cashierUserId || '';
-            nodeVal = cid ? (cashierNameMap.get(cid) || 'Unknown Salesperson') : 'Unknown Salesperson';
+            nodeVal = cid
+              ? cashierNameMap.get(cid) || 'Unknown Salesperson'
+              : 'Unknown Salesperson';
           } else if (levelName === 'year') {
-            nodeVal = orderItem.salesOrder ? String(orderItem.salesOrder.createdAt.getFullYear()) : 'Unknown Year';
+            nodeVal = orderItem.salesOrder
+              ? String(orderItem.salesOrder.createdAt.getFullYear())
+              : 'Unknown Year';
           } else if (levelName === 'month') {
             if (orderItem.salesOrder) {
               const date = orderItem.salesOrder.createdAt;
-              nodeVal = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+              nodeVal = date.toLocaleString('default', {
+                month: 'long',
+                year: 'numeric',
+              });
             } else {
               nodeVal = 'Unknown Month';
             }
           } else if (levelName === 'day') {
             if (orderItem.salesOrder) {
               const date = orderItem.salesOrder.createdAt;
-              nodeVal = date.toLocaleDateString('default', { day: '2-digit', month: 'short', year: 'numeric' });
+              nodeVal = date.toLocaleDateString('default', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              });
             } else {
               nodeVal = 'Unknown Day';
             }
           } else if (levelName === 'document') {
-            nodeVal = orderItem.salesOrder ? `POS Sale - ${orderItem.salesOrder.orderNumber}` : 'Unknown Document';
+            nodeVal = orderItem.salesOrder
+              ? `POS Sale - ${orderItem.salesOrder.orderNumber}`
+              : 'Unknown Document';
           } else if (levelName === 'brand') {
             nodeVal = orderItem.item.brand?.name || 'No Brand';
           } else if (levelName === 'division') {
@@ -524,14 +687,17 @@ export class NetSalesSummaryExportProcessor {
           } else if (levelName === 'article') {
             nodeVal = orderItem.item.sku;
             extraFields.sku = orderItem.item.sku;
-            extraFields.articleName = orderItem.item.description || 'Unknown Article';
+            extraFields.articleName =
+              orderItem.item.description || 'Unknown Article';
           } else if (levelName === 'variant') {
             nodeVal = `${orderItem.item.color?.name || 'Default'}-${orderItem.item.size?.name || 'Default'}`;
             extraFields.color = orderItem.item.color?.name || 'Default';
             extraFields.size = orderItem.item.size?.name || 'Default';
           }
 
-          let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+          let existingNode = currentLevelNodes.find(
+            (n) => n.level === levelName && n.value === nodeVal,
+          );
           if (!existingNode) {
             existingNode = {
               level: levelName,
@@ -553,7 +719,9 @@ export class NetSalesSummaryExportProcessor {
 
       for (const claimItem of approvedClaimItems) {
         if (!claimItem.item) continue;
-        const originalOi = originalSalesOrderItemMap.get(claimItem.salesOrderItemId);
+        const originalOi = originalSalesOrderItemMap.get(
+          claimItem.salesOrderItemId,
+        );
         if (!originalOi) continue;
 
         const approvedQty = Number(claimItem.approvedQty || 0);
@@ -561,13 +729,19 @@ export class NetSalesSummaryExportProcessor {
         const retailPrice = Number(originalOi.unitPrice || 0);
         const taxRate = Number(originalOi.taxPercent || 0);
 
-        const taxDivisor = 1 + (taxRate / 100);
+        const taxDivisor = 1 + taxRate / 100;
         const wostPerUnit = retailPrice / taxDivisor;
         const totalPriceWost = qty * wostPerUnit;
 
         const originalQty = Number(originalOi.quantity || 1);
-        const discountAmount = -((Number(originalOi.discountAmount || 0) / originalQty) * approvedQty);
-        const salesTaxAmount = -((Number(originalOi.taxAmount || 0) / originalQty) * approvedQty);
+        const discountAmount = -(
+          (Number(originalOi.discountAmount || 0) / originalQty) *
+          approvedQty
+        );
+        const salesTaxAmount = -(
+          (Number(originalOi.taxAmount || 0) / originalQty) *
+          approvedQty
+        );
         const additionalSalesTaxAmount = 0;
         const totalTax = salesTaxAmount + additionalSalesTaxAmount;
         const valueExclTax = totalPriceWost - discountAmount;
@@ -589,29 +763,46 @@ export class NetSalesSummaryExportProcessor {
         for (let i = 0; i < levels.length; i++) {
           const levelName = levels[i];
           let nodeVal = '';
-          let extraFields: any = {};
+          const extraFields: any = {};
 
           if (levelName === 'salesperson') {
             const cid = claimItem.claim.salesOrder?.cashierUserId || '';
-            nodeVal = cid ? (cashierNameMap.get(cid) || 'Unknown Salesperson') : 'Unknown Salesperson';
+            nodeVal = cid
+              ? cashierNameMap.get(cid) || 'Unknown Salesperson'
+              : 'Unknown Salesperson';
           } else if (levelName === 'year') {
-            nodeVal = claimItem.claim.reviewedAt ? String(claimItem.claim.reviewedAt.getFullYear()) : (claimItem.claim.createdAt ? String(claimItem.claim.createdAt.getFullYear()) : 'Unknown Year');
+            nodeVal = claimItem.claim.reviewedAt
+              ? String(claimItem.claim.reviewedAt.getFullYear())
+              : claimItem.claim.createdAt
+                ? String(claimItem.claim.createdAt.getFullYear())
+                : 'Unknown Year';
           } else if (levelName === 'month') {
-            const date = claimItem.claim.reviewedAt || claimItem.claim.createdAt;
+            const date =
+              claimItem.claim.reviewedAt || claimItem.claim.createdAt;
             if (date) {
-              nodeVal = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+              nodeVal = date.toLocaleString('default', {
+                month: 'long',
+                year: 'numeric',
+              });
             } else {
               nodeVal = 'Unknown Month';
             }
           } else if (levelName === 'day') {
-            const date = claimItem.claim.reviewedAt || claimItem.claim.createdAt;
+            const date =
+              claimItem.claim.reviewedAt || claimItem.claim.createdAt;
             if (date) {
-              nodeVal = date.toLocaleDateString('default', { day: '2-digit', month: 'short', year: 'numeric' });
+              nodeVal = date.toLocaleDateString('default', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              });
             } else {
               nodeVal = 'Unknown Day';
             }
           } else if (levelName === 'document') {
-            nodeVal = claimItem.claim ? `POS Claim - ${claimItem.claim.claimNumber}` : 'Unknown Document';
+            nodeVal = claimItem.claim
+              ? `POS Claim - ${claimItem.claim.claimNumber}`
+              : 'Unknown Document';
           } else if (levelName === 'brand') {
             nodeVal = claimItem.item.brand?.name || 'No Brand';
           } else if (levelName === 'division') {
@@ -628,14 +819,17 @@ export class NetSalesSummaryExportProcessor {
           } else if (levelName === 'article') {
             nodeVal = claimItem.item.sku;
             extraFields.sku = claimItem.item.sku;
-            extraFields.articleName = claimItem.item.description || 'Unknown Article';
+            extraFields.articleName =
+              claimItem.item.description || 'Unknown Article';
           } else if (levelName === 'variant') {
             nodeVal = `${claimItem.item.color?.name || 'Default'}-${claimItem.item.size?.name || 'Default'}`;
             extraFields.color = claimItem.item.color?.name || 'Default';
             extraFields.size = claimItem.item.size?.name || 'Default';
           }
 
-          let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+          let existingNode = currentLevelNodes.find(
+            (n) => n.level === levelName && n.value === nodeVal,
+          );
           if (!existingNode) {
             existingNode = {
               level: levelName,
@@ -660,7 +854,9 @@ export class NetSalesSummaryExportProcessor {
         const originalOrder = referenceOrderMap.get(ledgerEntry.referenceId);
         if (!originalOrder) continue;
 
-        const originalOi = originalOrder.items.find(oi => oi.itemId === ledgerEntry.itemId);
+        const originalOi = originalOrder.items.find(
+          (oi) => oi.itemId === ledgerEntry.itemId,
+        );
         if (!originalOi) continue;
 
         const returnedQty = Math.abs(Number(ledgerEntry.qty));
@@ -670,13 +866,19 @@ export class NetSalesSummaryExportProcessor {
         const retailPrice = Number(originalOi.unitPrice || 0);
         const taxRate = Number(originalOi.taxPercent || 0);
 
-        const taxDivisor = 1 + (taxRate / 100);
+        const taxDivisor = 1 + taxRate / 100;
         const wostPerUnit = retailPrice / taxDivisor;
         const totalPriceWost = qty * wostPerUnit;
 
         const originalQty = Number(originalOi.quantity || 1);
-        const discountAmount = -((Number(originalOi.discountAmount || 0) / originalQty) * returnedQty);
-        const salesTaxAmount = -((Number(originalOi.taxAmount || 0) / originalQty) * returnedQty);
+        const discountAmount = -(
+          (Number(originalOi.discountAmount || 0) / originalQty) *
+          returnedQty
+        );
+        const salesTaxAmount = -(
+          (Number(originalOi.taxAmount || 0) / originalQty) *
+          returnedQty
+        );
         const additionalSalesTaxAmount = 0;
         const totalTax = salesTaxAmount + additionalSalesTaxAmount;
         const valueExclTax = totalPriceWost - discountAmount;
@@ -698,29 +900,43 @@ export class NetSalesSummaryExportProcessor {
         for (let i = 0; i < levels.length; i++) {
           const levelName = levels[i];
           let nodeVal = '';
-          let extraFields: any = {};
+          const extraFields: any = {};
 
           if (levelName === 'salesperson') {
             const cid = originalOrder.cashierUserId || '';
-            nodeVal = cid ? (cashierNameMap.get(cid) || 'Unknown Salesperson') : 'Unknown Salesperson';
+            nodeVal = cid
+              ? cashierNameMap.get(cid) || 'Unknown Salesperson'
+              : 'Unknown Salesperson';
           } else if (levelName === 'year') {
-            nodeVal = ledgerEntry.createdAt ? String(ledgerEntry.createdAt.getFullYear()) : 'Unknown Year';
+            nodeVal = ledgerEntry.createdAt
+              ? String(ledgerEntry.createdAt.getFullYear())
+              : 'Unknown Year';
           } else if (levelName === 'month') {
             if (ledgerEntry.createdAt) {
-              nodeVal = ledgerEntry.createdAt.toLocaleString('default', { month: 'long', year: 'numeric' });
+              nodeVal = ledgerEntry.createdAt.toLocaleString('default', {
+                month: 'long',
+                year: 'numeric',
+              });
             } else {
               nodeVal = 'Unknown Month';
             }
           } else if (levelName === 'day') {
             if (ledgerEntry.createdAt) {
-              nodeVal = ledgerEntry.createdAt.toLocaleDateString('default', { day: '2-digit', month: 'short', year: 'numeric' });
+              nodeVal = ledgerEntry.createdAt.toLocaleDateString('default', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              });
             } else {
               nodeVal = 'Unknown Day';
             }
           } else if (levelName === 'document') {
-            const docNum = ledgerEntry.referenceType === 'POS_REFUND' 
-              ? (originalOrder.refundNumber || `Refund for ${originalOrder.orderNumber}`)
-              : (originalOrder.returnNumber || `Return for ${originalOrder.orderNumber}`);
+            const docNum =
+              ledgerEntry.referenceType === 'POS_REFUND'
+                ? originalOrder.refundNumber ||
+                  `Refund for ${originalOrder.orderNumber}`
+                : originalOrder.returnNumber ||
+                  `Return for ${originalOrder.orderNumber}`;
             nodeVal = `POS Return - ${docNum}`;
           } else if (levelName === 'brand') {
             nodeVal = ledgerEntry.item.brand?.name || 'No Brand';
@@ -738,14 +954,17 @@ export class NetSalesSummaryExportProcessor {
           } else if (levelName === 'article') {
             nodeVal = ledgerEntry.item.sku;
             extraFields.sku = ledgerEntry.item.sku;
-            extraFields.articleName = ledgerEntry.item.description || 'Unknown Article';
+            extraFields.articleName =
+              ledgerEntry.item.description || 'Unknown Article';
           } else if (levelName === 'variant') {
             nodeVal = `${ledgerEntry.item.color?.name || 'Default'}-${ledgerEntry.item.size?.name || 'Default'}`;
             extraFields.color = ledgerEntry.item.color?.name || 'Default';
             extraFields.size = ledgerEntry.item.size?.name || 'Default';
           }
 
-          let existingNode = currentLevelNodes.find(n => n.level === levelName && n.value === nodeVal);
+          let existingNode = currentLevelNodes.find(
+            (n) => n.level === levelName && n.value === nodeVal,
+          );
           if (!existingNode) {
             existingNode = {
               level: levelName,
@@ -777,18 +996,26 @@ export class NetSalesSummaryExportProcessor {
       if (format === 'pdf') {
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(root, locationName, fromDateStr, toDateStr, grandTotals, !!summaryOnly);
+        const html = this.buildPdfHtml(
+          root,
+          locationName,
+          fromDateStr,
+          toDateStr,
+          grandTotals,
+          !!summaryOnly,
+        );
 
-        const launchArgs = process.platform === 'linux'
-          ? [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-              '--disable-gpu',
-              '--no-first-run',
-              '--no-zygote',
-            ]
-          : [];
+        const launchArgs =
+          process.platform === 'linux'
+            ? [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+              ]
+            : [];
 
         const browser = await puppeteer.launch({
           headless: true,
@@ -814,11 +1041,18 @@ export class NetSalesSummaryExportProcessor {
             pdfBuffer = await page.pdf({
               format: 'A4',
               landscape: true,
-              margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+              margin: {
+                top: '15mm',
+                bottom: '15mm',
+                left: '10mm',
+                right: '10mm',
+              },
               printBackground: true,
               displayHeaderFooter: true,
-              headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Pvt.) Limited | Net Sales Summary Report</div>',
-              footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+              headerTemplate:
+                '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Speed (Pvt.) Limited | Net Sales Summary Report</div>',
+              footerTemplate:
+                '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
             });
           } finally {
             clearInterval(progressInterval);
@@ -837,11 +1071,16 @@ export class NetSalesSummaryExportProcessor {
         });
 
         const ws = workbook.addWorksheet('Net Sales Summary', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+          pageSetup: {
+            paperSize: 9,
+            orientation: 'landscape',
+            fitToPage: true,
+            fitToWidth: 1,
+          },
           views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
         });
 
-        ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
+        ws.columns = COLUMNS.map((c) => ({ key: c.key, width: c.width }));
 
         // 1. Group Headers bands
         const groups: Record<string, { start: number; end: number }> = {};
@@ -856,7 +1095,11 @@ export class NetSalesSummaryExportProcessor {
           const cell = groupRow.getCell(idx + 1);
           const { start } = groups[col.group];
           if (idx + 1 === start) cell.value = col.group.toUpperCase();
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: `FF${GROUP_COLORS[col.group] ?? '1E293B'}` },
+          };
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
           cell.alignment = { horizontal: 'center', vertical: 'middle' };
           cell.border = {
@@ -874,9 +1117,16 @@ export class NetSalesSummaryExportProcessor {
         COLUMNS.forEach((col, idx) => {
           const cell = headerRow.getCell(idx + 1);
           cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF334155' },
+          };
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-          cell.alignment = { horizontal: col.align ?? 'left', vertical: 'middle' };
+          cell.alignment = {
+            horizontal: col.align ?? 'left',
+            vertical: 'middle',
+          };
           cell.border = {
             top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
             left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -894,51 +1144,163 @@ export class NetSalesSummaryExportProcessor {
           right: { style: 'thin' as const, color: { argb: 'FFE2E8F0' } },
         };
 
-        const rightAlign = { horizontal: 'right' as const, vertical: 'middle' as const };
-        const leftAlign = { horizontal: 'left' as const, vertical: 'middle' as const };
-        const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const };
+        const rightAlign = {
+          horizontal: 'right' as const,
+          vertical: 'middle' as const,
+        };
+        const leftAlign = {
+          horizontal: 'left' as const,
+          vertical: 'middle' as const,
+        };
+        const centerAlign = {
+          horizontal: 'center' as const,
+          vertical: 'middle' as const,
+        };
 
-        const LEVEL_EXCEL_STYLES: Record<string, {
-          bgHex: string;
-          fgHex: string;
-          fontSize: number;
-          bold: boolean;
-          indent: number;
-          prefix: string;
-        }> = {
-          salesperson: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: '' },
-          year: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: '' },
-          month: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: '' },
-          day: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: '' },
-          document: { bgHex: '94A3B8', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: '' },
-          brand: { bgHex: '1E293B', fgHex: 'FFFFFF', fontSize: 10, bold: true, indent: 0, prefix: 'BRAND: ' },
-          division: { bgHex: '334155', fgHex: 'FFFFFF', fontSize: 9.5, bold: true, indent: 2, prefix: 'DIVISION: ' },
-          salesTax: { bgHex: '475569', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 4, prefix: 'TAX RATE: ' },
-          category: { bgHex: '64748B', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 6, prefix: 'CATEGORY: ' },
-          gender: { bgHex: '94A3B8', fgHex: 'FFFFFF', fontSize: 9, bold: true, indent: 8, prefix: 'GENDER: ' },
-          silhouette: { bgHex: 'CBD5E1', fgHex: '1E293B', fontSize: 9, bold: true, indent: 10, prefix: 'SILHOUETTE: ' },
-          article: { bgHex: 'F1F5F9', fgHex: '1E293B', fontSize: 9, bold: true, indent: 12, prefix: 'SKU: ' },
-          variant: { bgHex: 'FFFFFF', fgHex: '475569', fontSize: 9, bold: false, indent: 14, prefix: '' },
+        const LEVEL_EXCEL_STYLES: Record<
+          string,
+          {
+            bgHex: string;
+            fgHex: string;
+            fontSize: number;
+            bold: boolean;
+            indent: number;
+            prefix: string;
+          }
+        > = {
+          salesperson: {
+            bgHex: '1E293B',
+            fgHex: 'FFFFFF',
+            fontSize: 10,
+            bold: true,
+            indent: 0,
+            prefix: '',
+          },
+          year: {
+            bgHex: '334155',
+            fgHex: 'FFFFFF',
+            fontSize: 9.5,
+            bold: true,
+            indent: 2,
+            prefix: '',
+          },
+          month: {
+            bgHex: '475569',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 4,
+            prefix: '',
+          },
+          day: {
+            bgHex: '64748B',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 6,
+            prefix: '',
+          },
+          document: {
+            bgHex: '94A3B8',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 8,
+            prefix: '',
+          },
+          brand: {
+            bgHex: '1E293B',
+            fgHex: 'FFFFFF',
+            fontSize: 10,
+            bold: true,
+            indent: 0,
+            prefix: 'BRAND: ',
+          },
+          division: {
+            bgHex: '334155',
+            fgHex: 'FFFFFF',
+            fontSize: 9.5,
+            bold: true,
+            indent: 2,
+            prefix: 'DIVISION: ',
+          },
+          salesTax: {
+            bgHex: '475569',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 4,
+            prefix: 'TAX RATE: ',
+          },
+          category: {
+            bgHex: '64748B',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 6,
+            prefix: 'CATEGORY: ',
+          },
+          gender: {
+            bgHex: '94A3B8',
+            fgHex: 'FFFFFF',
+            fontSize: 9,
+            bold: true,
+            indent: 8,
+            prefix: 'GENDER: ',
+          },
+          silhouette: {
+            bgHex: 'CBD5E1',
+            fgHex: '1E293B',
+            fontSize: 9,
+            bold: true,
+            indent: 10,
+            prefix: 'SILHOUETTE: ',
+          },
+          article: {
+            bgHex: 'F1F5F9',
+            fgHex: '1E293B',
+            fontSize: 9,
+            bold: true,
+            indent: 12,
+            prefix: 'SKU: ',
+          },
+          variant: {
+            bgHex: 'FFFFFF',
+            fgHex: '475569',
+            fontSize: 9,
+            bold: false,
+            indent: 14,
+            prefix: '',
+          },
         };
 
         const writeNodeToExcel = (node: any) => {
-          const style = LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
-          
+          const style =
+            LEVEL_EXCEL_STYLES[node.level] || LEVEL_EXCEL_STYLES.brand;
+
           let label = ' '.repeat(style.indent) + style.prefix;
           let sizeVal = '';
-          
+
           if (node.level === 'article') {
-            label = ' '.repeat(style.indent) + `SKU: ${node.sku} (${node.articleName})`;
+            label =
+              ' '.repeat(style.indent) +
+              `SKU: ${node.sku} (${node.articleName})`;
             sizeVal = 'ALL SIZES';
           } else if (node.level === 'variant') {
             label = ' '.repeat(style.indent) + 'Variant Item';
             sizeVal = node.size;
           } else {
-            label = ' '.repeat(style.indent) + style.prefix + node.value.toUpperCase();
+            label =
+              ' '.repeat(style.indent) +
+              style.prefix +
+              node.value.toUpperCase();
           }
 
-          const avgRetail = node.totals.qty > 0 ? (node.totals.totalRetailValue / node.totals.qty) : 0;
-          
+          const avgRetail =
+            node.totals.qty > 0
+              ? node.totals.totalRetailValue / node.totals.qty
+              : 0;
+
           const rowData = {
             sku: label,
             size: sizeVal,
@@ -954,16 +1316,27 @@ export class NetSalesSummaryExportProcessor {
           };
 
           const row = ws.addRow(rowData);
-          
+
           for (let colNum = 1; colNum <= COLUMNS.length; colNum++) {
             const cell = row.getCell(colNum);
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${style.bgHex}` } };
-            cell.font = { bold: style.bold, size: style.fontSize, color: { argb: `FF${style.fgHex}` } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: `FF${style.bgHex}` },
+            };
+            cell.font = {
+              bold: style.bold,
+              size: style.fontSize,
+              color: { argb: `FF${style.fgHex}` },
+            };
             cell.border = borderThin;
-            cell.alignment = colNum === 2 
-              ? centerAlign 
-              : (colNum === 1 ? leftAlign : rightAlign);
-            
+            cell.alignment =
+              colNum === 2
+                ? centerAlign
+                : colNum === 1
+                  ? leftAlign
+                  : rightAlign;
+
             // Format numbers
             const c = COLUMNS[colNum - 1];
             if (c.numFmt) {
@@ -972,7 +1345,7 @@ export class NetSalesSummaryExportProcessor {
           }
           row.height = node.level === 'variant' ? 18 : 20;
           row.commit();
-          
+
           if (node.children && node.children.length > 0) {
             for (const child of node.children) {
               writeNodeToExcel(child);
@@ -1007,8 +1380,9 @@ export class NetSalesSummaryExportProcessor {
             left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
             right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
           };
-          cell.alignment = colNum === 2 ? centerAlign : (colNum === 1 ? leftAlign : rightAlign);
-          
+          cell.alignment =
+            colNum === 2 ? centerAlign : colNum === 1 ? leftAlign : rightAlign;
+
           const c = COLUMNS[colNum - 1];
           if (c.numFmt) {
             cell.numFmt = c.numFmt;
@@ -1022,10 +1396,14 @@ export class NetSalesSummaryExportProcessor {
 
       await job.progress(95);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const fileName = format === 'pdf'
-        ? `net-sales-summary-report-${new Date().toISOString().slice(0, 10)}.pdf`
-        : `net-sales-summary-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const fileName =
+        format === 'pdf'
+          ? `net-sales-summary-report-${new Date().toISOString().slice(0, 10)}.pdf`
+          : `net-sales-summary-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma,
@@ -1047,9 +1425,14 @@ export class NetSalesSummaryExportProcessor {
       });
 
       await job.progress(100);
-      this.logger.log(`[NetSalesSummaryExport ${jobId}] Finished processing successfully`);
+      this.logger.log(
+        `[NetSalesSummaryExport ${jobId}] Finished processing successfully`,
+      );
     } catch (err) {
-      this.logger.error(`[NetSalesSummaryExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[NetSalesSummaryExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     } finally {
@@ -1066,35 +1449,91 @@ export class NetSalesSummaryExportProcessor {
     summaryOnly: boolean,
   ): string {
     let rowsHtml = '';
-    const formatVal = (val: number) => val === 0 ? '-' : val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const formatQty = (val: number) => val === 0 ? '-' : val.toString();
+    const formatVal = (val: number) =>
+      val === 0
+        ? '-'
+        : val.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+    const formatQty = (val: number) => (val === 0 ? '-' : val.toString());
 
-    const LEVEL_PDF_STYLES: Record<string, {
-      className: string;
-      indentStyles: string;
-      prefix: string;
-    }> = {
+    const LEVEL_PDF_STYLES: Record<
+      string,
+      {
+        className: string;
+        indentStyles: string;
+        prefix: string;
+      }
+    > = {
       salesperson: { className: 'brand-row', indentStyles: '', prefix: '' },
-      year: { className: 'division-row', indentStyles: 'padding-left: 10px;', prefix: '' },
-      month: { className: 'category-row', indentStyles: 'padding-left: 20px;', prefix: '' },
-      day: { className: 'gender-row', indentStyles: 'padding-left: 30px;', prefix: '' },
-      document: { className: 'silhouette-row', indentStyles: 'padding-left: 40px;', prefix: '' },
+      year: {
+        className: 'division-row',
+        indentStyles: 'padding-left: 10px;',
+        prefix: '',
+      },
+      month: {
+        className: 'category-row',
+        indentStyles: 'padding-left: 20px;',
+        prefix: '',
+      },
+      day: {
+        className: 'gender-row',
+        indentStyles: 'padding-left: 30px;',
+        prefix: '',
+      },
+      document: {
+        className: 'silhouette-row',
+        indentStyles: 'padding-left: 40px;',
+        prefix: '',
+      },
       brand: { className: 'brand-row', indentStyles: '', prefix: 'BRAND: ' },
-      division: { className: 'division-row', indentStyles: 'padding-left: 10px;', prefix: 'DIVISION: ' },
-      salesTax: { className: 'category-row', indentStyles: 'padding-left: 20px;', prefix: 'TAX RATE: ' },
-      category: { className: 'category-row', indentStyles: 'padding-left: 30px;', prefix: 'CATEGORY: ' },
-      gender: { className: 'gender-row', indentStyles: 'padding-left: 40px;', prefix: 'GENDER: ' },
-      silhouette: { className: 'silhouette-row', indentStyles: 'padding-left: 50px;', prefix: 'SILHOUETTE: ' },
-      article: { className: 'article-row', indentStyles: 'padding-left: 60px;', prefix: 'SKU: ' },
-      variant: { className: 'variant-row', indentStyles: 'padding-left: 70px;', prefix: '' },
+      division: {
+        className: 'division-row',
+        indentStyles: 'padding-left: 10px;',
+        prefix: 'DIVISION: ',
+      },
+      salesTax: {
+        className: 'category-row',
+        indentStyles: 'padding-left: 20px;',
+        prefix: 'TAX RATE: ',
+      },
+      category: {
+        className: 'category-row',
+        indentStyles: 'padding-left: 30px;',
+        prefix: 'CATEGORY: ',
+      },
+      gender: {
+        className: 'gender-row',
+        indentStyles: 'padding-left: 40px;',
+        prefix: 'GENDER: ',
+      },
+      silhouette: {
+        className: 'silhouette-row',
+        indentStyles: 'padding-left: 50px;',
+        prefix: 'SILHOUETTE: ',
+      },
+      article: {
+        className: 'article-row',
+        indentStyles: 'padding-left: 60px;',
+        prefix: 'SKU: ',
+      },
+      variant: {
+        className: 'variant-row',
+        indentStyles: 'padding-left: 70px;',
+        prefix: '',
+      },
     };
 
     const buildHtmlRows = (node: any): string => {
       const style = LEVEL_PDF_STYLES[node.level] || LEVEL_PDF_STYLES.brand;
       let html = '';
 
-      const avgRetail = node.totals.qty > 0 ? (node.totals.totalRetailValue / node.totals.qty) : 0;
-      
+      const avgRetail =
+        node.totals.qty > 0
+          ? node.totals.totalRetailValue / node.totals.qty
+          : 0;
+
       if (node.level === 'article') {
         html += `
           <tr class="${style.className}">
@@ -1144,13 +1583,13 @@ export class NetSalesSummaryExportProcessor {
           </tr>
         `;
       }
-      
+
       if (node.children && node.children.length > 0) {
         for (const child of node.children) {
           html += buildHtmlRows(child);
         }
       }
-      
+
       return html;
     };
 

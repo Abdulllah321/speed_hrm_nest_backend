@@ -41,4 +41,4 @@ import { UploadModule } from '../upload/upload.module';
   ],
   exports: [EmployeeService, EmployeeBulkUploadService],
 })
-export class EmployeeModule { }
+export class EmployeeModule {}

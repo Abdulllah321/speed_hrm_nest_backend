@@ -51,7 +51,12 @@ export interface SalesListPreviewJobData {
 }
 
 const FLAT_COLUMNS = [
-  { header: 'Outlet / Location', key: 'locationName', width: 22, align: 'left' },
+  {
+    header: 'Outlet / Location',
+    key: 'locationName',
+    width: 22,
+    align: 'left',
+  },
   { header: 'Invoice #', key: 'orderNumber', width: 16, align: 'left' },
   { header: 'Order Date', key: 'orderDate', width: 18, align: 'center' },
   { header: 'Cashier', key: 'cashierName', width: 16, align: 'left' },
@@ -69,31 +74,177 @@ const FLAT_COLUMNS = [
   { header: 'Description', key: 'description', width: 26, align: 'left' },
   { header: 'Size', key: 'sizeName', width: 10, align: 'center' },
   { header: 'Color', key: 'colorName', width: 12, align: 'center' },
-  { header: 'Quantity', key: 'quantity', width: 10, align: 'right', numFmt: '#,##0' },
-  { header: 'Unit Price', key: 'unitPrice', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Unit Price WOST', key: 'priceWost', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Excl.', key: 'valueExcl', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount %', key: 'discountPercent', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount', key: 'discountAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount WOST', key: 'discountAmountWost', width: 13, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sales Tax', key: 'taxAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Incl. (SubTotal)', key: 'subTotal', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash Sale', key: 'cashSale', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash Return', key: 'cashReturn', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Card Sale', key: 'cardSale', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Credit Sale', key: 'creditSale', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Gift Voucher', key: 'giftVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Credit Voucher', key: 'creditVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Exchange Voucher', key: 'exchangeVoucherAmount', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Claim Voucher', key: 'claimVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Corporate Voucher', key: 'giftVoucherCorporate', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Credit Issued', key: 'creditVoucherIssuedAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Reward Voucher', key: 'rewardVoucherAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Override Note', key: 'overrideDiscountNote', width: 20, align: 'left' },
-  { header: 'Manual Disc Note', key: 'manualDiscountNote', width: 20, align: 'left' },
-  { header: 'Manual Disc Type', key: 'manualDiscountType', width: 16, align: 'left' },
-  { header: 'Alliance Partner', key: 'alliancePartner', width: 18, align: 'left' },
+  {
+    header: 'Quantity',
+    key: 'quantity',
+    width: 10,
+    align: 'right',
+    numFmt: '#,##0',
+  },
+  {
+    header: 'Unit Price',
+    key: 'unitPrice',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Unit Price WOST',
+    key: 'priceWost',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Excl.',
+    key: 'valueExcl',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount %',
+    key: 'discountPercent',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount',
+    key: 'discountAmount',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount WOST',
+    key: 'discountAmountWost',
+    width: 13,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Amount After Discount',
+    key: 'amountAfterDiscount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Sales Tax',
+    key: 'taxAmount',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Incl. (SubTotal)',
+    key: 'subTotal',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Cash Sale',
+    key: 'cashSale',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Cash Return',
+    key: 'cashReturn',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Card Sale',
+    key: 'cardSale',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Credit Sale',
+    key: 'creditSale',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Gift Voucher',
+    key: 'giftVoucherAmount',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Credit Voucher',
+    key: 'creditVoucherAmount',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Exchange Voucher',
+    key: 'exchangeVoucherAmount',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Claim Voucher',
+    key: 'claimVoucherAmount',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Corporate Voucher',
+    key: 'giftVoucherCorporate',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Credit Issued',
+    key: 'creditVoucherIssuedAmount',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Reward Voucher',
+    key: 'rewardVoucherAmount',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Override Note',
+    key: 'overrideDiscountNote',
+    width: 20,
+    align: 'left',
+  },
+  {
+    header: 'Manual Disc Note',
+    key: 'manualDiscountNote',
+    width: 20,
+    align: 'left',
+  },
+  {
+    header: 'Manual Disc Type',
+    key: 'manualDiscountType',
+    width: 16,
+    align: 'left',
+  },
+  {
+    header: 'Alliance Partner',
+    key: 'alliancePartner',
+    width: 18,
+    align: 'left',
+  },
   { header: 'Coupon / Promo', key: 'promoCoupon', width: 16, align: 'left' },
   { header: 'Voucher Numbers', key: 'voucherCodes', width: 24, align: 'left' },
   { header: 'Card Details', key: 'cardDetails', width: 22, align: 'left' },
@@ -112,31 +263,171 @@ const COLUMNS = [
   { header: 'Merchant', key: 'merchant', width: 16, align: 'left' },
   { header: 'FBR Inv #', key: 'fbr', width: 16, align: 'left' },
   { header: 'Order Notes', key: 'orderNotes', width: 20, align: 'left' },
-  { header: 'Discount Audit / Notes', key: 'discountNotes', width: 30, align: 'left' },
-  { header: 'Alliance Partner', key: 'alliancePartner', width: 18, align: 'left' },
+  {
+    header: 'Discount Audit / Notes',
+    key: 'discountNotes',
+    width: 30,
+    align: 'left',
+  },
+  {
+    header: 'Alliance Partner',
+    key: 'alliancePartner',
+    width: 18,
+    align: 'left',
+  },
   { header: 'Promo / Coupon', key: 'promoCoupon', width: 16, align: 'left' },
-  { header: 'Vouchers Redeemed', key: 'vouchersList', width: 28, align: 'left' },
-  { header: 'Card Details', key: 'tenderCardDetails', width: 24, align: 'left' },
-  { header: 'Quantity', key: 'quantity', width: 10, align: 'right', numFmt: '#,##0' },
-  { header: 'Unit Price (Avg)', key: 'unitPriceAvg', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Unit Price WOST (Avg)', key: 'unitPriceWost', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Excl.', key: 'valueExcl', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount', key: 'discountTotal', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Discount WOST', key: 'discountWost', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Sales Tax', key: 'salesTax', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Value Incl. (Net Revenue)', key: 'netTotal', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash Sale', key: 'tenderCash', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash Return', key: 'returnAmount', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Card Sale', key: 'tenderCard', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Credit Sale', key: 'tenderCreditSale', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Gift Voucher', key: 'tenderGiftVoucher', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Credit Voucher', key: 'tenderCreditVoucher', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Exchange Voucher', key: 'tenderExchangeVoucher', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Claim Voucher', key: 'tenderClaimVoucher', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Corporate Voucher', key: 'tenderCorporateVoucher', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Credit Issued', key: 'creditVoucherIssued', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Reward Voucher', key: 'tenderRewardVoucher', width: 15, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Vouchers Redeemed',
+    key: 'vouchersList',
+    width: 28,
+    align: 'left',
+  },
+  {
+    header: 'Card Details',
+    key: 'tenderCardDetails',
+    width: 24,
+    align: 'left',
+  },
+  {
+    header: 'Quantity',
+    key: 'quantity',
+    width: 10,
+    align: 'right',
+    numFmt: '#,##0',
+  },
+  {
+    header: 'Unit Price (Avg)',
+    key: 'unitPriceAvg',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Unit Price WOST (Avg)',
+    key: 'unitPriceWost',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Excl.',
+    key: 'valueExcl',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount',
+    key: 'discountTotal',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Discount WOST',
+    key: 'discountWost',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Amount After Discount',
+    key: 'amountAfterDiscount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Sales Tax',
+    key: 'salesTax',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Incl. (Net Revenue)',
+    key: 'netTotal',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Cash Sale',
+    key: 'tenderCash',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Cash Return',
+    key: 'returnAmount',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Card Sale',
+    key: 'tenderCard',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Credit Sale',
+    key: 'tenderCreditSale',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Gift Voucher',
+    key: 'tenderGiftVoucher',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Credit Voucher',
+    key: 'tenderCreditVoucher',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Exchange Voucher',
+    key: 'tenderExchangeVoucher',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Claim Voucher',
+    key: 'tenderClaimVoucher',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Corporate Voucher',
+    key: 'tenderCorporateVoucher',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Credit Issued',
+    key: 'creditVoucherIssued',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Reward Voucher',
+    key: 'tenderRewardVoucher',
+    width: 15,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
 ];
 
 @Processor('sales-list-export')
@@ -153,16 +444,20 @@ export class SalesListExportProcessor {
         const { exec } = require('child_process');
         exec(
           'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
-          () => { }
+          () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
 
   @Process('generate-sales-list-preview')
-  async handleGeneratePreview(job: Job<SalesListPreviewJobData>): Promise<void> {
+  async handleGeneratePreview(
+    job: Job<SalesListPreviewJobData>,
+  ): Promise<void> {
     const {
       jobId,
       tenantId,
@@ -181,51 +476,71 @@ export class SalesListExportProcessor {
       year,
     } = job.data;
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      this.logger.log(`[SalesListPreview ${jobId}] Starting background sales-list preview computation`);
-      await job.progress({ percent: 10, message: 'Queueing sales list preview computation task...' });
+      this.logger.log(
+        `[SalesListPreview ${jobId}] Starting background sales-list preview computation`,
+      );
+      await job.progress({
+        percent: 10,
+        message: 'Queueing sales list preview computation task...',
+      });
 
       const onProgress = async (percent: number, message: string) => {
         if (this.salesListExportService.isJobCancelled(jobId)) {
           throw new Error('JOB_CANCELLED');
         }
-        await job.progress({ percent: Math.min(95, Math.max(10, percent)), message });
+        await job.progress({
+          percent: Math.min(95, Math.max(10, percent)),
+          message,
+        });
       };
 
-      const result = await this.salesListExportService.generateSalesListReportDataInternal(
-        prisma as any,
-        {
-          locationId,
-          startDate,
-          endDate,
-          cashierUserId,
-          reportType,
-          search,
-          paymentModeGroup,
-          minAmount,
-          maxAmount,
-          fbrOnly,
-          fiscalYear,
-          year,
-          previewJobId: jobId,
-          isAborted: () => this.salesListExportService.isJobCancelled(jobId),
-          onProgress,
-        },
-      );
+      const result =
+        await this.salesListExportService.generateSalesListReportDataInternal(
+          prisma as any,
+          {
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            reportType,
+            search,
+            paymentModeGroup,
+            minAmount,
+            maxAmount,
+            fbrOnly,
+            fiscalYear,
+            year,
+            previewJobId: jobId,
+            isAborted: () => this.salesListExportService.isJobCancelled(jobId),
+            onProgress,
+          },
+        );
 
       await this.salesListExportService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Sales list preview calculation completed.' });
-      this.logger.log(`[SalesListPreview] Successfully completed and stored preview job ${jobId}`);
+      await job.progress({
+        percent: 100,
+        message: 'Sales list preview calculation completed.',
+      });
+      this.logger.log(
+        `[SalesListPreview] Successfully completed and stored preview job ${jobId}`,
+      );
     } catch (err: any) {
       if (err.message === 'JOB_CANCELLED') {
-        this.logger.log(`[SalesListPreview ${jobId}] Job was superseded or cancelled.`);
+        this.logger.log(
+          `[SalesListPreview ${jobId}] Job was superseded or cancelled.`,
+        );
         return;
       }
-      this.logger.error(`[SalesListPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      this.logger.error(
+        `[SalesListPreview ${jobId}] Exception in background computation: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
@@ -250,9 +565,10 @@ export class SalesListExportProcessor {
       exportType = 'hierarchical',
     } = job.data;
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
     const prismaMaster = new PrismaMasterService();
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
@@ -260,33 +576,59 @@ export class SalesListExportProcessor {
     const filePath = path.join(exportDir, `export-${jobId}.${ext}`);
 
     try {
-      await job.progress({ percent: 5, message: 'Initializing export worker & loading metadata...' });
+      await job.progress({
+        percent: 5,
+        message: 'Initializing export worker & loading metadata...',
+      });
 
       const [allLocations, cashiersList] = await Promise.all([
         prisma.location.findMany({ select: { id: true, name: true } }),
-        prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
+        prismaMaster.user.findMany({
+          select: { id: true, firstName: true, lastName: true },
+        }),
       ]);
 
       const locationMap = new Map<string, string>();
       for (const l of allLocations) locationMap.set(l.id, l.name);
 
       const cashierMap = new Map<string, string>();
-      for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+      for (const u of cashiersList)
+        cashierMap.set(
+          u.id,
+          `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier',
+        );
 
-      const locationName = (job.data.locationIds && job.data.locationIds.length > 0)
-        ? job.data.locationIds.map((id) => locationMap.get(id) || id).join(', ')
-        : locationId
-        ? locationMap.get(locationId) || 'Store'
-        : 'All Outlets (Stores)';
+      const locationName =
+        job.data.locationIds && job.data.locationIds.length > 0
+          ? job.data.locationIds
+              .map((id) => locationMap.get(id) || id)
+              .join(', ')
+          : locationId
+            ? locationMap.get(locationId) || 'Store'
+            : 'All Outlets (Stores)';
 
       const now = new Date();
-      const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+      const startDate = startStr
+        ? new Date(startStr)
+        : new Date(now.getFullYear(), now.getMonth(), 1);
       const endDate = endStr ? new Date(endStr) : new Date(now);
       endDate.setHours(23, 59, 59, 999);
 
       const where: any = {
         orderNumber: { not: { startsWith: 'RET-' } },
-        status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
+        status: {
+          notIn: [
+            'hold',
+            'hold_expired',
+            'hold_cancelled',
+            'voided',
+            'cancelled',
+            'VOIDED',
+            'CANCELLED',
+            'draft',
+            'DRAFT',
+          ],
+        },
         createdAt: { gte: startDate, lte: endDate },
       };
 
@@ -297,7 +639,8 @@ export class SalesListExportProcessor {
       }
       if (cashierUserId) where.cashierUserId = cashierUserId;
       if (fbrOnly) where.fbrInvoiceNumber = { not: null };
-      if (paymentModeGroup) where.paymentMethod = { equals: paymentModeGroup, mode: 'insensitive' };
+      if (paymentModeGroup)
+        where.paymentMethod = { equals: paymentModeGroup, mode: 'insensitive' };
       if (minAmount !== undefined || maxAmount !== undefined) {
         where.grandTotal = {};
         if (minAmount !== undefined) where.grandTotal.gte = Number(minAmount);
@@ -313,7 +656,10 @@ export class SalesListExportProcessor {
         ];
       }
 
-      await job.progress({ percent: 10, message: 'Counting matching records in database...' });
+      await job.progress({
+        percent: 10,
+        message: 'Counting matching records in database...',
+      });
       const totalOrdersCount = await prisma.salesOrder.count({ where });
 
       const isFlat = exportType === 'flat';
@@ -329,9 +675,10 @@ export class SalesListExportProcessor {
 
         if (authId && cardLast4) {
           if (binNumber) {
-            const formattedBin = binNumber.length >= 6
-              ? (binNumber.slice(0, 4) + '-' + binNumber.slice(4))
-              : binNumber;
+            const formattedBin =
+              binNumber.length >= 6
+                ? binNumber.slice(0, 4) + '-' + binNumber.slice(4)
+                : binNumber;
             return `${authId},${formattedBin}**-****-${cardLast4}`;
           }
           return `${authId},****-****-${cardLast4}`;
@@ -371,9 +718,17 @@ export class SalesListExportProcessor {
         });
 
         const activeCols = isFlat ? FLAT_COLUMNS : COLUMNS;
-        const ws = workbook.addWorksheet(isFlat ? 'Sales Line Items' : 'Sales Invoices', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
-        });
+        const ws = workbook.addWorksheet(
+          isFlat ? 'Sales Line Items' : 'Sales Invoices',
+          {
+            pageSetup: {
+              paperSize: 9,
+              orientation: 'landscape',
+              fitToPage: true,
+              fitToWidth: 1,
+            },
+          },
+        );
 
         ws.columns = activeCols.map((c) => ({ key: c.key, width: c.width }));
 
@@ -382,10 +737,19 @@ export class SalesListExportProcessor {
         activeCols.forEach((col, idx) => {
           const cell = headerRow.getCell(idx + 1);
           cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF1E293B' },
+          };
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
           cell.alignment = {
-            horizontal: col.align === 'right' ? 'right' : col.align === 'center' ? 'center' : 'left',
+            horizontal:
+              col.align === 'right'
+                ? 'right'
+                : col.align === 'center'
+                  ? 'center'
+                  : 'left',
             vertical: 'middle',
           };
         });
@@ -409,7 +773,15 @@ export class SalesListExportProcessor {
             skip,
             take: CHUNK,
             include: {
-              customer: { select: { name: true, contactNo: true, cnicNo: true, subCode: true, traderId: true } },
+              customer: {
+                select: {
+                  name: true,
+                  contactNo: true,
+                  cnicNo: true,
+                  subCode: true,
+                  traderId: true,
+                },
+              },
               alliance: true,
               merchant: true,
               promo: true,
@@ -443,10 +815,15 @@ export class SalesListExportProcessor {
             const netSale = Number(order.grandTotal) - fbr;
 
             let balance = 0;
-            const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*([\d.]+)/i);
+            const balanceMatch = notesStr.match(
+              /\[Credit Sale\] Balance:\s*([\d.]+)/i,
+            );
             if (balanceMatch) {
               balance = Number(balanceMatch[1]);
-            } else if (order.paymentMethod === 'credit_account' || order.tenderType === 'credit_account') {
+            } else if (
+              order.paymentMethod === 'credit_account' ||
+              order.tenderType === 'credit_account'
+            ) {
               balance = Number(order.grandTotal);
             }
 
@@ -455,15 +832,21 @@ export class SalesListExportProcessor {
             let onCredit = balance;
             let cashReturn = 0;
 
-            const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+            const cashRetMatch = notesStr.match(
+              /\[Cash Return\] Amount:\s*([\d.]+)/i,
+            );
             if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
 
             if (cash === 0) {
-              const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+              const cashMatch =
+                notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) ||
+                notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
               if (cashMatch) cash = Number(cashMatch[1]);
             }
             if (card === 0) {
-              const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+              const cardMatch =
+                notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) ||
+                notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
               if (cardMatch) card = Number(cardMatch[1]);
             }
 
@@ -474,29 +857,44 @@ export class SalesListExportProcessor {
             let corporateVoucher = 0;
             let rewardVoucher = 0;
 
-            const exMatch = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
+            const exMatch = notesStr.match(
+              /\[Exchange Voucher\] Amount:\s*([\d.]+)/i,
+            );
             if (exMatch) exchangeVoucher = Number(exMatch[1]);
 
-            const clmMatch = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
+            const clmMatch = notesStr.match(
+              /\[Claim Voucher\] Amount:\s*([\d.]+)/i,
+            );
             if (clmMatch) claimVoucher = Number(clmMatch[1]);
 
-            const corpMatch = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+            const corpMatch = notesStr.match(
+              /\[Corporate Voucher\] Amount:\s*([\d.]+)/i,
+            );
             if (corpMatch) corporateVoucher = Number(corpMatch[1]);
 
-            const giftMatch = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
+            const giftMatch = notesStr.match(
+              /\[Gift Voucher\] Amount:\s*([\d.]+)/i,
+            );
             if (giftMatch) giftVoucher = Number(giftMatch[1]);
 
-            const rewMatch = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+            const rewMatch =
+              notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) ||
+              notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
             if (rewMatch) {
               rewardVoucher = Number(rewMatch[1]);
-            } else if (order.paymentMethod === 'reward_voucher' || order.tenderType === 'reward_voucher') {
+            } else if (
+              order.paymentMethod === 'reward_voucher' ||
+              order.tenderType === 'reward_voucher'
+            ) {
               rewardVoucher = Number(order.grandTotal);
             }
 
-            const credVouchMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
+            const credVouchMatch = notesStr.match(
+              /\[Credit Voucher\] Amount:\s*([\d.]+)/i,
+            );
             if (credVouchMatch) creditVoucher = Number(credVouchMatch[1]);
 
-            for (const red of (order.voucherRedemptions || [])) {
+            for (const red of order.voucherRedemptions || []) {
               const type = red.voucher?.voucherType;
               const amt = Number(red.amountUsed);
 
@@ -515,7 +913,13 @@ export class SalesListExportProcessor {
               }
             }
 
-            const totalRedeemedVoucher = giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher;
+            const totalRedeemedVoucher =
+              giftVoucher +
+              creditVoucher +
+              exchangeVoucher +
+              claimVoucher +
+              corporateVoucher +
+              rewardVoucher;
             const orderVoucherAmt = Number(order.voucherAmount || 0);
             if (orderVoucherAmt > totalRedeemedVoucher) {
               const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
@@ -534,11 +938,21 @@ export class SalesListExportProcessor {
               }
             }
 
-            const totalTenders = cash + card + giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher + onCredit;
+            const totalTenders =
+              cash +
+              card +
+              giftVoucher +
+              creditVoucher +
+              exchangeVoucher +
+              claimVoucher +
+              corporateVoucher +
+              rewardVoucher +
+              onCredit;
             if (totalTenders === 0) {
               const payMethod = (order.paymentMethod || 'cash').toLowerCase();
               if (payMethod.includes('cash')) cash = Number(order.grandTotal);
-              else if (payMethod.includes('card') || payMethod.includes('bank')) card = Number(order.grandTotal);
+              else if (payMethod.includes('card') || payMethod.includes('bank'))
+                card = Number(order.grandTotal);
               else if (payMethod.includes('credit')) {
                 onCredit = Number(order.grandTotal);
               } else if (payMethod.includes('voucher')) {
@@ -548,20 +962,28 @@ export class SalesListExportProcessor {
               }
             }
 
-            let issuedGift = 0;
+            const issuedGift = 0;
             let issuedCredit = 0;
 
-            const issuedMatch = notesStr.match(/\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i);
+            const issuedMatch = notesStr.match(
+              /\[Credit Voucher Issued\] Amount:\s*([\d.]+)/i,
+            );
             if (issuedMatch) {
               issuedCredit = Number(issuedMatch[1]);
             }
 
-
             const tenderDocs = parseTenderDocs(notesStr, order.alliance);
 
-            let merchantName = (order as any).merchant?.bankName || ((order as any).merchant?.description ? (order as any).merchant.description.split('|')[1]?.trim() || (order as any).merchant.description : '');
+            let merchantName =
+              (order as any).merchant?.bankName ||
+              ((order as any).merchant?.description
+                ? (order as any).merchant.description.split('|')[1]?.trim() ||
+                  (order as any).merchant.description
+                : '');
             if (!merchantName && notesStr) {
-              const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i);
+              const merchMatch = notesStr.match(
+                /(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],]+)/i,
+              );
               if (merchMatch) merchantName = merchMatch[1].trim();
             }
             if (!merchantName && order.alliance?.partnerName) {
@@ -569,12 +991,19 @@ export class SalesListExportProcessor {
             }
             merchantName = merchantName || '-';
 
-            const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
-            const cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
+            const locName = order.locationId
+              ? locationMap.get(order.locationId) || 'Main Outlet'
+              : 'Main Outlet';
+            const cashierName = order.cashierUserId
+              ? cashierMap.get(order.cashierUserId) || 'Cashier'
+              : 'Cashier';
             const customerName = order.customer?.name || 'Walk-in Customer';
             const customerPhone = order.customer?.contactNo || '-';
             const customerCnic = (order.customer as any)?.cnicNo || '-';
-            const customerCode = (order.customer as any)?.subCode || (order.customer as any)?.traderId || '-';
+            const customerCode =
+              (order.customer as any)?.subCode ||
+              (order.customer as any)?.traderId ||
+              '-';
             const orderGrandTotal = Number(order.grandTotal || 0);
             const orderSubtotal = Number(order.subtotal || 0);
             const orderDisc = Number(order.discountAmount || 0);
@@ -583,12 +1012,18 @@ export class SalesListExportProcessor {
             // Audit & Discount extraction
             const cardLast4Match = notesStr.match(/Card:\s*\*\*\*\*(\d{4})/i);
             const cardSlipMatch = notesStr.match(/Slip:\s*(\w+)/i);
-            const cardDetailsStr = (cardLast4Match || cardSlipMatch)
-              ? `**** ${cardLast4Match ? cardLast4Match[1] : ''} ${cardSlipMatch ? `(Slip: ${cardSlipMatch[1]})` : ''}`.trim()
-              : (card > 0 ? `${merchantName} (Rs. ${card.toLocaleString()})` : '-');
+            const cardDetailsStr =
+              cardLast4Match || cardSlipMatch
+                ? `**** ${cardLast4Match ? cardLast4Match[1] : ''} ${cardSlipMatch ? `(Slip: ${cardSlipMatch[1]})` : ''}`.trim()
+                : card > 0
+                  ? `${merchantName} (Rs. ${card.toLocaleString()})`
+                  : '-';
 
             const allVoucherCodes = (order.voucherRedemptions || [])
-              .map((r: any) => `${r.voucher?.code || 'VOUCHER'} (Rs. ${Number(r.amountUsed || 0).toLocaleString()})`)
+              .map(
+                (r: any) =>
+                  `${r.voucher?.code || 'VOUCHER'} (Rs. ${Number(r.amountUsed || 0).toLocaleString()})`,
+              )
               .join(', ');
 
             const discNotesArr: string[] = [];
@@ -596,7 +1031,9 @@ export class SalesListExportProcessor {
               discNotesArr.push(`Manual: ${(order as any).manualDiscountNote}`);
             }
             if (order.alliance?.partnerName) {
-              discNotesArr.push(`Alliance: ${order.alliance.partnerName} (${order.alliance.discountPercent}%)`);
+              discNotesArr.push(
+                `Alliance: ${order.alliance.partnerName} (${order.alliance.discountPercent}%)`,
+              );
             }
             if ((order as any).promo?.name) {
               discNotesArr.push(`Promo: ${(order as any).promo.name}`);
@@ -604,7 +1041,9 @@ export class SalesListExportProcessor {
             if ((order as any).coupon?.code) {
               discNotesArr.push(`Coupon: ${(order as any).coupon.code}`);
             }
-            const discountNotesStr = discNotesArr.join(' | ') || (orderDisc > 0 ? 'Line Discounts' : '-');
+            const discountNotesStr =
+              discNotesArr.join(' | ') ||
+              (orderDisc > 0 ? 'Line Discounts' : '-');
 
             grandTotals.orderCount += 1;
             grandTotals.grossAmount += orderSubtotal;
@@ -627,35 +1066,54 @@ export class SalesListExportProcessor {
             grandTotals.netSale += netSale;
 
             if (isFlat) {
-              const orderItems = (order.items && order.items.length > 0)
-                ? order.items
-                : [{
-                    quantity: 1,
-                    unitPrice: orderSubtotal * 1.18,
-                    discountAmount: orderDisc * 1.18,
-                    taxAmount: orderTax,
-                    lineTotal: orderGrandTotal,
-                    item: { sku: '-', barCode: '-', description: 'Invoice Summary', size: { name: '-' }, color: { name: '-' } }
-                  }];
+              const orderItems =
+                order.items && order.items.length > 0
+                  ? order.items
+                  : [
+                      {
+                        quantity: 1,
+                        unitPrice: orderSubtotal * 1.18,
+                        discountAmount: orderDisc * 1.18,
+                        taxAmount: orderTax,
+                        lineTotal: orderGrandTotal,
+                        item: {
+                          sku: '-',
+                          barCode: '-',
+                          description: 'Invoice Summary',
+                          size: { name: '-' },
+                          color: { name: '-' },
+                        },
+                      },
+                    ];
 
               for (const item of orderItems) {
                 const itemQty = Number(item.quantity || 0);
                 const itemPrice = Number(item.unitPrice || 0);
                 const unitPriceWost = Number((itemPrice / 1.18).toFixed(2));
-                const itemValExcl = Number((itemQty * unitPriceWost).toFixed(2));
+                const itemValExcl = Number(
+                  (itemQty * unitPriceWost).toFixed(2),
+                );
                 const itemDisc = Number(item.discountAmount || 0);
                 const itemDiscWost = Number((itemDisc / 1.18).toFixed(2));
-                const itemAmtAfterDisc = Number(Math.max(0, itemValExcl - itemDiscWost).toFixed(2));
+                const itemAmtAfterDisc = Number(
+                  Math.max(0, itemValExcl - itemDiscWost).toFixed(2),
+                );
                 const itemTax = Number(item.taxAmount || 0);
-                const itemSub = Number(item.lineTotal || (itemPrice * itemQty - itemDisc + itemTax));
-                const ratio = orderGrandTotal > 0 ? (itemSub / orderGrandTotal) : 0;
+                const itemSub = Number(
+                  item.lineTotal || itemPrice * itemQty - itemDisc + itemTax,
+                );
+                const ratio =
+                  orderGrandTotal > 0 ? itemSub / orderGrandTotal : 0;
 
                 grandTotals.totalItems += itemQty;
 
                 const flatRowData: any = {
                   locationName: locName,
                   orderNumber: order.orderNumber,
-                  orderDate: new Date(order.createdAt).toISOString().replace('T', ' ').slice(0, 19),
+                  orderDate: new Date(order.createdAt)
+                    .toISOString()
+                    .replace('T', ' ')
+                    .slice(0, 19),
                   cashierName,
                   customerName,
                   customerPhone,
@@ -668,7 +1126,8 @@ export class SalesListExportProcessor {
                   orderNotes: notesStr || '-',
                   sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
                   barCode: item.item?.barCode || item.item?.sku || '-',
-                  description: item.item?.description || item.item?.sku || 'Article',
+                  description:
+                    item.item?.description || item.item?.sku || 'Article',
                   sizeName: item.item?.size?.name || 'Default',
                   colorName: item.item?.color?.name || 'Default',
                   quantity: itemQty,
@@ -692,11 +1151,20 @@ export class SalesListExportProcessor {
                   giftVoucherCorporate: corporateVoucher * ratio,
                   creditVoucherIssuedAmount: issuedCredit * ratio,
                   rewardVoucherAmount: rewardVoucher * ratio,
-                  overrideDiscountNote: (item as any).overrideDiscountNote || ((item as any).overrideDiscountPercent ? `${(item as any).overrideDiscountPercent}% Override` : '-'),
+                  overrideDiscountNote:
+                    (item as any).overrideDiscountNote ||
+                    ((item as any).overrideDiscountPercent
+                      ? `${(item as any).overrideDiscountPercent}% Override`
+                      : '-'),
                   manualDiscountNote: (order as any).manualDiscountNote || '-',
                   manualDiscountType: (order as any).manualDiscountType || '-',
-                  alliancePartner: order.alliance ? `${order.alliance.partnerName} (${order.alliance.discountPercent}%)` : '-',
-                  promoCoupon: (order as any).coupon?.code || (order as any).promo?.code || '-',
+                  alliancePartner: order.alliance
+                    ? `${order.alliance.partnerName} (${order.alliance.discountPercent}%)`
+                    : '-',
+                  promoCoupon:
+                    (order as any).coupon?.code ||
+                    (order as any).promo?.code ||
+                    '-',
                   voucherCodes: allVoucherCodes || '-',
                   cardDetails: cardDetailsStr,
                 };
@@ -706,20 +1174,43 @@ export class SalesListExportProcessor {
                 row.commit();
               }
             } else {
-              const orderItemsCount = (order.items || []).reduce((acc: number, i: any) => acc + Number(i.quantity || 0), 0);
+              const orderItemsCount = (order.items || []).reduce(
+                (acc: number, i: any) => acc + Number(i.quantity || 0),
+                0,
+              );
               grandTotals.totalItems += orderItemsCount;
 
-              const invValExcl = orderSubtotal > 0 ? orderSubtotal : Number((orderGrandTotal / 1.18).toFixed(2));
-              const invUnitPriceWost = orderItemsCount > 0 ? Number((invValExcl / orderItemsCount).toFixed(2)) : 0;
+              const invValExcl =
+                orderSubtotal > 0
+                  ? orderSubtotal
+                  : Number((orderGrandTotal / 1.18).toFixed(2));
+              const invUnitPriceWost =
+                orderItemsCount > 0
+                  ? Number((invValExcl / orderItemsCount).toFixed(2))
+                  : 0;
               const invDiscWost = orderDisc;
-              const invGrossRetail = (order.items || []).reduce((acc: number, i: any) => acc + (Number(i.unitPrice || 0) * Number(i.quantity || 1)), 0) || Number((invValExcl * 1.18).toFixed(2));
-              const invUnitPriceAvg = orderItemsCount > 0 ? Number((invGrossRetail / orderItemsCount).toFixed(2)) : 0;
+              const invGrossRetail =
+                (order.items || []).reduce(
+                  (acc: number, i: any) =>
+                    acc + Number(i.unitPrice || 0) * Number(i.quantity || 1),
+                  0,
+                ) || Number((invValExcl * 1.18).toFixed(2));
+              const invUnitPriceAvg =
+                orderItemsCount > 0
+                  ? Number((invGrossRetail / orderItemsCount).toFixed(2))
+                  : 0;
               const invDiscRetail = orderDisc;
-              const invAmtAfterDisc = Math.max(0, invGrossRetail - invDiscRetail);
+              const invAmtAfterDisc = Math.max(
+                0,
+                invGrossRetail - invDiscRetail,
+              );
 
               const matrixRowData: any = {
                 invoiceNo: order.orderNumber,
-                date: new Date(order.createdAt).toISOString().replace('T', ' ').slice(0, 19),
+                date: new Date(order.createdAt)
+                  .toISOString()
+                  .replace('T', ' ')
+                  .slice(0, 19),
                 location: locName,
                 cashier: cashierName,
                 customer: customerName,
@@ -731,8 +1222,13 @@ export class SalesListExportProcessor {
                 fbr: order.fbrInvoiceNumber || '-',
                 orderNotes: notesStr || '-',
                 discountNotes: discountNotesStr,
-                alliancePartner: order.alliance ? `${order.alliance.partnerName} (${order.alliance.discountPercent}%)` : '-',
-                promoCoupon: (order as any).coupon?.code || (order as any).promo?.code || '-',
+                alliancePartner: order.alliance
+                  ? `${order.alliance.partnerName} (${order.alliance.discountPercent}%)`
+                  : '-',
+                promoCoupon:
+                  (order as any).coupon?.code ||
+                  (order as any).promo?.code ||
+                  '-',
                 vouchersList: allVoucherCodes || '-',
                 tenderCardDetails: cardDetailsStr,
                 quantity: orderItemsCount,
@@ -747,7 +1243,7 @@ export class SalesListExportProcessor {
                 tenderCash: cash,
                 returnAmount: cashReturn,
                 tenderCard: card,
-                tenderCreditSale: (balance > 0 ? balance : onCredit),
+                tenderCreditSale: balance > 0 ? balance : onCredit,
                 tenderGiftVoucher: giftVoucher,
                 tenderCreditVoucher: creditVoucher,
                 tenderExchangeVoucher: exchangeVoucher,
@@ -764,7 +1260,12 @@ export class SalesListExportProcessor {
           }
 
           processedOrders += chunkOrders.length;
-          const pct = Math.min(92, Math.round(15 + (processedOrders / Math.max(1, totalOrdersCount)) * 75));
+          const pct = Math.min(
+            92,
+            Math.round(
+              15 + (processedOrders / Math.max(1, totalOrdersCount)) * 75,
+            ),
+          );
           await job.progress({
             percent: pct,
             message: `Exported ${processedOrders.toLocaleString()} of ${totalOrdersCount.toLocaleString()} orders (${pct}%)...`,
@@ -780,10 +1281,20 @@ export class SalesListExportProcessor {
               priceWost: '',
               valueExcl: Number(grandTotals.grossAmount.toFixed(2)),
               discountPercent: '',
-              discountAmount: Number((grandTotals.discountAmount * 1.18).toFixed(2)),
+              discountAmount: Number(
+                (grandTotals.discountAmount * 1.18).toFixed(2),
+              ),
               discountAmountWost: Number(grandTotals.discountAmount.toFixed(2)),
-              amountAfterDiscount: Number(Math.max(0, grandTotals.grossAmount - grandTotals.discountAmount).toFixed(2)),
-              taxAmount: grandTotals.taxAmount || (grandTotals.netAmount - (grandTotals.grossAmount - grandTotals.discountAmount)),
+              amountAfterDiscount: Number(
+                Math.max(
+                  0,
+                  grandTotals.grossAmount - grandTotals.discountAmount,
+                ).toFixed(2),
+              ),
+              taxAmount:
+                grandTotals.taxAmount ||
+                grandTotals.netAmount -
+                  (grandTotals.grossAmount - grandTotals.discountAmount),
               subTotal: grandTotals.netAmount,
               cashSale: grandTotals.tenderCash,
               cashReturn: grandTotals.returnAmount,
@@ -816,13 +1327,38 @@ export class SalesListExportProcessor {
               vouchersList: '',
               tenderCardDetails: '',
               quantity: grandTotals.totalItems,
-              unitPriceAvg: grandTotals.totalItems > 0 ? Number(((grandTotals.grossAmount * 1.18) / grandTotals.totalItems).toFixed(2)) : 0,
-              unitPriceWost: grandTotals.totalItems > 0 ? Number((grandTotals.grossAmount / grandTotals.totalItems).toFixed(2)) : 0,
+              unitPriceAvg:
+                grandTotals.totalItems > 0
+                  ? Number(
+                      (
+                        (grandTotals.grossAmount * 1.18) /
+                        grandTotals.totalItems
+                      ).toFixed(2),
+                    )
+                  : 0,
+              unitPriceWost:
+                grandTotals.totalItems > 0
+                  ? Number(
+                      (
+                        grandTotals.grossAmount / grandTotals.totalItems
+                      ).toFixed(2),
+                    )
+                  : 0,
               valueExcl: Number(grandTotals.grossAmount.toFixed(2)),
-              discountTotal: Number((grandTotals.discountAmount * 1.18).toFixed(2)),
+              discountTotal: Number(
+                (grandTotals.discountAmount * 1.18).toFixed(2),
+              ),
               discountWost: Number(grandTotals.discountAmount.toFixed(2)),
-              amountAfterDiscount: Number(Math.max(0, grandTotals.grossAmount - grandTotals.discountAmount).toFixed(2)),
-              salesTax: grandTotals.taxAmount || (grandTotals.netAmount - (grandTotals.grossAmount - grandTotals.discountAmount)),
+              amountAfterDiscount: Number(
+                Math.max(
+                  0,
+                  grandTotals.grossAmount - grandTotals.discountAmount,
+                ).toFixed(2),
+              ),
+              salesTax:
+                grandTotals.taxAmount ||
+                grandTotals.netAmount -
+                  (grandTotals.grossAmount - grandTotals.discountAmount),
               netTotal: grandTotals.netAmount,
               tenderCash: grandTotals.tenderCash,
               returnAmount: grandTotals.returnAmount,
@@ -860,7 +1396,13 @@ export class SalesListExportProcessor {
 
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(pdfOrders, locationName, fromDateStr, toDateStr, grandTotals);
+        const html = this.buildPdfHtml(
+          pdfOrders,
+          locationName,
+          fromDateStr,
+          toDateStr,
+          grandTotals,
+        );
 
         const launchArgs = [
           '--no-sandbox',
@@ -884,11 +1426,18 @@ export class SalesListExportProcessor {
           const pdfBuffer = await page.pdf({
             format: 'A4',
             landscape: true,
-            margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+            margin: {
+              top: '15mm',
+              bottom: '15mm',
+              left: '10mm',
+              right: '10mm',
+            },
             printBackground: true,
             displayHeaderFooter: true,
-            headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Sales List Report</div>',
-            footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+            headerTemplate:
+              '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Sales List Report</div>',
+            footerTemplate:
+              '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
           });
 
           fs.writeFileSync(filePath, pdfBuffer);
@@ -899,10 +1448,14 @@ export class SalesListExportProcessor {
 
       await job.progress(95);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const fileName = format === 'pdf'
-        ? `sales-list-report-${new Date().toISOString().slice(0, 10)}.pdf`
-        : `sales-list-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const fileName =
+        format === 'pdf'
+          ? `sales-list-report-${new Date().toISOString().slice(0, 10)}.pdf`
+          : `sales-list-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma,
@@ -924,9 +1477,14 @@ export class SalesListExportProcessor {
       });
 
       await job.progress(100);
-      this.logger.log(`[SalesListExport ${jobId}] Finished processing successfully`);
+      this.logger.log(
+        `[SalesListExport ${jobId}] Finished processing successfully`,
+      );
     } catch (err) {
-      this.logger.error(`[SalesListExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[SalesListExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     } finally {
@@ -939,10 +1497,16 @@ export class SalesListExportProcessor {
     locationName: string,
     fromDateStr: string,
     toDateStr: string,
-    grandTotals: any
+    grandTotals: any,
   ): string {
     let rowsHtml = '';
-    const formatVal = (val: number) => val === 0 ? '-' : val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formatVal = (val: number) =>
+      val === 0
+        ? '-'
+        : val.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
 
     for (const r of data) {
       const dateFormatted = new Date(r.date).toLocaleString();

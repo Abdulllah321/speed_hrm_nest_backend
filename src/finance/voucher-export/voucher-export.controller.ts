@@ -26,17 +26,25 @@ export class JournalVoucherExportController {
 
   @Post()
   @Permissions('erp.finance.journal-voucher.read')
-  @ApiOperation({ summary: 'Queue a journal voucher export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue a journal voucher export job (returns immediately, notifies when done)',
+  })
   async queueExport(
     @Req() req: any,
-    @Query('status')    status?: string,
-    @Query('dateFrom')  dateFrom?: string,
-    @Query('dateTo')    dateTo?: string,
+    @Query('status') status?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
     @Query('accountId') accountId?: string,
-    @Query('search')    search?: string,
-    @Query('ids')       ids?: string,
+    @Query('search') search?: string,
+    @Query('ids') ids?: string,
   ) {
-    const parsedIds = ids ? ids.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
+    const parsedIds = ids
+      ? ids
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : undefined;
     const result = await this.exportService.queueJvExport({
       userId: req.user?.userId,
       status,
@@ -48,7 +56,8 @@ export class JournalVoucherExportController {
     });
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -74,7 +83,10 @@ export class JournalVoucherExportController {
       );
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }
@@ -91,18 +103,26 @@ export class PaymentVoucherExportController {
 
   @Post()
   @Permissions('erp.finance.payment-voucher.read')
-  @ApiOperation({ summary: 'Queue a payment voucher export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue a payment voucher export job (returns immediately, notifies when done)',
+  })
   async queueExport(
     @Req() req: any,
-    @Query('type')      type?: string,
-    @Query('status')    status?: string,
-    @Query('dateFrom')  dateFrom?: string,
-    @Query('dateTo')    dateTo?: string,
+    @Query('type') type?: string,
+    @Query('status') status?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
     @Query('accountId') accountId?: string,
-    @Query('search')    search?: string,
-    @Query('ids')       ids?: string,
+    @Query('search') search?: string,
+    @Query('ids') ids?: string,
   ) {
-    const parsedIds = ids ? ids.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
+    const parsedIds = ids
+      ? ids
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : undefined;
     const result = await this.exportService.queuePvExport({
       userId: req.user?.userId,
       type,
@@ -115,7 +135,8 @@ export class PaymentVoucherExportController {
     });
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -141,7 +162,10 @@ export class PaymentVoucherExportController {
       );
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }
@@ -158,18 +182,26 @@ export class ReceiptVoucherExportController {
 
   @Post()
   @Permissions('erp.finance.receipt-voucher.read')
-  @ApiOperation({ summary: 'Queue a receipt voucher export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue a receipt voucher export job (returns immediately, notifies when done)',
+  })
   async queueExport(
     @Req() req: any,
-    @Query('type')      type?: string,
-    @Query('status')    status?: string,
-    @Query('dateFrom')  dateFrom?: string,
-    @Query('dateTo')    dateTo?: string,
+    @Query('type') type?: string,
+    @Query('status') status?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
     @Query('accountId') accountId?: string,
-    @Query('search')    search?: string,
-    @Query('ids')       ids?: string,
+    @Query('search') search?: string,
+    @Query('ids') ids?: string,
   ) {
-    const parsedIds = ids ? ids.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
+    const parsedIds = ids
+      ? ids
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : undefined;
     const result = await this.exportService.queueRvExport({
       userId: req.user?.userId,
       type,
@@ -182,7 +214,8 @@ export class ReceiptVoucherExportController {
     });
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -208,7 +241,10 @@ export class ReceiptVoucherExportController {
       );
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

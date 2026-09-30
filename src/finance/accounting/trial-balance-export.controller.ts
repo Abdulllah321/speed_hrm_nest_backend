@@ -8,7 +8,12 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TrialBalanceExportService } from './trial-balance-export.service';
 
@@ -25,11 +30,19 @@ export class TrialBalanceExportController {
    * User receives an in-app notification when the file is ready.
    */
   @Post('queue')
-  @ApiOperation({ summary: 'Queue a trial balance export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue a trial balance export job (returns immediately, notifies when done)',
+  })
   @ApiQuery({ name: 'from', required: false, type: String })
   @ApiQuery({ name: 'to', required: false, type: String })
   @ApiQuery({ name: 'includeTagAccounts', required: false, type: Boolean })
-  @ApiQuery({ name: 'reportType', required: false, type: String, enum: ['OPENING', 'CLOSING', 'DETAILED'] })
+  @ApiQuery({
+    name: 'reportType',
+    required: false,
+    type: String,
+    enum: ['OPENING', 'CLOSING', 'DETAILED'],
+  })
   async queueExport(
     @Req() req: any,
     @Query('from') from?: string,
@@ -48,7 +61,8 @@ export class TrialBalanceExportController {
 
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -74,7 +88,10 @@ export class TrialBalanceExportController {
       await this.exportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

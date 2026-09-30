@@ -1,6 +1,13 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePurchaseReturnDto, ReturnSourceType } from './dto/create-purchase-return.dto';
+import {
+  CreatePurchaseReturnDto,
+  ReturnSourceType,
+} from './dto/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from './dto/update-purchase-return.dto';
 import { FinanceAccountConfigService } from '../../finance/finance-account-config/finance-account-config.service';
 import { AccountingService } from '../../finance/accounting/accounting.service';
@@ -20,7 +27,10 @@ export class PurchaseReturnService {
     private readonly journalVoucherService: JournalVoucherService,
   ) {}
 
-  async create(createDto: CreatePurchaseReturnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createDto: CreatePurchaseReturnDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       // Validate source document exists and is eligible
       await this.validateSourceDocument(createDto);
@@ -30,7 +40,8 @@ export class PurchaseReturnService {
       const returnNumber = nextReturnNumber;
 
       // Calculate totals
-      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(createDto);
+      const { subtotal, taxAmount, totalAmount } =
+        this.calculateTotals(createDto);
 
       // Resolve grnId and landedCostId from source invoice/landedCost if missing
       let resolvedGrnId = createDto.grnId;
@@ -39,16 +50,28 @@ export class PurchaseReturnService {
       if (createDto.purchaseInvoiceId) {
         const inv = await this.prisma.purchaseInvoice.findUnique({
           where: { id: createDto.purchaseInvoiceId },
-          select: { grnId: true, landedCostId: true, staxEInvoiceNumber: true, staxEInvoiceDate: true, invoiceDate: true },
+          select: {
+            grnId: true,
+            landedCostId: true,
+            staxEInvoiceNumber: true,
+            staxEInvoiceDate: true,
+            invoiceDate: true,
+          },
         });
         if (inv) {
           if (!resolvedGrnId) resolvedGrnId = inv.grnId || undefined;
-          if (!resolvedLandedCostId) resolvedLandedCostId = inv.landedCostId || undefined;
+          if (!resolvedLandedCostId)
+            resolvedLandedCostId = inv.landedCostId || undefined;
           if (inv.staxEInvoiceNumber && !createDto.staxEInvoiceNumber) {
             createDto.staxEInvoiceNumber = inv.staxEInvoiceNumber;
           }
-          if ((inv.staxEInvoiceDate || inv.invoiceDate) && !createDto.returnDate) {
-            createDto.returnDate = (inv.staxEInvoiceDate || inv.invoiceDate)?.toISOString();
+          if (
+            (inv.staxEInvoiceDate || inv.invoiceDate) &&
+            !createDto.returnDate
+          ) {
+            createDto.returnDate = (
+              inv.staxEInvoiceDate || inv.invoiceDate
+            )?.toISOString();
           }
         }
       }
@@ -71,7 +94,9 @@ export class PurchaseReturnService {
           supplierId: createDto.supplierId,
           warehouseId: createDto.warehouseId,
           returnType: createDto.returnType,
-          returnDate: createDto.returnDate ? new Date(createDto.returnDate) : undefined,
+          returnDate: createDto.returnDate
+            ? new Date(createDto.returnDate)
+            : undefined,
           reason: createDto.reason,
           notes: createDto.notes,
           staxEInvoiceNumber: createDto.staxEInvoiceNumber,
@@ -82,7 +107,7 @@ export class PurchaseReturnService {
           taxAmount,
           totalAmount,
           items: {
-            create: createDto.items.map(item => ({
+            create: createDto.items.map((item) => ({
               sourceItemType: item.sourceItemType,
               grnItemId: item.grnItemId,
               landedCostItemId: item.landedCostItemId,
@@ -162,7 +187,11 @@ export class PurchaseReturnService {
     if (search && search.trim() !== '') {
       where.OR = [
         { returnNumber: { contains: search, mode: 'insensitive' } },
-        { purchaseInvoice: { invoiceNumber: { contains: search, mode: 'insensitive' } } },
+        {
+          purchaseInvoice: {
+            invoiceNumber: { contains: search, mode: 'insensitive' },
+          },
+        },
         { supplier: { name: { contains: search, mode: 'insensitive' } } },
       ];
     }
@@ -308,7 +337,11 @@ export class PurchaseReturnService {
     return purchaseReturn;
   }
 
-  async update(id: string, updateDto: UpdatePurchaseReturnDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateDto: UpdatePurchaseReturnDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const existingReturn = await this.findOne(id);
 
@@ -316,7 +349,8 @@ export class PurchaseReturnService {
         throw new BadRequestException('Only DRAFT returns can be updated');
       }
 
-      const { subtotal, taxAmount, totalAmount } = this.calculateTotals(updateDto);
+      const { subtotal, taxAmount, totalAmount } =
+        this.calculateTotals(updateDto);
 
       // Only update the fields that are provided
       const updateData: any = {
@@ -327,19 +361,24 @@ export class PurchaseReturnService {
 
       // Add optional fields only if they exist in updateDto
       if (updateDto.returnType) updateData.returnType = updateDto.returnType;
-      if (updateDto.returnDate) updateData.returnDate = new Date(updateDto.returnDate);
+      if (updateDto.returnDate)
+        updateData.returnDate = new Date(updateDto.returnDate);
       if (updateDto.warehouseId) updateData.warehouseId = updateDto.warehouseId;
-      if (updateDto.seasonId !== undefined) updateData.seasonId = updateDto.seasonId || null;
-      if (updateDto.companyGstNumber !== undefined) updateData.companyGstNumber = updateDto.companyGstNumber || null;
-      if (updateDto.supplierGstNumber !== undefined) updateData.supplierGstNumber = updateDto.supplierGstNumber || null;
+      if (updateDto.seasonId !== undefined)
+        updateData.seasonId = updateDto.seasonId || null;
+      if (updateDto.companyGstNumber !== undefined)
+        updateData.companyGstNumber = updateDto.companyGstNumber || null;
+      if (updateDto.supplierGstNumber !== undefined)
+        updateData.supplierGstNumber = updateDto.supplierGstNumber || null;
       if (updateDto.reason !== undefined) updateData.reason = updateDto.reason;
       if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
-      if (updateDto.staxEInvoiceNumber !== undefined) updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber;
+      if (updateDto.staxEInvoiceNumber !== undefined)
+        updateData.staxEInvoiceNumber = updateDto.staxEInvoiceNumber;
 
       if (updateDto.items && updateDto.items.length > 0) {
         updateData.items = {
           deleteMany: {},
-          create: updateDto.items.map(item => ({
+          create: updateDto.items.map((item) => ({
             sourceItemType: item.sourceItemType,
             grnItemId: item.grnItemId,
             landedCostItemId: item.landedCostItemId,
@@ -404,7 +443,12 @@ export class PurchaseReturnService {
     }
   }
 
-  async updateStatus(id: string, status: string, approvedBy?: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async updateStatus(
+    id: string,
+    status: string,
+    approvedBy?: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const purchaseReturn = await this.findOne(id);
 
@@ -419,7 +463,10 @@ export class PurchaseReturnService {
         try {
           await this.autoGenerateJournalVoucher(purchaseReturn, ctx);
         } catch (jvError) {
-          console.error('Failed to auto-generate Journal Voucher for Purchase Return:', jvError);
+          console.error(
+            'Failed to auto-generate Journal Voucher for Purchase Return:',
+            jvError,
+          );
           throw jvError;
         }
       }
@@ -428,8 +475,10 @@ export class PurchaseReturnService {
         where: { id },
         data: {
           status,
-          approvedBy: status === 'APPROVED' ? approvedBy : purchaseReturn.approvedBy,
-          approvedAt: status === 'APPROVED' ? new Date() : purchaseReturn.approvedAt,
+          approvedBy:
+            status === 'APPROVED' ? approvedBy : purchaseReturn.approvedBy,
+          approvedAt:
+            status === 'APPROVED' ? new Date() : purchaseReturn.approvedAt,
         },
       });
 
@@ -471,44 +520,55 @@ export class PurchaseReturnService {
     }
   }
 
-  private async autoGenerateJournalVoucher(purchaseReturn: any, ctx?: { userId?: string }) {
+  private async autoGenerateJournalVoucher(
+    purchaseReturn: any,
+    ctx?: { userId?: string },
+  ) {
     // Check if Journal Voucher already exists for this purchase return
     const existingJV = await this.prisma.journalVoucher.findFirst({
       where: {
         description: {
-          contains: `Purchase Return ${purchaseReturn.returnNumber}`
-        }
-      }
+          contains: `Purchase Return ${purchaseReturn.returnNumber}`,
+        },
+      },
     });
     if (existingJV) {
-      console.log(`Journal Voucher already auto-generated for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`);
+      console.log(
+        `Journal Voucher already auto-generated for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`,
+      );
       return;
     }
 
     // 1. Resolve the associated Purchase Order to determine orderType (IMPORT vs LOCAL)
-    const po = purchaseReturn.purchaseInvoice?.grn?.purchaseOrder
-      || purchaseReturn.purchaseInvoice?.landedCost?.purchaseOrder
-      || purchaseReturn.purchaseInvoice?.landedCost?.grn?.purchaseOrder
-      || purchaseReturn.grn?.purchaseOrder
-      || purchaseReturn.landedCost?.purchaseOrder
-      || purchaseReturn.landedCost?.grn?.purchaseOrder;
+    const po =
+      purchaseReturn.purchaseInvoice?.grn?.purchaseOrder ||
+      purchaseReturn.purchaseInvoice?.landedCost?.purchaseOrder ||
+      purchaseReturn.purchaseInvoice?.landedCost?.grn?.purchaseOrder ||
+      purchaseReturn.grn?.purchaseOrder ||
+      purchaseReturn.landedCost?.purchaseOrder ||
+      purchaseReturn.landedCost?.grn?.purchaseOrder;
 
     const orderType = po?.orderType || 'LOCAL';
     if (orderType.toUpperCase() === 'IMPORT') {
-      console.log(`Skipping auto JV generation for Import Purchase Return ${purchaseReturn.returnNumber}`);
+      console.log(
+        `Skipping auto JV generation for Import Purchase Return ${purchaseReturn.returnNumber}`,
+      );
       return;
     }
 
     // 2. Resolve general reference numbers
     const invoiceNumber = purchaseReturn.purchaseInvoice?.invoiceNumber || '';
-    const grnNumber = purchaseReturn.grn?.grnNumber 
-      || purchaseReturn.purchaseInvoice?.grn?.grnNumber 
-      || purchaseReturn.landedCost?.grn?.grnNumber 
-      || '';
+    const grnNumber =
+      purchaseReturn.grn?.grnNumber ||
+      purchaseReturn.purchaseInvoice?.grn?.grnNumber ||
+      purchaseReturn.landedCost?.grn?.grnNumber ||
+      '';
 
     const supplier = purchaseReturn.supplier;
     if (!supplier) {
-      throw new BadRequestException('Supplier not found for this Purchase Return');
+      throw new BadRequestException(
+        'Supplier not found for this Purchase Return',
+      );
     }
 
     // 3. Group return items by brand name
@@ -526,7 +586,9 @@ export class PurchaseReturnService {
       const qty = Number(returnItem.returnQty || 0);
       const unitPrice = Number(returnItem.unitPrice || 0);
 
-      const discRate = Number(returnItem.purchaseInvoiceItem?.discountRate || 0);
+      const discRate = Number(
+        returnItem.purchaseInvoiceItem?.discountRate || 0,
+      );
       const discAmt = (qty * unitPrice * discRate) / 100;
       const valExcl = qty * unitPrice - discAmt;
 
@@ -557,39 +619,49 @@ export class PurchaseReturnService {
 
     // 4. Resolve Parent Accounts
     const parentReturnAccount = await this.prisma.chartOfAccount.findFirst({
-      where: { code: '60020004' }
+      where: { code: '60020004' },
     });
     if (!parentReturnAccount) {
-      throw new BadRequestException('Purchases Return Local account (60020004) not found in Chart of Accounts.');
+      throw new BadRequestException(
+        'Purchases Return Local account (60020004) not found in Chart of Accounts.',
+      );
     }
 
     const salesTaxParent = await this.prisma.chartOfAccount.findFirst({
-      where: { code: '31070003' }
+      where: { code: '31070003' },
     });
     if (!salesTaxParent) {
-      throw new BadRequestException('Sales Tax account (31070003) not found in Chart of Accounts.');
+      throw new BadRequestException(
+        'Sales Tax account (31070003) not found in Chart of Accounts.',
+      );
     }
 
     const billsPayableParent = await this.prisma.chartOfAccount.findFirst({
-      where: { code: '12010004' }
+      where: { code: '12010004' },
     });
     if (!billsPayableParent) {
-      throw new BadRequestException('Bills Payable Local account (12010004) not found in Chart of Accounts.');
+      throw new BadRequestException(
+        'Bills Payable Local account (12010004) not found in Chart of Accounts.',
+      );
     }
 
     // Resolve tag accounts for vendor codes under the parents
     const salesTaxTag = await this.prisma.chartOfAccount.findFirst({
-      where: { parentId: salesTaxParent.id, code: supplier.code }
+      where: { parentId: salesTaxParent.id, code: supplier.code },
     });
     if (!salesTaxTag) {
-      throw new BadRequestException(`Tag account for vendor "${supplier.code}" not found under Sales Tax account (31070003).`);
+      throw new BadRequestException(
+        `Tag account for vendor "${supplier.code}" not found under Sales Tax account (31070003).`,
+      );
     }
 
     const billsPayableTag = await this.prisma.chartOfAccount.findFirst({
-      where: { parentId: billsPayableParent.id, code: supplier.code }
+      where: { parentId: billsPayableParent.id, code: supplier.code },
     });
     if (!billsPayableTag) {
-      throw new BadRequestException(`Tag account for vendor "${supplier.code}" not found under Bills Payable Local account (12010004).`);
+      throw new BadRequestException(
+        `Tag account for vendor "${supplier.code}" not found under Bills Payable Local account (12010004).`,
+      );
     }
 
     // 5. Build JV Detail Lines per Brand Group
@@ -603,10 +675,15 @@ export class PurchaseReturnService {
 
       // Resolve tag account for brand name under Purchases Return Local
       const brandTag = await this.prisma.chartOfAccount.findFirst({
-        where: { parentId: parentReturnAccount.id, name: { equals: brandName, mode: 'insensitive' } }
+        where: {
+          parentId: parentReturnAccount.id,
+          name: { equals: brandName, mode: 'insensitive' },
+        },
       });
       if (!brandTag) {
-        throw new BadRequestException(`Tag account for brand "${brandName}" not found under Purchases Return Local account (60020004).`);
+        throw new BadRequestException(
+          `Tag account for brand "${brandName}" not found under Purchases Return Local account (60020004).`,
+        );
       }
 
       // Line 1: Bills Payable (12010004) - Debit (Value Incl. Sales Tax)
@@ -660,13 +737,13 @@ export class PurchaseReturnService {
     if (Math.abs(diff) > 0.001) {
       if (diff > 0) {
         // debits > credits, add diff to the credit of the first credit line
-        const creditLine = details.find(d => d.credit > 0);
+        const creditLine = details.find((d) => d.credit > 0);
         if (creditLine) {
           creditLine.credit = roundToTwo(creditLine.credit + diff);
         }
       } else {
         // credits > debits, add absolute diff to the debit of the first debit line
-        const debitLine = details.find(d => d.debit > 0);
+        const debitLine = details.find((d) => d.debit > 0);
         if (debitLine) {
           debitLine.debit = roundToTwo(debitLine.debit + Math.abs(diff));
         }
@@ -674,26 +751,33 @@ export class PurchaseReturnService {
     }
 
     // 7. Create Draft Journal Voucher
-    await this.journalVoucherService.create({
-      jvNo: `TEMP-JV-${Date.now()}`,
-      jvDate: new Date(),
-      description: `Auto-generated JV for Purchase Return ${purchaseReturn.returnNumber}`,
-      status: 'pending',
-      details,
-    }, {
-      userId: ctx?.userId,
-    });
+    await this.journalVoucherService.create(
+      {
+        jvNo: `TEMP-JV-${Date.now()}`,
+        jvDate: new Date(),
+        description: `Auto-generated JV for Purchase Return ${purchaseReturn.returnNumber}`,
+        status: 'pending',
+        details,
+      },
+      {
+        userId: ctx?.userId,
+      },
+    );
 
-    console.log(`Auto-generated draft Journal Voucher successfully for Purchase Return ${purchaseReturn.returnNumber}`);
+    console.log(
+      `Auto-generated draft Journal Voucher successfully for Purchase Return ${purchaseReturn.returnNumber}`,
+    );
   }
 
   private async processFinancialAdjustment(purchaseReturn: any) {
     // Check if Debit Note already exists for this purchase return
     const debitNoteExists = await this.prisma.debitNote.findFirst({
-      where: { purchaseReturnId: purchaseReturn.id }
+      where: { purchaseReturnId: purchaseReturn.id },
     });
     if (debitNoteExists) {
-      console.log(`Financial adjustment already processed for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`);
+      console.log(
+        `Financial adjustment already processed for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`,
+      );
       return debitNoteExists;
     }
 
@@ -706,26 +790,33 @@ export class PurchaseReturnService {
       });
     } else if (purchaseReturn.sourceType === 'GRN' && purchaseReturn.grnId) {
       purchaseInvoice = await this.prisma.purchaseInvoice.findFirst({
-        where: { 
+        where: {
           grnId: purchaseReturn.grnId,
-          status: 'APPROVED'
-        }
+          status: 'APPROVED',
+        },
       });
-    } else if (purchaseReturn.sourceType === 'LANDED_COST' && purchaseReturn.landedCostId) {
+    } else if (
+      purchaseReturn.sourceType === 'LANDED_COST' &&
+      purchaseReturn.landedCostId
+    ) {
       purchaseInvoice = await this.prisma.purchaseInvoice.findFirst({
-        where: { 
+        where: {
           landedCostId: purchaseReturn.landedCostId,
-          status: 'APPROVED'
-        }
+          status: 'APPROVED',
+        },
       });
     }
 
     if (!purchaseInvoice) {
-      console.log('No approved Purchase Invoice found for this return. Skipping financial adjustment.');
+      console.log(
+        'No approved Purchase Invoice found for this return. Skipping financial adjustment.',
+      );
       return;
     }
 
-    console.log(`Found Purchase Invoice ${purchaseInvoice.invoiceNumber}. Processing financial adjustment.`);
+    console.log(
+      `Found Purchase Invoice ${purchaseInvoice.invoiceNumber}. Processing financial adjustment.`,
+    );
 
     // Generate Debit Note Number
     const debitNoteNo = `DN-${Date.now()}`;
@@ -742,7 +833,7 @@ export class PurchaseReturnService {
           purchaseInvoiceId: purchaseInvoice.id,
           supplierId: purchaseReturn.supplierId,
           status: 'APPROVED',
-        }
+        },
       });
 
       // 2. Post Journal Entry to GL
@@ -752,19 +843,24 @@ export class PurchaseReturnService {
 
       let apPartiesAccountId: string | null = null;
       try {
-        apPartiesAccountId = await this.financeConfig.resolveAccount(AccountRoleKey.AP_PARTIES);
+        apPartiesAccountId = await this.financeConfig.resolveAccount(
+          AccountRoleKey.AP_PARTIES,
+        );
       } catch (error) {
         console.error('AP_PARTIES account resolution failed', error);
       }
 
       let purchasesReturnAccountId: string | null = null;
       try {
-        purchasesReturnAccountId = await this.financeConfig.resolveAccount(AccountRoleKey.PURCHASES_RETURN);
+        purchasesReturnAccountId = await this.financeConfig.resolveAccount(
+          AccountRoleKey.PURCHASES_RETURN,
+        );
       } catch (error) {
         console.error('PURCHASES_RETURN account resolution failed', error);
       }
 
-      let payableAccounts: { accountId: string; tagAccountId?: string }[] = [];
+      const payableAccounts: { accountId: string; tagAccountId?: string }[] =
+        [];
 
       if (apPartiesAccountId && supplier) {
         const tagAccount = await tx.chartOfAccount.findFirst({
@@ -784,22 +880,32 @@ export class PurchaseReturnService {
 
       if (purchasesReturnAccountId && payableAccounts.length > 0) {
         const debitPerAccount = totalAmount / payableAccounts.length;
-        const debitLines = payableAccounts.map(acc => ({
+        const debitLines = payableAccounts.map((acc) => ({
           accountId: acc.accountId,
           tagAccountId: acc.tagAccountId,
           debit: debitPerAccount,
           credit: 0,
         }));
 
-        const creditLines = [{ accountId: purchasesReturnAccountId, debit: 0, credit: totalAmount }];
+        const creditLines = [
+          {
+            accountId: purchasesReturnAccountId,
+            debit: 0,
+            credit: totalAmount,
+          },
+        ];
 
-        await this.accounting.postLines([...debitLines, ...creditLines], {
-          sourceType: 'PURCHASE_RETURN',
-          sourceId: purchaseReturn.id,
-          sourceRef: purchaseReturn.returnNumber,
-          description: `Purchase Return approved: ${purchaseReturn.returnNumber}`,
-          transactionDate: new Date(),
-        }, tx);
+        await this.accounting.postLines(
+          [...debitLines, ...creditLines],
+          {
+            sourceType: 'PURCHASE_RETURN',
+            sourceId: purchaseReturn.id,
+            sourceRef: purchaseReturn.returnNumber,
+            description: `Purchase Return approved: ${purchaseReturn.returnNumber}`,
+            transactionDate: new Date(),
+          },
+          tx,
+        );
       }
 
       // 3. Write supplier ledger debit entry & update supplier current balance
@@ -808,7 +914,8 @@ export class PurchaseReturnService {
         select: { currentBalance: true, advanceBalance: true },
       });
       if (supplierForLedger) {
-        const newBalance = Number(supplierForLedger.currentBalance) - totalAmount;
+        const newBalance =
+          Number(supplierForLedger.currentBalance) - totalAmount;
         await tx.supplierLedger.create({
           data: {
             supplierId: purchaseReturn.supplierId,
@@ -834,25 +941,39 @@ export class PurchaseReturnService {
       // 4. Update Purchase Invoice ONLY for old/legacy flows.
       // For sourceType === 'INVOICE', we do NOT update purchaseInvoice amounts or paymentStatus at all!
       if (purchaseReturn.sourceType !== 'INVOICE') {
-        const newReturnAmount = Number(purchaseInvoice.returnAmount || 0) + totalAmount;
-        const newRemainingAmount = Number(purchaseInvoice.totalAmount) - Number(purchaseInvoice.paidAmount) - newReturnAmount;
+        const newReturnAmount =
+          Number(purchaseInvoice.returnAmount || 0) + totalAmount;
+        const newRemainingAmount =
+          Number(purchaseInvoice.totalAmount) -
+          Number(purchaseInvoice.paidAmount) -
+          newReturnAmount;
 
         await tx.purchaseInvoice.update({
           where: { id: purchaseInvoice.id },
           data: {
             returnAmount: newReturnAmount,
             remainingAmount: Math.max(0, newRemainingAmount),
-            paymentStatus: newRemainingAmount <= 0.01 ? 'FULLY_PAID' : (Number(purchaseInvoice.paidAmount) > 0 ? 'PARTIALLY_PAID' : 'UNPAID')
-          }
+            paymentStatus:
+              newRemainingAmount <= 0.01
+                ? 'FULLY_PAID'
+                : Number(purchaseInvoice.paidAmount) > 0
+                  ? 'PARTIALLY_PAID'
+                  : 'UNPAID',
+          },
         });
-        console.log(`Updated PI ${purchaseInvoice.invoiceNumber}: ReturnAmount=${newReturnAmount}, RemainingAmount=${newRemainingAmount}`);
+        console.log(
+          `Updated PI ${purchaseInvoice.invoiceNumber}: ReturnAmount=${newReturnAmount}, RemainingAmount=${newRemainingAmount}`,
+        );
       }
 
       return debitNote;
     });
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const purchaseReturn = await this.findOne(id);
 
@@ -860,7 +981,9 @@ export class PurchaseReturnService {
         throw new BadRequestException('Only DRAFT returns can be deleted');
       }
 
-      const deleted = await this.prisma.purchaseReturn.delete({ where: { id } });
+      const deleted = await this.prisma.purchaseReturn.delete({
+        where: { id },
+      });
 
       runInBackground(
         'Delete Purchase Return',
@@ -905,7 +1028,7 @@ export class PurchaseReturnService {
         status: 'VALUED',
         // Exclude GRNs that already have Landed Cost records
         landedCosts: {
-          none: {}
+          none: {},
         },
         // Add date filter for 30 days
         receivedDate: {
@@ -920,24 +1043,33 @@ export class PurchaseReturnService {
           },
         },
         warehouse: true,
-        items: { include: { item: { include: { size: true, color: true, brand: true } } } },
+        items: {
+          include: {
+            item: { include: { size: true, color: true, brand: true } },
+          },
+        },
       },
       orderBy: { receivedDate: 'desc' },
     });
 
     // Map the response to match frontend expectations
-    return grns.map(grn => ({
+    return grns.map((grn) => ({
       id: grn.id,
       grnNumber: grn.grnNumber,
       supplier: grn.purchaseOrder.vendor, // Map vendor to supplier
       warehouse: grn.warehouse,
-      items: grn.items.map(grnItem => {
+      items: grn.items.map((grnItem) => {
         // Find corresponding PO item to get unit price
-        const poItem = grn.purchaseOrder.items.find(poi => poi.itemId === grnItem.itemId);
+        const poItem = grn.purchaseOrder.items.find(
+          (poi) => poi.itemId === grnItem.itemId,
+        );
         return {
           ...grnItem,
           unitPrice: poItem?.unitPrice || 0,
-          description: (grnItem as any).item?.description || poItem?.description || grnItem.description,
+          description:
+            (grnItem as any).item?.description ||
+            poItem?.description ||
+            grnItem.description,
           displayCode: (grnItem as any).item?.itemId || grnItem.itemId,
           size: (grnItem as any).item?.size?.name || null,
           color: (grnItem as any).item?.color?.name || null,
@@ -964,18 +1096,22 @@ export class PurchaseReturnService {
           },
         },
         supplier: true,
-        items: { include: { item: { include: { size: true, color: true, brand: true } } } },
+        items: {
+          include: {
+            item: { include: { size: true, color: true, brand: true } },
+          },
+        },
       },
       orderBy: { date: 'desc' },
     });
 
     // Map the response to match frontend expectations
-    return landedCosts.map(lc => ({
+    return landedCosts.map((lc) => ({
       id: lc.id,
       landedCostNumber: lc.landedCostNumber,
       supplier: lc.supplier,
       warehouse: lc.grn.warehouse,
-      items: lc.items.map(lcItem => ({
+      items: lc.items.map((lcItem) => ({
         ...lcItem,
         description: (lcItem as any).item?.description || lcItem.description,
         displayCode: (lcItem as any).item?.itemId || lcItem.itemId,
@@ -1018,18 +1154,22 @@ export class PurchaseReturnService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return invoices.map(inv => ({
+    return invoices.map((inv) => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
-      invoiceDate: inv.invoiceDate ? inv.invoiceDate.toISOString().split('T')[0] : null,
-      staxEInvoiceDate: inv.staxEInvoiceDate ? inv.staxEInvoiceDate.toISOString().split('T')[0] : null,
+      invoiceDate: inv.invoiceDate
+        ? inv.invoiceDate.toISOString().split('T')[0]
+        : null,
+      staxEInvoiceDate: inv.staxEInvoiceDate
+        ? inv.staxEInvoiceDate.toISOString().split('T')[0]
+        : null,
       grn: inv.grn,
       landedCost: inv.landedCost,
       supplier: inv.supplier,
       warehouse: inv.warehouse,
       advanceTaxRate: Number(inv.advanceTaxRate || 0.5),
       staxEInvoiceNumber: inv.staxEInvoiceNumber,
-      items: inv.items.map(item => ({
+      items: inv.items.map((item) => ({
         id: item.id,
         itemId: item.itemId,
         sku: item.item?.sku || '',
@@ -1051,11 +1191,15 @@ export class PurchaseReturnService {
 
   private async validateSourceDocument(createDto: CreatePurchaseReturnDto) {
     if (createDto.sourceType !== ReturnSourceType.INVOICE) {
-      throw new BadRequestException('Only Purchase Invoice (INVOICE) returns are supported');
+      throw new BadRequestException(
+        'Only Purchase Invoice (INVOICE) returns are supported',
+      );
     }
 
     if (!createDto.purchaseInvoiceId) {
-      throw new BadRequestException('Purchase Invoice ID is required for Invoice-based returns');
+      throw new BadRequestException(
+        'Purchase Invoice ID is required for Invoice-based returns',
+      );
     }
 
     const invoice = await this.prisma.purchaseInvoice.findUnique({
@@ -1067,12 +1211,17 @@ export class PurchaseReturnService {
     }
 
     if (invoice.status !== 'APPROVED') {
-      throw new BadRequestException('Only APPROVED Purchase Invoices can be returned');
+      throw new BadRequestException(
+        'Only APPROVED Purchase Invoices can be returned',
+      );
     }
   }
 
-  private calculateTotals(dto: CreatePurchaseReturnDto | UpdatePurchaseReturnDto) {
-    const subtotal = dto.items?.reduce((sum, item) => sum + Number(item.lineTotal), 0) || 0;
+  private calculateTotals(
+    dto: CreatePurchaseReturnDto | UpdatePurchaseReturnDto,
+  ) {
+    const subtotal =
+      dto.items?.reduce((sum, item) => sum + Number(item.lineTotal), 0) || 0;
     const taxAmount = 0; // Calculate tax if needed
     const totalAmount = subtotal + taxAmount;
 
@@ -1082,10 +1231,12 @@ export class PurchaseReturnService {
   private async processInventoryAdjustment(purchaseReturn: any) {
     // Check if stock ledger entries have already been created for this purchase return
     const stockLedgerExists = await this.prisma.stockLedger.findFirst({
-      where: { referenceId: purchaseReturn.id }
+      where: { referenceId: purchaseReturn.id },
     });
     if (stockLedgerExists) {
-      console.log(`Inventory adjustment already processed for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`);
+      console.log(
+        `Inventory adjustment already processed for Purchase Return ${purchaseReturn.returnNumber}. Skipping.`,
+      );
       return;
     }
 
@@ -1093,11 +1244,12 @@ export class PurchaseReturnService {
     const stockLedgerEntries: any[] = [];
 
     for (const item of purchaseReturn.items) {
-      const referenceType = purchaseReturn.sourceType === 'GRN' 
-        ? 'PURCHASE_RETURN_GRN' 
-        : purchaseReturn.sourceType === 'LANDED_COST'
-          ? 'PURCHASE_RETURN_LC'
-          : 'PURCHASE_RETURN_INV';
+      const referenceType =
+        purchaseReturn.sourceType === 'GRN'
+          ? 'PURCHASE_RETURN_GRN'
+          : purchaseReturn.sourceType === 'LANDED_COST'
+            ? 'PURCHASE_RETURN_LC'
+            : 'PURCHASE_RETURN_INV';
 
       // Debug log to check values
       console.log('Purchase Return Stock Ledger Entry:', {
@@ -1105,17 +1257,17 @@ export class PurchaseReturnService {
         warehouseId: purchaseReturn.warehouseId,
         returnQty: item.returnQty,
         calculatedQty: -Number(item.returnQty),
-        movementType: 'OUTBOUND'
+        movementType: 'OUTBOUND',
       });
 
       // Validate that item and warehouse exist before creating stock ledger entry
       // Find item by its UUID
       const itemExists = await this.prisma.item.findUnique({
-        where: { id: item.itemId } // Strict UUID lookup
+        where: { id: item.itemId }, // Strict UUID lookup
       });
 
       const warehouseExists = await this.prisma.warehouse.findUnique({
-        where: { id: purchaseReturn.warehouseId }
+        where: { id: purchaseReturn.warehouseId },
       });
 
       if (!itemExists) {
@@ -1125,7 +1277,9 @@ export class PurchaseReturnService {
 
       if (!warehouseExists) {
         console.error(`Warehouse not found: ${purchaseReturn.warehouseId}`);
-        throw new Error(`Warehouse with ID ${purchaseReturn.warehouseId} does not exist`);
+        throw new Error(
+          `Warehouse with ID ${purchaseReturn.warehouseId} does not exist`,
+        );
       }
 
       stockLedgerEntries.push({
@@ -1152,7 +1306,6 @@ export class PurchaseReturnService {
 
         // Update inventory items table
         await this.updateInventoryItems(stockLedgerEntries);
-        
       } catch (error) {
         console.error('Error creating stock ledger entries:', error);
         throw error;
@@ -1168,27 +1321,35 @@ export class PurchaseReturnService {
           where: {
             itemId: entry.itemId,
             warehouseId: entry.warehouseId,
-            status: 'AVAILABLE'
-          }
+            status: 'AVAILABLE',
+          },
         });
 
         if (existingInventory) {
           // Update existing inventory
-          const newQuantity = Number(existingInventory.quantity) + Number(entry.qty);
-          
+          const newQuantity =
+            Number(existingInventory.quantity) + Number(entry.qty);
+
           await this.prisma.inventoryItem.update({
             where: { id: existingInventory.id },
-            data: { 
-              quantity: Math.max(0, newQuantity) // Ensure quantity doesn't go negative
-            }
+            data: {
+              quantity: Math.max(0, newQuantity), // Ensure quantity doesn't go negative
+            },
           });
 
-          console.log(`Updated inventory: Item ${entry.itemId}, Old Qty: ${existingInventory.quantity}, Change: ${entry.qty}, New Qty: ${Math.max(0, newQuantity)}`);
+          console.log(
+            `Updated inventory: Item ${entry.itemId}, Old Qty: ${existingInventory.quantity}, Change: ${entry.qty}, New Qty: ${Math.max(0, newQuantity)}`,
+          );
         } else {
-          console.log(`No inventory item found for item ${entry.itemId} in warehouse ${entry.warehouseId}`);
+          console.log(
+            `No inventory item found for item ${entry.itemId} in warehouse ${entry.warehouseId}`,
+          );
         }
       } catch (error) {
-        console.error(`Error updating inventory for item ${entry.itemId}:`, error);
+        console.error(
+          `Error updating inventory for item ${entry.itemId}:`,
+          error,
+        );
       }
     }
   }
@@ -1196,7 +1357,7 @@ export class PurchaseReturnService {
   async getNextReturnNumber(): Promise<{ nextReturnNumber: string }> {
     const currentYear = new Date().getFullYear();
     const prefix = 'PR';
-    
+
     const lastReturn = await this.prisma.purchaseReturn.findFirst({
       where: {
         returnNumber: {
@@ -1210,7 +1371,9 @@ export class PurchaseReturnService {
 
     let nextNumber = 1;
     if (lastReturn) {
-      const lastNumber = parseInt(lastReturn.returnNumber.split('-').pop() || '0');
+      const lastNumber = parseInt(
+        lastReturn.returnNumber.split('-').pop() || '0',
+      );
       if (!isNaN(lastNumber)) {
         nextNumber = lastNumber + 1;
       }

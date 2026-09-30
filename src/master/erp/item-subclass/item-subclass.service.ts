@@ -18,8 +18,8 @@ export class ItemSubclassService {
   constructor(
     private readonly masterDeleteGuard: MasterDeleteGuardService,
     private prisma: PrismaService,
-        private prismaMaster: PrismaMasterService,
-    
+    private prismaMaster: PrismaMasterService,
+
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private activityLogs: ActivityLogsService,
   ) {}
@@ -36,7 +36,7 @@ export class ItemSubclassService {
         itemClass: true,
       },
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -67,9 +67,7 @@ export class ItemSubclassService {
 
   async getById(id: string) {
     const subclass = await this.prisma.itemSubclass.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
       include: { itemClass: true },
     });
     if (!subclass) return { status: false, message: 'Item Subclass not found' };
@@ -88,9 +86,7 @@ export class ItemSubclassService {
 
   async getByClass(itemClassId: string) {
     const subclasses = await this.prisma.itemSubclass.findMany({
-      where: { itemClassId,
-          isDeleted: false
-    },
+      where: { itemClassId, isDeleted: false },
       include: { itemClass: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -141,9 +137,7 @@ export class ItemSubclassService {
   ) {
     try {
       const existing = await this.prisma.itemSubclass.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing)
         return { status: false, message: 'Item Subclass not found' };
@@ -238,14 +232,18 @@ export class ItemSubclassService {
   ) {
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'itemSubclass', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'itemSubclass',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const result = await this.prisma.itemSubclass.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = {
         status: true,
         data: result,
@@ -278,18 +276,20 @@ export class ItemSubclassService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'itemSubclass', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'itemSubclass',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.itemSubclass.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const result = await this.prisma.itemSubclass.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       const response = {
         status: true,

@@ -44,7 +44,7 @@ class UpdateCompanyDto {
 @Controller('api/admin/companies')
 @UseGuards(JwtAuthGuard)
 export class CompanyController {
-  constructor(private readonly companyService: CompanyService,) {}
+  constructor(private readonly companyService: CompanyService) {}
 
   /**
    * Get all companies
@@ -107,7 +107,11 @@ export class CompanyController {
    * Update company details
    */
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() body: UpdateCompanyDto, @Req() req: any) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateCompanyDto,
+    @Req() req: any,
+  ) {
     return this.companyService.updateCompany(id, body, {
       userId: req.user?.id,
       ipAddress: req.ip,

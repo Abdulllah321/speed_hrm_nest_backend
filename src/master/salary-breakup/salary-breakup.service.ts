@@ -14,16 +14,14 @@ export class SalaryBreakupService {
   async list() {
     const items = await this.prisma.salaryBreakup.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     return { status: true, data: items };
   }
 
   async get(id: string) {
     const item = await this.prisma.salaryBreakup.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!item) return { status: false, message: 'Salary breakup not found' };
     return { status: true, data: item };
@@ -46,9 +44,9 @@ export class SalaryBreakupService {
           percentage: body.percentage,
           details:
             body.isTaxable !== undefined || body.isDeductible !== undefined
-              ? JSON.stringify({ 
+              ? JSON.stringify({
                   isTaxable: body.isTaxable,
-                  isDeductible: body.isDeductible 
+                  isDeductible: body.isDeductible,
                 })
               : null,
           status: body.status ?? 'active',
@@ -56,39 +54,37 @@ export class SalaryBreakupService {
         },
       });
 
-      
       const response = { status: true, data: created };
       runInBackground(
         'Create Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'salary-breakups',
-        entity: 'SalaryBreakup',
-        entityId: created.id,
-        description: `Created salary breakup ${created.name}`,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'create',
+          module: 'salary-breakups',
+          entity: 'SalaryBreakup',
+          entityId: created.id,
+          description: `Created salary breakup ${created.name}`,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Created successfully' };
     } catch (error: any) {
-      
       runInBackground(
         'Failed to create salary breakup',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'create',
-        module: 'salary-breakups',
-        entity: 'SalaryBreakup',
-        description: 'Failed to create salary breakup',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
+          action: 'create',
+          module: 'salary-breakups',
+          entity: 'SalaryBreakup',
+          description: 'Failed to create salary breakup',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
         }),
       );
       return { status: false, message: 'Failed to create salary breakup' };
@@ -108,9 +104,7 @@ export class SalaryBreakupService {
   ) {
     try {
       const existing = await this.prisma.salaryBreakup.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
 
       if (!existing) {
@@ -121,9 +115,10 @@ export class SalaryBreakupService {
       let existingDetails: any = {};
       try {
         if (existing.details) {
-          existingDetails = typeof existing.details === 'string' 
-            ? JSON.parse(existing.details) 
-            : existing.details;
+          existingDetails =
+            typeof existing.details === 'string'
+              ? JSON.parse(existing.details)
+              : existing.details;
         }
       } catch (e) {
         existingDetails = {};
@@ -133,7 +128,9 @@ export class SalaryBreakupService {
       const updatedDetails = {
         ...existingDetails,
         ...(body.isTaxable !== undefined && { isTaxable: body.isTaxable }),
-        ...(body.isDeductible !== undefined && { isDeductible: body.isDeductible }),
+        ...(body.isDeductible !== undefined && {
+          isDeductible: body.isDeductible,
+        }),
       };
 
       const updated = await this.prisma.salaryBreakup.update({
@@ -151,36 +148,35 @@ export class SalaryBreakupService {
         'Update Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'salary-breakups',
-        entity: 'SalaryBreakup',
-        entityId: updated.id,
-        description: `Updated salary breakup ${updated.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'update',
+          module: 'salary-breakups',
+          entity: 'SalaryBreakup',
+          entityId: updated.id,
+          description: `Updated salary breakup ${updated.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return response;
     } catch (error: any) {
-      
       runInBackground(
         'Failed to update salary breakup',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'update',
-        module: 'salary-breakups',
-        entity: 'SalaryBreakup',
-        entityId: id,
-        description: 'Failed to update salary breakup',
-        errorMessage: error?.message,
-        newValues: JSON.stringify(body),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'update',
+          module: 'salary-breakups',
+          entity: 'SalaryBreakup',
+          entityId: id,
+          description: 'Failed to update salary breakup',
+          errorMessage: error?.message,
+          newValues: JSON.stringify(body),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
 
       return {
@@ -196,33 +192,32 @@ export class SalaryBreakupService {
   ) {
     try {
       const existing = await this.prisma.salaryBreakup.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
 
       if (!existing) {
         return { status: false, message: 'Salary breakup not found' };
       }
 
-      await this.prisma.salaryBreakup.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      await this.prisma.salaryBreakup.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Delete Record',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'salary-breakups',
-        entity: 'SalaryBreakup',
-        entityId: id,
-        description: `Deleted salary breakup ${existing.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'success',
-      }),
+          action: 'delete',
+          module: 'salary-breakups',
+          entity: 'SalaryBreakup',
+          entityId: id,
+          description: `Deleted salary breakup ${existing.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'success',
+        }),
       );
       return { status: true, message: 'Deleted successfully' };
     } catch (error: any) {
@@ -230,16 +225,16 @@ export class SalaryBreakupService {
         'Failed to delete salary breakup (Failure Log)',
         this.activityLogs.log({
           userId: ctx.userId,
-        action: 'delete',
-        module: 'salary-breakups',
-        entity: 'SalaryBreakup',
-        entityId: id,
-        description: 'Failed to delete salary breakup',
-        errorMessage: error?.message,
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        status: 'failure',
-      }),
+          action: 'delete',
+          module: 'salary-breakups',
+          entity: 'SalaryBreakup',
+          entityId: id,
+          description: 'Failed to delete salary breakup',
+          errorMessage: error?.message,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          status: 'failure',
+        }),
       );
 
       return {

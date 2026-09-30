@@ -69,7 +69,7 @@ export class RebateNatureService {
       orderBy: {
         createdAt: 'desc',
       },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
   }
 
@@ -78,8 +78,8 @@ export class RebateNatureService {
       where: {
         type: 'fixed',
         status: 'active',
-          isDeleted: false
-    },
+        isDeleted: false,
+      },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
 
@@ -104,17 +104,15 @@ export class RebateNatureService {
       where: {
         type,
         status: 'active',
-          isDeleted: false
-    },
+        isDeleted: false,
+      },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
   }
 
   async findOne(id: string) {
     const rebateNature = await this.prisma.rebateNature.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
 
     if (!rebateNature) {
@@ -180,15 +178,19 @@ export class RebateNatureService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'rebateNature', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'rebateNature',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.findOne(id); // Ensure exists
 
       const removed = await this.prisma.rebateNature.update({
         where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       const response = { status: true, data: removed };
       runInBackground(
         'Delete Rebate Nature',

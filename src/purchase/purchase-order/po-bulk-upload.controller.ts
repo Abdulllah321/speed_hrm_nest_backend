@@ -1,4 +1,17 @@
-import { Controller, Post, Get, Delete, Param, UseGuards, Res, HttpStatus, BadRequestException, Req, Sse, MessageEvent } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Delete,
+  Param,
+  UseGuards,
+  Res,
+  HttpStatus,
+  BadRequestException,
+  Req,
+  Sse,
+  MessageEvent,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PoBulkUploadService } from './po-bulk-upload.service';
 import { GetUser } from '../../common/decorators/get-user.decorator';
@@ -11,75 +24,112 @@ import { Observable } from 'rxjs';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PoBulkUploadController {
-    constructor(
-        private bulkUploadService: PoBulkUploadService,
-        private eventsService: UploadEventsService,
-    ) { }
+  constructor(
+    private bulkUploadService: PoBulkUploadService,
+    private eventsService: UploadEventsService,
+  ) {}
 
-    @Post()
-    @ApiOperation({ summary: 'Upload PO CSV/Excel file for validation' })
-    async uploadFile(@Req() req: any, @GetUser('id') userId: string) {
-        const file = await req.file();
-        if (!file) throw new BadRequestException('No file uploaded');
+  @Post()
+  @ApiOperation({ summary: 'Upload PO CSV/Excel file for validation' })
+  async uploadFile(@Req() req: any, @GetUser('id') userId: string) {
+    const file = await req.file();
+    if (!file) throw new BadRequestException('No file uploaded');
 
-        const ext = file.filename.split('.').pop()?.toLowerCase();
-        if (!ext || !['csv', 'xlsx', 'xls'].includes(ext)) throw new BadRequestException('Invalid file type. Allowed: csv, xlsx, xls');
+    const ext = file.filename.split('.').pop()?.toLowerCase();
+    if (!ext || !['csv', 'xlsx', 'xls'].includes(ext))
+      throw new BadRequestException(
+        'Invalid file type. Allowed: csv, xlsx, xls',
+      );
 
-        const buffer = await file.toBuffer();
-        if (buffer.length > 50 * 1024 * 1024) throw new BadRequestException('File size exceeds 50MB limit');
+    const buffer = await file.toBuffer();
+    if (buffer.length > 50 * 1024 * 1024)
+      throw new BadRequestException('File size exceeds 50MB limit');
 
-        const { vendorId, orderType, goodsType, expectedDeliveryDate, notes } = (req.query || {}) as any;
-        const result = await this.bulkUploadService.initiateValidation(buffer, file.filename, userId, { vendorId, orderType, goodsType, expectedDeliveryDate, notes });
-        return { status: true, message: 'PO validation initiated', data: result };
-    }
+    const { vendorId, orderType, goodsType, expectedDeliveryDate, notes } =
+      (req.query || {}) as any;
+    const result = await this.bulkUploadService.initiateValidation(
+      buffer,
+      file.filename,
+      userId,
+      { vendorId, orderType, goodsType, expectedDeliveryDate, notes },
+    );
+    return { status: true, message: 'PO validation initiated', data: result };
+  }
 
-    @Post(':uploadId/confirm')
-    @ApiOperation({ summary: 'Confirm and start PO import' })
-    async confirmUpload(@Param('uploadId') uploadId: string, @GetUser('id') userId: string, @Req() req: any) {
-        const { vendorId, orderType, goodsType, expectedDeliveryDate, notes } = (req.query || {}) as any;
-        const result = await this.bulkUploadService.confirmUpload(uploadId, userId, { vendorId, orderType, goodsType, expectedDeliveryDate, notes });
-        return { status: true, message: 'PO import confirmed and started', data: result };
-    }
+  @Post(':uploadId/confirm')
+  @ApiOperation({ summary: 'Confirm and start PO import' })
+  async confirmUpload(
+    @Param('uploadId') uploadId: string,
+    @GetUser('id') userId: string,
+    @Req() req: any,
+  ) {
+    const { vendorId, orderType, goodsType, expectedDeliveryDate, notes } =
+      (req.query || {}) as any;
+    const result = await this.bulkUploadService.confirmUpload(
+      uploadId,
+      userId,
+      { vendorId, orderType, goodsType, expectedDeliveryDate, notes },
+    );
+    return {
+      status: true,
+      message: 'PO import confirmed and started',
+      data: result,
+    };
+  }
 
-    @Sse(':uploadId/events')
-    @ApiOperation({ summary: 'Stream PO bulk upload events (SSE)' })
-    streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
-        return this.eventsService.subscribe(uploadId);
-    }
+  @Sse(':uploadId/events')
+  @ApiOperation({ summary: 'Stream PO bulk upload events (SSE)' })
+  streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
+    return this.eventsService.subscribe(uploadId);
+  }
 
-    @Get(':uploadId/status')
-    @ApiOperation({ summary: 'Get PO upload status' })
-    async getUploadStatus(@Param('uploadId') uploadId: string) {
-        return { status: true, data: await this.bulkUploadService.getUploadStatus(uploadId) };
-    }
+  @Get(':uploadId/status')
+  @ApiOperation({ summary: 'Get PO upload status' })
+  async getUploadStatus(@Param('uploadId') uploadId: string) {
+    return {
+      status: true,
+      data: await this.bulkUploadService.getUploadStatus(uploadId),
+    };
+  }
 
-    @Delete(':uploadId')
-    @ApiOperation({ summary: 'Cancel PO upload' })
-    async cancelUpload(@Param('uploadId') uploadId: string) {
-        await this.bulkUploadService.cancelUpload(uploadId);
-        return { status: true, message: 'PO upload cancelled' };
-    }
+  @Delete(':uploadId')
+  @ApiOperation({ summary: 'Cancel PO upload' })
+  async cancelUpload(@Param('uploadId') uploadId: string) {
+    await this.bulkUploadService.cancelUpload(uploadId);
+    return { status: true, message: 'PO upload cancelled' };
+  }
 
-    @Get(':uploadId/error-report')
-    @ApiOperation({ summary: 'Download PO error report CSV' })
-    async downloadErrorReport(@Param('uploadId') uploadId: string, @Res() res: any) {
-        const upload = await this.bulkUploadService.getUploadStatus(uploadId);
-        const csv = this.bulkUploadService.generateErrorReport(upload.errors as any[]);
-        res.header('Content-Type', 'text/csv');
-        res.header('Content-Disposition', `attachment; filename="po-upload-errors-${uploadId}.csv"`);
-        return res.status(HttpStatus.OK).send(csv);
-    }
+  @Get(':uploadId/error-report')
+  @ApiOperation({ summary: 'Download PO error report CSV' })
+  async downloadErrorReport(
+    @Param('uploadId') uploadId: string,
+    @Res() res: any,
+  ) {
+    const upload = await this.bulkUploadService.getUploadStatus(uploadId);
+    const csv = this.bulkUploadService.generateErrorReport(
+      upload.errors as any[],
+    );
+    res.header('Content-Type', 'text/csv');
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="po-upload-errors-${uploadId}.csv"`,
+    );
+    return res.status(HttpStatus.OK).send(csv);
+  }
 
-    @Get('template/download')
-    @ApiOperation({ summary: 'Download PO CSV template' })
-    async downloadTemplate(@Res() res: any) {
-        const template = [
-            'BarCode,Quantity',
-            '889362319896,80',
-            '198634299720,48',
-        ].join('\n');
-        res.header('Content-Type', 'text/csv');
-        res.header('Content-Disposition', 'attachment; filename="po-upload-template.csv"');
-        return res.status(HttpStatus.OK).send(template);
-    }
+  @Get('template/download')
+  @ApiOperation({ summary: 'Download PO CSV template' })
+  async downloadTemplate(@Res() res: any) {
+    const template = [
+      'BarCode,Quantity',
+      '889362319896,80',
+      '198634299720,48',
+    ].join('\n');
+    res.header('Content-Type', 'text/csv');
+    res.header(
+      'Content-Disposition',
+      'attachment; filename="po-upload-template.csv"',
+    );
+    return res.status(HttpStatus.OK).send(template);
+  }
 }

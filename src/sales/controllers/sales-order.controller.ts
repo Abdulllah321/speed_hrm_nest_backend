@@ -11,12 +11,15 @@ import {
 } from '@nestjs/common';
 import { SalesOrderService } from '../services/sales-order.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { CreateSalesOrderDto, UpdateSalesOrderDto } from '../dto/sales-order.dto';
+import {
+  CreateSalesOrderDto,
+  UpdateSalesOrderDto,
+} from '../dto/sales-order.dto';
 
 @Controller('api/sales/orders')
 @UseGuards(JwtAuthGuard)
 export class SalesOrderController {
-  constructor(private readonly salesOrderService: SalesOrderService,) {}
+  constructor(private readonly salesOrderService: SalesOrderService) {}
 
   @Get()
   async findAll(
@@ -37,7 +40,10 @@ export class SalesOrderController {
   }
 
   @Post()
-  async create(@Body() createSalesOrderDto: CreateSalesOrderDto, @Req() req: any) {
+  async create(
+    @Body() createSalesOrderDto: CreateSalesOrderDto,
+    @Req() req: any,
+  ) {
     return this.salesOrderService.create(createSalesOrderDto, {
       userId: req.user?.id,
       ipAddress: req.ip,

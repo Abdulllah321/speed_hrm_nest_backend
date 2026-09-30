@@ -17,7 +17,11 @@ export class TaskProjectService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async list(filters?: { status?: string; ownerId?: string; departmentId?: string }) {
+  async list(filters?: {
+    status?: string;
+    ownerId?: string;
+    departmentId?: string;
+  }) {
     try {
       const where: any = {};
       if (filters?.status) where.status = filters.status;
@@ -35,7 +39,11 @@ export class TaskProjectService {
 
       return { status: true, data: projects };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list projects' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to list projects',
+      };
     }
   }
 
@@ -54,14 +62,24 @@ export class TaskProjectService {
       if (!project) return { status: false, message: 'Project not found' };
       return { status: true, data: project };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to get project' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to get project',
+      };
     }
   }
 
   async create(body: CreateTaskProjectDto, ctx: Ctx) {
     try {
-      const existing = await this.prisma.taskProject.findUnique({ where: { code: body.code } });
-      if (existing) return { status: false, message: `Project code "${body.code}" already exists` };
+      const existing = await this.prisma.taskProject.findUnique({
+        where: { code: body.code },
+      });
+      if (existing)
+        return {
+          status: false,
+          message: `Project code "${body.code}" already exists`,
+        };
 
       const project = await this.prisma.taskProject.create({
         data: {
@@ -89,7 +107,11 @@ export class TaskProjectService {
         include: { members: true },
       });
 
-      const response = { status: true, data: project, message: 'Project created successfully' };
+      const response = {
+        status: true,
+        data: project,
+        message: 'Project created successfully',
+      };
       runInBackground(
         'Create Task Project',
         this.activityLogs.log({
@@ -107,13 +129,19 @@ export class TaskProjectService {
       );
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to create project' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to create project',
+      };
     }
   }
 
   async update(id: string, body: UpdateTaskProjectDto, ctx: Ctx) {
     try {
-      const existing = await this.prisma.taskProject.findUnique({ where: { id } });
+      const existing = await this.prisma.taskProject.findUnique({
+        where: { id },
+      });
       if (!existing) return { status: false, message: 'Project not found' };
 
       const updated = await this.prisma.taskProject.update({
@@ -126,7 +154,11 @@ export class TaskProjectService {
         },
       });
 
-      const response = { status: true, data: updated, message: 'Project updated successfully' };
+      const response = {
+        status: true,
+        data: updated,
+        message: 'Project updated successfully',
+      };
       runInBackground(
         'Update Task Project',
         this.activityLogs.log({
@@ -145,18 +177,27 @@ export class TaskProjectService {
       );
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to update project' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to update project',
+      };
     }
   }
 
   async remove(id: string, ctx: Ctx) {
     try {
-      const existing = await this.prisma.taskProject.findUnique({ where: { id } });
+      const existing = await this.prisma.taskProject.findUnique({
+        where: { id },
+      });
       if (!existing) return { status: false, message: 'Project not found' };
 
       await this.prisma.taskProject.delete({ where: { id } });
 
-      const response = { status: true, message: 'Project deleted successfully' };
+      const response = {
+        status: true,
+        message: 'Project deleted successfully',
+      };
       runInBackground(
         'Delete Task Project',
         this.activityLogs.log({
@@ -173,7 +214,11 @@ export class TaskProjectService {
       );
       return response;
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to delete project' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to delete project',
+      };
     }
   }
 
@@ -181,11 +226,15 @@ export class TaskProjectService {
 
   async addMember(projectId: string, body: AddProjectMemberDto, ctx: Ctx) {
     try {
-      const project = await this.prisma.taskProject.findUnique({ where: { id: projectId } });
+      const project = await this.prisma.taskProject.findUnique({
+        where: { id: projectId },
+      });
       if (!project) return { status: false, message: 'Project not found' };
 
       const member = await this.prisma.projectMember.upsert({
-        where: { projectId_employeeId: { projectId, employeeId: body.employeeId } },
+        where: {
+          projectId_employeeId: { projectId, employeeId: body.employeeId },
+        },
         create: {
           projectId,
           employeeId: body.employeeId,
@@ -195,9 +244,17 @@ export class TaskProjectService {
         update: { role: body.role ?? 'member' },
       });
 
-      return { status: true, data: member, message: 'Member added successfully' };
+      return {
+        status: true,
+        data: member,
+        message: 'Member added successfully',
+      };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to add member' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to add member',
+      };
     }
   }
 
@@ -206,7 +263,8 @@ export class TaskProjectService {
       const member = await this.prisma.projectMember.findUnique({
         where: { projectId_employeeId: { projectId, employeeId } },
       });
-      if (!member) return { status: false, message: 'Member not found in project' };
+      if (!member)
+        return { status: false, message: 'Member not found in project' };
 
       await this.prisma.projectMember.delete({
         where: { projectId_employeeId: { projectId, employeeId } },
@@ -214,7 +272,11 @@ export class TaskProjectService {
 
       return { status: true, message: 'Member removed successfully' };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to remove member' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to remove member',
+      };
     }
   }
 
@@ -226,7 +288,11 @@ export class TaskProjectService {
       });
       return { status: true, data: members };
     } catch (error) {
-      return { status: false, message: error instanceof Error ? error.message : 'Failed to list members' };
+      return {
+        status: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to list members',
+      };
     }
   }
 }

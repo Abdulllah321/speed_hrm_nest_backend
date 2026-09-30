@@ -45,18 +45,22 @@ export class SupplierService {
         data: {
           ...restDto,
           code,
-          ...(brandIds && brandIds.length > 0 && {
-            supplierBrands: {
-              create: brandIds.map((bId) => ({ brandId: bId })),
-            },
-          }),
+          ...(brandIds &&
+            brandIds.length > 0 && {
+              supplierBrands: {
+                create: brandIds.map((bId) => ({ brandId: bId })),
+              },
+            }),
         },
         include: {
           supplierBrands: { include: { brand: true } },
         },
       });
 
-      const brandNames = supplier.supplierBrands?.map((sb) => sb.brand.name).join(', ') || supplier.brand || '';
+      const brandNames =
+        supplier.supplierBrands?.map((sb) => sb.brand.name).join(', ') ||
+        supplier.brand ||
+        '';
       return {
         status: true,
         data: {
@@ -82,7 +86,10 @@ export class SupplierService {
       });
 
       const formatted = suppliers.map((s) => {
-        const bNames = s.supplierBrands?.map((sb) => sb.brand.name).join(', ') || s.brand || '';
+        const bNames =
+          s.supplierBrands?.map((sb) => sb.brand.name).join(', ') ||
+          s.brand ||
+          '';
         return {
           ...s,
           brandIds: s.supplierBrands?.map((sb) => sb.brandId) || [],
@@ -107,7 +114,10 @@ export class SupplierService {
       });
       if (!supplier) return { status: false, message: 'Supplier not found' };
 
-      const bNames = supplier.supplierBrands?.map((sb) => sb.brand.name).join(', ') || supplier.brand || '';
+      const bNames =
+        supplier.supplierBrands?.map((sb) => sb.brand.name).join(', ') ||
+        supplier.brand ||
+        '';
       return {
         status: true,
         data: {
@@ -145,7 +155,10 @@ export class SupplierService {
         },
       });
 
-      const bNames = supplier.supplierBrands?.map((sb) => sb.brand.name).join(', ') || supplier.brand || '';
+      const bNames =
+        supplier.supplierBrands?.map((sb) => sb.brand.name).join(', ') ||
+        supplier.brand ||
+        '';
       return {
         status: true,
         data: {

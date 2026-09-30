@@ -5,9 +5,9 @@ import { DatabaseModule } from '../database/database.module';
 
 @Global()
 @Module({
-    imports: [DatabaseModule],
-    controllers: [WebhookController],
-    providers: [WebhookService],
-    exports: [WebhookService],
+  imports: [DatabaseModule],
+  controllers: [WebhookController],
+  providers: [WebhookService],
+  exports: [WebhookService],
 })
-export class WebhookModule { }
+export class WebhookModule {}

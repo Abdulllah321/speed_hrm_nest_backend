@@ -31,8 +31,12 @@ import { JournalVoucherModule } from '../finance/journal-voucher/journal-voucher
     forwardRef(() => EOBIModule),
   ],
   controllers: [PayrollController, CprController, CprTaxExportController],
-  providers: [PayrollService, CprService, CprTaxExportService, CprTaxExportProcessor],
+  providers: [
+    PayrollService,
+    CprService,
+    CprTaxExportService,
+    CprTaxExportProcessor,
+  ],
   exports: [PayrollService, CprService, CprTaxExportService],
 })
 export class PayrollModule {}
-

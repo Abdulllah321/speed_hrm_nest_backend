@@ -33,7 +33,9 @@ export interface PurchaseReturnRegisterExportJobData {
 
 @Processor('purchase-return-register-export')
 export class PurchaseReturnRegisterExportProcessor {
-  private readonly logger = new Logger(PurchaseReturnRegisterExportProcessor.name);
+  private readonly logger = new Logger(
+    PurchaseReturnRegisterExportProcessor.name,
+  );
 
   constructor(
     private readonly notificationsService: NotificationsService,
@@ -48,13 +50,17 @@ export class PurchaseReturnRegisterExportProcessor {
           () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
 
   @Process({ concurrency: 1 })
-  async handleExport(job: Job<PurchaseReturnRegisterExportJobData>): Promise<void> {
+  async handleExport(
+    job: Job<PurchaseReturnRegisterExportJobData>,
+  ): Promise<void> {
     const {
       jobId,
       userId,
@@ -71,7 +77,9 @@ export class PurchaseReturnRegisterExportProcessor {
       exportType,
       search,
     } = job.data;
-    this.logger.log(`[PurchaseReturnRegisterExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export`);
+    this.logger.log(
+      `[PurchaseReturnRegisterExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
@@ -83,19 +91,20 @@ export class PurchaseReturnRegisterExportProcessor {
     try {
       await job.progress(10);
 
-      const reportData = await this.purchaseReturnRegisterExportService.getReportData(
-        {
-          brandId,
-          supplierId,
-          startDate,
-          endDate,
-          status,
-          returnType,
-          sourceType,
-          search,
-        },
-        prisma,
-      );
+      const reportData =
+        await this.purchaseReturnRegisterExportService.getReportData(
+          {
+            brandId,
+            supplierId,
+            startDate,
+            endDate,
+            status,
+            returnType,
+            sourceType,
+            search,
+          },
+          prisma,
+        );
 
       await job.progress(40);
 
@@ -137,17 +146,25 @@ export class PurchaseReturnRegisterExportProcessor {
         }),
       );
     } catch (err: any) {
-      this.logger.error(`[PurchaseReturnRegisterExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[PurchaseReturnRegisterExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       try {
         await this.exportHistoryService.failExport(prisma as any, jobId);
       } catch (e: any) {
-        this.logger.error(`Failed to update export history status to FAILED for job ${jobId}`);
+        this.logger.error(
+          `Failed to update export history status to FAILED for job ${jobId}`,
+        );
       }
       throw err;
     }
   }
 
-  private async generateExcel(filePath: string, reportData: PurchaseReturnRegisterReportResult): Promise<void> {
+  private async generateExcel(
+    filePath: string,
+    reportData: PurchaseReturnRegisterReportResult,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -177,10 +194,31 @@ export class PurchaseReturnRegisterExportProcessor {
     };
 
     // Title Row
-    const titleRow = worksheet.addRow(['Purchase Return Register', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    const titleRow = worksheet.addRow([
+      'Purchase Return Register',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      `${reportData.startDate} - ${reportData.endDate}`,
+    ]);
     titleRow.height = 30;
-    titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
-    titleRow.getCell(10).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.getCell(1).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 14,
+      underline: true,
+    };
+    titleRow.getCell(10).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 11,
+      underline: true,
+    };
     titleRow.commit();
 
     worksheet.addRow([]).commit();
@@ -201,11 +239,23 @@ export class PurchaseReturnRegisterExportProcessor {
         '',
       ]);
       docBoxRow.height = 26;
-      docBoxRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11 };
-      docBoxRow.getCell(2).font = { bold: true, color: { argb: 'FF005F5B' }, size: 11 };
+      docBoxRow.getCell(1).font = {
+        bold: true,
+        color: { argb: 'FFCC0000' },
+        size: 11,
+      };
+      docBoxRow.getCell(2).font = {
+        bold: true,
+        color: { argb: 'FF005F5B' },
+        size: 11,
+      };
       docBoxRow.getCell(3).font = { bold: true, size: 10 };
       docBoxRow.getCell(4).font = { bold: true, size: 10 };
-      docBoxRow.getCell(5).font = { bold: true, color: { argb: 'FF0284C7' }, size: 10 };
+      docBoxRow.getCell(5).font = {
+        bold: true,
+        color: { argb: 'FF0284C7' },
+        size: 10,
+      };
       docBoxRow.commit();
 
       // Table Headers
@@ -246,12 +296,19 @@ export class PurchaseReturnRegisterExportProcessor {
             cat.totalLineTotal,
           ]);
           catRow.height = 22;
-          catRow.getCell(1).font = { bold: true, color: { argb: 'FF008000' }, size: 11 };
+          catRow.getCell(1).font = {
+            bold: true,
+            color: { argb: 'FF008000' },
+            size: 11,
+          };
           catRow.getCell(5).font = { bold: true, color: { argb: 'FF008000' } };
           catRow.getCell(5).alignment = { horizontal: 'right' };
           catRow.getCell(5).numFmt = '#,##0';
           for (const colIdx of [7, 8, 9, 10]) {
-            catRow.getCell(colIdx).font = { bold: true, color: { argb: 'FF008000' } };
+            catRow.getCell(colIdx).font = {
+              bold: true,
+              color: { argb: 'FF008000' },
+            };
             catRow.getCell(colIdx).alignment = { horizontal: 'right' };
             catRow.getCell(colIdx).numFmt = '#,##0';
           }
@@ -274,12 +331,22 @@ export class PurchaseReturnRegisterExportProcessor {
                   art.totalLineTotal,
                 ]);
                 artRow.height = 20;
-                artRow.getCell(1).font = { bold: true, color: { argb: 'FF0000FF' }, size: 10 };
-                artRow.getCell(5).font = { bold: true, color: { argb: 'FF0000FF' } };
+                artRow.getCell(1).font = {
+                  bold: true,
+                  color: { argb: 'FF0000FF' },
+                  size: 10,
+                };
+                artRow.getCell(5).font = {
+                  bold: true,
+                  color: { argb: 'FF0000FF' },
+                };
                 artRow.getCell(5).alignment = { horizontal: 'right' };
                 artRow.getCell(5).numFmt = '#,##0';
                 for (const colIdx of [7, 8, 9, 10]) {
-                  artRow.getCell(colIdx).font = { bold: true, color: { argb: 'FF0000FF' } };
+                  artRow.getCell(colIdx).font = {
+                    bold: true,
+                    color: { argb: 'FF0000FF' },
+                  };
                   artRow.getCell(colIdx).alignment = { horizontal: 'right' };
                   artRow.getCell(colIdx).numFmt = '#,##0';
                 }
@@ -337,7 +404,11 @@ export class PurchaseReturnRegisterExportProcessor {
       for (let c = 1; c <= 10; c++) {
         const cell = docTotRow.getCell(c);
         cell.font = { bold: true, size: 10, color: { argb: 'FFCC0000' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0F0' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFF0F0' },
+        };
         cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
       }
       docTotRow.getCell(5).alignment = { horizontal: 'right' };
@@ -368,7 +439,11 @@ export class PurchaseReturnRegisterExportProcessor {
     for (let c = 1; c <= 10; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' },
+      };
       cell.border = borderThin;
     }
     grandRow.getCell(5).alignment = { horizontal: 'right' };
@@ -382,7 +457,10 @@ export class PurchaseReturnRegisterExportProcessor {
     await workbook.commit();
   }
 
-  private async generateFlatExcel(filePath: string, reportData: PurchaseReturnRegisterReportResult): Promise<void> {
+  private async generateFlatExcel(
+    filePath: string,
+    reportData: PurchaseReturnRegisterReportResult,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -427,10 +505,46 @@ export class PurchaseReturnRegisterExportProcessor {
     };
 
     // Title Row
-    const titleRow = worksheet.addRow(['Purchase Return Register (Flat Data)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    const titleRow = worksheet.addRow([
+      'Purchase Return Register (Flat Data)',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      `${reportData.startDate} - ${reportData.endDate}`,
+    ]);
     titleRow.height = 30;
-    titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
-    titleRow.getCell(25).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.getCell(1).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 14,
+      underline: true,
+    };
+    titleRow.getCell(25).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 11,
+      underline: true,
+    };
     titleRow.commit();
 
     worksheet.addRow([]).commit();
@@ -467,7 +581,11 @@ export class PurchaseReturnRegisterExportProcessor {
     for (let c = 1; c <= 25; c++) {
       const cell = colHeaderRow.getCell(c);
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1E293B' },
+      };
       cell.border = borderThin;
       if (c >= 20) cell.alignment = { horizontal: 'right' };
       else if (c >= 17 && c <= 19) cell.alignment = { horizontal: 'center' };
@@ -513,7 +631,8 @@ export class PurchaseReturnRegisterExportProcessor {
                   for (let c = 1; c <= 25; c++) {
                     const cell = row.getCell(c);
                     cell.border = borderThin;
-                    if (c >= 17 && c <= 19) cell.alignment = { horizontal: 'center' };
+                    if (c >= 17 && c <= 19)
+                      cell.alignment = { horizontal: 'center' };
                     else if (c >= 20) {
                       cell.alignment = { horizontal: 'right' };
                       if (c === 20) cell.numFmt = '#,##0';
@@ -563,7 +682,11 @@ export class PurchaseReturnRegisterExportProcessor {
     for (let c = 1; c <= 25; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' },
+      };
       cell.border = borderThin;
     }
     grandRow.getCell(20).alignment = { horizontal: 'right' };
@@ -577,10 +700,20 @@ export class PurchaseReturnRegisterExportProcessor {
     await workbook.commit();
   }
 
-  private async generatePdf(filePath: string, reportData: PurchaseReturnRegisterReportResult): Promise<void> {
+  private async generatePdf(
+    filePath: string,
+    reportData: PurchaseReturnRegisterReportResult,
+  ): Promise<void> {
     const launchArgs =
       process.platform === 'linux'
-        ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
+        ? [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+          ]
         : [];
 
     const browser = await puppeteer.launch({
@@ -608,7 +741,9 @@ export class PurchaseReturnRegisterExportProcessor {
     }
   }
 
-  private buildHtmlReport(reportData: PurchaseReturnRegisterReportResult): string {
+  private buildHtmlReport(
+    reportData: PurchaseReturnRegisterReportResult,
+  ): string {
     const dateRangeStr = `${reportData.startDate} - ${reportData.endDate}`;
 
     let docsHtml = '';

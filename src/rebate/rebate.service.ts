@@ -287,7 +287,9 @@ export class RebateService {
           remarks: body.remarks || null,
           status: body.status || 'approved',
           createdById: ctx.userId,
-          ...(body.adjustmentType ? { adjustmentType: body.adjustmentType } : {}),
+          ...(body.adjustmentType
+            ? { adjustmentType: body.adjustmentType }
+            : {}),
         } as any,
       });
 

@@ -16,7 +16,9 @@ import { CreateDeliveryChallanDto } from '../dto/delivery-challan.dto';
 @Controller('api/sales/delivery-challans')
 @UseGuards(JwtAuthGuard)
 export class DeliveryChallanController {
-  constructor(private readonly deliveryChallanService: DeliveryChallanService,) {}
+  constructor(
+    private readonly deliveryChallanService: DeliveryChallanService,
+  ) {}
 
   @Get()
   async findAll(
@@ -41,7 +43,11 @@ export class DeliveryChallanController {
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() updateData: any, @Req() req: any) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateData: any,
+    @Req() req: any,
+  ) {
     return this.deliveryChallanService.update(id, updateData, {
       userId: req.user?.id,
       ipAddress: req.ip,
@@ -59,7 +65,11 @@ export class DeliveryChallanController {
   }
 
   @Post(':id/invoice')
-  async createInvoice(@Param('id') id: string, @Body() data: any, @Req() req: any) {
+  async createInvoice(
+    @Param('id') id: string,
+    @Body() data: any,
+    @Req() req: any,
+  ) {
     return this.deliveryChallanService.createInvoice(id, data, {
       userId: req.user?.id,
       ipAddress: req.ip,

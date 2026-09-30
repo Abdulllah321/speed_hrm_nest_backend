@@ -183,10 +183,15 @@ export interface QueueSalesReturnListExportOptions {
 @Injectable()
 export class SalesReturnListExportService {
   private readonly logger = new Logger(SalesReturnListExportService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
+  private readonly previewStorageDir = path.join(
+    process.cwd(),
+    'uploads',
+    'report-previews',
+  );
 
   constructor(
-    @InjectQueue('sales-return-list-export') private readonly exportQueue: Queue,
+    @InjectQueue('sales-return-list-export')
+    private readonly exportQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly prismaMaster: PrismaMasterService,
     private readonly uploadService: UploadService,
@@ -231,23 +236,35 @@ export class SalesReturnListExportService {
         ]);
 
         for (const wJob of waitingJobs) {
-          if (wJob.data?.userId === opts.userId && wJob.name === 'generate-sales-return-list-preview') {
+          if (
+            wJob.data?.userId === opts.userId &&
+            wJob.name === 'generate-sales-return-list-preview'
+          ) {
             if (wJob.data?.jobId) {
-              await this.previewCleanupService.deletePreviewByJobId(wJob.data.jobId);
+              await this.previewCleanupService.deletePreviewByJobId(
+                wJob.data.jobId,
+              );
             }
             await wJob.remove();
           }
         }
         for (const aJob of activeJobs) {
-          if (aJob.data?.userId === opts.userId && aJob.name === 'generate-sales-return-list-preview') {
+          if (
+            aJob.data?.userId === opts.userId &&
+            aJob.name === 'generate-sales-return-list-preview'
+          ) {
             this.cancelledPreviewJobIds.add(aJob.data?.jobId);
             if (aJob.data?.jobId) {
-              await this.previewCleanupService.deletePreviewByJobId(aJob.data.jobId);
+              await this.previewCleanupService.deletePreviewByJobId(
+                aJob.data.jobId,
+              );
             }
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Failed cleaning up obsolete preview jobs: ${err.message}`);
+        this.logger.warn(
+          `Failed cleaning up obsolete preview jobs: ${err.message}`,
+        );
       }
     }
 
@@ -278,7 +295,9 @@ export class SalesReturnListExportService {
       },
     );
 
-    this.logger.log(`[SalesReturnList] Queued preview job ${jobId} for user ${opts.userId}`);
+    this.logger.log(
+      `[SalesReturnList] Queued preview job ${jobId} for user ${opts.userId}`,
+    );
     return { jobId };
   }
 
@@ -291,9 +310,18 @@ export class SalesReturnListExportService {
     waitingCount: number;
     failedReason?: string;
   }> {
-    const job = (await this.exportQueue.getJob(`preview-${jobId}`)) || (await this.exportQueue.getJob(jobId));
+    const job =
+      (await this.exportQueue.getJob(`preview-${jobId}`)) ||
+      (await this.exportQueue.getJob(jobId));
     if (!job) {
-      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        status: 'unknown',
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -318,7 +346,10 @@ export class SalesReturnListExportService {
       ]);
       waitingCount = waiting.length;
       const allJobs = [...active, ...waiting];
-      const idx = allJobs.findIndex((j) => j.id?.toString() === `preview-${jobId}` || j.id?.toString() === jobId);
+      const idx = allJobs.findIndex(
+        (j) =>
+          j.id?.toString() === `preview-${jobId}` || j.id?.toString() === jobId,
+      );
       queuePosition = idx >= 0 ? idx + 1 : 1;
     }
 
@@ -334,26 +365,46 @@ export class SalesReturnListExportService {
   }
 
   getPreviewFilePath(jobId: string): string {
-    const jsonPath = path.join(this.previewStorageDir, `sales-return-list-preview-${jobId}.json.gz`);
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `sales-return-list-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) return jsonPath;
-    const ndjsonPath = path.join(this.previewStorageDir, `sales-return-list-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `sales-return-list-preview-${jobId}.ndjson.gz`,
+    );
     if (fs.existsSync(ndjsonPath)) return ndjsonPath;
     return jsonPath;
   }
 
   getPreviewNdjsonFilePath(jobId: string): string {
-    return path.join(this.previewStorageDir, `sales-return-list-preview-${jobId}.ndjson.gz`);
+    return path.join(
+      this.previewStorageDir,
+      `sales-return-list-preview-${jobId}.ndjson.gz`,
+    );
   }
 
-  async saveReportPreviewResult(jobId: string, result: SalesReturnListReportResult): Promise<void> {
-    const jsonPath = path.join(this.previewStorageDir, `sales-return-list-preview-${jobId}.json.gz`);
+  async saveReportPreviewResult(
+    jobId: string,
+    result: SalesReturnListReportResult,
+  ): Promise<void> {
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `sales-return-list-preview-${jobId}.json.gz`,
+    );
     const jsonStr = JSON.stringify(result);
     const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
     await fs.promises.writeFile(jsonPath, compressed);
   }
 
-  async getReportPreviewResult(jobId: string): Promise<SalesReturnListReportResult | null> {
-    const jsonPath = path.join(this.previewStorageDir, `sales-return-list-preview-${jobId}.json.gz`);
+  async getReportPreviewResult(
+    jobId: string,
+  ): Promise<SalesReturnListReportResult | null> {
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `sales-return-list-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) {
       const compressed = await fs.promises.readFile(jsonPath);
       const decompressed = await gunzipAsync(compressed);
@@ -361,7 +412,10 @@ export class SalesReturnListExportService {
       return parsed.data || parsed;
     }
 
-    const ndjsonPath = path.join(this.previewStorageDir, `sales-return-list-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `sales-return-list-preview-${jobId}.ndjson.gz`,
+    );
     if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
@@ -439,19 +493,29 @@ export class SalesReturnListExportService {
     await onProgress?.(10, 'Loading store & cashier metadata...');
 
     const [allLocations, cashiersList] = await Promise.all([
-      prisma.location.findMany({ select: { id: true, name: true, code: true } }),
-      this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
+      prisma.location.findMany({
+        select: { id: true, name: true, code: true },
+      }),
+      this.prismaMaster.user.findMany({
+        select: { id: true, firstName: true, lastName: true },
+      }),
     ]);
 
     const locationMap = new Map<string, string>();
     for (const l of allLocations) locationMap.set(l.id, l.name);
 
     const cashierMap = new Map<string, string>();
-    for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+    for (const u of cashiersList)
+      cashierMap.set(
+        u.id,
+        `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier',
+      );
 
     let locationNames = 'All Outlets (Stores)';
     if (opts.locationIds && opts.locationIds.length > 0) {
-      locationNames = opts.locationIds.map((id) => locationMap.get(id) || id).join(', ');
+      locationNames = opts.locationIds
+        .map((id) => locationMap.get(id) || id)
+        .join(', ');
     } else if (opts.locationId) {
       locationNames = locationMap.get(opts.locationId) || 'Store';
     }
@@ -463,30 +527,55 @@ export class SalesReturnListExportService {
       startDate = new Date(opts.startDate);
       endDate = new Date(opts.endDate);
       if (isNaN(startDate.getTime())) startDate = new Date(2026, 6, 1);
-      if (isNaN(endDate.getTime())) endDate = new Date(2027, 5, 30, 23, 59, 59, 999);
-    } else if (opts.fiscalYear === '2026-2027' || opts.fiscalYear === '26-27' || opts.fiscalYear === 'fy-26-27' || opts.fiscalYear === 'current' || opts.fiscalYear === 'fy-current') {
+      if (isNaN(endDate.getTime()))
+        endDate = new Date(2027, 5, 30, 23, 59, 59, 999);
+    } else if (
+      opts.fiscalYear === '2026-2027' ||
+      opts.fiscalYear === '26-27' ||
+      opts.fiscalYear === 'fy-26-27' ||
+      opts.fiscalYear === 'current' ||
+      opts.fiscalYear === 'fy-current'
+    ) {
       startDate = new Date(2026, 6, 1);
       endDate = new Date(2027, 5, 30, 23, 59, 59, 999);
-    } else if (opts.fiscalYear === '2025-2026' || opts.fiscalYear === '25-26' || opts.fiscalYear === 'fy-25-26' || opts.fiscalYear === 'previous' || opts.fiscalYear === 'fy-previous') {
+    } else if (
+      opts.fiscalYear === '2025-2026' ||
+      opts.fiscalYear === '25-26' ||
+      opts.fiscalYear === 'fy-25-26' ||
+      opts.fiscalYear === 'previous' ||
+      opts.fiscalYear === 'fy-previous'
+    ) {
       startDate = new Date(2025, 6, 1);
       endDate = new Date(2026, 5, 30, 23, 59, 59, 999);
-    } else if (opts.fiscalYear === '2024-2025' || opts.fiscalYear === '24-25' || opts.fiscalYear === 'fy-24-25') {
+    } else if (
+      opts.fiscalYear === '2024-2025' ||
+      opts.fiscalYear === '24-25' ||
+      opts.fiscalYear === 'fy-24-25'
+    ) {
       startDate = new Date(2024, 6, 1);
       endDate = new Date(2025, 5, 30, 23, 59, 59, 999);
     } else if (opts.fiscalYear === 'all-time') {
       startDate = new Date(2020, 0, 1);
       endDate = new Date(2035, 11, 31, 23, 59, 59, 999);
     } else if (opts.year) {
-      const y = typeof opts.year === 'string' ? parseInt(opts.year, 10) : opts.year;
+      const y =
+        typeof opts.year === 'string' ? parseInt(opts.year, 10) : opts.year;
       startDate = new Date(y, 0, 1);
       endDate = new Date(y, 11, 31, 23, 59, 59, 999);
     } else {
-      startDate = opts.startDate ? new Date(opts.startDate) : new Date(2026, 6, 1);
-      endDate = opts.endDate ? new Date(opts.endDate) : new Date(2027, 5, 30, 23, 59, 59, 999);
+      startDate = opts.startDate
+        ? new Date(opts.startDate)
+        : new Date(2026, 6, 1);
+      endDate = opts.endDate
+        ? new Date(opts.endDate)
+        : new Date(2027, 5, 30, 23, 59, 59, 999);
       endDate.setHours(23, 59, 59, 999);
     }
 
-    await onProgress?.(20, 'Querying return, exchange, and claim records from database...');
+    await onProgress?.(
+      20,
+      'Querying return, exchange, and claim records from database...',
+    );
 
     // 1. Fetch PosReturn records
     const posReturnWhere: any = {
@@ -645,20 +734,44 @@ export class SalesReturnListExportService {
     const addTotals = (target: SalesReturnTotals, src: SalesReturnTotals) => {
       target.returnCount += src.returnCount;
       target.totalItems += src.totalItems;
-      target.grossAmount = Number((target.grossAmount + src.grossAmount).toFixed(2));
-      target.wostAmount = Number((target.wostAmount + src.wostAmount).toFixed(2));
-      target.discountAmount = Number((target.discountAmount + src.discountAmount).toFixed(2));
-      target.discountWostAmount = Number((target.discountWostAmount + src.discountWostAmount).toFixed(2));
-      target.amountAfterDiscount = Number((target.amountAfterDiscount + src.amountAfterDiscount).toFixed(2));
+      target.grossAmount = Number(
+        (target.grossAmount + src.grossAmount).toFixed(2),
+      );
+      target.wostAmount = Number(
+        (target.wostAmount + src.wostAmount).toFixed(2),
+      );
+      target.discountAmount = Number(
+        (target.discountAmount + src.discountAmount).toFixed(2),
+      );
+      target.discountWostAmount = Number(
+        (target.discountWostAmount + src.discountWostAmount).toFixed(2),
+      );
+      target.amountAfterDiscount = Number(
+        (target.amountAfterDiscount + src.amountAfterDiscount).toFixed(2),
+      );
       target.taxAmount = Number((target.taxAmount + src.taxAmount).toFixed(2));
       target.netAmount = Number((target.netAmount + src.netAmount).toFixed(2));
-      target.cashRefund = Number((target.cashRefund + src.cashRefund).toFixed(2));
-      target.cardRefund = Number((target.cardRefund + src.cardRefund).toFixed(2));
-      target.voucherIssuedAmount = Number((target.voucherIssuedAmount + src.voucherIssuedAmount).toFixed(2));
-      target.exchangeVoucherAmount = Number((target.exchangeVoucherAmount + src.exchangeVoucherAmount).toFixed(2));
-      target.creditVoucherAmount = Number((target.creditVoucherAmount + src.creditVoucherAmount).toFixed(2));
-      target.claimVoucherAmount = Number((target.claimVoucherAmount + src.claimVoucherAmount).toFixed(2));
-      target.rewardVoucherAmount = Number((target.rewardVoucherAmount + src.rewardVoucherAmount).toFixed(2));
+      target.cashRefund = Number(
+        (target.cashRefund + src.cashRefund).toFixed(2),
+      );
+      target.cardRefund = Number(
+        (target.cardRefund + src.cardRefund).toFixed(2),
+      );
+      target.voucherIssuedAmount = Number(
+        (target.voucherIssuedAmount + src.voucherIssuedAmount).toFixed(2),
+      );
+      target.exchangeVoucherAmount = Number(
+        (target.exchangeVoucherAmount + src.exchangeVoucherAmount).toFixed(2),
+      );
+      target.creditVoucherAmount = Number(
+        (target.creditVoucherAmount + src.creditVoucherAmount).toFixed(2),
+      );
+      target.claimVoucherAmount = Number(
+        (target.claimVoucherAmount + src.claimVoucherAmount).toFixed(2),
+      );
+      target.rewardVoucherAmount = Number(
+        (target.rewardVoucherAmount + src.rewardVoucherAmount).toFixed(2),
+      );
     };
 
     const grandTotals = createEmptyTotals();
@@ -672,8 +785,15 @@ export class SalesReturnListExportService {
       voucherType?: string,
       notes?: string,
       claimId?: string,
-    ): { subType: 'EXCHANGE_SR' | 'REFUND_RF' | 'CLAIM_CLM'; label: string } => {
-      if (claimId || voucherType === 'CLAIM' || (notes && /claim|defect|_clm/i.test(notes))) {
+    ): {
+      subType: 'EXCHANGE_SR' | 'REFUND_RF' | 'CLAIM_CLM';
+      label: string;
+    } => {
+      if (
+        claimId ||
+        voucherType === 'CLAIM' ||
+        (notes && /claim|defect|_clm/i.test(notes))
+      ) {
         return { subType: 'CLAIM_CLM', label: 'Claim (_CLM)' };
       }
       if (
@@ -690,7 +810,8 @@ export class SalesReturnListExportService {
 
     // Transform PosReturns
     for (const pr of posReturns) {
-      const cust = pr.customer || pr.originalCustomer || (pr.salesOrder as any)?.customer;
+      const cust =
+        pr.customer || pr.originalCustomer || (pr.salesOrder as any)?.customer;
       const voucher = pr.voucher;
       const notes = pr.reason || (pr.salesOrder as any)?.notes || '';
       const { subType, label: subTypeLabel } = classifySubType(
@@ -711,14 +832,35 @@ export class SalesReturnListExportService {
 
       for (const it of pr.items || []) {
         const qty = it.quantity || 1;
-        const unitPrice = Number(it.originalUnitPrice || it.refundPerUnit || it.originalPaidPerUnit || 0);
-        const unitPriceWost = Number((it.unitPriceWost ? Number(it.unitPriceWost) : unitPrice / 1.18).toFixed(2));
-        const valExcl = Number((it.lineTotalWost ? Number(it.lineTotalWost) : qty * unitPriceWost).toFixed(2));
-        const disc = Number(it.discountPercent ? (unitPrice * qty * Number(it.discountPercent)) / 100 : 0);
-        const discWost = Number((it.discountWost ? Number(it.discountWost) : disc / 1.18).toFixed(2));
+        const unitPrice = Number(
+          it.originalUnitPrice ||
+            it.refundPerUnit ||
+            it.originalPaidPerUnit ||
+            0,
+        );
+        const unitPriceWost = Number(
+          (it.unitPriceWost
+            ? Number(it.unitPriceWost)
+            : unitPrice / 1.18
+          ).toFixed(2),
+        );
+        const valExcl = Number(
+          (it.lineTotalWost
+            ? Number(it.lineTotalWost)
+            : qty * unitPriceWost
+          ).toFixed(2),
+        );
+        const disc = Number(
+          it.discountPercent
+            ? (unitPrice * qty * Number(it.discountPercent)) / 100
+            : 0,
+        );
+        const discWost = Number(
+          (it.discountWost ? Number(it.discountWost) : disc / 1.18).toFixed(2),
+        );
         const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
         const tax = Number(it.taxAmount || 0);
-        const lineTotal = Number(it.lineTotal || (unitPrice * qty - disc + tax));
+        const lineTotal = Number(it.lineTotal || unitPrice * qty - disc + tax);
 
         retTotalQty += qty;
         retGross += unitPrice * qty;
@@ -786,7 +928,10 @@ export class SalesReturnListExportService {
 
       const totalRefundAmt = Number(pr.totalRefundAmount || retNet);
       const cashRefund = pr.refundMode === 'CASH' ? totalRefundAmt : 0;
-      const voucherIssuedAmt = pr.refundMode === 'VOUCHER' || voucher ? Number(voucher?.faceValue || totalRefundAmt) : 0;
+      const voucherIssuedAmt =
+        pr.refundMode === 'VOUCHER' || voucher
+          ? Number(voucher?.faceValue || totalRefundAmt)
+          : 0;
 
       const nodeTotals: SalesReturnTotals = {
         returnCount: 1,
@@ -795,7 +940,9 @@ export class SalesReturnListExportService {
         wostAmount: retWost,
         discountAmount: retDisc,
         discountWostAmount: retDiscWost,
-        amountAfterDiscount: Number(Math.max(0, retWost - retDiscWost).toFixed(2)),
+        amountAfterDiscount: Number(
+          Math.max(0, retWost - retDiscWost).toFixed(2),
+        ),
         taxAmount: retTax,
         netAmount: totalRefundAmt,
         cashRefund,
@@ -809,8 +956,12 @@ export class SalesReturnListExportService {
 
       addTotals(grandTotals, nodeTotals);
 
-      const locName = pr.locationId ? locationMap.get(pr.locationId) || 'Main Outlet' : 'Main Outlet';
-      const cashierName = pr.cashierUserId ? cashierMap.get(pr.cashierUserId) || 'Cashier' : 'Cashier';
+      const locName = pr.locationId
+        ? locationMap.get(pr.locationId) || 'Main Outlet'
+        : 'Main Outlet';
+      const cashierName = pr.cashierUserId
+        ? cashierMap.get(pr.cashierUserId) || 'Cashier'
+        : 'Cashier';
 
       const returnNode: SalesReturnNode = {
         id: pr.id,
@@ -833,22 +984,26 @@ export class SalesReturnListExportService {
         voucherAmount: voucher ? Number(voucher.faceValue) : undefined,
         totals: nodeTotals,
         items: itemsList,
-        customerDetails: cust ? {
-          name: cust.name,
-          phone: cust.contactNo,
-          cnic: cust.cnicNo,
-          code: cust.subCode || cust.traderId,
-          address: cust.address,
-          email: cust.email,
-        } : undefined,
-        voucherDetails: voucher ? {
-          id: voucher.id,
-          code: voucher.code,
-          voucherType: voucher.voucherType,
-          faceValue: Number(voucher.faceValue),
-          isRedeemed: voucher.isRedeemed,
-          description: voucher.description || undefined,
-        } : undefined,
+        customerDetails: cust
+          ? {
+              name: cust.name,
+              phone: cust.contactNo,
+              cnic: cust.cnicNo,
+              code: cust.subCode || cust.traderId,
+              address: cust.address,
+              email: cust.email,
+            }
+          : undefined,
+        voucherDetails: voucher
+          ? {
+              id: voucher.id,
+              code: voucher.code,
+              voucherType: voucher.voucherType,
+              faceValue: Number(voucher.faceValue),
+              isRedeemed: voucher.isRedeemed,
+              description: voucher.description || undefined,
+            }
+          : undefined,
       };
 
       returnNodesList.push(returnNode);
@@ -872,7 +1027,8 @@ export class SalesReturnListExportService {
     // Transform Standalone PosClaims
     for (const clm of claims) {
       // Check if this claim was already linked to an existing return node
-      if (returnNodesList.some((r) => r.returnNumber === clm.claimNumber)) continue;
+      if (returnNodesList.some((r) => r.returnNumber === clm.claimNumber))
+        continue;
 
       const cust = clm.salesOrder?.customer;
       const voucher = clm.voucher;
@@ -940,7 +1096,9 @@ export class SalesReturnListExportService {
       }
 
       const valExcl = Number((approvedAmt / 1.18).toFixed(2));
-      const voucherIssuedAmt = voucher ? Number(voucher.faceValue) : approvedAmt;
+      const voucherIssuedAmt = voucher
+        ? Number(voucher.faceValue)
+        : approvedAmt;
 
       const nodeTotals: SalesReturnTotals = {
         returnCount: 1,
@@ -964,8 +1122,12 @@ export class SalesReturnListExportService {
       addTotals(grandTotals, nodeTotals);
 
       const locId = clm.salesOrder?.locationId;
-      const locName = locId ? locationMap.get(locId) || 'Main Outlet' : 'Main Outlet';
-      const cashierName = clm.salesOrder?.cashierUserId ? cashierMap.get(clm.salesOrder.cashierUserId) || 'Cashier' : 'Cashier';
+      const locName = locId
+        ? locationMap.get(locId) || 'Main Outlet'
+        : 'Main Outlet';
+      const cashierName = clm.salesOrder?.cashierUserId
+        ? cashierMap.get(clm.salesOrder.cashierUserId) || 'Cashier'
+        : 'Cashier';
 
       const returnNode: SalesReturnNode = {
         id: clm.id,
@@ -989,22 +1151,26 @@ export class SalesReturnListExportService {
         voucherAmount: voucher ? Number(voucher.faceValue) : undefined,
         totals: nodeTotals,
         items: itemsList,
-        customerDetails: cust ? {
-          name: cust.name,
-          phone: cust.contactNo,
-          cnic: cust.cnicNo,
-          code: cust.subCode || cust.traderId,
-          address: cust.address,
-          email: cust.email,
-        } : undefined,
-        voucherDetails: voucher ? {
-          id: voucher.id,
-          code: voucher.code,
-          voucherType: voucher.voucherType,
-          faceValue: Number(voucher.faceValue),
-          isRedeemed: voucher.isRedeemed,
-          description: voucher.description || undefined,
-        } : undefined,
+        customerDetails: cust
+          ? {
+              name: cust.name,
+              phone: cust.contactNo,
+              cnic: cust.cnicNo,
+              code: cust.subCode || cust.traderId,
+              address: cust.address,
+              email: cust.email,
+            }
+          : undefined,
+        voucherDetails: voucher
+          ? {
+              id: voucher.id,
+              code: voucher.code,
+              voucherType: voucher.voucherType,
+              faceValue: Number(voucher.faceValue),
+              isRedeemed: voucher.isRedeemed,
+              description: voucher.description || undefined,
+            }
+          : undefined,
       };
 
       returnNodesList.push(returnNode);
@@ -1038,34 +1204,40 @@ export class SalesReturnListExportService {
         });
       });
 
-      const metaLine = JSON.stringify({
-        type: 'meta',
-        reportType: opts.reportType || 'merged',
-        dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
-        locationNames,
-        locations: allLocations,
-        totalReturns: returnNodesList.length,
-      }) + '\n';
+      const metaLine =
+        JSON.stringify({
+          type: 'meta',
+          reportType: opts.reportType || 'merged',
+          dateRange: {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+          },
+          locationNames,
+          locations: allLocations,
+          totalReturns: returnNodesList.length,
+        }) + '\n';
       gzipStream.write(metaLine);
 
       const SUB_CHUNK = 250;
       for (let i = 0; i < returnNodesList.length; i += SUB_CHUNK) {
         const batch = returnNodesList.slice(i, i + SUB_CHUNK);
-        const chunkLine = JSON.stringify({
-          type: 'returns',
-          startIndex: i,
-          count: batch.length,
-          returns: batch,
-        }) + '\n';
+        const chunkLine =
+          JSON.stringify({
+            type: 'returns',
+            startIndex: i,
+            count: batch.length,
+            returns: batch,
+          }) + '\n';
         gzipStream.write(chunkLine);
       }
 
-      const totalsLine = JSON.stringify({
-        type: 'totals',
-        grandTotals,
-        totalReturns: returnNodesList.length,
-        done: true,
-      }) + '\n';
+      const totalsLine =
+        JSON.stringify({
+          type: 'totals',
+          grandTotals,
+          totalReturns: returnNodesList.length,
+          done: true,
+        }) + '\n';
       gzipStream.write(totalsLine);
 
       gzipStream.end();
@@ -1080,7 +1252,10 @@ export class SalesReturnListExportService {
       returns: returnNodesList,
       flatItems: [],
       grandTotals,
-      dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      },
       locationNames,
     };
   }
@@ -1123,7 +1298,9 @@ export class SalesReturnListExportService {
     return { jobId, downloadUrl };
   }
 
-  async queueExport(opts: QueueSalesReturnListExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueSalesReturnListExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -1166,17 +1343,29 @@ export class SalesReturnListExportService {
       },
     );
 
-    this.logger.log(`[SalesReturnListExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[SalesReturnListExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number; message?: string }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number; message?: string }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
     const rawProg: any = job.progress();
-    const progress = typeof rawProg === 'number' ? rawProg : typeof rawProg === 'object' && rawProg?.percent !== undefined ? Number(rawProg.percent) : 0;
-    const message = typeof rawProg === 'object' && rawProg?.message ? String(rawProg.message) : undefined;
+    const progress =
+      typeof rawProg === 'number'
+        ? rawProg
+        : typeof rawProg === 'object' && rawProg?.percent !== undefined
+          ? Number(rawProg.percent)
+          : 0;
+    const message =
+      typeof rawProg === 'object' && rawProg?.message
+        ? String(rawProg.message)
+        : undefined;
     return { state, progress, message };
   }
 
@@ -1187,7 +1376,9 @@ export class SalesReturnListExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     try {
@@ -1198,29 +1389,47 @@ export class SalesReturnListExportService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export history download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
       const s3Key = record.filePath.replace('s3://', '');
-      const signedUrl = await this.uploadService.getSignedUrlForDownload(s3Key, record.fileName);
+      const signedUrl = await this.uploadService.getSignedUrlForDownload(
+        s3Key,
+        record.fileName,
+      );
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
     const filePath = path.join(process.cwd(), record.filePath);
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
     const stat = fs.statSync(filePath);
     const stream = fs.createReadStream(filePath);
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);
@@ -1239,7 +1448,10 @@ export class SalesReturnListExportService {
     res: any,
   ): Promise<void> {
     const ndjsonPath = this.getPreviewNdjsonFilePath(jobId);
-    const jsonPath = path.join(this.previewStorageDir, `sales-return-list-preview-${jobId}.json.gz`);
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `sales-return-list-preview-${jobId}.json.gz`,
+    );
 
     let targetFilePath = '';
     if (fs.existsSync(ndjsonPath)) {
@@ -1247,7 +1459,9 @@ export class SalesReturnListExportService {
     } else if (fs.existsSync(jsonPath)) {
       targetFilePath = jsonPath;
     } else {
-      throw new NotFoundException('Sales return list preview result not found or expired');
+      throw new NotFoundException(
+        'Sales return list preview result not found or expired',
+      );
     }
 
     const exportType = options.exportType || 'flat';
@@ -1256,12 +1470,21 @@ export class SalesReturnListExportService {
 
     const passThrough = new PassThrough();
     if (typeof res.header === 'function') {
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.header(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
       res.header('Content-Disposition', `attachment; filename="${fileName}"`);
       res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
 
@@ -1277,7 +1500,9 @@ export class SalesReturnListExportService {
       useSharedStrings: false,
     });
 
-    const sheet = workbook.addWorksheet(exportType === 'flat' ? 'Flat Return Items' : 'Sales Returns');
+    const sheet = workbook.addWorksheet(
+      exportType === 'flat' ? 'Flat Return Items' : 'Sales Returns',
+    );
 
     if (exportType === 'flat') {
       sheet.columns = [
@@ -1307,7 +1532,11 @@ export class SalesReturnListExportService {
         { header: 'Discount %', key: 'discountPercent', width: 11 },
         { header: 'Discount', key: 'discountAmount', width: 12 },
         { header: 'Discount WOST', key: 'discountAmountWost', width: 13 },
-        { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18 },
+        {
+          header: 'Amount After Discount',
+          key: 'amountAfterDiscount',
+          width: 18,
+        },
         { header: 'Sales Tax', key: 'taxAmount', width: 12 },
         { header: 'Value Incl. (Net Return)', key: 'lineTotal', width: 18 },
         { header: 'Cash Refund', key: 'cashRefund', width: 14 },
@@ -1334,25 +1563,41 @@ export class SalesReturnListExportService {
         { header: 'Value Excl.', key: 'valueExcl', width: 14 },
         { header: 'Discount Total', key: 'discountTotal', width: 14 },
         { header: 'Discount WOST', key: 'discountWost', width: 14 },
-        { header: 'Amount After Discount', key: 'amountAfterDiscount', width: 18 },
+        {
+          header: 'Amount After Discount',
+          key: 'amountAfterDiscount',
+          width: 18,
+        },
         { header: 'Sales Tax', key: 'salesTax', width: 12 },
         { header: 'Value Incl. (Net Return)', key: 'netTotal', width: 18 },
         { header: 'Cash Refund', key: 'cashRefund', width: 14 },
-        { header: 'Exchange Voucher Issued', key: 'exchangeVoucher', width: 18 },
+        {
+          header: 'Exchange Voucher Issued',
+          key: 'exchangeVoucher',
+          width: 18,
+        },
         { header: 'Credit Voucher Issued', key: 'creditVoucher', width: 18 },
         { header: 'Claim Voucher Issued', key: 'claimVoucher', width: 18 },
       ];
     }
 
     const q = (options.search || '').trim().toLowerCase();
-    const targetSubType = options.subType && options.subType !== 'ALL' ? options.subType : null;
-    const targetRefundMode = options.refundMode && options.refundMode !== 'all' ? options.refundMode.toUpperCase() : null;
-    const locSet = options.locationId && options.locationId !== 'all'
-      ? new Set(options.locationId.split(',').map((s) => s.trim().toLowerCase()))
-      : null;
-    const cashierFilter = options.cashierId && options.cashierId !== 'all'
-      ? options.cashierId.trim().toLowerCase()
-      : null;
+    const targetSubType =
+      options.subType && options.subType !== 'ALL' ? options.subType : null;
+    const targetRefundMode =
+      options.refundMode && options.refundMode !== 'all'
+        ? options.refundMode.toUpperCase()
+        : null;
+    const locSet =
+      options.locationId && options.locationId !== 'all'
+        ? new Set(
+            options.locationId.split(',').map((s) => s.trim().toLowerCase()),
+          )
+        : null;
+    const cashierFilter =
+      options.cashierId && options.cashierId !== 'all'
+        ? options.cashierId.trim().toLowerCase()
+        : null;
 
     let totalQty = 0;
     let totalValExcl = 0;
@@ -1393,7 +1638,11 @@ export class SalesReturnListExportService {
           // Subtype filter
           if (targetSubType && ret.subType !== targetSubType) continue;
           // Refund mode filter
-          if (targetRefundMode && (ret.refundMode || '').toUpperCase() !== targetRefundMode) continue;
+          if (
+            targetRefundMode &&
+            (ret.refundMode || '').toUpperCase() !== targetRefundMode
+          )
+            continue;
           // Location filter
           if (locSet) {
             const locId = (ret.locationId || '').toLowerCase();
@@ -1417,10 +1666,11 @@ export class SalesReturnListExportService {
               (ret.cashierName || '').toLowerCase().includes(q) ||
               (ret.voucherCode || '').toLowerCase().includes(q);
 
-            const matchesItems = (ret.items || []).some((it: any) =>
-              (it.sku || '').toLowerCase().includes(q) ||
-              (it.barCode || '').toLowerCase().includes(q) ||
-              (it.description || '').toLowerCase().includes(q)
+            const matchesItems = (ret.items || []).some(
+              (it: any) =>
+                (it.sku || '').toLowerCase().includes(q) ||
+                (it.barCode || '').toLowerCase().includes(q) ||
+                (it.description || '').toLowerCase().includes(q),
             );
 
             if (!matchesHeader && !matchesItems) continue;
@@ -1429,27 +1679,44 @@ export class SalesReturnListExportService {
           const t = ret.totals || {};
 
           if (exportType === 'flat') {
-            const items = ret.items && ret.items.length > 0 ? ret.items : [{
-              sku: '-',
-              barCode: '-',
-              description: 'Return Summary',
-              quantity: t.totalItems || 1,
-              unitPrice: t.grossAmount || 0,
-              discountAmount: t.discountAmount || 0,
-              taxAmount: t.taxAmount || 0,
-              lineTotal: t.netAmount || 0,
-            }];
+            const items =
+              ret.items && ret.items.length > 0
+                ? ret.items
+                : [
+                    {
+                      sku: '-',
+                      barCode: '-',
+                      description: 'Return Summary',
+                      quantity: t.totalItems || 1,
+                      unitPrice: t.grossAmount || 0,
+                      discountAmount: t.discountAmount || 0,
+                      taxAmount: t.taxAmount || 0,
+                      lineTotal: t.netAmount || 0,
+                    },
+                  ];
 
             for (const item of items) {
               const qty = Number(item.quantity || 0);
               const unitPrice = Number(item.unitPrice || 0);
-              const unitPriceWost = item.priceWost !== undefined ? item.priceWost : (unitPrice / 1.18);
+              const unitPriceWost =
+                item.priceWost !== undefined
+                  ? item.priceWost
+                  : unitPrice / 1.18;
               const valExcl = Number((qty * unitPriceWost).toFixed(2));
               const disc = Number(item.discountAmount || 0);
-              const discWost = Number((item.discountAmountWost !== undefined ? item.discountAmountWost : (disc / 1.18)).toFixed(2));
-              const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
+              const discWost = Number(
+                (item.discountAmountWost !== undefined
+                  ? item.discountAmountWost
+                  : disc / 1.18
+                ).toFixed(2),
+              );
+              const amtAfterDisc = Number(
+                Math.max(0, valExcl - discWost).toFixed(2),
+              );
               const tax = Number(item.taxAmount || 0);
-              const lineTotal = Number(item.lineTotal || (unitPrice * qty - disc + tax));
+              const lineTotal = Number(
+                item.lineTotal || unitPrice * qty - disc + tax,
+              );
 
               totalQty += qty;
               totalValExcl += valExcl;
@@ -1466,7 +1733,12 @@ export class SalesReturnListExportService {
                 returnNumber: ret.returnNumber,
                 originalOrderNumber: ret.originalOrderNumber || '-',
                 subTypeLabel: ret.subTypeLabel || ret.subType,
-                returnDate: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+                returnDate: ret.createdAt
+                  ? new Date(ret.createdAt)
+                      .toISOString()
+                      .replace('T', ' ')
+                      .slice(0, 19)
+                  : '-',
                 cashierName: ret.cashierName || '-',
                 customerName: ret.customerName || 'Walk-in',
                 customerPhone: ret.customerPhone || '-',
@@ -1500,10 +1772,15 @@ export class SalesReturnListExportService {
             const qty = Number(t.totalItems || 0);
             const gross = Number(t.grossAmount || 0);
             const valExcl = Number((gross / 1.18).toFixed(2));
-            const unitPriceWost = qty > 0 ? Number((valExcl / qty).toFixed(2)) : 0;
+            const unitPriceWost =
+              qty > 0 ? Number((valExcl / qty).toFixed(2)) : 0;
             const disc = Number(t.discountAmount || 0);
-            const discWost = Number((t.discountWostAmount || disc / 1.18).toFixed(2));
-            const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
+            const discWost = Number(
+              (t.discountWostAmount || disc / 1.18).toFixed(2),
+            );
+            const amtAfterDisc = Number(
+              Math.max(0, valExcl - discWost).toFixed(2),
+            );
             const tax = Number(t.taxAmount || 0);
             const net = Number(t.netAmount || 0);
 
@@ -1521,7 +1798,12 @@ export class SalesReturnListExportService {
               returnNumber: ret.returnNumber,
               originalOrderNumber: ret.originalOrderNumber || '-',
               subTypeLabel: ret.subTypeLabel || ret.subType,
-              date: ret.createdAt ? new Date(ret.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-',
+              date: ret.createdAt
+                ? new Date(ret.createdAt)
+                    .toISOString()
+                    .replace('T', ' ')
+                    .slice(0, 19)
+                : '-',
               location: ret.locationName || '-',
               cashier: ret.cashierName || '-',
               customer: ret.customerName || 'Walk-in',
@@ -1576,7 +1858,8 @@ export class SalesReturnListExportService {
       const summaryRow = sheet.addRow({
         returnNumber: 'GRAND TOTAL',
         quantity: totalQty,
-        unitPriceWost: totalQty > 0 ? Number((totalValExcl / totalQty).toFixed(2)) : 0,
+        unitPriceWost:
+          totalQty > 0 ? Number((totalValExcl / totalQty).toFixed(2)) : 0,
         valueExcl: Number(totalValExcl.toFixed(2)),
         discountTotal: Number(totalDiscount.toFixed(2)),
         discountWost: Number(totalDiscWost.toFixed(2)),

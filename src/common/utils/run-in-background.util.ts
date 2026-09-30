@@ -22,7 +22,10 @@ export const BackgroundJobEmitter = new EventEmitter();
  *   );
  *   return response; // returned immediately — tasks run in background
  */
-export function runInBackground(jobName: string, ...tasks: Promise<any>[]): void {
+export function runInBackground(
+  jobName: string,
+  ...tasks: Promise<any>[]
+): void {
   Promise.allSettled(tasks).then((results) => {
     results.forEach((result, index) => {
       if (result.status === 'rejected') {

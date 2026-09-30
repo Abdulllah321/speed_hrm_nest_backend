@@ -36,9 +36,11 @@ export class PermissionsGuard implements CanActivate {
     // Fast path: JwtAuthGuard already resolved permissions onto req.user
     if (Array.isArray(user.permissions)) {
       const role = (
-        typeof user.roleName === 'string' ? user.roleName :
-        typeof user.role === 'string' ? user.role :
-        user.role?.name || ''
+        typeof user.roleName === 'string'
+          ? user.roleName
+          : typeof user.role === 'string'
+            ? user.role
+            : user.role?.name || ''
       ).toLowerCase();
 
       if (
@@ -91,10 +93,7 @@ export class PermissionsGuard implements CanActivate {
         },
         userPermissions: {
           where: {
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gt: new Date() } }
-            ]
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
           },
           select: {
             isAllowed: true,
@@ -110,10 +109,17 @@ export class PermissionsGuard implements CanActivate {
     const roleName = user.role?.name?.toLowerCase();
 
     // Check if role is active and not expired
-    const isRoleActive = user.roleId && user.role && (!user.roleExpiresAt || user.roleExpiresAt > new Date());
+    const isRoleActive =
+      user.roleId &&
+      user.role &&
+      (!user.roleExpiresAt || user.roleExpiresAt > new Date());
 
     if (isRoleActive && user.role) {
-      if (roleName === 'super_admin' || roleName === 'super-admin' || roleName === 'admin') {
+      if (
+        roleName === 'super_admin' ||
+        roleName === 'super-admin' ||
+        roleName === 'admin'
+      ) {
         permissionsSet.add('*');
       } else {
         user.role.permissions.forEach((rp) => {

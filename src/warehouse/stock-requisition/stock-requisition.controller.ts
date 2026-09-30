@@ -1,4 +1,15 @@
-import { Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Req, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+  BadRequestException,
+} from '@nestjs/common';
 import { StockRequisitionService } from './stock-requisition.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -13,10 +24,14 @@ export class StockRequisitionController {
   constructor(private readonly requisitionService: StockRequisitionService) {}
 
   @Post()
-  @Permissions('erp.inventory.transfer.create', 'erp.inventory.stock-requisition.create')
+  @Permissions(
+    'erp.inventory.transfer.create',
+    'erp.inventory.stock-requisition.create',
+  )
   @ApiOperation({ summary: 'Create a new stock requisition note (SRN)' })
   async create(
-    @Body() dto: {
+    @Body()
+    dto: {
       fromWarehouseId: string;
       toLocationId: string;
       brandId?: string;
@@ -29,17 +44,31 @@ export class StockRequisitionController {
     },
     @Req() req: any,
   ) {
-    const data = await this.requisitionService.createRequisition(dto, req.user?.id);
-    const message = dto.status === 'DRAFT' 
-      ? 'Draft Stock Requisition created successfully' 
-      : 'Stock Requisition Note created and stock reserved successfully';
+    const data = await this.requisitionService.createRequisition(
+      dto,
+      req.user?.id,
+    );
+    const message =
+      dto.status === 'DRAFT'
+        ? 'Draft Stock Requisition created successfully'
+        : 'Stock Requisition Note created and stock reserved successfully';
     return { status: true, data, message };
   }
 
   @Post('upload')
-  @Permissions('erp.inventory.transfer.create', 'erp.inventory.stock-requisition.create', 'erp.inventory.stock-requisition.read')
-  @ApiOperation({ summary: 'Upload consolidated Excel sheet to parse items and validate warehouse stock' })
-  async uploadExcel(@Req() req: any, @Query('warehouseId') warehouseId?: string) {
+  @Permissions(
+    'erp.inventory.transfer.create',
+    'erp.inventory.stock-requisition.create',
+    'erp.inventory.stock-requisition.read',
+  )
+  @ApiOperation({
+    summary:
+      'Upload consolidated Excel sheet to parse items and validate warehouse stock',
+  })
+  async uploadExcel(
+    @Req() req: any,
+    @Query('warehouseId') warehouseId?: string,
+  ) {
     const file = await req.file();
     if (!file) {
       throw new BadRequestException('No file uploaded');
@@ -48,30 +77,43 @@ export class StockRequisitionController {
     const allowedExtensions = ['xlsx', 'xls', 'csv'];
     const ext = file.filename.split('.').pop()?.toLowerCase();
     if (!ext || !allowedExtensions.includes(ext)) {
-      throw new BadRequestException(`Invalid file type. Allowed: ${allowedExtensions.join(', ')}`);
+      throw new BadRequestException(
+        `Invalid file type. Allowed: ${allowedExtensions.join(', ')}`,
+      );
     }
 
     const buffer = await file.toBuffer();
     const effectiveWarehouseId = warehouseId || req.query?.warehouseId;
-    const data = await this.requisitionService.parseExcelSheet(buffer, effectiveWarehouseId);
-    return { status: true, data, message: 'Excel sheet parsed and validated successfully' };
+    const data = await this.requisitionService.parseExcelSheet(
+      buffer,
+      effectiveWarehouseId,
+    );
+    return {
+      status: true,
+      data,
+      message: 'Excel sheet parsed and validated successfully',
+    };
   }
 
   @Get('replenishment-candidates')
   @Permissions('erp.inventory.stock-transfer.read')
-  @ApiOperation({ summary: 'Get replenishment candidates based on POS net sales summary and warehouse availability' })
+  @ApiOperation({
+    summary:
+      'Get replenishment candidates based on POS net sales summary and warehouse availability',
+  })
   async getReplenishmentCandidates(
     @Query('locationId') locationId: string,
     @Query('fromWarehouseId') fromWarehouseId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const { items, totalNetSales } = await this.requisitionService.getReplenishmentCandidates({
-      locationId,
-      fromWarehouseId,
-      startDate,
-      endDate,
-    });
+    const { items, totalNetSales } =
+      await this.requisitionService.getReplenishmentCandidates({
+        locationId,
+        fromWarehouseId,
+        startDate,
+        endDate,
+      });
     return { status: true, data: items, summary: { totalNetSales } };
   }
 
@@ -114,7 +156,8 @@ export class StockRequisitionController {
   @ApiOperation({ summary: 'Update a draft stock requisition' })
   async update(
     @Param('id') id: string,
-    @Body() dto: {
+    @Body()
+    dto: {
       fromWarehouseId?: string;
       toLocationId?: string;
       brandId?: string;
@@ -126,38 +169,71 @@ export class StockRequisitionController {
     },
     @Req() req: any,
   ) {
-    const data = await this.requisitionService.updateRequisition(id, dto, req.user?.id);
-    return { status: true, data, message: 'Stock Requisition updated successfully' };
+    const data = await this.requisitionService.updateRequisition(
+      id,
+      dto,
+      req.user?.id,
+    );
+    return {
+      status: true,
+      data,
+      message: 'Stock Requisition updated successfully',
+    };
   }
 
   @Post(':id/approve')
   @Permissions('erp.inventory.transfer.create')
   @ApiOperation({ summary: 'Approve a draft stock requisition' })
   async approve(@Param('id') id: string, @Req() req: any) {
-    const data = await this.requisitionService.approveRequisition(id, req.user?.id);
-    return { status: true, data, message: 'Stock Requisition approved and stock reserved successfully' };
+    const data = await this.requisitionService.approveRequisition(
+      id,
+      req.user?.id,
+    );
+    return {
+      status: true,
+      data,
+      message: 'Stock Requisition approved and stock reserved successfully',
+    };
   }
 
   @Post(':id/cancel')
   @Permissions('erp.inventory.transfer.create')
   @ApiOperation({ summary: 'Cancel stock requisition note and release stock' })
   async cancel(@Param('id') id: string, @Req() req: any) {
-    const data = await this.requisitionService.cancelRequisition(id, req.user?.id);
-    return { status: true, data, message: 'Requisition cancelled successfully' };
+    const data = await this.requisitionService.cancelRequisition(
+      id,
+      req.user?.id,
+    );
+    return {
+      status: true,
+      data,
+      message: 'Requisition cancelled successfully',
+    };
   }
 
   @Post(':id/convert-stn')
   @Permissions('erp.inventory.transfer.create')
-  @ApiOperation({ summary: 'Convert stock requisition note to stock transfer out (STN)' })
+  @ApiOperation({
+    summary: 'Convert stock requisition note to stock transfer out (STN)',
+  })
   async convertToSTN(
     @Param('id') id: string,
-    @Body() dto: {
+    @Body()
+    dto: {
       items: { itemId: string; quantity: number }[];
       notes?: string;
     },
     @Req() req: any,
   ) {
-    const data = await this.requisitionService.convertToSTN(id, dto, req.user?.id);
-    return { status: true, data, message: 'Requisition converted to Transfer Request successfully' };
+    const data = await this.requisitionService.convertToSTN(
+      id,
+      dto,
+      req.user?.id,
+    );
+    return {
+      status: true,
+      data,
+      message: 'Requisition converted to Transfer Request successfully',
+    };
   }
 }

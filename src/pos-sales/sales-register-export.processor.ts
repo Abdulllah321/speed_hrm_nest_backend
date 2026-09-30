@@ -47,31 +47,131 @@ const COLUMNS = [
   { header: 'Date', key: 'date', width: 12 },
   { header: 'HS CODE', key: 'hsCode', width: 16, align: 'center' },
   { header: 'Barcode', key: 'barcodes', width: 22, align: 'center' },
-  { header: 'Gross Sale', key: 'grossSale', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Gross Sale WOST', key: 'grossSaleWost', width: 16, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Disc', key: 'disc', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'S. Tax', key: 'sTax', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Net Sale', key: 'netSale', width: 14, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Cash', key: 'cash', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'PostEx', key: 'postex', width: 12, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Leopard', key: 'leopard', width: 12, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Gross Sale',
+    key: 'grossSale',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Gross Sale WOST',
+    key: 'grossSaleWost',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Disc',
+    key: 'disc',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'S. Tax',
+    key: 'sTax',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Net Sale',
+    key: 'netSale',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Cash',
+    key: 'cash',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'PostEx',
+    key: 'postex',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Leopard',
+    key: 'leopard',
+    width: 12,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Card No.', key: 'cardNo', width: 12, align: 'center' },
-  { header: 'Amount', key: 'cardAmount', width: 14, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Amount',
+    key: 'cardAmount',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Alliance Detail / Remarks', key: 'allianceDetails', width: 35 },
-  { header: 'Gift Voucher Amount', key: 'giftVoucherAmt', width: 16, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Gift Voucher Amount',
+    key: 'giftVoucherAmt',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Gift Voucher', key: 'giftVoucherCode', width: 18 },
-  { header: 'Credit Amount', key: 'creditAmt', width: 14, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Credit Amount',
+    key: 'creditAmt',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Credit Voucher', key: 'creditCode', width: 18 },
-  { header: 'Claim Amount', key: 'claimAmt', width: 14, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Claim Amount',
+    key: 'claimAmt',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Claim Voucher', key: 'claimCode', width: 18 },
-  { header: 'Corporate Amount', key: 'corporateAmt', width: 16, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Corporate Amount',
+    key: 'corporateAmt',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Corporate Voucher', key: 'corporateCode', width: 18 },
-  { header: 'Exchange Amount', key: 'exchangeAmt', width: 16, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Exchange Amount',
+    key: 'exchangeAmt',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Exchange Voucher', key: 'exchangeCode', width: 18 },
-  { header: 'Manual Disc. %', key: 'manualDiscPct', width: 14, align: 'center' },
-  { header: 'Manual Disc. Amt', key: 'manualDiscAmt', width: 14, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Manual Disc. %',
+    key: 'manualDiscPct',
+    width: 14,
+    align: 'center',
+  },
+  {
+    header: 'Manual Disc. Amt',
+    key: 'manualDiscAmt',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Manual Disc. Note', key: 'manualDiscNote', width: 25 },
-  { header: 'Override Disc. %', key: 'overrideDiscPct', width: 14, align: 'center' },
+  {
+    header: 'Override Disc. %',
+    key: 'overrideDiscPct',
+    width: 14,
+    align: 'center',
+  },
   { header: 'Override Disc. Note', key: 'overrideDiscNote', width: 30 },
 ];
 
@@ -89,16 +189,20 @@ export class SalesRegisterExportProcessor {
         const { exec } = require('child_process');
         exec(
           'apt-get update && apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpangocairo-1.0-0 libasound2 libnss3 libxshmfence1 libgtk-3-0',
-          () => {}
+          () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
 
   @Process('generate-sales-register-preview')
-  async handleGeneratePreview(job: Job<SalesRegisterPreviewJobData>): Promise<void> {
+  async handleGeneratePreview(
+    job: Job<SalesRegisterPreviewJobData>,
+  ): Promise<void> {
     const {
       jobId,
       tenantId,
@@ -114,51 +218,83 @@ export class SalesRegisterExportProcessor {
       maxAmount,
       fbrOnly,
     } = job.data;
-    this.logger.log(`[SalesRegisterPreview ${jobId}] Starting background sales-register preview computation`);
+    this.logger.log(
+      `[SalesRegisterPreview ${jobId}] Starting background sales-register preview computation`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
 
     try {
-      await job.progress({ percent: 10, message: 'Queueing sales register preview computation task...' });
+      await job.progress({
+        percent: 10,
+        message: 'Queueing sales register preview computation task...',
+      });
 
-      const result = await this.salesRegisterExportService.generateSalesRegisterReportDataInternal(
-        prisma as any,
-        {
-          locationId,
-          startDate,
-          endDate,
-          cashierUserId,
-          reportType,
-          search,
-          paymentModeGroup,
-          minAmount,
-          maxAmount,
-          fbrOnly,
-          onProgress: async (percent, message) => {
-            await job.progress({ percent, message });
+      const result =
+        await this.salesRegisterExportService.generateSalesRegisterReportDataInternal(
+          prisma as any,
+          {
+            locationId,
+            startDate,
+            endDate,
+            cashierUserId,
+            reportType,
+            search,
+            paymentModeGroup,
+            minAmount,
+            maxAmount,
+            fbrOnly,
+            onProgress: async (percent, message) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
-      await this.salesRegisterExportService.saveReportPreviewResult(jobId, result);
-      await job.progress({ percent: 100, message: 'Successfully generated sales-register preview result' });
-      this.logger.log(`[SalesRegisterPreview ${jobId}] Successfully generated and saved preview result`);
+      await this.salesRegisterExportService.saveReportPreviewResult(
+        jobId,
+        result,
+      );
+      await job.progress({
+        percent: 100,
+        message: 'Successfully generated sales-register preview result',
+      });
+      this.logger.log(
+        `[SalesRegisterPreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[SalesRegisterPreview ${jobId}] Exception in background computation: ${err.message}`, err.stack);
+      this.logger.error(
+        `[SalesRegisterPreview ${jobId}] Exception in background computation: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
 
   @Process({ concurrency: 1 })
   async handleExport(job: Job<SalesRegisterExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate: startStr, endDate: endStr, cashierUserId, format, search } = job.data;
-    this.logger.log(`[SalesRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`);
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate: startStr,
+      endDate: endStr,
+      cashierUserId,
+      format,
+      search,
+    } = job.data;
+    this.logger.log(
+      `[SalesRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
     const prismaMaster = new PrismaMasterService();
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
@@ -175,7 +311,9 @@ export class SalesRegisterExportProcessor {
       const locationName = location?.name || 'Store';
 
       const now = new Date();
-      const startDate = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+      const startDate = startStr
+        ? new Date(startStr)
+        : new Date(now.getFullYear(), now.getMonth(), 1);
       const endDate = endStr ? new Date(endStr) : new Date(now);
       endDate.setHours(23, 59, 59, 999);
 
@@ -189,10 +327,23 @@ export class SalesRegisterExportProcessor {
         const chunk = await prisma.salesOrder.findMany({
           where: {
             locationId,
-            status: { notIn: ['returned', 'hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED'] },
+            status: {
+              notIn: [
+                'returned',
+                'hold',
+                'hold_expired',
+                'hold_cancelled',
+                'voided',
+                'cancelled',
+                'VOIDED',
+                'CANCELLED',
+              ],
+            },
             createdAt: { gte: startDate, lte: endDate },
             ...(cashierUserId ? { cashierUserId } : {}),
-            ...(search ? { orderNumber: { contains: search, mode: 'insensitive' } } : {}),
+            ...(search
+              ? { orderNumber: { contains: search, mode: 'insensitive' } }
+              : {}),
           },
           include: {
             alliance: true,
@@ -228,7 +379,15 @@ export class SalesRegisterExportProcessor {
       // Fetch claims & returns to construct negative documents
       const returnLedgerEntries = await prisma.stockLedger.findMany({
         where: {
-          referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'SALES_RETURN', 'SRN'] },
+          referenceType: {
+            in: [
+              'POS_RETURN',
+              'POS_REFUND',
+              'POS_EXCHANGE_IN',
+              'SALES_RETURN',
+              'SRN',
+            ],
+          },
           createdAt: { gte: startDate, lte: endDate },
           locationId,
         },
@@ -243,7 +402,15 @@ export class SalesRegisterExportProcessor {
 
       const returnMovements = await prisma.stockMovement.findMany({
         where: {
-          referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'SALES_RETURN', 'SRN'] },
+          referenceType: {
+            in: [
+              'POS_RETURN',
+              'POS_REFUND',
+              'POS_EXCHANGE_IN',
+              'SALES_RETURN',
+              'SRN',
+            ],
+          },
           createdAt: { gte: startDate, lte: endDate },
           ...(locationId ? { toLocationId: locationId } : {}),
         },
@@ -253,11 +420,18 @@ export class SalesRegisterExportProcessor {
       const movMap = new Map<string, { docNo: string; notes: string }>();
       for (const m of returnMovements) {
         if (m.referenceId) {
-          movMap.set(m.referenceId, { docNo: m.movementNo, notes: m.notes || '' });
+          movMap.set(m.referenceId, {
+            docNo: m.movementNo,
+            notes: m.notes || '',
+          });
         }
       }
 
-      const referenceOrderIds = [...new Set(returnLedgerEntries.map(e => e.referenceId).filter(Boolean))];
+      const referenceOrderIds = [
+        ...new Set(
+          returnLedgerEntries.map((e) => e.referenceId).filter(Boolean),
+        ),
+      ];
       const referenceOrders = referenceOrderIds.length
         ? await prisma.salesOrder.findMany({
             where: {
@@ -310,7 +484,7 @@ export class SalesRegisterExportProcessor {
         ].join(', ');
 
         // Tenders
-        let cash = Number(order.cashAmount || 0);
+        const cash = Number(order.cashAmount || 0);
         let cardAmount = Number(order.cardAmount || 0);
         let postex = 0;
         let leopard = 0;
@@ -325,15 +499,15 @@ export class SalesRegisterExportProcessor {
         }
 
         let giftVoucherAmt = 0;
-        let giftVoucherCodes: string[] = [];
+        const giftVoucherCodes: string[] = [];
         let creditAmt = 0;
-        let creditCodes: string[] = [];
+        const creditCodes: string[] = [];
         let claimAmt = 0;
-        let claimCodes: string[] = [];
+        const claimCodes: string[] = [];
         let corporateAmt = 0;
-        let corporateCodes: string[] = [];
+        const corporateCodes: string[] = [];
         let exchangeAmt = 0;
-        let exchangeCodes: string[] = [];
+        const exchangeCodes: string[] = [];
 
         for (const red of order.voucherRedemptions) {
           const type = red.voucher?.voucherType;
@@ -372,7 +546,9 @@ export class SalesRegisterExportProcessor {
         }
 
         const overrideDiscPct = order.items
-          .map((i: any) => i.overrideDiscountPercent ? `${i.overrideDiscountPercent}%` : null)
+          .map((i: any) =>
+            i.overrideDiscountPercent ? `${i.overrideDiscountPercent}%` : null,
+          )
           .filter(Boolean)
           .join(', ');
 
@@ -408,7 +584,9 @@ export class SalesRegisterExportProcessor {
           corporateCode: corporateCodes.join(', '),
           exchangeAmt,
           exchangeCode: exchangeCodes.join(', '),
-          manualDiscPct: order.globalDiscountPercent ? `${order.globalDiscountPercent}%` : '',
+          manualDiscPct: order.globalDiscountPercent
+            ? `${order.globalDiscountPercent}%`
+            : '',
           manualDiscAmt: Number(order.globalDiscountAmount || 0),
           manualDiscNote: order.manualDiscountNote || '',
           overrideDiscPct,
@@ -435,7 +613,9 @@ export class SalesRegisterExportProcessor {
 
         for (const entry of entries) {
           const qty = Math.abs(Number(entry.qty || 1));
-          const orderItem = order?.items?.find((oi: any) => oi.itemId === entry.itemId);
+          const orderItem = order?.items?.find(
+            (oi: any) => oi.itemId === entry.itemId,
+          );
           if (orderItem) {
             const price = Number(orderItem.unitPrice || 0);
             const taxRate = Number(orderItem.taxPercent || 0);
@@ -447,7 +627,9 @@ export class SalesRegisterExportProcessor {
             sTax += (qty / itemQty) * Number(orderItem.taxAmount || 0);
           } else {
             const rawRate = Number(entry.rate || 0);
-            const price = Number(entry.item?.unitPrice || Math.abs(rawRate) || 0);
+            const price = Number(
+              entry.item?.unitPrice || Math.abs(rawRate) || 0,
+            );
             const amt = rawRate !== 0 ? Math.abs(rawRate) : qty * price;
             grossSale += amt;
             grossSaleWost += amt;
@@ -462,16 +644,14 @@ export class SalesRegisterExportProcessor {
           ),
         ].join(', ');
         const returnBarcodes = [
-          ...new Set(
-            entries.map((e: any) => e.item?.barCode).filter(Boolean),
-          ),
+          ...new Set(entries.map((e: any) => e.item?.barCode).filter(Boolean)),
         ].join(', ');
 
         const netSale = grossSaleWost - disc + sTax;
 
         // Tenders (negative value for returns)
         let cash = 0;
-        let creditAmt = 0;
+        const creditAmt = 0;
         let exchangeAmt = 0;
 
         const isRefund = entries[0].referenceType === 'POS_REFUND';
@@ -484,8 +664,11 @@ export class SalesRegisterExportProcessor {
 
         const mov = movMap.get(refId);
         const docNum = order
-          ? (isRefund ? (order.refundNumber || `Refund for ${order.orderNumber}`) : (order.returnNumber || `Return for ${order.orderNumber}`))
-          : (mov?.notes?.replace(/^POS Return:\s*/i, '')?.split(' ')[0] || `RET-${refId.slice(0, 8)}`);
+          ? isRefund
+            ? order.refundNumber || `Refund for ${order.orderNumber}`
+            : order.returnNumber || `Return for ${order.orderNumber}`
+          : mov?.notes?.replace(/^POS Return:\s*/i, '')?.split(' ')[0] ||
+            `RET-${refId.slice(0, 8)}`;
 
         rows.push({
           id: `${refId}-return`,
@@ -523,7 +706,9 @@ export class SalesRegisterExportProcessor {
       }
 
       // Sort final rows by date
-      rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      rows.sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+      );
 
       // Compute Grand Totals
       const grandTotals = {
@@ -567,11 +752,25 @@ export class SalesRegisterExportProcessor {
       if (format === 'pdf') {
         const fromDateStr = startDate.toLocaleDateString();
         const toDateStr = endDate.toLocaleDateString();
-        const html = this.buildPdfHtml(rows, locationName, fromDateStr, toDateStr, grandTotals);
+        const html = this.buildPdfHtml(
+          rows,
+          locationName,
+          fromDateStr,
+          toDateStr,
+          grandTotals,
+        );
 
-        const launchArgs = process.platform === 'linux'
-          ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
-          : [];
+        const launchArgs =
+          process.platform === 'linux'
+            ? [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+              ]
+            : [];
 
         const browser = await puppeteer.launch({
           headless: true,
@@ -587,11 +786,18 @@ export class SalesRegisterExportProcessor {
           const pdfBuffer = await page.pdf({
             format: 'A4',
             landscape: true,
-            margin: { top: '15mm', bottom: '15mm', left: '10mm', right: '10mm' },
+            margin: {
+              top: '15mm',
+              bottom: '15mm',
+              left: '10mm',
+              right: '10mm',
+            },
             printBackground: true,
             displayHeaderFooter: true,
-            headerTemplate: '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Sales Register Report</div>',
-            footerTemplate: '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+            headerTemplate:
+              '<div style="font-size: 7px; width: 100%; text-align: right; padding-right: 15mm; color: #94a3b8;">Sales Register Report</div>',
+            footerTemplate:
+              '<div style="font-size: 7px; width: 100%; text-align: center; color: #94a3b8;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
           });
 
           fs.writeFileSync(filePath, pdfBuffer);
@@ -607,19 +813,36 @@ export class SalesRegisterExportProcessor {
         });
 
         const ws = workbook.addWorksheet('Sales Register', {
-          pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+          pageSetup: {
+            paperSize: 9,
+            orientation: 'landscape',
+            fitToPage: true,
+            fitToWidth: 1,
+          },
         });
 
-        ws.columns = COLUMNS.map(c => ({ key: c.key, width: c.width }));
+        ws.columns = COLUMNS.map((c) => ({ key: c.key, width: c.width }));
 
         // Add Header Row
         const headerRow = ws.getRow(1);
         COLUMNS.forEach((col, idx) => {
           const cell = headerRow.getCell(idx + 1);
           cell.value = col.header;
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF1E293B' },
+          };
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
-          cell.alignment = { horizontal: col.align === 'right' ? 'right' : (col.align === 'center' ? 'center' : 'left'), vertical: 'middle' };
+          cell.alignment = {
+            horizontal:
+              col.align === 'right'
+                ? 'right'
+                : col.align === 'center'
+                  ? 'center'
+                  : 'left',
+            vertical: 'middle',
+          };
         });
         headerRow.height = 24;
         headerRow.commit();
@@ -670,7 +893,12 @@ export class SalesRegisterExportProcessor {
             cell.font = { size: 9 };
             const c = COLUMNS[colNum - 1];
             cell.alignment = {
-              horizontal: c.align === 'right' ? 'right' : (c.align === 'center' ? 'center' : 'left'),
+              horizontal:
+                c.align === 'right'
+                  ? 'right'
+                  : c.align === 'center'
+                    ? 'center'
+                    : 'left',
               vertical: 'middle',
             };
             if (c.numFmt) {
@@ -723,7 +951,12 @@ export class SalesRegisterExportProcessor {
           };
           const c = COLUMNS[colNum - 1];
           cell.alignment = {
-            horizontal: c.align === 'right' ? 'right' : (c.align === 'center' ? 'center' : 'left'),
+            horizontal:
+              c.align === 'right'
+                ? 'right'
+                : c.align === 'center'
+                  ? 'center'
+                  : 'left',
             vertical: 'middle',
           };
           if (c.numFmt) {
@@ -738,10 +971,14 @@ export class SalesRegisterExportProcessor {
 
       await job.progress(95);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const fileName = format === 'pdf'
-        ? `sales-register-report-${new Date().toISOString().slice(0, 10)}.pdf`
-        : `sales-register-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const fileName =
+        format === 'pdf'
+          ? `sales-register-report-${new Date().toISOString().slice(0, 10)}.pdf`
+          : `sales-register-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma,
@@ -763,9 +1000,14 @@ export class SalesRegisterExportProcessor {
       });
 
       await job.progress(100);
-      this.logger.log(`[SalesRegisterExport ${jobId}] Finished processing successfully`);
+      this.logger.log(
+        `[SalesRegisterExport ${jobId}] Finished processing successfully`,
+      );
     } catch (err) {
-      this.logger.error(`[SalesRegisterExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[SalesRegisterExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       await this.exportHistoryService.failExport(prisma, jobId);
       throw err;
     } finally {
@@ -778,10 +1020,16 @@ export class SalesRegisterExportProcessor {
     locationName: string,
     fromDateStr: string,
     toDateStr: string,
-    grandTotals: any
+    grandTotals: any,
   ): string {
     let rowsHtml = '';
-    const formatVal = (val: number) => val === 0 ? '-' : val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formatVal = (val: number) =>
+      val === 0
+        ? '-'
+        : val.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
 
     for (const r of data) {
       const dateFormatted = new Date(r.date).toLocaleDateString();

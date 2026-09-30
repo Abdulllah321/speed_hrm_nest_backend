@@ -27,7 +27,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 @ApiTags('Brand')
 @Controller('api')
 export class BrandController {
-  constructor(private service: BrandService,) {}
+  constructor(private service: BrandService) {}
 
   // --- BRANDS ---
 
@@ -35,8 +35,8 @@ export class BrandController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all brands' })
-  async list() {
-    return this.service.getAllBrands();
+  async list(@Req() req) {
+    return this.service.getAllBrands(req.user);
   }
 
   @Get('brands/:id')

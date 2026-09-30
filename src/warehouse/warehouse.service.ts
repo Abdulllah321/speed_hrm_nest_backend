@@ -9,9 +9,12 @@ export class WarehouseService {
   constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
-  async createWarehouse(data: any, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }): Promise<Warehouse> {
+  async createWarehouse(
+    data: any,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ): Promise<Warehouse> {
     try {
       const created = await this.prisma.warehouse.create({ data });
 
@@ -93,7 +96,11 @@ export class WarehouseService {
     return warehouse;
   }
 
-  async updateWarehouse(id: string, data: any, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }): Promise<Warehouse> {
+  async updateWarehouse(
+    id: string,
+    data: any,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ): Promise<Warehouse> {
     try {
       const updated = await this.prisma.warehouse.update({
         where: { id },
@@ -138,7 +145,10 @@ export class WarehouseService {
     }
   }
 
-  async removeWarehouse(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }): Promise<Warehouse> {
+  async removeWarehouse(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ): Promise<Warehouse> {
     try {
       const existing = await this.prisma.warehouse.findFirst({
         where: { id, isDeleted: false },

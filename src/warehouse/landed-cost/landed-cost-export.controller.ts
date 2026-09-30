@@ -25,7 +25,9 @@ export class LandedCostExportController {
    * Queues a background export job for a specific landed cost record.
    */
   @Post(':id')
-  @ApiOperation({ summary: 'Queue a landed cost detailed ledger export job (returns jobId)' })
+  @ApiOperation({
+    summary: 'Queue a landed cost detailed ledger export job (returns jobId)',
+  })
   async queueExport(
     @Req() req: any,
     @Param('id') landedCostId: string,
@@ -35,14 +37,15 @@ export class LandedCostExportController {
     const result = await this.exportService.queueExport({
       userId,
       landedCostId,
-      search:  body.search,
+      search: body.search,
       hsCodes: body.hsCodes,
-      skus:    body.skus,
+      skus: body.skus,
     });
 
     return {
       status: true,
-      message: "Landed cost export queued. You'll receive a notification when the Excel sheet is ready.",
+      message:
+        "Landed cost export queued. You'll receive a notification when the Excel sheet is ready.",
       data: result,
     };
   }
@@ -67,7 +70,10 @@ export class LandedCostExportController {
       await this.exportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

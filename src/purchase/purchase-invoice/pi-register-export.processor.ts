@@ -48,7 +48,9 @@ export class PiRegisterExportProcessor {
           () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
@@ -71,7 +73,9 @@ export class PiRegisterExportProcessor {
       exportType,
       search,
     } = job.data;
-    this.logger.log(`[PiRegisterExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export`);
+    this.logger.log(
+      `[PiRegisterExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
@@ -137,11 +141,16 @@ export class PiRegisterExportProcessor {
         }),
       );
     } catch (err: any) {
-      this.logger.error(`[PiRegisterExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[PiRegisterExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       try {
         await this.exportHistoryService.failExport(prisma as any, jobId);
       } catch (e: any) {
-        this.logger.error(`Failed to update export history status to FAILED for job ${jobId}`);
+        this.logger.error(
+          `Failed to update export history status to FAILED for job ${jobId}`,
+        );
       }
       throw err;
     } finally {
@@ -149,7 +158,10 @@ export class PiRegisterExportProcessor {
     }
   }
 
-  private async generateExcel(filePath: string, reportData: PiRegisterReportResult): Promise<void> {
+  private async generateExcel(
+    filePath: string,
+    reportData: PiRegisterReportResult,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -180,10 +192,32 @@ export class PiRegisterExportProcessor {
     };
 
     // Title Row
-    const titleRow = worksheet.addRow(['Purchase Invoice Register', '', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    const titleRow = worksheet.addRow([
+      'Purchase Invoice Register',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      `${reportData.startDate} - ${reportData.endDate}`,
+    ]);
     titleRow.height = 30;
-    titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
-    titleRow.getCell(11).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.getCell(1).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 14,
+      underline: true,
+    };
+    titleRow.getCell(11).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 11,
+      underline: true,
+    };
     titleRow.commit();
 
     worksheet.addRow([]).commit();
@@ -204,12 +238,28 @@ export class PiRegisterExportProcessor {
         '',
       ]);
       docBoxRow.height = 26;
-      docBoxRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11 };
-      docBoxRow.getCell(2).font = { bold: true, color: { argb: 'FF005F5B' }, size: 11 };
+      docBoxRow.getCell(1).font = {
+        bold: true,
+        color: { argb: 'FFCC0000' },
+        size: 11,
+      };
+      docBoxRow.getCell(2).font = {
+        bold: true,
+        color: { argb: 'FF005F5B' },
+        size: 11,
+      };
       docBoxRow.getCell(3).font = { bold: true, size: 10 };
       docBoxRow.getCell(4).font = { bold: true, size: 10 };
-      docBoxRow.getCell(5).font = { bold: true, color: { argb: 'FF0284C7' }, size: 10 };
-      docBoxRow.getCell(6).font = { bold: true, color: { argb: 'FF16A34A' }, size: 10 };
+      docBoxRow.getCell(5).font = {
+        bold: true,
+        color: { argb: 'FF0284C7' },
+        size: 10,
+      };
+      docBoxRow.getCell(6).font = {
+        bold: true,
+        color: { argb: 'FF16A34A' },
+        size: 10,
+      };
       docBoxRow.commit();
 
       // Table Headers
@@ -252,12 +302,19 @@ export class PiRegisterExportProcessor {
             cat.totalLineTotal,
           ]);
           catRow.height = 22;
-          catRow.getCell(1).font = { bold: true, color: { argb: 'FF008000' }, size: 11 };
+          catRow.getCell(1).font = {
+            bold: true,
+            color: { argb: 'FF008000' },
+            size: 11,
+          };
           catRow.getCell(5).font = { bold: true, color: { argb: 'FF008000' } };
           catRow.getCell(5).alignment = { horizontal: 'right' };
           catRow.getCell(5).numFmt = '#,##0';
           for (const colIdx of [7, 8, 9, 10, 11]) {
-            catRow.getCell(colIdx).font = { bold: true, color: { argb: 'FF008000' } };
+            catRow.getCell(colIdx).font = {
+              bold: true,
+              color: { argb: 'FF008000' },
+            };
             catRow.getCell(colIdx).alignment = { horizontal: 'right' };
             catRow.getCell(colIdx).numFmt = '#,##0';
           }
@@ -281,12 +338,22 @@ export class PiRegisterExportProcessor {
                   art.totalLineTotal,
                 ]);
                 artRow.height = 20;
-                artRow.getCell(1).font = { bold: true, color: { argb: 'FF0000FF' }, size: 10 };
-                artRow.getCell(5).font = { bold: true, color: { argb: 'FF0000FF' } };
+                artRow.getCell(1).font = {
+                  bold: true,
+                  color: { argb: 'FF0000FF' },
+                  size: 10,
+                };
+                artRow.getCell(5).font = {
+                  bold: true,
+                  color: { argb: 'FF0000FF' },
+                };
                 artRow.getCell(5).alignment = { horizontal: 'right' };
                 artRow.getCell(5).numFmt = '#,##0';
                 for (const colIdx of [7, 8, 9, 10, 11]) {
-                  artRow.getCell(colIdx).font = { bold: true, color: { argb: 'FF0000FF' } };
+                  artRow.getCell(colIdx).font = {
+                    bold: true,
+                    color: { argb: 'FF0000FF' },
+                  };
                   artRow.getCell(colIdx).alignment = { horizontal: 'right' };
                   artRow.getCell(colIdx).numFmt = '#,##0';
                 }
@@ -346,7 +413,11 @@ export class PiRegisterExportProcessor {
       for (let c = 1; c <= 11; c++) {
         const cell = docTotRow.getCell(c);
         cell.font = { bold: true, size: 10, color: { argb: 'FFCC0000' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF0F0' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFF0F0' },
+        };
         cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
       }
       docTotRow.getCell(5).alignment = { horizontal: 'right' };
@@ -378,7 +449,11 @@ export class PiRegisterExportProcessor {
     for (let c = 1; c <= 11; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' },
+      };
       cell.border = borderThin;
     }
     grandRow.getCell(5).alignment = { horizontal: 'right' };
@@ -392,7 +467,10 @@ export class PiRegisterExportProcessor {
     await workbook.commit();
   }
 
-  private async generateFlatExcel(filePath: string, reportData: PiRegisterReportResult): Promise<void> {
+  private async generateFlatExcel(
+    filePath: string,
+    reportData: PiRegisterReportResult,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -438,10 +516,47 @@ export class PiRegisterExportProcessor {
     };
 
     // Title Row
-    const titleRow = worksheet.addRow(['Purchase Invoice Register (Flat Data)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', `${reportData.startDate} - ${reportData.endDate}`]);
+    const titleRow = worksheet.addRow([
+      'Purchase Invoice Register (Flat Data)',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      `${reportData.startDate} - ${reportData.endDate}`,
+    ]);
     titleRow.height = 30;
-    titleRow.getCell(1).font = { bold: true, color: { argb: 'FFCC0000' }, size: 14, underline: true };
-    titleRow.getCell(26).font = { bold: true, color: { argb: 'FFCC0000' }, size: 11, underline: true };
+    titleRow.getCell(1).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 14,
+      underline: true,
+    };
+    titleRow.getCell(26).font = {
+      bold: true,
+      color: { argb: 'FFCC0000' },
+      size: 11,
+      underline: true,
+    };
     titleRow.commit();
 
     worksheet.addRow([]).commit();
@@ -479,7 +594,11 @@ export class PiRegisterExportProcessor {
     for (let c = 1; c <= 26; c++) {
       const cell = colHeaderRow.getCell(c);
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1E293B' },
+      };
       cell.border = borderThin;
       if (c >= 20) cell.alignment = { horizontal: 'right' };
       else if (c >= 17 && c <= 19) cell.alignment = { horizontal: 'center' };
@@ -526,7 +645,8 @@ export class PiRegisterExportProcessor {
                   for (let c = 1; c <= 26; c++) {
                     const cell = row.getCell(c);
                     cell.border = borderThin;
-                    if (c >= 17 && c <= 19) cell.alignment = { horizontal: 'center' };
+                    if (c >= 17 && c <= 19)
+                      cell.alignment = { horizontal: 'center' };
                     else if (c >= 20) {
                       cell.alignment = { horizontal: 'right' };
                       cell.numFmt = '#,##0';
@@ -576,7 +696,11 @@ export class PiRegisterExportProcessor {
     for (let c = 1; c <= 26; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' },
+      };
       cell.border = borderThin;
     }
     grandRow.getCell(20).alignment = { horizontal: 'right' };
@@ -590,10 +714,20 @@ export class PiRegisterExportProcessor {
     await workbook.commit();
   }
 
-  private async generatePdf(filePath: string, reportData: PiRegisterReportResult): Promise<void> {
+  private async generatePdf(
+    filePath: string,
+    reportData: PiRegisterReportResult,
+  ): Promise<void> {
     const launchArgs =
       process.platform === 'linux'
-        ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
+        ? [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+          ]
         : [];
 
     const browser = await puppeteer.launch({

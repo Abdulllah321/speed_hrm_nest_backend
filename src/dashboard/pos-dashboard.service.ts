@@ -139,13 +139,17 @@ export class PosDashboardService {
     });
 
     // ── Build hourly buckets (0–23) ─────────────────────────────────
-    const hourlyBuckets: { hour: number; label: string; sales: number; orders: number }[] =
-      Array.from({ length: 24 }, (_, h) => ({
-        hour: h,
-        label: `${String(h).padStart(2, '0')}:00`,
-        sales: 0,
-        orders: 0,
-      }));
+    const hourlyBuckets: {
+      hour: number;
+      label: string;
+      sales: number;
+      orders: number;
+    }[] = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      label: `${String(h).padStart(2, '0')}:00`,
+      sales: 0,
+      orders: 0,
+    }));
 
     for (const o of hourlySales) {
       const h = new Date(o.createdAt).getHours();
@@ -166,7 +170,8 @@ export class PosDashboardService {
       claimSummary.total += count;
       if (c.status === 'SUBMITTED') claimSummary.submitted = count;
       else if (c.status === 'UNDER_REVIEW') claimSummary.underReview = count;
-      else if (c.status === 'APPROVED' || c.status === 'PARTIALLY_APPROVED') claimSummary.approved += count;
+      else if (c.status === 'APPROVED' || c.status === 'PARTIALLY_APPROVED')
+        claimSummary.approved += count;
       else if (c.status === 'REJECTED') claimSummary.rejected = count;
     }
 
@@ -190,12 +195,9 @@ export class PosDashboardService {
     const spEmployees = spUserIds.length
       ? await this.prisma.employee.findMany({
           where: {
-            OR: [
-              { id: { in: spUserIds } },
-              { userId: { in: spUserIds } }
-            ]
+            OR: [{ id: { in: spUserIds } }, { userId: { in: spUserIds } }],
           },
-          select: { id: true, userId: true, employeeName: true }
+          select: { id: true, userId: true, employeeName: true },
         })
       : [];
 

@@ -33,7 +33,7 @@ export class ItemExportService {
 
     // Read tenant credentials from the live request context — same pattern as
     // ItemBulkUploadService. Never pass these through JWT; they live on the request.
-    const tenantId  = this.prisma.getTenantId()  ?? '';
+    const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
     // Create pending export history record
@@ -71,15 +71,20 @@ export class ItemExportService {
       },
     );
 
-    this.logger.log(`[Export] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId})`);
+    this.logger.log(
+      `[Export] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -90,7 +95,9 @@ export class ItemExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     // Increment download count in ExportHistory
@@ -102,7 +109,9 @@ export class ItemExportService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -111,7 +120,10 @@ export class ItemExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -120,7 +132,9 @@ export class ItemExportService {
       : path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
     const stat = fs.statSync(filePath);
@@ -129,16 +143,27 @@ export class ItemExportService {
     // Clean up file after the stream is fully consumed
     stream.on('close', () => {
       fs.unlink(filePath, (err) => {
-        if (err) this.logger.warn(`Could not delete export file ${filePath}: ${err.message}`);
+        if (err)
+          this.logger.warn(
+            `Could not delete export file ${filePath}: ${err.message}`,
+          );
         else this.logger.log(`[Export] Cleaned up ${filePath}`);
       });
     });
     stream.on('error', (err) => {
-      this.logger.error(`[Export] Stream error for ${filePath}: ${err.message}`);
+      this.logger.error(
+        `[Export] Stream error for ${filePath}: ${err.message}`,
+      );
     });
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

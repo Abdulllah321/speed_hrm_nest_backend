@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Res, UseGuards, Request, Sse, MessageEvent } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Res,
+  UseGuards,
+  Request,
+  Sse,
+  MessageEvent,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { Observable, interval } from 'rxjs';
 import { switchMap, takeWhile } from 'rxjs/operators';
@@ -10,12 +21,15 @@ import { WholesaleInvoiceRegisterService } from '../services/wholesale-invoice-r
 @Controller('api/sales/reports/wholesale-invoice-register')
 @UseGuards(JwtAuthGuard)
 export class WholesaleInvoiceRegisterController {
-  constructor(private readonly wholesaleInvoiceRegisterService: WholesaleInvoiceRegisterService) {}
+  constructor(
+    private readonly wholesaleInvoiceRegisterService: WholesaleInvoiceRegisterService,
+  ) {}
 
   @Post('queue')
   async queueReportPreview(
     @Request() req,
-    @Body() body: {
+    @Body()
+    body: {
       customerId?: string;
       startDate?: string;
       endDate?: string;
@@ -25,16 +39,18 @@ export class WholesaleInvoiceRegisterController {
       year?: string | number;
     },
   ) {
-    const result = await this.wholesaleInvoiceRegisterService.queueReportPreview({
-      userId: req.user.userId,
-      ...body,
-    });
+    const result =
+      await this.wholesaleInvoiceRegisterService.queueReportPreview({
+        userId: req.user.userId,
+        ...body,
+      });
     return { status: true, data: result };
   }
 
   @Get('result/:jobId')
   async getReportPreviewResult(@Param('jobId') jobId: string) {
-    const result = await this.wholesaleInvoiceRegisterService.getReportPreviewResult(jobId);
+    const result =
+      await this.wholesaleInvoiceRegisterService.getReportPreviewResult(jobId);
     if (result) {
       return { status: true, data: result };
     }
@@ -47,14 +63,22 @@ export class WholesaleInvoiceRegisterController {
   ): Observable<MessageEvent> {
     return interval(1500).pipe(
       switchMap(async () => {
-        const queueStatus = await this.wholesaleInvoiceRegisterService.getJobQueueStatus(jobId);
-        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' = 'queued';
-        
-        if (queueStatus.status === 'completed' || queueStatus.progress === 100) {
+        const queueStatus =
+          await this.wholesaleInvoiceRegisterService.getJobQueueStatus(jobId);
+        let sseStatus: 'queued' | 'processing' | 'completed' | 'failed' =
+          'queued';
+
+        if (
+          queueStatus.status === 'completed' ||
+          queueStatus.progress === 100
+        ) {
           sseStatus = 'completed';
         } else if (queueStatus.status === 'failed') {
           sseStatus = 'failed';
-        } else if (queueStatus.status === 'active' || queueStatus.progress > 0) {
+        } else if (
+          queueStatus.status === 'active' ||
+          queueStatus.progress > 0
+        ) {
           sseStatus = 'processing';
         }
 
@@ -62,7 +86,9 @@ export class WholesaleInvoiceRegisterController {
           data: JSON.stringify({
             status: sseStatus,
             progressPercent: queueStatus.progress,
-            message: queueStatus.message || `Processing wholesale invoice register (${queueStatus.progress}%)`,
+            message:
+              queueStatus.message ||
+              `Processing wholesale invoice register (${queueStatus.progress}%)`,
             queuePosition: queueStatus.queuePosition,
             waitingCount: queueStatus.waitingCount,
             error: queueStatus.failedReason,
@@ -79,7 +105,8 @@ export class WholesaleInvoiceRegisterController {
   @Post('export/queue')
   async queueReportExport(
     @Request() req,
-    @Body() body: {
+    @Body()
+    body: {
       customerId?: string;
       startDate?: string;
       endDate?: string;
@@ -90,17 +117,20 @@ export class WholesaleInvoiceRegisterController {
       year?: string | number;
     },
   ) {
-    const result = await this.wholesaleInvoiceRegisterService.queueReportExport({
-      userId: req.user.userId,
-      ...body,
-    });
+    const result = await this.wholesaleInvoiceRegisterService.queueReportExport(
+      {
+        userId: req.user.userId,
+        ...body,
+      },
+    );
 
     return { status: true, data: result };
   }
 
   @Get('export/:jobId/status')
   async getExportStatus(@Param('jobId') jobId: string) {
-    const status = await this.wholesaleInvoiceRegisterService.getJobQueueStatus(jobId);
+    const status =
+      await this.wholesaleInvoiceRegisterService.getJobQueueStatus(jobId);
     return { status: true, data: status };
   }
 
@@ -123,6 +153,10 @@ export class WholesaleInvoiceRegisterController {
   ) {
     // Currently relying on client side exports for smaller datasets or full export via background job
     // This is a stub if we wanted to implement fast streaming in the future.
-    res.status(404).send('Streaming Excel not yet supported on this route. Use export background job.');
+    res
+      .status(404)
+      .send(
+        'Streaming Excel not yet supported on this route. Use export background job.',
+      );
   }
 }

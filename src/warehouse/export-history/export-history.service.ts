@@ -25,16 +25,24 @@ export class ExportHistoryService {
     const buffer = fs.readFileSync(localPath);
 
     // Upload buffer to S3 / local storage via UploadService
-    const uploadResult = await this.uploadService.uploadExportBuffer(buffer, fileName, mimeType);
+    const uploadResult = await this.uploadService.uploadExportBuffer(
+      buffer,
+      fileName,
+      mimeType,
+    );
 
     // Delete local temp file
     try {
       if (fs.existsSync(localPath)) {
         fs.unlinkSync(localPath);
-        this.logger.log(`[ExportHistoryService] Cleaned up local temp file: ${localPath}`);
+        this.logger.log(
+          `[ExportHistoryService] Cleaned up local temp file: ${localPath}`,
+        );
       }
     } catch (err: any) {
-      this.logger.warn(`[ExportHistoryService] Could not delete temp local file ${localPath}: ${err.message}`);
+      this.logger.warn(
+        `[ExportHistoryService] Could not delete temp local file ${localPath}: ${err.message}`,
+      );
     }
 
     // Update database record using tenantPrisma (since Bull jobs run outside tenant context)
@@ -58,10 +66,11 @@ export class ExportHistoryService {
         data: { status: 'FAILED' },
       });
     } catch (dbErr: any) {
-      this.logger.warn(`[ExportHistoryService] Could not update export job status to FAILED in database: ${dbErr.message}`);
+      this.logger.warn(
+        `[ExportHistoryService] Could not update export job status to FAILED in database: ${dbErr.message}`,
+      );
     }
   }
-
 
   async createFolder(userId: string, name: string) {
     return this.prisma.exportFolder.create({
@@ -138,7 +147,11 @@ export class ExportHistoryService {
     }
 
     if (filters.folderId !== undefined) {
-      if (filters.folderId === 'null' || filters.folderId === 'root' || filters.folderId === null) {
+      if (
+        filters.folderId === 'null' ||
+        filters.folderId === 'root' ||
+        filters.folderId === null
+      ) {
         whereClause.folderId = null;
       } else {
         whereClause.folderId = filters.folderId;
@@ -155,8 +168,8 @@ export class ExportHistoryService {
         where: whereClause,
         include: {
           folder: {
-            select: { id: true, name: true }
-          }
+            select: { id: true, name: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -190,7 +203,11 @@ export class ExportHistoryService {
     }
 
     if (data.folderId !== undefined) {
-      if (data.folderId === null || data.folderId === 'null' || data.folderId === 'root') {
+      if (
+        data.folderId === null ||
+        data.folderId === 'null' ||
+        data.folderId === 'root'
+      ) {
         updateData.folderId = null;
       } else {
         const folder = await this.prisma.exportFolder.findFirst({
@@ -235,11 +252,15 @@ export class ExportHistoryService {
       if (record.filePath.startsWith('s3://')) {
         const s3Key = record.filePath.replace('s3://', '');
         await this.uploadService.deleteS3Object(s3Key);
-      } else if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+      } else if (
+        record.filePath.startsWith('http://') ||
+        record.filePath.startsWith('https://')
+      ) {
         const cdnHost = process.env.AWS_S3_CDN_URL || process.env.CDN_URL;
         let s3Key: string | null = null;
         if (cdnHost && record.filePath.includes(cdnHost)) {
-          s3Key = record.filePath.split(cdnHost).pop()?.replace(/^\//, '') || null;
+          s3Key =
+            record.filePath.split(cdnHost).pop()?.replace(/^\//, '') || null;
         } else if (record.filePath.includes('.amazonaws.com/')) {
           s3Key = record.filePath.split('.amazonaws.com/').pop() || null;
         }
@@ -250,7 +271,7 @@ export class ExportHistoryService {
         const fullPath = path.isAbsolute(record.filePath)
           ? record.filePath
           : path.join(process.cwd(), record.filePath);
-        
+
         try {
           if (fs.existsSync(fullPath)) {
             fs.unlinkSync(fullPath);
@@ -265,7 +286,12 @@ export class ExportHistoryService {
     return result;
   }
 
-  async downloadExport(userId: string, exportId: string, res: any, query?: { inline?: boolean }) {
+  async downloadExport(
+    userId: string,
+    exportId: string,
+    res: any,
+    query?: { inline?: boolean },
+  ) {
     const record = await this.prisma.exportHistory.findFirst({
       where: { id: exportId, userId },
     });
@@ -281,7 +307,9 @@ export class ExportHistoryService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -290,7 +318,10 @@ export class ExportHistoryService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -306,18 +337,22 @@ export class ExportHistoryService {
 
     const isPdf = record.fileName.endsWith('.pdf');
     const isXlsx = record.fileName.endsWith('.xlsx');
-    
+
     let contentType = 'application/octet-stream';
     if (isPdf) {
       contentType = 'application/pdf';
     } else if (isXlsx) {
-      contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      contentType =
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     }
 
     const disposition = query?.inline ? 'inline' : 'attachment';
 
     res.header('Content-Type', contentType);
-    res.header('Content-Disposition', `${disposition}; filename="${record.fileName}"`);
+    res.header(
+      'Content-Disposition',
+      `${disposition}; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
 
@@ -341,7 +376,7 @@ export class ExportHistoryService {
 
     const deleteResult = await this.prisma.exportHistory.deleteMany({
       where: {
-        id: { in: records.map(r => r.id) },
+        id: { in: records.map((r) => r.id) },
         userId,
       },
     });
@@ -351,11 +386,15 @@ export class ExportHistoryService {
         if (record.filePath.startsWith('s3://')) {
           const s3Key = record.filePath.replace('s3://', '');
           await this.uploadService.deleteS3Object(s3Key);
-        } else if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+        } else if (
+          record.filePath.startsWith('http://') ||
+          record.filePath.startsWith('https://')
+        ) {
           const cdnHost = process.env.AWS_S3_CDN_URL || process.env.CDN_URL;
           let s3Key: string | null = null;
           if (cdnHost && record.filePath.includes(cdnHost)) {
-            s3Key = record.filePath.split(cdnHost).pop()?.replace(/^\//, '') || null;
+            s3Key =
+              record.filePath.split(cdnHost).pop()?.replace(/^\//, '') || null;
           } else if (record.filePath.includes('.amazonaws.com/')) {
             s3Key = record.filePath.split('.amazonaws.com/').pop() || null;
           }
@@ -369,10 +408,14 @@ export class ExportHistoryService {
           try {
             if (fs.existsSync(fullPath)) {
               fs.unlinkSync(fullPath);
-              this.logger.log(`[BulkDelete] Deleted file from disk: ${fullPath}`);
+              this.logger.log(
+                `[BulkDelete] Deleted file from disk: ${fullPath}`,
+              );
             }
           } catch (err: any) {
-            this.logger.warn(`[BulkDelete] Could not delete file ${fullPath}: ${err.message}`);
+            this.logger.warn(
+              `[BulkDelete] Could not delete file ${fullPath}: ${err.message}`,
+            );
           }
         }
       }
@@ -383,7 +426,7 @@ export class ExportHistoryService {
 
   async bulkMove(userId: string, ids: string[], folderId: string | null) {
     let destFolderId: string | null = null;
-    
+
     if (folderId !== null && folderId !== 'null' && folderId !== 'root') {
       const folder = await this.prisma.exportFolder.findFirst({
         where: { id: folderId, userId },
@@ -422,7 +465,7 @@ export class ExportHistoryService {
       const record = records[i];
       const originalExt = path.extname(record.fileName);
       const newName = `${baseName} (${i + 1})${originalExt}`;
-      
+
       await this.prisma.exportHistory.update({
         where: { id: record.id },
         data: { fileName: newName },
@@ -433,4 +476,3 @@ export class ExportHistoryService {
     return { renamedCount };
   }
 }
-

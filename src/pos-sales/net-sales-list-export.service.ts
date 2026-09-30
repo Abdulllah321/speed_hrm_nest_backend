@@ -272,7 +272,11 @@ export interface QueueNetSalesListExportOptions {
 @Injectable()
 export class NetSalesListExportService {
   private readonly logger = new Logger(NetSalesListExportService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
+  private readonly previewStorageDir = path.join(
+    process.cwd(),
+    'uploads',
+    'report-previews',
+  );
 
   constructor(
     @InjectQueue('net-sales-list-export') private readonly exportQueue: Queue,
@@ -322,19 +326,27 @@ export class NetSalesListExportService {
           this.exportQueue.getActive(),
         ]);
         for (const wJob of waiting) {
-          if (wJob.data?.userId === opts.userId && wJob.name === 'generate-net-sales-list-preview') {
+          if (
+            wJob.data?.userId === opts.userId &&
+            wJob.name === 'generate-net-sales-list-preview'
+          ) {
             await wJob.remove();
           }
         }
         for (const aJob of active) {
-          if (aJob.data?.userId === opts.userId && aJob.name === 'generate-net-sales-list-preview') {
+          if (
+            aJob.data?.userId === opts.userId &&
+            aJob.name === 'generate-net-sales-list-preview'
+          ) {
             if (aJob.data?.jobId) {
               this.cancelledPreviewJobIds.add(aJob.data.jobId);
             }
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Failed to prune superseded preview jobs for user ${opts.userId}: ${err.message}`);
+        this.logger.warn(
+          `Failed to prune superseded preview jobs for user ${opts.userId}: ${err.message}`,
+        );
       }
     }
 
@@ -368,8 +380,14 @@ export class NetSalesListExportService {
   }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
-      const jsonPath = path.join(this.previewStorageDir, `net-sales-list-preview-${jobId}.json.gz`);
-      const ndjsonPath = path.join(this.previewStorageDir, `net-sales-list-preview-${jobId}.ndjson.gz`);
+      const jsonPath = path.join(
+        this.previewStorageDir,
+        `net-sales-list-preview-${jobId}.json.gz`,
+      );
+      const ndjsonPath = path.join(
+        this.previewStorageDir,
+        `net-sales-list-preview-${jobId}.ndjson.gz`,
+      );
       if (fs.existsSync(jsonPath) || fs.existsSync(ndjsonPath)) {
         return {
           status: 'completed',
@@ -424,26 +442,46 @@ export class NetSalesListExportService {
   }
 
   getPreviewFilePath(jobId: string): string {
-    const jsonPath = path.join(this.previewStorageDir, `net-sales-list-preview-${jobId}.json.gz`);
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `net-sales-list-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) return jsonPath;
-    const ndjsonPath = path.join(this.previewStorageDir, `net-sales-list-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `net-sales-list-preview-${jobId}.ndjson.gz`,
+    );
     if (fs.existsSync(ndjsonPath)) return ndjsonPath;
     return jsonPath;
   }
 
   getPreviewNdjsonFilePath(jobId: string): string {
-    return path.join(this.previewStorageDir, `net-sales-list-preview-${jobId}.ndjson.gz`);
+    return path.join(
+      this.previewStorageDir,
+      `net-sales-list-preview-${jobId}.ndjson.gz`,
+    );
   }
 
-  async saveReportPreviewResult(jobId: string, result: NetSalesListReportResult): Promise<void> {
-    const jsonPath = path.join(this.previewStorageDir, `net-sales-list-preview-${jobId}.json.gz`);
+  async saveReportPreviewResult(
+    jobId: string,
+    result: NetSalesListReportResult,
+  ): Promise<void> {
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `net-sales-list-preview-${jobId}.json.gz`,
+    );
     const jsonStr = JSON.stringify(result);
     const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
     await fs.promises.writeFile(jsonPath, compressed);
   }
 
-  async getReportPreviewResult(jobId: string): Promise<NetSalesListReportResult | null> {
-    const jsonPath = path.join(this.previewStorageDir, `net-sales-list-preview-${jobId}.json.gz`);
+  async getReportPreviewResult(
+    jobId: string,
+  ): Promise<NetSalesListReportResult | null> {
+    const jsonPath = path.join(
+      this.previewStorageDir,
+      `net-sales-list-preview-${jobId}.json.gz`,
+    );
     if (fs.existsSync(jsonPath)) {
       const compressed = await fs.promises.readFile(jsonPath);
       const decompressed = await gunzipAsync(compressed);
@@ -451,7 +489,10 @@ export class NetSalesListExportService {
       return parsed.data || parsed;
     }
 
-    const ndjsonPath = path.join(this.previewStorageDir, `net-sales-list-preview-${jobId}.ndjson.gz`);
+    const ndjsonPath = path.join(
+      this.previewStorageDir,
+      `net-sales-list-preview-${jobId}.ndjson.gz`,
+    );
     if (!fs.existsSync(ndjsonPath)) {
       return null;
     }
@@ -594,7 +635,10 @@ export class NetSalesListExportService {
     } = opts;
 
     const now = new Date();
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -618,10 +662,20 @@ export class NetSalesListExportService {
     let startDate: Date;
     let endDate: Date;
 
-    if (fiscalYear === '2026-2027' || fiscalYear === '26-27' || fiscalYear === 'fy-26-27' || fiscalYear === 'current') {
+    if (
+      fiscalYear === '2026-2027' ||
+      fiscalYear === '26-27' ||
+      fiscalYear === 'fy-26-27' ||
+      fiscalYear === 'current'
+    ) {
       startDate = new Date(Date.UTC(2026, 6, 1, 0, 0, 0, 0));
       endDate = new Date(Date.UTC(2027, 5, 30, 23, 59, 59, 999));
-    } else if (fiscalYear === '2025-2026' || fiscalYear === '25-26' || fiscalYear === 'fy-25-26' || fiscalYear === 'previous') {
+    } else if (
+      fiscalYear === '2025-2026' ||
+      fiscalYear === '25-26' ||
+      fiscalYear === 'fy-25-26' ||
+      fiscalYear === 'previous'
+    ) {
       startDate = new Date(Date.UTC(2025, 6, 1, 0, 0, 0, 0));
       endDate = new Date(Date.UTC(2026, 5, 30, 23, 59, 59, 999));
     } else if (fiscalYear === 'all-time') {
@@ -645,28 +699,48 @@ export class NetSalesListExportService {
       endDate = now;
     }
 
-    const locIds = locationIds && locationIds.length > 0
-      ? locationIds
-      : locationId
-        ? locationId.split(',').map((s) => s.trim()).filter(Boolean)
-        : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
+    const locIds =
+      locationIds && locationIds.length > 0
+        ? locationIds
+        : locationId
+          ? locationId
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
 
     await onProgress?.(10, 'Loading store metadata and users...');
 
-    const [allLocations, cashiersList, allSizes, allColors, allMerchants] = await Promise.all([
-      prisma.location.findMany({ select: { id: true, name: true, code: true } }),
-      this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
-      prisma.size.findMany({ select: { id: true, name: true } }),
-      prisma.color.findMany({ select: { id: true, name: true } }),
-      prisma.merchantConfig.findMany({ select: { id: true, bankName: true, description: true } }),
-    ]);
+    const [allLocations, cashiersList, allSizes, allColors, allMerchants] =
+      await Promise.all([
+        prisma.location.findMany({
+          select: { id: true, name: true, code: true },
+        }),
+        this.prismaMaster.user.findMany({
+          select: { id: true, firstName: true, lastName: true },
+        }),
+        prisma.size.findMany({ select: { id: true, name: true } }),
+        prisma.color.findMany({ select: { id: true, name: true } }),
+        prisma.merchantConfig.findMany({
+          select: { id: true, bankName: true, description: true },
+        }),
+      ]);
 
     const locationMap = new Map<string, string>();
     for (const l of allLocations) locationMap.set(l.id, l.name);
 
     const cashierMap = new Map<string, string>();
-    for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+    for (const u of cashiersList)
+      cashierMap.set(
+        u.id,
+        `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier',
+      );
 
     const sizeMap = new Map<string, string>();
     for (const s of allSizes) sizeMap.set(s.id, s.name);
@@ -676,7 +750,11 @@ export class NetSalesListExportService {
 
     const merchantMap = new Map<string, string>();
     for (const m of allMerchants) {
-      const label = m.bankName || (m.description ? m.description.split('|')[1]?.trim() || m.description : '');
+      const label =
+        m.bankName ||
+        (m.description
+          ? m.description.split('|')[1]?.trim() || m.description
+          : '');
       merchantMap.set(m.id, label);
     }
 
@@ -701,7 +779,19 @@ export class NetSalesListExportService {
 
       const salesWhere: any = {
         orderNumber: { not: { startsWith: 'RET-' } },
-        status: { notIn: ['hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED', 'draft', 'DRAFT'] },
+        status: {
+          notIn: [
+            'hold',
+            'hold_expired',
+            'hold_cancelled',
+            'voided',
+            'cancelled',
+            'VOIDED',
+            'CANCELLED',
+            'draft',
+            'DRAFT',
+          ],
+        },
         createdAt: { gte: startDate, lte: endDate },
       };
 
@@ -709,12 +799,17 @@ export class NetSalesListExportService {
       if (cashierUserId) salesWhere.cashierUserId = cashierUserId;
       if (fbrOnly) salesWhere.fbrInvoiceNumber = { not: null };
       if (paymentModeGroup) {
-        salesWhere.paymentMethod = { equals: paymentModeGroup, mode: 'insensitive' };
+        salesWhere.paymentMethod = {
+          equals: paymentModeGroup,
+          mode: 'insensitive',
+        };
       }
       if (minAmount !== undefined || maxAmount !== undefined) {
         salesWhere.grandTotal = {};
-        if (minAmount !== undefined) salesWhere.grandTotal.gte = Number(minAmount);
-        if (maxAmount !== undefined) salesWhere.grandTotal.lte = Number(maxAmount);
+        if (minAmount !== undefined)
+          salesWhere.grandTotal.gte = Number(minAmount);
+        if (maxAmount !== undefined)
+          salesWhere.grandTotal.lte = Number(maxAmount);
       }
       if (search && search.trim()) {
         const s = search.trim();
@@ -726,7 +821,9 @@ export class NetSalesListExportService {
         ];
       }
 
-      const totalSalesOrders = await prisma.salesOrder.count({ where: salesWhere });
+      const totalSalesOrders = await prisma.salesOrder.count({
+        where: salesWhere,
+      });
       const CHUNK_SIZE = 1500;
       let processedSales = 0;
 
@@ -759,12 +856,39 @@ export class NetSalesListExportService {
             notes: true,
             merchantId: true,
             merchant: { select: { bankName: true, description: true } },
-            alliance: { select: { partnerName: true, code: true, discountPercent: true, description: true } },
-            promo: { select: { name: true, code: true, type: true, value: true } },
-            coupon: { select: { code: true, description: true, discountType: true, discountValue: true } },
+            alliance: {
+              select: {
+                partnerName: true,
+                code: true,
+                discountPercent: true,
+                description: true,
+              },
+            },
+            promo: {
+              select: { name: true, code: true, type: true, value: true },
+            },
+            coupon: {
+              select: {
+                code: true,
+                description: true,
+                discountType: true,
+                discountValue: true,
+              },
+            },
             fbrInvoiceNumber: true,
             fbrStatus: true,
-            customer: { select: { id: true, name: true, contactNo: true, traderId: true, subCode: true, cnicNo: true, address: true, email: true } },
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                contactNo: true,
+                traderId: true,
+                subCode: true,
+                cnicNo: true,
+                address: true,
+                email: true,
+              },
+            },
             voucherRedemptions: {
               select: {
                 amountUsed: true,
@@ -809,15 +933,21 @@ export class NetSalesListExportService {
 
         for (const o of orders) {
           const notesStr = o.notes || '';
-          let locName = (o.locationId && locationMap.get(o.locationId)) || 'Main Store';
-          let cashierName = (o.cashierUserId && cashierMap.get(o.cashierUserId)) || 'Cashier';
+          const locName =
+            (o.locationId && locationMap.get(o.locationId)) || 'Main Store';
+          let cashierName =
+            (o.cashierUserId && cashierMap.get(o.cashierUserId)) || 'Cashier';
           if (cashierName === 'Cashier' && notesStr) {
-            const spMatch = notesStr.match(/(?:SalesPerson|Cashier):\s*([^|\]]+)/i);
+            const spMatch = notesStr.match(
+              /(?:SalesPerson|Cashier):\s*([^|\]]+)/i,
+            );
             if (spMatch) cashierName = spMatch[1].trim();
           }
           let custName = o.customer?.name || 'Walk-in Customer';
           if (custName === 'Walk-in Customer' && notesStr) {
-            const custMatch = notesStr.match(/(?:Customer|CustomerName):\s*([^|\]]+)/i);
+            const custMatch = notesStr.match(
+              /(?:Customer|CustomerName):\s*([^|\]]+)/i,
+            );
             if (custMatch) custName = custMatch[1].trim();
           }
 
@@ -844,14 +974,20 @@ export class NetSalesListExportService {
             const valueExcl = priceWost * qty;
 
             const rawDiscAmt = Number(it.discountAmount || 0);
-            const discPct = Number(it.discountPercent || (lineRetailGross > 0 && rawDiscAmt > 0 ? (rawDiscAmt / valueExcl) * 100 : 0));
+            const discPct = Number(
+              it.discountPercent ||
+                (lineRetailGross > 0 && rawDiscAmt > 0
+                  ? (rawDiscAmt / valueExcl) * 100
+                  : 0),
+            );
 
             let discAmtWost = 0;
             let discAmtRetail = 0;
 
             if (discPct > 0) {
-              discAmtRetail = Math.round((lineRetailGross * (discPct / 100)) * 100) / 100;
-              discAmtWost = Math.round((valueExcl * (discPct / 100)) * 100) / 100;
+              discAmtRetail =
+                Math.round(lineRetailGross * (discPct / 100) * 100) / 100;
+              discAmtWost = Math.round(valueExcl * (discPct / 100) * 100) / 100;
             } else if (rawDiscAmt > 0) {
               discAmtWost = rawDiscAmt;
               discAmtRetail = Math.round(rawDiscAmt * 1.18 * 100) / 100;
@@ -863,15 +999,25 @@ export class NetSalesListExportService {
 
             const amountAfterDiscount = Math.max(0, valueExcl - discAmtWost);
             const taxPercent = Number(it.taxPercent || 18);
-            const taxAmount = Number(it.taxAmount || Math.round(amountAfterDiscount * (taxPercent / 100) * 100) / 100);
-            const lineTotal = Number(it.lineTotal || (lineRetailGross - discAmtRetail));
+            const taxAmount = Number(
+              it.taxAmount ||
+                Math.round(amountAfterDiscount * (taxPercent / 100) * 100) /
+                  100,
+            );
+            const lineTotal = Number(
+              it.lineTotal || lineRetailGross - discAmtRetail,
+            );
 
             docQty += qty;
             docTax += taxAmount;
             docNet += lineTotal;
 
-            const sizeName = it.item?.sizeId ? sizeMap.get(it.item.sizeId) || '' : '';
-            const colorName = it.item?.colorId ? colorMap.get(it.item.colorId) || '' : '';
+            const sizeName = it.item?.sizeId
+              ? sizeMap.get(it.item.sizeId) || ''
+              : '';
+            const colorName = it.item?.colorId
+              ? colorMap.get(it.item.colorId) || ''
+              : '';
 
             docItems.push({
               id: it.id,
@@ -896,11 +1042,20 @@ export class NetSalesListExportService {
             });
           }
 
-          const orderNet = Number(o.grandTotal !== null && o.grandTotal !== undefined ? o.grandTotal : docNet);
-          const orderTax = Number(o.taxAmount !== null && o.taxAmount !== undefined ? o.taxAmount : docTax);
+          const orderNet = Number(
+            o.grandTotal !== null && o.grandTotal !== undefined
+              ? o.grandTotal
+              : docNet,
+          );
+          const orderTax = Number(
+            o.taxAmount !== null && o.taxAmount !== undefined
+              ? o.taxAmount
+              : docTax,
+          );
 
           if (docItems.length === 0) {
-            const grossWostFallback = orderWost > 0 ? orderWost : orderNet / 1.18;
+            const grossWostFallback =
+              orderWost > 0 ? orderWost : orderNet / 1.18;
             const retailGrossFallback = grossWostFallback * 1.18;
             docItems.push({
               id: o.id,
@@ -929,10 +1084,18 @@ export class NetSalesListExportService {
           }
 
           // Use order-level WOST (subtotal) with fallback to computed — same as sales-list
-          const grossWost = orderWost > 0 ? orderWost : (orderComputedWost > 0 ? orderComputedWost : orderNet / 1.18);
-          const retailGross = orderRetailGross > 0 ? orderRetailGross : (grossWost * 1.18);
-          const totalDiscWost = orderDiscWost > 0 ? orderDiscWost : orderComputedDiscWost;
-          const totalDiscRetail = orderRetailDisc > 0 ? orderRetailDisc : (totalDiscWost * 1.18);
+          const grossWost =
+            orderWost > 0
+              ? orderWost
+              : orderComputedWost > 0
+                ? orderComputedWost
+                : orderNet / 1.18;
+          const retailGross =
+            orderRetailGross > 0 ? orderRetailGross : grossWost * 1.18;
+          const totalDiscWost =
+            orderDiscWost > 0 ? orderDiscWost : orderComputedDiscWost;
+          const totalDiscRetail =
+            orderRetailDisc > 0 ? orderRetailDisc : totalDiscWost * 1.18;
           const totalAmtAfterDisc = Math.max(0, grossWost - totalDiscWost);
           const docGross = retailGross;
           const docWost = grossWost;
@@ -959,22 +1122,32 @@ export class NetSalesListExportService {
           let rewMatch = false;
 
           if (notesStr) {
-            const balanceMatch = notesStr.match(/\[Credit Sale\] Balance:\s*(-?[\d.]+)/i);
+            const balanceMatch = notesStr.match(
+              /\[Credit Sale\] Balance:\s*(-?[\d.]+)/i,
+            );
             if (balanceMatch) balance = Number(balanceMatch[1]);
 
-            const cashRetMatch = notesStr.match(/\[Cash Return\] Amount:\s*([\d.]+)/i);
+            const cashRetMatch = notesStr.match(
+              /\[Cash Return\] Amount:\s*([\d.]+)/i,
+            );
             if (cashRetMatch) cashReturn = Number(cashRetMatch[1]);
 
             if (cashSale === 0) {
-              const cashMatch = notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
+              const cashMatch =
+                notesStr.match(/\[Cash Sale\] Amount:\s*([\d.]+)/i) ||
+                notesStr.match(/(?:cash|cashsale):\s*([\d.]+)/i);
               if (cashMatch) cashSale = Number(cashMatch[1]);
             }
             if (cardSale === 0) {
-              const cardMatch = notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) || notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
+              const cardMatch =
+                notesStr.match(/\[Card Sale\] Amount:\s*([\d.]+)/i) ||
+                notesStr.match(/(?:card|cardsale):\s*([\d.]+)/i);
               if (cardMatch) cardSale = Number(cardMatch[1]);
             }
 
-            const ex = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
+            const ex = notesStr.match(
+              /\[Exchange Voucher\] Amount:\s*([\d.]+)/i,
+            );
             if (ex) {
               exchangeVoucher = Number(ex[1]);
               exMatch = true;
@@ -986,7 +1159,9 @@ export class NetSalesListExportService {
               clmMatch = true;
             }
 
-            const corp = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+            const corp = notesStr.match(
+              /\[Corporate Voucher\] Amount:\s*([\d.]+)/i,
+            );
             if (corp) {
               corporateVoucher = Number(corp[1]);
               corpMatch = true;
@@ -998,29 +1173,49 @@ export class NetSalesListExportService {
               giftMatch = true;
             }
 
-            const rew = notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) || notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
+            const rew =
+              notesStr.match(/\[Reward Voucher\] Amount:\s*([\d.]+)/i) ||
+              notesStr.match(/\[Reward Voucher\].*?Amount:\s*([\d.]+)/i);
             if (rew) {
               rewardVoucher = Number(rew[1]);
               rewMatch = true;
             }
 
-            const credV = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
+            const credV = notesStr.match(
+              /\[Credit Voucher\] Amount:\s*([\d.]+)/i,
+            );
             if (credV) {
               creditVoucher = Number(credV[1]);
               credVouchMatch = true;
             }
           }
 
-          if (balance === 0 && (o.paymentMethod === 'credit_account' || o.tenderType === 'credit_account' || o.paymentMethod === 'credit')) {
+          if (
+            balance === 0 &&
+            (o.paymentMethod === 'credit_account' ||
+              o.tenderType === 'credit_account' ||
+              o.paymentMethod === 'credit')
+          ) {
             balance = Number(o.grandTotal);
           }
-          if (rewardVoucher === 0 && (o.paymentMethod === 'reward_voucher' || o.tenderType === 'reward_voucher')) {
+          if (
+            rewardVoucher === 0 &&
+            (o.paymentMethod === 'reward_voucher' ||
+              o.tenderType === 'reward_voucher')
+          ) {
             rewardVoucher = Number(o.grandTotal);
           }
 
-          let creditSale = balance > 0 ? balance : ((o.paymentMethod === 'credit_account' || o.tenderType === 'credit_account' || o.paymentMethod === 'credit') ? Number(o.grandTotal) : 0);
+          let creditSale =
+            balance > 0
+              ? balance
+              : o.paymentMethod === 'credit_account' ||
+                  o.tenderType === 'credit_account' ||
+                  o.paymentMethod === 'credit'
+                ? Number(o.grandTotal)
+                : 0;
 
-          for (const red of (o.voucherRedemptions || [])) {
+          for (const red of o.voucherRedemptions || []) {
             const type = red.voucher?.voucherType;
             const amt = Number(red.amountUsed);
 
@@ -1039,7 +1234,13 @@ export class NetSalesListExportService {
             }
           }
 
-          const totalRedeemedVoucher = giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher;
+          const totalRedeemedVoucher =
+            giftVoucher +
+            creditVoucher +
+            exchangeVoucher +
+            claimVoucher +
+            corporateVoucher +
+            rewardVoucher;
           const orderVoucherAmt = Number(o.voucherAmount || 0);
           if (orderVoucherAmt > totalRedeemedVoucher && notesStr) {
             const remVoucher = orderVoucherAmt - totalRedeemedVoucher;
@@ -1058,19 +1259,34 @@ export class NetSalesListExportService {
             }
           }
 
-          const totalTenders = cashSale + cardSale + giftVoucher + creditVoucher + exchangeVoucher + claimVoucher + corporateVoucher + rewardVoucher + creditSale;
+          const totalTenders =
+            cashSale +
+            cardSale +
+            giftVoucher +
+            creditVoucher +
+            exchangeVoucher +
+            claimVoucher +
+            corporateVoucher +
+            rewardVoucher +
+            creditSale;
           const payMethod = (o.paymentMethod || 'CASH').toUpperCase();
           const paid = Number(o.grandTotal || docNet);
           if (totalTenders === 0) {
-            if (payMethod.includes('CARD') || payMethod.includes('BANK')) cardSale = paid;
+            if (payMethod.includes('CARD') || payMethod.includes('BANK'))
+              cardSale = paid;
             else if (payMethod.includes('CREDIT')) creditSale = paid;
             else if (payMethod.includes('VOUCHER')) creditVoucher = paid;
             else cashSale = paid;
           }
 
-          let merchantName = (o.merchantId && merchantMap.get(o.merchantId)) || o.merchant?.bankName || '-';
+          let merchantName =
+            (o.merchantId && merchantMap.get(o.merchantId)) ||
+            o.merchant?.bankName ||
+            '-';
           if ((merchantName === '-' || !merchantName) && notesStr) {
-            const merchMatch = notesStr.match(/(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],(]+)/i);
+            const merchMatch = notesStr.match(
+              /(?:Bank|Merchant|Card\s*Name|Cardholder):\s*([^|\],(]+)/i,
+            );
             if (merchMatch) merchantName = merchMatch[1].trim();
           }
           merchantName = merchantName || '-';
@@ -1087,7 +1303,8 @@ export class NetSalesListExportService {
             customerName: custName,
             customerPhone: o.customer?.contactNo || undefined,
             customerCnic: o.customer?.cnicNo || undefined,
-            customerCode: o.customer?.traderId || o.customer?.subCode || undefined,
+            customerCode:
+              o.customer?.traderId || o.customer?.subCode || undefined,
             paymentMethod: o.paymentMethod || 'CASH',
             merchant: merchantName !== '-' ? merchantName : undefined,
             fbrInvoiceNumber: o.fbrInvoiceNumber || undefined,
@@ -1140,8 +1357,12 @@ export class NetSalesListExportService {
         }
 
         processedSales += orders.length;
-        const pct = 20 + Math.floor((processedSales / (totalSalesOrders || 1)) * 35);
-        await onProgress?.(pct, `Processed ${processedSales} of ${totalSalesOrders} sales orders...`);
+        const pct =
+          20 + Math.floor((processedSales / (totalSalesOrders || 1)) * 35);
+        await onProgress?.(
+          pct,
+          `Processed ${processedSales} of ${totalSalesOrders} sales orders...`,
+        );
       }
     }
 
@@ -1149,7 +1370,10 @@ export class NetSalesListExportService {
     // 2. QUERY & PROCESS POS RETURNS
     // ──────────────────────────────────────────────────────────────────────────
     if (fetchReturns) {
-      await onProgress?.(55, 'Querying return and refund records from database...');
+      await onProgress?.(
+        55,
+        'Querying return and refund records from database...',
+      );
 
       const returnWhere: any = {
         createdAt: { gte: startDate, lte: endDate },
@@ -1181,20 +1405,54 @@ export class NetSalesListExportService {
                 locationId: true,
                 cashierUserId: true,
                 customer: {
-                  select: { id: true, name: true, contactNo: true, cnicNo: true, email: true, address: true, traderId: true, subCode: true },
+                  select: {
+                    id: true,
+                    name: true,
+                    contactNo: true,
+                    cnicNo: true,
+                    email: true,
+                    address: true,
+                    traderId: true,
+                    subCode: true,
+                  },
                 },
               },
             },
             customer: {
-              select: { id: true, name: true, contactNo: true, cnicNo: true, email: true, address: true, traderId: true, subCode: true },
+              select: {
+                id: true,
+                name: true,
+                contactNo: true,
+                cnicNo: true,
+                email: true,
+                address: true,
+                traderId: true,
+                subCode: true,
+              },
             },
             originalCustomer: {
-              select: { id: true, name: true, contactNo: true, cnicNo: true, email: true, address: true, traderId: true, subCode: true },
+              select: {
+                id: true,
+                name: true,
+                contactNo: true,
+                cnicNo: true,
+                email: true,
+                address: true,
+                traderId: true,
+                subCode: true,
+              },
             },
             items: {
               include: {
                 item: {
-                  select: { id: true, sku: true, barCode: true, description: true, sizeId: true, colorId: true },
+                  select: {
+                    id: true,
+                    sku: true,
+                    barCode: true,
+                    description: true,
+                    sizeId: true,
+                    colorId: true,
+                  },
                 },
               },
             },
@@ -1203,11 +1461,13 @@ export class NetSalesListExportService {
         });
 
         for (const ret of returns) {
-          const cust = ret.customer || ret.originalCustomer || ret.salesOrder?.customer;
+          const cust =
+            ret.customer || ret.originalCustomer || ret.salesOrder?.customer;
           const locId = ret.locationId || ret.salesOrder?.locationId;
           const locName = (locId && locationMap.get(locId)) || 'Main Store';
           const cashUserId = ret.cashierUserId || ret.salesOrder?.cashierUserId;
-          const cashierName = (cashUserId && cashierMap.get(cashUserId)) || 'Cashier';
+          const cashierName =
+            (cashUserId && cashierMap.get(cashUserId)) || 'Cashier';
           const custName = cust?.name || 'Walk-in Customer';
 
           const vType = (ret.voucher?.voucherType || '').toUpperCase();
@@ -1215,7 +1475,8 @@ export class NetSalesListExportService {
           const rMode = (ret.refundMode || '').toUpperCase();
           const retNotes = ret.reason || ret.salesOrder?.notes || '';
 
-          let subType: 'EXCHANGE_SR' | 'REFUND_RF' | 'CLAIM_CLM' = 'EXCHANGE_SR';
+          let subType: 'EXCHANGE_SR' | 'REFUND_RF' | 'CLAIM_CLM' =
+            'EXCHANGE_SR';
           let subTypeLabel = 'Sales Return / Exchange (SR)';
 
           if (vType === 'CLAIM' || /claim|defect|_clm/i.test(retNotes)) {
@@ -1244,14 +1505,42 @@ export class NetSalesListExportService {
 
           for (const it of ret.items) {
             const qty = Number(it.quantity) || 1;
-            const unitPrice = Number((it as any).originalUnitPrice || (it as any).refundPerUnit || (it as any).originalPaidPerUnit || 0);
-            const unitPriceWost = Number(((it as any).unitPriceWost ? Number((it as any).unitPriceWost) : unitPrice / 1.18).toFixed(2));
-            const valExcl = Number(((it as any).lineTotalWost ? Number((it as any).lineTotalWost) : qty * unitPriceWost).toFixed(2));
-            const disc = Number(it.discountPercent ? (unitPrice * qty * Number(it.discountPercent)) / 100 : 0);
-            const discWost = Number(((it as any).discountWost ? Number((it as any).discountWost) : disc / 1.18).toFixed(2));
-            const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
+            const unitPrice = Number(
+              (it as any).originalUnitPrice ||
+                (it as any).refundPerUnit ||
+                (it as any).originalPaidPerUnit ||
+                0,
+            );
+            const unitPriceWost = Number(
+              ((it as any).unitPriceWost
+                ? Number((it as any).unitPriceWost)
+                : unitPrice / 1.18
+              ).toFixed(2),
+            );
+            const valExcl = Number(
+              ((it as any).lineTotalWost
+                ? Number((it as any).lineTotalWost)
+                : qty * unitPriceWost
+              ).toFixed(2),
+            );
+            const disc = Number(
+              it.discountPercent
+                ? (unitPrice * qty * Number(it.discountPercent)) / 100
+                : 0,
+            );
+            const discWost = Number(
+              ((it as any).discountWost
+                ? Number((it as any).discountWost)
+                : disc / 1.18
+              ).toFixed(2),
+            );
+            const amtAfterDisc = Number(
+              Math.max(0, valExcl - discWost).toFixed(2),
+            );
             const tax = Number(it.taxAmount || 0);
-            const lineTotal = Number(it.lineTotal || (unitPrice * qty - disc + tax));
+            const lineTotal = Number(
+              it.lineTotal || unitPrice * qty - disc + tax,
+            );
 
             retQty += qty;
             retGross += unitPrice * qty;
@@ -1261,8 +1550,12 @@ export class NetSalesListExportService {
             retTax += tax;
             retNet += lineTotal;
 
-            const sizeName = it.item?.sizeId ? sizeMap.get(it.item.sizeId) || '' : '';
-            const colorName = it.item?.colorId ? colorMap.get(it.item.colorId) || '' : '';
+            const sizeName = it.item?.sizeId
+              ? sizeMap.get(it.item.sizeId) || ''
+              : '';
+            const colorName = it.item?.colorId
+              ? colorMap.get(it.item.colorId) || ''
+              : '';
 
             // Note: In Net Sales List, return items carry NEGATIVE values for Net calculations
             docItems.push({
@@ -1292,7 +1585,9 @@ export class NetSalesListExportService {
 
           if (docItems.length === 0) {
             const totalRefAmt = Number(ret.totalRefundAmount || 0);
-            const wostAmt = Number((ret as any).subtotalWost || (totalRefAmt / 1.18).toFixed(2));
+            const wostAmt = Number(
+              (ret as any).subtotalWost || (totalRefAmt / 1.18).toFixed(2),
+            );
             retQty = 1;
             retGross = totalRefAmt;
             retWost = wostAmt;
@@ -1325,16 +1620,28 @@ export class NetSalesListExportService {
 
           // Refund breakdown
           const totalRefundAmt = Number(ret.totalRefundAmount || retNet);
-          const cashRefund = (ret.refundMode === 'CASH' || rMode === 'CASH') ? totalRefundAmt : 0;
-          const cardRefund = (rMode === 'CARD' || rMode === 'CREDIT_CARD' || rMode === 'DEBIT_CARD') ? totalRefundAmt : 0;
-          const voucherIssuedAmt = (ret.refundMode === 'VOUCHER' || ret.refundMode === 'EXCHANGE_VOUCHER' || ret.voucher)
-            ? Number(ret.voucher?.faceValue || totalRefundAmt)
-            : 0;
+          const cashRefund =
+            ret.refundMode === 'CASH' || rMode === 'CASH' ? totalRefundAmt : 0;
+          const cardRefund =
+            rMode === 'CARD' ||
+            rMode === 'CREDIT_CARD' ||
+            rMode === 'DEBIT_CARD'
+              ? totalRefundAmt
+              : 0;
+          const voucherIssuedAmt =
+            ret.refundMode === 'VOUCHER' ||
+            ret.refundMode === 'EXCHANGE_VOUCHER' ||
+            ret.voucher
+              ? Number(ret.voucher?.faceValue || totalRefundAmt)
+              : 0;
 
           // Route voucher amount by subType — matches sales-return-list-export.service.ts
-          const exchangeVoucherIssued = subType === 'EXCHANGE_SR' ? voucherIssuedAmt : 0;
-          const creditVoucherIssued = subType === 'REFUND_RF' ? voucherIssuedAmt : 0;
-          const claimVoucherIssued = subType === 'CLAIM_CLM' ? voucherIssuedAmt : 0;
+          const exchangeVoucherIssued =
+            subType === 'EXCHANGE_SR' ? voucherIssuedAmt : 0;
+          const creditVoucherIssued =
+            subType === 'REFUND_RF' ? voucherIssuedAmt : 0;
+          const claimVoucherIssued =
+            subType === 'CLAIM_CLM' ? voucherIssuedAmt : 0;
           const rewardVoucherIssued = 0;
 
           // Fallback: if no cash/card/voucher detected, default by subType
@@ -1371,7 +1678,9 @@ export class NetSalesListExportService {
               wostAmount: -retWost,
               discountAmount: -retDiscount,
               discountWostAmount: -retDiscountWost,
-              amountAfterDiscount: -Number(Math.max(0, retWost - retDiscountWost).toFixed(2)),
+              amountAfterDiscount: -Number(
+                Math.max(0, retWost - retDiscountWost).toFixed(2),
+              ),
               taxAmount: -retTax,
               netAmount: -totalRefundAmt,
               cashAmount: -finalCashRefund,
@@ -1387,10 +1696,10 @@ export class NetSalesListExportService {
             items: docItems,
             voucherDetails: ret.voucher
               ? {
-                code: ret.voucher.code,
-                faceValue: Number(ret.voucher.faceValue) || 0,
-                voucherType: ret.voucher.voucherType,
-              }
+                  code: ret.voucher.code,
+                  faceValue: Number(ret.voucher.faceValue) || 0,
+                  voucherType: ret.voucher.voucherType,
+                }
               : undefined,
           };
 
@@ -1415,8 +1724,12 @@ export class NetSalesListExportService {
         }
 
         processedReturns += returns.length;
-        const pct = 55 + Math.floor((processedReturns / (totalReturns || 1)) * 25);
-        await onProgress?.(pct, `Processed ${processedReturns} of ${totalReturns} return documents...`);
+        const pct =
+          55 + Math.floor((processedReturns / (totalReturns || 1)) * 25);
+        await onProgress?.(
+          pct,
+          `Processed ${processedReturns} of ${totalReturns} return documents...`,
+        );
       }
 
       // 2b. Fetch and process PosClaim records (warranty / defect claims)
@@ -1428,7 +1741,10 @@ export class NetSalesListExportService {
         claimWhere.salesOrder = { locationId: locationWhere };
       }
       if (cashierUserId) {
-        claimWhere.salesOrder = { ...(claimWhere.salesOrder || {}), cashierUserId };
+        claimWhere.salesOrder = {
+          ...(claimWhere.salesOrder || {}),
+          cashierUserId,
+        };
       }
 
       const claims = await prisma.posClaim.findMany({
@@ -1487,7 +1803,9 @@ export class NetSalesListExportService {
 
         const cust = clm.salesOrder?.customer;
         const voucher = clm.voucher;
-        const approvedAmt = Number(clm.approvedAmount || clm.claimedAmount || 0);
+        const approvedAmt = Number(
+          clm.approvedAmount || clm.claimedAmount || 0,
+        );
 
         const docItems: NetSalesListLineItem[] = [];
         let claimQty = 0;
@@ -1500,8 +1818,12 @@ export class NetSalesListExportService {
           const lineTotal = Number(it.claimedAmount || qty * unitPrice);
 
           claimQty += qty;
-          const sizeName = it.item?.sizeId ? sizeMap.get(it.item.sizeId) || '' : '';
-          const colorName = it.item?.colorId ? colorMap.get(it.item.colorId) || '' : '';
+          const sizeName = it.item?.sizeId
+            ? sizeMap.get(it.item.sizeId) || ''
+            : '';
+          const colorName = it.item?.colorId
+            ? colorMap.get(it.item.colorId) || ''
+            : '';
 
           docItems.push({
             id: it.id,
@@ -1556,11 +1878,17 @@ export class NetSalesListExportService {
         }
 
         const valExcl = Number((approvedAmt / 1.18).toFixed(2));
-        const voucherIssuedAmt = voucher ? Number(voucher.faceValue) : approvedAmt;
+        const voucherIssuedAmt = voucher
+          ? Number(voucher.faceValue)
+          : approvedAmt;
 
         const locId = clm.salesOrder?.locationId;
-        const locName = locId ? locationMap.get(locId) || 'Main Store' : 'Main Store';
-        const cashierName = clm.salesOrder?.cashierUserId ? cashierMap.get(clm.salesOrder.cashierUserId) || 'Cashier' : 'Cashier';
+        const locName = locId
+          ? locationMap.get(locId) || 'Main Store'
+          : 'Main Store';
+        const cashierName = clm.salesOrder?.cashierUserId
+          ? cashierMap.get(clm.salesOrder.cashierUserId) || 'Cashier'
+          : 'Cashier';
 
         const docNode: NetSalesListDocumentNode = {
           id: clm.id,
@@ -1624,23 +1952,40 @@ export class NetSalesListExportService {
     // ──────────────────────────────────────────────────────────────────────────
     await onProgress?.(88, 'Aggregating net sales and grouping by store...');
 
-    grandTotals.netItems = grandTotals.totalItemsSold - grandTotals.totalItemsReturned;
-    grandTotals.netGrossAmount = grandTotals.grossSalesAmount - grandTotals.grossReturnAmount;
-    grandTotals.netWostAmount = grandTotals.wostSalesAmount - grandTotals.wostReturnAmount;
-    grandTotals.netDiscountAmount = grandTotals.discountSalesAmount - grandTotals.discountReturnAmount;
-    grandTotals.netDiscountWostAmount = grandTotals.discountWostSalesAmount - grandTotals.discountWostReturnAmount;
-    grandTotals.amountAfterDiscount = Math.max(0, grandTotals.netWostAmount - grandTotals.netDiscountWostAmount);
-    grandTotals.netTaxAmount = grandTotals.taxSalesAmount - grandTotals.taxReturnAmount;
-    grandTotals.totalNetAmount = grandTotals.netSalesAmount - grandTotals.netReturnAmount;
+    grandTotals.netItems =
+      grandTotals.totalItemsSold - grandTotals.totalItemsReturned;
+    grandTotals.netGrossAmount =
+      grandTotals.grossSalesAmount - grandTotals.grossReturnAmount;
+    grandTotals.netWostAmount =
+      grandTotals.wostSalesAmount - grandTotals.wostReturnAmount;
+    grandTotals.netDiscountAmount =
+      grandTotals.discountSalesAmount - grandTotals.discountReturnAmount;
+    grandTotals.netDiscountWostAmount =
+      grandTotals.discountWostSalesAmount -
+      grandTotals.discountWostReturnAmount;
+    grandTotals.amountAfterDiscount = Math.max(
+      0,
+      grandTotals.netWostAmount - grandTotals.netDiscountWostAmount,
+    );
+    grandTotals.netTaxAmount =
+      grandTotals.taxSalesAmount - grandTotals.taxReturnAmount;
+    grandTotals.totalNetAmount =
+      grandTotals.netSalesAmount - grandTotals.netReturnAmount;
 
     grandTotals.netCash = grandTotals.cashSale - grandTotals.cashRefund;
     grandTotals.netCard = grandTotals.cardSale - grandTotals.cardRefund;
-    grandTotals.netExchangeVoucher = grandTotals.exchangeVoucherRedeemed - grandTotals.exchangeVoucherIssued;
-    grandTotals.netCreditVoucher = grandTotals.creditVoucherRedeemed - grandTotals.creditVoucherIssued;
-    grandTotals.netClaimVoucher = grandTotals.claimVoucherRedeemed - grandTotals.claimVoucherIssued;
+    grandTotals.netExchangeVoucher =
+      grandTotals.exchangeVoucherRedeemed - grandTotals.exchangeVoucherIssued;
+    grandTotals.netCreditVoucher =
+      grandTotals.creditVoucherRedeemed - grandTotals.creditVoucherIssued;
+    grandTotals.netClaimVoucher =
+      grandTotals.claimVoucherRedeemed - grandTotals.claimVoucherIssued;
 
     // Sort documents chronologically descending
-    documents.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    documents.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
     // Group documents into location nodes
     const locationNodeMap = new Map<string, NetSalesListLocationNode>();
@@ -1699,13 +2044,18 @@ export class NetSalesListExportService {
       t.netGrossAmount = t.grossSalesAmount - t.grossReturnAmount;
       t.netWostAmount = t.wostSalesAmount - t.wostReturnAmount;
       t.netDiscountAmount = t.discountSalesAmount - t.discountReturnAmount;
-      t.netDiscountWostAmount = t.discountWostSalesAmount - t.discountWostReturnAmount;
-      t.amountAfterDiscount = Math.max(0, t.netWostAmount - t.netDiscountWostAmount);
+      t.netDiscountWostAmount =
+        t.discountWostSalesAmount - t.discountWostReturnAmount;
+      t.amountAfterDiscount = Math.max(
+        0,
+        t.netWostAmount - t.netDiscountWostAmount,
+      );
       t.netTaxAmount = t.taxSalesAmount - t.taxReturnAmount;
       t.totalNetAmount = t.netSalesAmount - t.netReturnAmount;
       t.netCash = t.cashSale - t.cashRefund;
       t.netCard = t.cardSale - t.cardRefund;
-      t.netExchangeVoucher = t.exchangeVoucherRedeemed - t.exchangeVoucherIssued;
+      t.netExchangeVoucher =
+        t.exchangeVoucherRedeemed - t.exchangeVoucherIssued;
       t.netCreditVoucher = t.creditVoucherRedeemed - t.creditVoucherIssued;
       t.netClaimVoucher = t.claimVoucherRedeemed - t.claimVoucherIssued;
 
@@ -1747,9 +2097,11 @@ export class NetSalesListExportService {
           taxAmount: item.taxAmount,
           lineTotal: item.lineTotal,
           cashSale: doc.docType === 'SALE' ? doc.totals.cashAmount : 0,
-          cashRefund: doc.docType === 'RETURN' ? Math.abs(doc.totals.cashAmount) : 0,
+          cashRefund:
+            doc.docType === 'RETURN' ? Math.abs(doc.totals.cashAmount) : 0,
           cardSale: doc.docType === 'SALE' ? doc.totals.cardAmount : 0,
-          cardRefund: doc.docType === 'RETURN' ? Math.abs(doc.totals.cardAmount) : 0,
+          cardRefund:
+            doc.docType === 'RETURN' ? Math.abs(doc.totals.cardAmount) : 0,
           creditSale: doc.totals.creditSaleAmount,
           giftVoucher: doc.totals.giftVoucherAmount,
           exchangeVoucher: doc.totals.exchangeVoucherAmount,
@@ -1784,7 +2136,9 @@ export class NetSalesListExportService {
     return result;
   }
 
-  async queueReportExport(opts: QueueNetSalesListExportOptions): Promise<{ jobId: string }> {
+  async queueReportExport(
+    opts: QueueNetSalesListExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -1795,7 +2149,11 @@ export class NetSalesListExportService {
         id: jobId,
         userId: opts.userId,
         fileName: `net-sales-list-report-${jobId}.${ext}`,
-        filePath: path.join('uploads', 'exports', `net-sales-list-${jobId}.${ext}`),
+        filePath: path.join(
+          'uploads',
+          'exports',
+          `net-sales-list-${jobId}.${ext}`,
+        ),
         moduleName: 'POS_NET_SALES_LIST_EXPORT',
         status: 'PENDING',
       },
@@ -1828,7 +2186,12 @@ export class NetSalesListExportService {
       return {
         jobId: history.id,
         status: history.status,
-        progress: history.status === 'COMPLETED' ? 100 : history.status === 'FAILED' ? 0 : 50,
+        progress:
+          history.status === 'COMPLETED'
+            ? 100
+            : history.status === 'FAILED'
+              ? 0
+              : 50,
         fileUrl: history.filePath,
         downloadUrl: history.filePath,
         errorMessage: (history as any).errorMessage,
@@ -1843,7 +2206,10 @@ export class NetSalesListExportService {
     return {
       jobId: job.id,
       status: state,
-      progress: typeof progress === 'number' ? progress : (progress as any)?.percent ?? 0,
+      progress:
+        typeof progress === 'number'
+          ? progress
+          : ((progress as any)?.percent ?? 0),
       failedReason: job.failedReason,
     };
   }
@@ -1863,7 +2229,8 @@ export class NetSalesListExportService {
     const jobId = uuidv4();
     const buffer = Buffer.from(fileBase64, 'base64');
     const uploadsDir = path.join(process.cwd(), 'uploads', 'exports');
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    if (!fs.existsSync(uploadsDir))
+      fs.mkdirSync(uploadsDir, { recursive: true });
     const localFilePath = path.join(uploadsDir, `${jobId}-${fileName}`);
     await fs.promises.writeFile(localFilePath, buffer);
 

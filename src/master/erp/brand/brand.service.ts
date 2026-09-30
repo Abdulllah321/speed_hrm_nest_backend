@@ -25,11 +25,36 @@ export class BrandService {
 
   // --- BRAND LOGIC ---
 
-  async getAllBrands() {
-    const cacheKey = 'brands_all';
+  async getAllBrands(user?: any) {
+    const cacheKey = user ? `brands_all_${user.id}` : 'brands_all';
     const cachedData = await this.cacheManager.get(cacheKey);
     if (cachedData) {
       return { status: true, data: cachedData };
+    }
+
+    const whereClause: any = { isDeleted: false };
+
+    // ── RBAC / Brand Isolation ─────────────────────────────────────────
+    if (user) {
+      const roleName = user?.roleName?.toLowerCase();
+      const isAdmin =
+        roleName === 'super_admin' ||
+        roleName === 'super-admin' ||
+        roleName === 'admin';
+
+      if (!isAdmin && user?.id) {
+        const userBrands = await this.prisma.userBrand.findMany({
+          where: { userId: user.id },
+          select: { brandId: true },
+        });
+        const allowedBrandIds = userBrands.map((ub) => ub.brandId);
+
+        // If they have no brands assigned, they see no brands
+        if (allowedBrandIds.length === 0) {
+          return { status: true, data: [] };
+        }
+        whereClause.id = { in: allowedBrandIds };
+      }
     }
 
     const brands = await this.prisma.brand.findMany({
@@ -37,7 +62,7 @@ export class BrandService {
         divisions: true,
       },
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: whereClause,
     });
 
     const userIds = [
@@ -66,9 +91,7 @@ export class BrandService {
 
   async getBrandById(id: string) {
     const brand = await this.prisma.brand.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
       include: { divisions: true },
     });
     if (!brand) return { status: false, message: 'Brand not found' };
@@ -123,9 +146,7 @@ export class BrandService {
   ) {
     try {
       const existing = await this.prisma.brand.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const brand = await this.prisma.brand.update({
         where: { id },
@@ -200,14 +221,18 @@ export class BrandService {
   ) {
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'brand', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'brand',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const result = await this.prisma.brand.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       await this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
@@ -235,17 +260,20 @@ export class BrandService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'brand', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'brand',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.brand.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.brand.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.brand.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       await this.activityLogs.log({
         userId: ctx?.userId,
@@ -284,7 +312,7 @@ export class BrandService {
         brand: true,
       },
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -313,9 +341,7 @@ export class BrandService {
 
   async getDivisionsByBrand(brandId: string) {
     const divisions = await this.prisma.division.findMany({
-      where: { brandId,
-          isDeleted: false
-    },
+      where: { brandId, isDeleted: false },
       include: { brand: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -404,9 +430,7 @@ export class BrandService {
   ) {
     try {
       const existing = await this.prisma.division.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const division = await this.prisma.division.update({
         where: { id },
@@ -444,14 +468,18 @@ export class BrandService {
   ) {
     try {
       for (const guardId of ids) {
-        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'division', guardId);
+        const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+          this.prisma,
+          'division',
+          guardId,
+        );
         if (deleteBlocked) return { status: false, message: deleteBlocked };
       }
 
       const result = await this.prisma.division.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       await this.activityLogs.log({
         userId: ctx?.userId,
         action: 'delete',
@@ -480,17 +508,20 @@ export class BrandService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(this.prisma, 'division', id);
+      const deleteBlocked = await this.masterDeleteGuard.checkBlocked(
+        this.prisma,
+        'division',
+        id,
+      );
       if (deleteBlocked) return { status: false, message: deleteBlocked };
 
       const existing = await this.prisma.division.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.division.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.division.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       await this.activityLogs.log({
         userId: ctx?.userId,

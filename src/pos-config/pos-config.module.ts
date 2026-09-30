@@ -23,37 +23,37 @@ import { MerchantExportService } from './merchant-export.service';
 import { MerchantExportProcessor } from './merchant-export.processor';
 
 @Module({
-    imports: [
-        DatabaseModule,
-        BullModule.registerQueue(
-            { name: 'alliance-upload' },
-            { name: 'merchant-upload' },
-            { name: 'merchant-export' },
-        ),
-    ],
-    controllers: [
-        PosConfigController,
-        AllianceBulkUploadController,
-        MerchantBulkUploadController,
-        MerchantExportController,
-    ],
-    providers: [
-        PosConfigService,
-        VoucherService,
-        MerchantService,
-        AllianceBulkUploadService,
-        AllianceUploadProcessor,
-        AllianceCsvParserService,
-        AllianceValidatorService,
-        UploadEventsService,
-        // Merchant Providers
-        MerchantBulkUploadService,
-        MerchantUploadProcessor,
-        MerchantCsvParserService,
-        MerchantValidatorService,
-        MerchantExportService,
-        MerchantExportProcessor,
-    ],
-    exports: [PosConfigService, VoucherService, MerchantService],
+  imports: [
+    DatabaseModule,
+    BullModule.registerQueue(
+      { name: 'alliance-upload' },
+      { name: 'merchant-upload' },
+      { name: 'merchant-export' },
+    ),
+  ],
+  controllers: [
+    PosConfigController,
+    AllianceBulkUploadController,
+    MerchantBulkUploadController,
+    MerchantExportController,
+  ],
+  providers: [
+    PosConfigService,
+    VoucherService,
+    MerchantService,
+    AllianceBulkUploadService,
+    AllianceUploadProcessor,
+    AllianceCsvParserService,
+    AllianceValidatorService,
+    UploadEventsService,
+    // Merchant Providers
+    MerchantBulkUploadService,
+    MerchantUploadProcessor,
+    MerchantCsvParserService,
+    MerchantValidatorService,
+    MerchantExportService,
+    MerchantExportProcessor,
+  ],
+  exports: [PosConfigService, VoucherService, MerchantService],
 })
-export class PosConfigModule { }
+export class PosConfigModule {}

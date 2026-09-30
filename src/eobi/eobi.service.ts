@@ -40,7 +40,10 @@ export class EOBIService {
             { eobiRegion: '' },
           ];
         } else {
-          whereClause.eobiRegion = { equals: regionFilter, mode: 'insensitive' };
+          whereClause.eobiRegion = {
+            equals: regionFilter,
+            mode: 'insensitive',
+          };
         }
       }
 
@@ -72,7 +75,13 @@ export class EOBIService {
         ...new Set(employees.map((e) => e.designationId).filter(Boolean)),
       ] as string[];
 
-      const [departments, subDepartments, designations, distinctContributions, masterEOBIRecords] = await Promise.all([
+      const [
+        departments,
+        subDepartments,
+        designations,
+        distinctContributions,
+        masterEOBIRecords,
+      ] = await Promise.all([
         this.prisma.department.findMany({
           where: { id: { in: deptIds } },
           select: { id: true, name: true },
@@ -101,7 +110,10 @@ export class EOBIService {
       const desgMap = new Map(designations.map((d) => [d.id, d]));
 
       // Map dynamic rates from Master EOBI table
-      const masterRateMap = new Map<string, { employeeContribution: number; employerContribution: number }>();
+      const masterRateMap = new Map<
+        string,
+        { employeeContribution: number; employerContribution: number }
+      >();
       for (const rec of masterEOBIRecords) {
         const regKey = (rec.region || 'punjab').toLowerCase().trim();
         if (!masterRateMap.has(regKey)) {
@@ -132,13 +144,15 @@ export class EOBIService {
           });
 
           // Get approved withdrawals for this employee
-          const approvedWithdrawals = await this.prisma.eOBIWithdrawal.findMany({
-            where: {
-              employeeId: employee.id,
-              approvalStatus: 'approved',
+          const approvedWithdrawals = await this.prisma.eOBIWithdrawal.findMany(
+            {
+              where: {
+                employeeId: employee.id,
+                approvalStatus: 'approved',
+              },
+              select: { withdrawalAmount: true },
             },
-            select: { withdrawalAmount: true },
-          });
+          );
 
           // Calculate total EOBI (employee contribution + employer contribution)
           const totalEmployeeContribution = contributions.reduce(
@@ -227,9 +241,18 @@ export class EOBIService {
         }),
       );
 
-      const isbRates = masterRateMap.get('islamabad') || { employeeContribution: 407, employerContribution: 2035 };
-      const pjbRates = masterRateMap.get('punjab') || { employeeContribution: 400, employerContribution: 2000 };
-      const sndRates = masterRateMap.get('sindh') || { employeeContribution: 400, employerContribution: 2000 };
+      const isbRates = masterRateMap.get('islamabad') || {
+        employeeContribution: 407,
+        employerContribution: 2035,
+      };
+      const pjbRates = masterRateMap.get('punjab') || {
+        employeeContribution: 400,
+        employerContribution: 2000,
+      };
+      const sndRates = masterRateMap.get('sindh') || {
+        employeeContribution: 400,
+        employerContribution: 2000,
+      };
 
       // Compute Region Breakdown
       const regionStats: Record<
@@ -301,7 +324,8 @@ export class EOBIService {
         regionStats[reg].employerContribution += emp.employerContribution;
         regionStats[reg].totalContribution += emp.totalEOBIBalance;
         regionStats[reg].totalBalance += emp.availableBalance;
-        regionStats[reg].selectedMonthTotal += emp.selectedMonthTotalContribution || 0;
+        regionStats[reg].selectedMonthTotal +=
+          emp.selectedMonthTotalContribution || 0;
       }
 
       return {
@@ -524,7 +548,10 @@ export class EOBIService {
             ? { id: w.employee.department.id, name: w.employee.department.name }
             : null,
           subDepartment: w.employee.subDepartment
-            ? { id: w.employee.subDepartment.id, name: w.employee.subDepartment.name }
+            ? {
+                id: w.employee.subDepartment.id,
+                name: w.employee.subDepartment.name,
+              }
             : null,
         },
         withdrawalAmount: Number(w.withdrawalAmount),
@@ -565,7 +592,10 @@ export class EOBIService {
       }
 
       if (withdrawal.approvalStatus === 'approved') {
-        return { status: false, message: 'EOBI withdrawal is already approved' };
+        return {
+          status: false,
+          message: 'EOBI withdrawal is already approved',
+        };
       }
 
       const updated = await this.prisma.eOBIWithdrawal.update({
@@ -600,7 +630,9 @@ export class EOBIService {
       return {
         status: false,
         message:
-          error instanceof Error ? error.message : 'Failed to approve EOBI withdrawal',
+          error instanceof Error
+            ? error.message
+            : 'Failed to approve EOBI withdrawal',
       };
     }
   }
@@ -639,14 +671,15 @@ export class EOBIService {
       );
 
       // Check if contribution already exists for this employee and month/year
-      const existingContribution =
-        await this.prisma.eOBIContribution.findFirst({
+      const existingContribution = await this.prisma.eOBIContribution.findFirst(
+        {
           where: {
             employeeId: data.employeeId,
             month: data.month,
             year: data.year,
           },
-        });
+        },
+      );
 
       if (existingContribution) {
         const updated = await this.prisma.eOBIContribution.update({
@@ -721,7 +754,10 @@ export class EOBIService {
         orderBy: { createdAt: 'desc' },
       });
 
-      const masterRateMap = new Map<string, { employeeContribution: number; employerContribution: number }>();
+      const masterRateMap = new Map<
+        string,
+        { employeeContribution: number; employerContribution: number }
+      >();
       for (const rec of masterEOBIRecords) {
         const regKey = (rec.region || 'punjab').toLowerCase().trim();
         if (!masterRateMap.has(regKey)) {
@@ -765,7 +801,11 @@ export class EOBIService {
           locName.includes('HYDERABAD') ||
           locName.includes('SINDH');
 
-        const targetRegionKey = isIslamabad ? 'islamabad' : (isSindh ? 'sindh' : 'punjab');
+        const targetRegionKey = isIslamabad
+          ? 'islamabad'
+          : isSindh
+            ? 'sindh'
+            : 'punjab';
         const rates = masterRateMap.get(targetRegionKey) || {
           employeeContribution: isIslamabad ? 407 : 400,
           employerContribution: isIslamabad ? 2035 : 2000,
@@ -795,9 +835,11 @@ export class EOBIService {
       this.logger.error('Error recalculating EOBI contributions:', error);
       return {
         status: false,
-        message: error instanceof Error ? error.message : 'Failed to recalculate EOBI contributions',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to recalculate EOBI contributions',
       };
     }
   }
 }
-

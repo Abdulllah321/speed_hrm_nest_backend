@@ -72,24 +72,24 @@ export class CreateReceiptVoucherDto {
 
   @IsString()
   @IsOptional()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   refBillNo?: string;
 
   @IsDate()
   @IsOptional()
   @Type(() => Date)
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   billDate?: Date;
 
   @IsString()
   @IsOptional()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   chequeNo?: string;
 
   @IsDate()
   @IsOptional()
   @Type(() => Date)
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   chequeDate?: Date;
 
   @IsString()
@@ -101,7 +101,7 @@ export class CreateReceiptVoucherDto {
   debitAmount: number;
 
   @IsOptional()
-  @Transform(({ value }) => value === '' ? undefined : value)
+  @Transform(({ value }) => (value === '' ? undefined : value))
   @IsString()
   customerId?: string;
 

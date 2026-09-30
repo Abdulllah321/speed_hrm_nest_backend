@@ -5,181 +5,214 @@ import { AccountType } from '@prisma/client';
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 export interface JournalLine {
-    accountId: string;
-    tagAccountId?: string;  // optional sub-ledger tag for drill-down analysis
-    debit: number;
-    credit: number;
-    // ── Per-line details (optional — falls back to PostOptions.description) ──
-    narration?: string;       // line-level narration
-    refBillNo?: string;       // bill/ref number for this specific line
-    refBillNo2?: string;      // secondary reference number
-    taxType?: string; // withholding tax type for this line
-    sourceDetailId?: string;
-    cprNo?: string;
+  accountId: string;
+  tagAccountId?: string; // optional sub-ledger tag for drill-down analysis
+  debit: number;
+  credit: number;
+  // ── Per-line details (optional — falls back to PostOptions.description) ──
+  narration?: string; // line-level narration
+  refBillNo?: string; // bill/ref number for this specific line
+  refBillNo2?: string; // secondary reference number
+  taxType?: string; // withholding tax type for this line
+  sourceDetailId?: string;
+  cprNo?: string;
 }
 
 export interface PostOptions {
-    sourceType: string;   // e.g. 'PURCHASE_INVOICE'
-    sourceId: string;     // document UUID
-    sourceRef: string;    // human-readable e.g. 'PI-2026-0001'
-    description?: string;
-    transactionDate?: Date;
+  sourceType: string; // e.g. 'PURCHASE_INVOICE'
+  sourceId: string; // document UUID
+  sourceRef: string; // human-readable e.g. 'PI-2026-0001'
+  description?: string;
+  transactionDate?: Date;
 }
 
 @Injectable()
 export class AccountingService {
-    private readonly logger = new Logger(AccountingService.name);
+  private readonly logger = new Logger(AccountingService.name);
 
-    constructor(
+  constructor(
     private prisma: PrismaService,
     private activityLogs: ActivityLogsService,
   ) {}
 
-    /**
-     * Post journal lines:
-     *  - Updates ChartOfAccount.balance
-     *  - Creates AccountTransaction rows for full audit trail
-     */
-    async postLines(lines: JournalLine[], options: PostOptions, tx?: any): Promise<void> {
-        const client = tx ?? this.prisma;
-        const date = options.transactionDate ?? new Date();
+  /**
+   * Post journal lines:
+   *  - Updates ChartOfAccount.balance
+   *  - Creates AccountTransaction rows for full audit trail
+   */
+  async postLines(
+    lines: JournalLine[],
+    options: PostOptions,
+    tx?: any,
+  ): Promise<void> {
+    const client = tx ?? this.prisma;
+    const date = options.transactionDate ?? new Date();
 
-        // Sanitize: coerce empty-string tagAccountId to undefined so FK is never violated
-        const sanitizedLines = lines.map(l => ({
-            ...l,
-            tagAccountId: l.tagAccountId && l.tagAccountId.trim() !== '' ? l.tagAccountId : undefined,
-        }));
+    // Sanitize: coerce empty-string tagAccountId to undefined so FK is never violated
+    const sanitizedLines = lines.map((l) => ({
+      ...l,
+      tagAccountId:
+        l.tagAccountId && l.tagAccountId.trim() !== ''
+          ? l.tagAccountId
+          : undefined,
+    }));
 
-        const accountIds = [...new Set(sanitizedLines.map(l => l.accountId))];
-        const accounts = await client.chartOfAccount.findMany({
-            where: { id: { in: accountIds } },
-            select: { id: true, type: true, balance: true },
+    const accountIds = [...new Set(sanitizedLines.map((l) => l.accountId))];
+    const accounts = await client.chartOfAccount.findMany({
+      where: { id: { in: accountIds } },
+      select: { id: true, type: true, balance: true },
+    });
+    const accountMap = new Map<string, { type: AccountType; balance: number }>(
+      accounts.map((a: any) => [
+        a.id,
+        { type: a.type, balance: Number(a.balance) },
+      ]),
+    );
+
+    for (const line of sanitizedLines) {
+      const account = accountMap.get(line.accountId);
+      if (!account) {
+        this.logger.warn(`Account ${line.accountId} not found — skipping`);
+        continue;
+      }
+
+      const delta = this.calculateDelta(account.type, line.debit, line.credit);
+      if (delta === 0 && line.debit === 0 && line.credit === 0) continue;
+
+      const newBalance = account.balance + delta;
+
+      // Update running balance on account
+      await client.chartOfAccount.update({
+        where: { id: line.accountId },
+        data: { balance: { increment: delta } },
+      });
+
+      // Write transaction row for audit trail
+      await client.accountTransaction.create({
+        data: {
+          accountId: line.accountId,
+          tagAccountId: line.tagAccountId ?? null,
+          debit: line.debit,
+          credit: line.credit,
+          balanceAfter: newBalance,
+          sourceType: options.sourceType,
+          sourceId: options.sourceId,
+          sourceRef: options.sourceRef,
+          // Per-line narration takes priority; fall back to voucher-level description
+          narration: line.narration ?? null,
+          refBillNo: line.refBillNo ?? null,
+          refBillNo2: line.refBillNo2 ?? null,
+          taxType: line.taxType ?? 'Taxable',
+          description: options.description ?? null,
+          transactionDate: date,
+          sourceDetailId: line.sourceDetailId ?? null,
+          cprNo: line.cprNo ?? null,
+        },
+      });
+
+      // Update local map so subsequent lines in same call see updated balance
+      accountMap.set(line.accountId, {
+        type: account.type,
+        balance: newBalance,
+      });
+    }
+  }
+
+  /**
+   * Reverse previously posted lines (cancellation / reversal).
+   * Creates new AccountTransaction rows with swapped debit/credit.
+   */
+  async reverseLines(
+    lines: JournalLine[],
+    options: PostOptions,
+    tx?: any,
+  ): Promise<void> {
+    const reversed = lines.map((l) => ({
+      accountId: l.accountId,
+      debit: l.credit,
+      credit: l.debit,
+    }));
+    return this.postLines(
+      reversed,
+      {
+        ...options,
+        description: `REVERSAL: ${options.description ?? options.sourceRef}`,
+      },
+      tx,
+    );
+  }
+
+  /**
+   * Unpost/remove previously posted lines.
+   * Reverses the delta applied to ChartOfAccount.balance for each transaction
+   * and deletes the AccountTransaction rows for the given sourceId and sourceType(s).
+   */
+  async unpostLines(
+    sourceType: string | string[],
+    sourceId: string,
+    tx?: any,
+  ): Promise<void> {
+    const client = tx ?? this.prisma;
+    const sourceTypes = Array.isArray(sourceType) ? sourceType : [sourceType];
+
+    const transactions = await client.accountTransaction.findMany({
+      where: {
+        sourceId,
+        sourceType: { in: sourceTypes },
+      },
+    });
+
+    if (transactions.length === 0) return;
+
+    const accountIds = [...new Set(transactions.map((t: any) => t.accountId))];
+    const accounts = await client.chartOfAccount.findMany({
+      where: { id: { in: accountIds } },
+      select: { id: true, type: true },
+    });
+    const accountTypeMap = new Map<string, AccountType>(
+      accounts.map((a: any) => [a.id, a.type]),
+    );
+
+    for (const txRow of transactions) {
+      const accountType = accountTypeMap.get(txRow.accountId);
+      if (!accountType) continue;
+
+      const delta = this.calculateDelta(
+        accountType,
+        Number(txRow.debit),
+        Number(txRow.credit),
+      );
+      if (delta !== 0) {
+        await client.chartOfAccount.update({
+          where: { id: txRow.accountId },
+          data: { balance: { decrement: delta } },
         });
-        const accountMap = new Map<string, { type: AccountType; balance: number }>(
-            accounts.map((a: any) => [a.id, { type: a.type, balance: Number(a.balance) }])
-        );
-
-        for (const line of sanitizedLines) {
-            const account = accountMap.get(line.accountId);
-            if (!account) {
-                this.logger.warn(`Account ${line.accountId} not found — skipping`);
-                continue;
-            }
-
-            const delta = this.calculateDelta(account.type, line.debit, line.credit);
-            if (delta === 0 && line.debit === 0 && line.credit === 0) continue;
-
-            const newBalance = account.balance + delta;
-
-            // Update running balance on account
-            await client.chartOfAccount.update({
-                where: { id: line.accountId },
-                data: { balance: { increment: delta } },
-            });
-
-            // Write transaction row for audit trail
-            await client.accountTransaction.create({
-                data: {
-                    accountId: line.accountId,
-                    tagAccountId: line.tagAccountId ?? null,
-                    debit: line.debit,
-                    credit: line.credit,
-                    balanceAfter: newBalance,
-                    sourceType: options.sourceType,
-                    sourceId: options.sourceId,
-                    sourceRef: options.sourceRef,
-                    // Per-line narration takes priority; fall back to voucher-level description
-                    narration: line.narration ?? null,
-                    refBillNo: line.refBillNo ?? null,
-                    refBillNo2: line.refBillNo2 ?? null,
-                    taxType: line.taxType ?? 'Taxable',
-                    description: options.description ?? null,
-                    transactionDate: date,
-                    sourceDetailId: line.sourceDetailId ?? null,
-                    cprNo: line.cprNo ?? null,
-                },
-            });
-
-            // Update local map so subsequent lines in same call see updated balance
-            accountMap.set(line.accountId, { type: account.type, balance: newBalance });
-        }
+      }
     }
 
-    /**
-     * Reverse previously posted lines (cancellation / reversal).
-     * Creates new AccountTransaction rows with swapped debit/credit.
-     */
-    async reverseLines(lines: JournalLine[], options: PostOptions, tx?: any): Promise<void> {
-        const reversed = lines.map(l => ({
-            accountId: l.accountId,
-            debit: l.credit,
-            credit: l.debit,
-        }));
-        return this.postLines(reversed, {
-            ...options,
-            description: `REVERSAL: ${options.description ?? options.sourceRef}`,
-        }, tx);
+    await client.accountTransaction.deleteMany({
+      where: {
+        sourceId,
+        sourceType: { in: sourceTypes },
+      },
+    });
+  }
+
+  private calculateDelta(
+    type: AccountType,
+    debit: number,
+    credit: number,
+  ): number {
+    switch (type) {
+      case 'ASSET':
+      case 'EXPENSE':
+        return debit - credit;
+      case 'LIABILITY':
+      case 'EQUITY':
+      case 'INCOME':
+        return credit - debit;
+      default:
+        return 0;
     }
-
-    /**
-     * Unpost/remove previously posted lines.
-     * Reverses the delta applied to ChartOfAccount.balance for each transaction
-     * and deletes the AccountTransaction rows for the given sourceId and sourceType(s).
-     */
-    async unpostLines(sourceType: string | string[], sourceId: string, tx?: any): Promise<void> {
-        const client = tx ?? this.prisma;
-        const sourceTypes = Array.isArray(sourceType) ? sourceType : [sourceType];
-
-        const transactions = await client.accountTransaction.findMany({
-            where: {
-                sourceId,
-                sourceType: { in: sourceTypes },
-            },
-        });
-
-        if (transactions.length === 0) return;
-
-        const accountIds = [...new Set(transactions.map((t: any) => t.accountId))];
-        const accounts = await client.chartOfAccount.findMany({
-            where: { id: { in: accountIds } },
-            select: { id: true, type: true },
-        });
-        const accountTypeMap = new Map<string, AccountType>(
-            accounts.map((a: any) => [a.id, a.type])
-        );
-
-        for (const txRow of transactions) {
-            const accountType = accountTypeMap.get(txRow.accountId);
-            if (!accountType) continue;
-
-            const delta = this.calculateDelta(accountType, Number(txRow.debit), Number(txRow.credit));
-            if (delta !== 0) {
-                await client.chartOfAccount.update({
-                    where: { id: txRow.accountId },
-                    data: { balance: { decrement: delta } },
-                });
-            }
-        }
-
-        await client.accountTransaction.deleteMany({
-            where: {
-                sourceId,
-                sourceType: { in: sourceTypes },
-            },
-        });
-    }
-
-    private calculateDelta(type: AccountType, debit: number, credit: number): number {
-        switch (type) {
-            case 'ASSET':
-            case 'EXPENSE':
-                return debit - credit;
-            case 'LIABILITY':
-            case 'EQUITY':
-            case 'INCOME':
-                return credit - debit;
-            default:
-                return 0;
-        }
-    }
+  }
 }

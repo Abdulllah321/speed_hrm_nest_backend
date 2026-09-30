@@ -122,7 +122,11 @@ export interface QueueSalesRegisterExportOptions {
 @Injectable()
 export class SalesRegisterExportService {
   private readonly logger = new Logger(SalesRegisterExportService.name);
-  private readonly previewStorageDir = path.join(process.cwd(), 'uploads', 'report-previews');
+  private readonly previewStorageDir = path.join(
+    process.cwd(),
+    'uploads',
+    'report-previews',
+  );
 
   constructor(
     @InjectQueue('sales-register-export') private readonly exportQueue: Queue,
@@ -180,7 +184,9 @@ export class SalesRegisterExportService {
       },
     );
 
-    this.logger.log(`[SalesRegisterReport] Queued preview job ${jobId} for user ${opts.userId}`);
+    this.logger.log(
+      `[SalesRegisterReport] Queued preview job ${jobId} for user ${opts.userId}`,
+    );
     return { jobId };
   }
 
@@ -193,9 +199,18 @@ export class SalesRegisterExportService {
     waitingCount: number;
     failedReason?: string;
   }> {
-    const job = await this.exportQueue.getJob(`preview-${jobId}`) || await this.exportQueue.getJob(jobId);
+    const job =
+      (await this.exportQueue.getJob(`preview-${jobId}`)) ||
+      (await this.exportQueue.getJob(jobId));
     if (!job) {
-      return { status: 'unknown', state: 'unknown', progress: 0, message: '', queuePosition: 0, waitingCount: 0 };
+      return {
+        status: 'unknown',
+        state: 'unknown',
+        progress: 0,
+        message: '',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
     }
 
     const state = await job.getState();
@@ -220,7 +235,10 @@ export class SalesRegisterExportService {
       ]);
       waitingCount = waiting.length;
       const allJobs = [...active, ...waiting];
-      const idx = allJobs.findIndex((j) => j.id?.toString() === `preview-${jobId}` || j.id?.toString() === jobId);
+      const idx = allJobs.findIndex(
+        (j) =>
+          j.id?.toString() === `preview-${jobId}` || j.id?.toString() === jobId,
+      );
       queuePosition = idx >= 0 ? idx + 1 : 1;
     }
 
@@ -235,15 +253,26 @@ export class SalesRegisterExportService {
     };
   }
 
-  async saveReportPreviewResult(jobId: string, result: SalesRegisterReportResult): Promise<void> {
+  async saveReportPreviewResult(
+    jobId: string,
+    result: SalesRegisterReportResult,
+  ): Promise<void> {
     const jsonStr = JSON.stringify(result);
     const compressed = await gzipAsync(Buffer.from(jsonStr, 'utf8'));
-    const filePath = path.join(this.previewStorageDir, `sales-register-preview-${jobId}.json.gz`);
+    const filePath = path.join(
+      this.previewStorageDir,
+      `sales-register-preview-${jobId}.json.gz`,
+    );
     await fs.promises.writeFile(filePath, compressed);
   }
 
-  async getReportPreviewResult(jobId: string): Promise<SalesRegisterReportResult | null> {
-    const filePath = path.join(this.previewStorageDir, `sales-register-preview-${jobId}.json.gz`);
+  async getReportPreviewResult(
+    jobId: string,
+  ): Promise<SalesRegisterReportResult | null> {
+    const filePath = path.join(
+      this.previewStorageDir,
+      `sales-register-preview-${jobId}.json.gz`,
+    );
 
     // Retry once after 1s to handle the narrow race window where the Bull job emits
     // progress=100 before the OS has fully flushed the gzip file to disk.
@@ -258,7 +287,6 @@ export class SalesRegisterExportService {
     const decompressed = await gunzipAsync(compressed);
     return JSON.parse(decompressed.toString('utf8'));
   }
-
 
   async generateSalesRegisterReportDataInternal(
     prisma: PrismaService,
@@ -293,7 +321,10 @@ export class SalesRegisterExportService {
     const isSeparate = reportType === 'separate';
     const now = new Date();
 
-    const parseLocalDate = (dateStr: string | undefined, isEndOfDay = false): Date => {
+    const parseLocalDate = (
+      dateStr: string | undefined,
+      isEndOfDay = false,
+    ): Date => {
       if (!dateStr) {
         if (isEndOfDay) {
           const d = new Date(now);
@@ -317,21 +348,40 @@ export class SalesRegisterExportService {
     const startDate = parseLocalDate(startStr, false);
     const endDate = parseLocalDate(endStr, true);
 
-    const locIds = locationId ? locationId.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const locationWhere = locIds.length > 1 ? { in: locIds } : locIds.length === 1 ? locIds[0] : undefined;
+    const locIds = locationId
+      ? locationId
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const locationWhere =
+      locIds.length > 1
+        ? { in: locIds }
+        : locIds.length === 1
+          ? locIds[0]
+          : undefined;
 
-    await onProgress?.(15, 'Loading outlet metadata & cashier user profiles...');
+    await onProgress?.(
+      15,
+      'Loading outlet metadata & cashier user profiles...',
+    );
 
     const [allLocations, cashiersList] = await Promise.all([
       prisma.location.findMany({ select: { id: true, name: true } }),
-      this.prismaMaster.user.findMany({ select: { id: true, firstName: true, lastName: true } }),
+      this.prismaMaster.user.findMany({
+        select: { id: true, firstName: true, lastName: true },
+      }),
     ]);
 
     const locationMap = new Map<string, string>();
     for (const l of allLocations) locationMap.set(l.id, l.name);
 
     const cashierMap = new Map<string, string>();
-    for (const u of cashiersList) cashierMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier');
+    for (const u of cashiersList)
+      cashierMap.set(
+        u.id,
+        `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Cashier',
+      );
 
     let locationNames = '';
     if (locIds.length > 0) {
@@ -340,10 +390,24 @@ export class SalesRegisterExportService {
     }
     if (!locationNames) locationNames = 'All Outlets (Stores)';
 
-    await onProgress?.(30, 'Querying POS sales register invoices & returns from database...');
+    await onProgress?.(
+      30,
+      'Querying POS sales register invoices & returns from database...',
+    );
 
     const where: any = {
-      status: { notIn: ['returned', 'hold', 'hold_expired', 'hold_cancelled', 'voided', 'cancelled', 'VOIDED', 'CANCELLED'] },
+      status: {
+        notIn: [
+          'returned',
+          'hold',
+          'hold_expired',
+          'hold_cancelled',
+          'voided',
+          'cancelled',
+          'VOIDED',
+          'CANCELLED',
+        ],
+      },
       createdAt: { gte: startDate, lte: endDate },
     };
 
@@ -372,7 +436,15 @@ export class SalesRegisterExportService {
     }
 
     const returnWhere: any = {
-      referenceType: { in: ['POS_RETURN', 'POS_REFUND', 'POS_EXCHANGE_IN', 'SALES_RETURN', 'SRN'] },
+      referenceType: {
+        in: [
+          'POS_RETURN',
+          'POS_REFUND',
+          'POS_EXCHANGE_IN',
+          'SALES_RETURN',
+          'SRN',
+        ],
+      },
       createdAt: { gte: startDate, lte: endDate },
     };
     if (locationWhere) returnWhere.locationId = locationWhere;
@@ -431,7 +503,10 @@ export class SalesRegisterExportService {
     const movMap = new Map<string, { docNo: string; notes: string }>();
     for (const m of returnMovements) {
       if (m.referenceId) {
-        movMap.set(m.referenceId, { docNo: m.movementNo, notes: m.notes || '' });
+        movMap.set(m.referenceId, {
+          docNo: m.movementNo,
+          notes: m.notes || '',
+        });
       }
     }
 
@@ -451,7 +526,10 @@ export class SalesRegisterExportService {
       creditAmount: 0,
     });
 
-    const addTotals = (target: SalesRegisterTotals, source: SalesRegisterTotals) => {
+    const addTotals = (
+      target: SalesRegisterTotals,
+      source: SalesRegisterTotals,
+    ) => {
       target.orderCount += source.orderCount;
       target.totalItems += source.totalItems;
       target.grossAmount += source.grossAmount;
@@ -471,8 +549,12 @@ export class SalesRegisterExportService {
     const locationNodesMap = new Map<string, SalesRegisterLocationNode>();
 
     for (const order of rawOrders) {
-      const locName = order.locationId ? locationMap.get(order.locationId) || 'Main Outlet' : 'Main Outlet';
-      const cashierName = order.cashierUserId ? cashierMap.get(order.cashierUserId) || 'Cashier' : 'Cashier';
+      const locName = order.locationId
+        ? locationMap.get(order.locationId) || 'Main Outlet'
+        : 'Main Outlet';
+      const cashierName = order.cashierUserId
+        ? cashierMap.get(order.cashierUserId) || 'Cashier'
+        : 'Cashier';
       const custName = order.customer?.name || 'Walk-in Customer';
       const custPhone = order.customer?.contactNo || '-';
       const payMethod = (order.paymentMethod || 'CASH').toUpperCase();
@@ -492,27 +574,31 @@ export class SalesRegisterExportService {
 
       if (cashAmt === 0 && cardAmt === 0 && walletAmt === 0) {
         if (payMethod.includes('CASH')) cashAmt = paid;
-        else if (payMethod.includes('CARD') || payMethod.includes('BANK')) cardAmt = paid;
-        else if (payMethod.includes('WALLET') || payMethod.includes('ONLINE')) walletAmt = paid;
+        else if (payMethod.includes('CARD') || payMethod.includes('BANK'))
+          cardAmt = paid;
+        else if (payMethod.includes('WALLET') || payMethod.includes('ONLINE'))
+          walletAmt = paid;
         else creditAmt = paid;
       }
 
-      const lineItems: SalesRegisterLineItem[] = (order.items || []).map((item) => ({
-        id: item.id,
-        orderNumber: order.orderNumber,
-        sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
-        barCode: item.item?.barCode || item.item?.sku || '-',
-        description: item.item?.description || item.item?.sku || 'Article',
-        categoryName: item.item?.category?.name || 'Default',
-        brandName: item.item?.brand?.name || 'Default',
-        sizeName: item.item?.size?.name || 'Default',
-        colorName: item.item?.color?.name || 'Default',
-        quantity: Number(item.quantity || 0),
-        unitPrice: Number(item.unitPrice || 0),
-        discountAmount: Number(item.discountAmount || 0),
-        taxAmount: Number(item.taxAmount || 0),
-        subTotal: Number(item.lineTotal || 0),
-      }));
+      const lineItems: SalesRegisterLineItem[] = (order.items || []).map(
+        (item) => ({
+          id: item.id,
+          orderNumber: order.orderNumber,
+          sku: item.item?.sku || item.item?.barCode || 'NO-SKU',
+          barCode: item.item?.barCode || item.item?.sku || '-',
+          description: item.item?.description || item.item?.sku || 'Article',
+          categoryName: item.item?.category?.name || 'Default',
+          brandName: item.item?.brand?.name || 'Default',
+          sizeName: item.item?.size?.name || 'Default',
+          colorName: item.item?.color?.name || 'Default',
+          quantity: Number(item.quantity || 0),
+          unitPrice: Number(item.unitPrice || 0),
+          discountAmount: Number(item.discountAmount || 0),
+          taxAmount: Number(item.taxAmount || 0),
+          subTotal: Number(item.lineTotal || 0),
+        }),
+      );
 
       const totalItemsCount = lineItems.reduce((acc, i) => acc + i.quantity, 0);
 
@@ -579,7 +665,9 @@ export class SalesRegisterExportService {
       }
 
       if (isSeparate) {
-        const locKey = order.locationId ? `loc:${order.locationId}` : 'main-outlet';
+        const locKey = order.locationId
+          ? `loc:${order.locationId}`
+          : 'main-outlet';
         let locNode = locationNodesMap.get(locKey);
         if (!locNode) {
           locNode = {
@@ -597,23 +685,31 @@ export class SalesRegisterExportService {
     }
 
     // Process Return and Refund Ledger entries
-    const returnInvoiceMap = new Map<string, { invNode: SalesRegisterInvoiceNode; locKey: string; locName: string }>();
+    const returnInvoiceMap = new Map<
+      string,
+      { invNode: SalesRegisterInvoiceNode; locKey: string; locName: string }
+    >();
     const searchLower = (search || '').toLowerCase().trim();
 
     for (const r of returnLedger) {
       const refKey = r.referenceId || `ret-${r.id}`;
       const mov = movMap.get(refKey);
-      let docNumber = mov?.notes?.replace(/^POS Return:\s*/i, '')?.split(' ')[0] || `RET-${r.id.toString().slice(-8)}`;
+      let docNumber =
+        mov?.notes?.replace(/^POS Return:\s*/i, '')?.split(' ')[0] ||
+        `RET-${r.id.toString().slice(-8)}`;
       if (docNumber.includes('(')) docNumber = docNumber.split('(')[0].trim();
 
       const locId = r.locationId || undefined;
-      const locName = locId ? locationMap.get(locId) || 'Main Outlet' : 'Main Outlet';
+      const locName = locId
+        ? locationMap.get(locId) || 'Main Outlet'
+        : 'Main Outlet';
       const locKey = locId ? `loc:${locId}` : 'main-outlet';
 
       const qty = Number(r.qty || 1);
       const rawRate = Number(r.rate || 0);
       const itemUnitPrice = Number(r.item?.unitPrice || Math.abs(rawRate) || 0);
-      const lineTotal = rawRate !== 0 ? -Math.abs(rawRate) : -(qty * itemUnitPrice);
+      const lineTotal =
+        rawRate !== 0 ? -Math.abs(rawRate) : -(qty * itemUnitPrice);
 
       const sku = r.item?.sku || r.item?.barCode || 'NO-SKU';
       const barCode = r.item?.barCode || r.item?.sku || '-';
@@ -737,7 +833,9 @@ export class SalesRegisterExportService {
         if (!locNode) {
           locNode = {
             locationKey: group.locKey,
-            locationId: group.invNode.id ? group.invNode.id.replace('ret-', '') : undefined,
+            locationId: group.invNode.id
+              ? group.invNode.id.replace('ret-', '')
+              : undefined,
             locationName: group.locName,
             invoices: [],
             totals: createEmptyTotals(),
@@ -757,7 +855,10 @@ export class SalesRegisterExportService {
       invoices: invoiceNodes,
       flatItems,
       grandTotals,
-      dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      },
       locationNames,
     };
   }
@@ -800,7 +901,9 @@ export class SalesRegisterExportService {
     return { jobId, downloadUrl };
   }
 
-  async queueExport(opts: QueueSalesRegisterExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueSalesRegisterExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -843,15 +946,20 @@ export class SalesRegisterExportService {
       },
     );
 
-    this.logger.log(`[SalesRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[SalesRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -862,7 +970,9 @@ export class SalesRegisterExportService {
     });
 
     if (!record) {
-      throw new NotFoundException(`Export record ${jobId} not found in database`);
+      throw new NotFoundException(
+        `Export record ${jobId} not found in database`,
+      );
     }
 
     try {
@@ -873,7 +983,9 @@ export class SalesRegisterExportService {
         },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export history download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export history download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -882,14 +994,19 @@ export class SalesRegisterExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
     const filePath = path.join(process.cwd(), record.filePath);
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
     const stat = fs.statSync(filePath);
@@ -900,8 +1017,16 @@ export class SalesRegisterExportService {
     });
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

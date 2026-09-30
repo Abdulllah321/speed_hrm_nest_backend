@@ -15,7 +15,7 @@ export class TransferService {
     private prisma: PrismaService,
     private prismaMaster: PrismaMasterService,
     private activityLogs: ActivityLogsService,
-  ) { }
+  ) {}
 
   async create(createTransferDto: CreateTransferDto, userId: string) {
     const {

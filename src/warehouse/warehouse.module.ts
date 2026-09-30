@@ -73,6 +73,4 @@ import { UploadModule } from '../upload/upload.module';
     ExportHistoryModule,
   ],
 })
-export class WarehouseModule { }
-
-
+export class WarehouseModule {}

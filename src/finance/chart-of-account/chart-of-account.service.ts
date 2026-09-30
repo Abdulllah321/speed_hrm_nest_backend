@@ -114,13 +114,16 @@ export class ChartOfAccountService {
     });
 
     // Build a map for O(1) lookup with debit/credit separation
-    const map = new Map<string, (typeof accounts)[0] & { balance: any; debit: number; credit: number }>();
+    const map = new Map<
+      string,
+      (typeof accounts)[0] & { balance: any; debit: number; credit: number }
+    >();
     for (const acc of accounts) {
       const balance = Number(acc.balance);
-      map.set(acc.id, { 
-        ...acc, 
+      map.set(acc.id, {
+        ...acc,
         debit: balance > 0 ? balance : 0,
-        credit: balance < 0 ? Math.abs(balance) : 0
+        credit: balance < 0 ? Math.abs(balance) : 0,
       });
     }
 
@@ -150,7 +153,8 @@ export class ChartOfAccountService {
         while (currentParentId) {
           const parent = map.get(currentParentId);
           if (!parent) break;
-          (parent as any).balance = Number((parent as any).balance) + leafBalance;
+          (parent as any).balance =
+            Number((parent as any).balance) + leafBalance;
           (parent as any).debit = Number((parent as any).debit) + leafDebit;
           (parent as any).credit = Number((parent as any).credit) + leafCredit;
           currentParentId = parent.parentId ?? null;
@@ -161,7 +165,8 @@ export class ChartOfAccountService {
     return [...map.values()];
   }
 
-  async findTree() {    // Fetch all accounts flat, ordered by code so parents always precede children
+  async findTree() {
+    // Fetch all accounts flat, ordered by code so parents always precede children
     const accounts = await this.prisma.chartOfAccount.findMany({
       orderBy: { code: 'asc' },
     });
@@ -290,7 +295,7 @@ export class ChartOfAccountService {
           where: { id: updateDto.parentId },
         });
         if (!parent) throw new NotFoundException('Parent account not found');
-        
+
         // Store parent's type to inherit
         newParentType = parent.type as AccountType;
       }
@@ -355,7 +360,10 @@ export class ChartOfAccountService {
     }
   }
 
-  async remove(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async remove(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     try {
       const account = await this.prisma.chartOfAccount.findUnique({
         where: { id },
@@ -419,7 +427,15 @@ export class ChartOfAccountService {
       items: {
         name: string;
         code: string;
-        type: 'SUPPLIER' | 'CUSTOMER' | 'LOCATION' | 'DIRECTOR' | 'EMPLOYEE' | 'MERCHANDISE' | 'SALARY' | 'TAX';
+        type:
+          | 'SUPPLIER'
+          | 'CUSTOMER'
+          | 'LOCATION'
+          | 'DIRECTOR'
+          | 'EMPLOYEE'
+          | 'MERCHANDISE'
+          | 'SALARY'
+          | 'TAX';
         referenceId: string;
       }[];
     },

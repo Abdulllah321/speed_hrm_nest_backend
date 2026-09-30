@@ -199,10 +199,15 @@ export class ClaimRegisterExportService {
       const settledRedemption = claim.voucher?.redemptions?.[0];
       const settledInvNumber = settledRedemption?.order?.orderNumber || 'N/A';
       const settledDate = settledRedemption?.order?.createdAt
-        ? new Date(settledRedemption.order.createdAt).toLocaleDateString('en-GB')
+        ? new Date(settledRedemption.order.createdAt).toLocaleDateString(
+            'en-GB',
+          )
         : 'N/A';
 
-      const baseCmNumber = claim.salesOrder?.returnNumber || claim.salesOrder?.orderNumber || 'N/A';
+      const baseCmNumber =
+        claim.salesOrder?.returnNumber ||
+        claim.salesOrder?.orderNumber ||
+        'N/A';
       const baseCmDate = claim.salesOrder?.createdAt
         ? new Date(claim.salesOrder.createdAt).toLocaleDateString('en-GB')
         : 'N/A';
@@ -224,25 +229,46 @@ export class ClaimRegisterExportService {
         if (approvedQty <= 0) continue; // Only approved items
 
         const matchingOrderItem = claim.salesOrder?.items?.find(
-          (soi) => soi.id === cItem.salesOrderItemId || soi.itemId === cItem.itemId,
+          (soi) =>
+            soi.id === cItem.salesOrderItemId || soi.itemId === cItem.itemId,
         );
 
         const qty = approvedQty;
-        const unitPaidPrice = Number(cItem.unitPaidPrice || matchingOrderItem?.unitPrice || cItem.item?.unitPrice || 0);
+        const unitPaidPrice = Number(
+          cItem.unitPaidPrice ||
+            matchingOrderItem?.unitPrice ||
+            cItem.item?.unitPrice ||
+            0,
+        );
 
         const taxPercent = Number(matchingOrderItem?.taxPercent || 0);
         const taxMultiplier = 1 + taxPercent / 100;
-        const unitPriceWot = taxMultiplier > 0 ? Math.round((unitPaidPrice / taxMultiplier) * 100) / 100 : unitPaidPrice;
+        const unitPriceWot =
+          taxMultiplier > 0
+            ? Math.round((unitPaidPrice / taxMultiplier) * 100) / 100
+            : unitPaidPrice;
 
         const rawSubTotal = Math.round(qty * unitPriceWot * 100) / 100;
 
         const itemDisc = Number(matchingOrderItem?.discountAmount || 0);
-        const discountAmount = qty > 0 && matchingOrderItem?.quantity ? Math.round((itemDisc / matchingOrderItem.quantity) * qty * 100) / 100 : 0;
+        const discountAmount =
+          qty > 0 && matchingOrderItem?.quantity
+            ? Math.round((itemDisc / matchingOrderItem.quantity) * qty * 100) /
+              100
+            : 0;
 
         const itemTax = Number(matchingOrderItem?.taxAmount || 0);
-        const taxAmount = qty > 0 && matchingOrderItem?.quantity ? Math.round((itemTax / matchingOrderItem.quantity) * qty * 100) / 100 : Math.round((rawSubTotal - discountAmount) * (taxPercent / 100) * 100) / 100;
+        const taxAmount =
+          qty > 0 && matchingOrderItem?.quantity
+            ? Math.round((itemTax / matchingOrderItem.quantity) * qty * 100) /
+              100
+            : Math.round(
+                (rawSubTotal - discountAmount) * (taxPercent / 100) * 100,
+              ) / 100;
 
-        const netTotal = Number(cItem.approvedAmount || Math.round(qty * unitPaidPrice * 100) / 100);
+        const netTotal = Number(
+          cItem.approvedAmount || Math.round(qty * unitPaidPrice * 100) / 100,
+        );
 
         const reportItem: ClaimRegisterReportItem = {
           id: cItem.id,
@@ -318,7 +344,13 @@ export class ClaimRegisterExportService {
         acc.netTotal += o.totals.netTotal;
         return acc;
       },
-      { quantity: 0, subTotal: 0, discountAmount: 0, taxAmount: 0, netTotal: 0 },
+      {
+        quantity: 0,
+        subTotal: 0,
+        discountAmount: 0,
+        taxAmount: 0,
+        netTotal: 0,
+      },
     );
 
     return {
@@ -329,7 +361,9 @@ export class ClaimRegisterExportService {
     };
   }
 
-  async queueExport(opts: QueueClaimRegisterExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueClaimRegisterExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -367,15 +401,20 @@ export class ClaimRegisterExportService {
       },
     );
 
-    this.logger.log(`[ClaimRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[ClaimRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -395,7 +434,9 @@ export class ClaimRegisterExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -404,7 +445,10 @@ export class ClaimRegisterExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -417,8 +461,16 @@ export class ClaimRegisterExportService {
     const stream = fs.createReadStream(filePath);
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

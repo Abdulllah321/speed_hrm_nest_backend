@@ -19,7 +19,10 @@ export class UserService {
     private activityLogs: ActivityLogsService,
   ) {}
 
-  async create(createUserDto: CreateUserDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    createUserDto: CreateUserDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const existing = await this.prismaMaster.user.findUnique({
       where: { email: createUserDto.email },
     });
@@ -218,7 +221,11 @@ export class UserService {
     };
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const user = await this.prismaMaster.user.findUnique({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MovementType, Prisma } from '@prisma/client';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
@@ -79,7 +83,14 @@ export class StockAdjustmentService {
     limit?: number;
     search?: string;
   }) {
-    const { warehouseId, locationId, status, page = 1, limit = 50, search } = options || {};
+    const {
+      warehouseId,
+      locationId,
+      status,
+      page = 1,
+      limit = 50,
+      search,
+    } = options || {};
     const skip = (page - 1) * limit;
 
     const where: Prisma.StockAdjustmentWhereInput = {
@@ -184,8 +195,12 @@ export class StockAdjustmentService {
       ...adj,
       items: adj.items.map((item) => ({
         ...item,
-        location: item.locationId ? (locationMap.get(item.locationId) ?? null) : null,
-        swapItem: item.swapItemId ? (swapItemMap.get(item.swapItemId) ?? null) : null,
+        location: item.locationId
+          ? (locationMap.get(item.locationId) ?? null)
+          : null,
+        swapItem: item.swapItemId
+          ? (swapItemMap.get(item.swapItemId) ?? null)
+          : null,
       })),
     }));
 
@@ -226,7 +241,9 @@ export class StockAdjustmentService {
     }
 
     // Enrich with location and swapItem manually
-    const locationIds = adj.items.map((item) => item.locationId).filter(Boolean) as string[];
+    const locationIds = adj.items
+      .map((item) => item.locationId)
+      .filter(Boolean) as string[];
     const locationMap = new Map<string, { name: string; code: string }>();
     if (locationIds.length > 0) {
       const locations = await this.prisma.location.findMany({
@@ -238,7 +255,9 @@ export class StockAdjustmentService {
       }
     }
 
-    const swapItemIds = adj.items.map((item) => item.swapItemId).filter(Boolean) as string[];
+    const swapItemIds = adj.items
+      .map((item) => item.swapItemId)
+      .filter(Boolean) as string[];
     const swapItemMap = new Map<string, any>();
     if (swapItemIds.length > 0) {
       const items = await this.prisma.item.findMany({
@@ -264,13 +283,20 @@ export class StockAdjustmentService {
       ...adj,
       items: adj.items.map((item) => ({
         ...item,
-        location: item.locationId ? (locationMap.get(item.locationId) ?? null) : null,
-        swapItem: item.swapItemId ? (swapItemMap.get(item.swapItemId) ?? null) : null,
+        location: item.locationId
+          ? (locationMap.get(item.locationId) ?? null)
+          : null,
+        swapItem: item.swapItemId
+          ? (swapItemMap.get(item.swapItemId) ?? null)
+          : null,
       })),
     };
   }
 
-  async create(dto: CreateStockAdjustmentDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async create(
+    dto: CreateStockAdjustmentDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const adjustmentNo = await this.generateAdjustmentNumber();
 
     let warehouseId = dto.warehouseId;
@@ -279,7 +305,9 @@ export class StockAdjustmentService {
         where: { isActive: true, isDeleted: false },
       });
       if (!warehouse) {
-        throw new BadRequestException('No active warehouse found in the system');
+        throw new BadRequestException(
+          'No active warehouse found in the system',
+        );
       }
       warehouseId = warehouse.id;
     }
@@ -296,7 +324,9 @@ export class StockAdjustmentService {
         });
 
         if (!itemRecord) {
-          throw new BadRequestException(`Item with ID ${item.itemId} not found`);
+          throw new BadRequestException(
+            `Item with ID ${item.itemId} not found`,
+          );
         }
 
         // Query current stock levels across inventory items for this warehouse & location
@@ -312,9 +342,12 @@ export class StockAdjustmentService {
           },
         });
 
-        const currentQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
+        const currentQty = stockAgg._sum.quantity
+          ? Number(stockAgg._sum.quantity)
+          : 0;
         const adjustedQty = item.physicalQty - currentQty;
-        const finalRate = item.rate !== undefined ? item.rate : (itemRecord.unitPrice || 0);
+        const finalRate =
+          item.rate !== undefined ? item.rate : itemRecord.unitPrice || 0;
 
         return {
           itemId: itemRecord.id,
@@ -365,7 +398,11 @@ export class StockAdjustmentService {
     return adj;
   }
 
-  async update(id: string, dto: CreateStockAdjustmentDto, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async update(
+    id: string,
+    dto: CreateStockAdjustmentDto,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const existing = await this.prisma.stockAdjustment.findUnique({
       where: { id },
       include: { items: true },
@@ -376,7 +413,9 @@ export class StockAdjustmentService {
     }
 
     if (existing.status !== 'DRAFT' && existing.status !== 'PENDING_APPROVAL') {
-      throw new BadRequestException('Can only update stock adjustments in DRAFT or PENDING_APPROVAL status');
+      throw new BadRequestException(
+        'Can only update stock adjustments in DRAFT or PENDING_APPROVAL status',
+      );
     }
 
     const warehouseId = dto.warehouseId || existing.warehouseId;
@@ -392,7 +431,9 @@ export class StockAdjustmentService {
         });
 
         if (!itemRecord) {
-          throw new BadRequestException(`Item with ID ${item.itemId} not found`);
+          throw new BadRequestException(
+            `Item with ID ${item.itemId} not found`,
+          );
         }
 
         const stockAgg = await this.prisma.inventoryItem.aggregate({
@@ -407,9 +448,12 @@ export class StockAdjustmentService {
           },
         });
 
-        const currentQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
+        const currentQty = stockAgg._sum.quantity
+          ? Number(stockAgg._sum.quantity)
+          : 0;
         const adjustedQty = item.physicalQty - currentQty;
-        const finalRate = item.rate !== undefined ? item.rate : (itemRecord.unitPrice || 0);
+        const finalRate =
+          item.rate !== undefined ? item.rate : itemRecord.unitPrice || 0;
 
         return {
           itemId: itemRecord.id,
@@ -465,7 +509,10 @@ export class StockAdjustmentService {
     });
   }
 
-  async delete(id: string, ctx?: { userId?: string; ipAddress?: string; userAgent?: string }) {
+  async delete(
+    id: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
     const existing = await this.prisma.stockAdjustment.findUnique({
       where: { id },
       include: { items: true },
@@ -491,7 +538,9 @@ export class StockAdjustmentService {
             },
             _sum: { quantity: true },
           });
-          const totalAvailableQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
+          const totalAvailableQty = stockAgg._sum.quantity
+            ? Number(stockAgg._sum.quantity)
+            : 0;
 
           const existingStock = await tx.inventoryItem.findFirst({
             where: {
@@ -512,7 +561,9 @@ export class StockAdjustmentService {
             if (existingStock) {
               await tx.inventoryItem.update({
                 where: { id: existingStock.id },
-                data: { quantity: { decrement: new Prisma.Decimal(adjustedQty) } },
+                data: {
+                  quantity: { decrement: new Prisma.Decimal(adjustedQty) },
+                },
               });
             }
           } else {
@@ -520,7 +571,11 @@ export class StockAdjustmentService {
             if (existingStock) {
               await tx.inventoryItem.update({
                 where: { id: existingStock.id },
-                data: { quantity: { increment: new Prisma.Decimal(Math.abs(adjustedQty)) } },
+                data: {
+                  quantity: {
+                    increment: new Prisma.Decimal(Math.abs(adjustedQty)),
+                  },
+                },
               });
             } else {
               await tx.inventoryItem.create({
@@ -586,7 +641,9 @@ export class StockAdjustmentService {
     }
 
     if (adj.status !== 'DRAFT' && adj.status !== 'PENDING_APPROVAL') {
-      throw new BadRequestException('Stock adjustment is already submitted, rejected or cancelled');
+      throw new BadRequestException(
+        'Stock adjustment is already submitted, rejected or cancelled',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -601,15 +658,21 @@ export class StockAdjustmentService {
 
         if (dto.items && dto.items.length > 0) {
           for (const updatedItem of dto.items) {
-            const existingItem = adj.items.find((i) => i.itemId === updatedItem.itemId);
+            const existingItem = adj.items.find(
+              (i) => i.itemId === updatedItem.itemId,
+            );
             if (existingItem) {
-              const adjustedQty = updatedItem.physicalQty - Number(existingItem.currentQty);
+              const adjustedQty =
+                updatedItem.physicalQty - Number(existingItem.currentQty);
               await tx.stockAdjustmentItem.update({
                 where: { id: existingItem.id },
                 data: {
                   physicalQty: new Prisma.Decimal(updatedItem.physicalQty),
                   adjustedQty: new Prisma.Decimal(adjustedQty),
-                  rate: updatedItem.rate !== undefined ? new Prisma.Decimal(updatedItem.rate) : existingItem.rate,
+                  rate:
+                    updatedItem.rate !== undefined
+                      ? new Prisma.Decimal(updatedItem.rate)
+                      : existingItem.rate,
                 },
               });
             }
@@ -640,7 +703,9 @@ export class StockAdjustmentService {
           },
           _sum: { quantity: true },
         });
-        const totalAvailableQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
+        const totalAvailableQty = stockAgg._sum.quantity
+          ? Number(stockAgg._sum.quantity)
+          : 0;
 
         const existingStock = await tx.inventoryItem.findFirst({
           where: {
@@ -656,7 +721,9 @@ export class StockAdjustmentService {
           if (existingStock) {
             await tx.inventoryItem.update({
               where: { id: existingStock.id },
-              data: { quantity: { increment: new Prisma.Decimal(adjustedQty) } },
+              data: {
+                quantity: { increment: new Prisma.Decimal(adjustedQty) },
+              },
             });
           } else {
             await tx.inventoryItem.create({
@@ -680,7 +747,11 @@ export class StockAdjustmentService {
           if (existingStock) {
             await tx.inventoryItem.update({
               where: { id: existingStock.id },
-              data: { quantity: { decrement: new Prisma.Decimal(Math.abs(adjustedQty)) } },
+              data: {
+                quantity: {
+                  decrement: new Prisma.Decimal(Math.abs(adjustedQty)),
+                },
+              },
             });
           }
         }
@@ -746,7 +817,9 @@ export class StockAdjustmentService {
     }
 
     if (adj.status !== 'PENDING_APPROVAL') {
-      throw new BadRequestException('Only pending approval adjustments can be rejected');
+      throw new BadRequestException(
+        'Only pending approval adjustments can be rejected',
+      );
     }
 
     const updated = await this.prisma.stockAdjustment.update({

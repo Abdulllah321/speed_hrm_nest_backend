@@ -1,16 +1,16 @@
 import {
-    Controller,
-    Post,
-    Get,
-    Delete,
-    Param,
-    UseGuards,
-    Res,
-    HttpStatus,
-    BadRequestException,
-    Req,
-    Sse,
-    MessageEvent,
+  Controller,
+  Post,
+  Get,
+  Delete,
+  Param,
+  UseGuards,
+  Res,
+  HttpStatus,
+  BadRequestException,
+  Req,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -25,160 +25,169 @@ import { Observable } from 'rxjs';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class ItemBulkUploadController {
-    constructor(
-        private bulkUploadService: ItemBulkUploadService,
-        private eventsService: UploadEventsService,
-    ) { }
+  constructor(
+    private bulkUploadService: ItemBulkUploadService,
+    private eventsService: UploadEventsService,
+  ) {}
 
-    /**
-     * POST /api/items/bulk-upload
-     * Upload CSV/Excel file and initiate validation
-     */
-    @Post()
-    @ApiOperation({ summary: 'Upload file for validation' })
-    async uploadFile(
-        @Req() req: any,
-        @GetUser('id') userId: string,
-    ) {
-        const file = await req.file();
-        if (!file) {
-            throw new BadRequestException('No file uploaded');
-        }
-
-        const allowedExtensions = ['csv', 'xlsx', 'xls'];
-        const ext = file.filename.split('.').pop()?.toLowerCase();
-
-        if (!ext || !allowedExtensions.includes(ext)) {
-            throw new BadRequestException(`Invalid file type. Allowed: ${allowedExtensions.join(', ')}`);
-        }
-
-        const buffer = await file.toBuffer();
-        const maxSize = 50 * 1024 * 1024; // Lowering to 50MB for better performance
-        if (buffer.length > maxSize) {
-            throw new BadRequestException('File size exceeds 50MB limit');
-        }
-
-        const result = await this.bulkUploadService.initiateValidation(
-            buffer,
-            file.filename,
-            userId,
-        );
-
-        return {
-            status: true,
-            message: 'Validation initiated',
-            data: result,
-        };
+  /**
+   * POST /api/items/bulk-upload
+   * Upload CSV/Excel file and initiate validation
+   */
+  @Post()
+  @ApiOperation({ summary: 'Upload file for validation' })
+  async uploadFile(@Req() req: any, @GetUser('id') userId: string) {
+    const file = await req.file();
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
     }
 
-    /**
-     * POST /api/items/bulk-upload/:uploadId/confirm
-     * Confirm validation and start actual import
-     */
-    @Post(':uploadId/confirm')
-    @ApiOperation({ summary: 'Confirm and start import of valid records' })
-    async confirmUpload(
-        @Param('uploadId') uploadId: string,
-        @GetUser('id') userId: string,
-    ) {
-        const result = await this.bulkUploadService.confirmUpload(uploadId, userId);
-        return {
-            status: true,
-            message: 'Import confirmed and started',
-            data: result,
-        };
+    const allowedExtensions = ['csv', 'xlsx', 'xls'];
+    const ext = file.filename.split('.').pop()?.toLowerCase();
+
+    if (!ext || !allowedExtensions.includes(ext)) {
+      throw new BadRequestException(
+        `Invalid file type. Allowed: ${allowedExtensions.join(', ')}`,
+      );
     }
 
-    /**
-     * SSE /api/items/bulk-upload/:uploadId/events
-     * Stream real-time progress events
-     */
-    @Sse(':uploadId/events')
-    @ApiOperation({ summary: 'Stream bulk upload events (SSE)' })
-    streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
-        return this.eventsService.subscribe(uploadId);
+    const buffer = await file.toBuffer();
+    const maxSize = 50 * 1024 * 1024; // Lowering to 50MB for better performance
+    if (buffer.length > maxSize) {
+      throw new BadRequestException('File size exceeds 50MB limit');
     }
 
-    /**
-     * GET /api/items/bulk-upload/history
-     */
-    @Get('history/list')
-    @ApiOperation({ summary: 'Get upload history' })
-    async getUploadHistory(@GetUser('id') userId: string) {
-        const history = await this.bulkUploadService.getUploadHistory(userId);
-        return {
-            status: true,
-            data: history,
-        };
+    const result = await this.bulkUploadService.initiateValidation(
+      buffer,
+      file.filename,
+      userId,
+    );
+
+    return {
+      status: true,
+      message: 'Validation initiated',
+      data: result,
+    };
+  }
+
+  /**
+   * POST /api/items/bulk-upload/:uploadId/confirm
+   * Confirm validation and start actual import
+   */
+  @Post(':uploadId/confirm')
+  @ApiOperation({ summary: 'Confirm and start import of valid records' })
+  async confirmUpload(
+    @Param('uploadId') uploadId: string,
+    @GetUser('id') userId: string,
+  ) {
+    const result = await this.bulkUploadService.confirmUpload(uploadId, userId);
+    return {
+      status: true,
+      message: 'Import confirmed and started',
+      data: result,
+    };
+  }
+
+  /**
+   * SSE /api/items/bulk-upload/:uploadId/events
+   * Stream real-time progress events
+   */
+  @Sse(':uploadId/events')
+  @ApiOperation({ summary: 'Stream bulk upload events (SSE)' })
+  streamEvents(@Param('uploadId') uploadId: string): Observable<MessageEvent> {
+    return this.eventsService.subscribe(uploadId);
+  }
+
+  /**
+   * GET /api/items/bulk-upload/history
+   */
+  @Get('history/list')
+  @ApiOperation({ summary: 'Get upload history' })
+  async getUploadHistory(@GetUser('id') userId: string) {
+    const history = await this.bulkUploadService.getUploadHistory(userId);
+    return {
+      status: true,
+      data: history,
+    };
+  }
+
+  @Get('template/download')
+  @ApiOperation({ summary: 'Download CSV template' })
+  async downloadTemplate(@Res() res: any) {
+    const template = [
+      'Brand,Division,SKU,Description,Size,Color,Product Category/Series,Silhouette/Product Type,Channel Class,Department,Class,Sub Class,Heel Height,Season,Old Season,Gender,Width,Case Material,Band,Movement Type,Movement Name,HS Code,UOM,Currency,FOB,Unit Cost,Unit Price,Sale Tax Rate,Additional Sales Tax,Discount Start Date,Discount End Date,Discount %,BarCode,Launch Date',
+      'BrandX,Mens,SKU-001,Sample Description,M,Red,Shoes,Casual,Retail,Footwear,ClassA,Subclass1,Low,Summer 2026,,Male,Medium,Steel,Leather,Automatic,ETA 5001,1234,PC,PKR,12.50,150,200,5,0,,,0,BAR-001,',
+    ].join('\n');
+    res.header('Content-Type', 'text/csv');
+    res.header(
+      'Content-Disposition',
+      'attachment; filename="item-upload-template.csv"',
+    );
+    return res.status(HttpStatus.OK).send(template);
+  }
+
+  // ── Param routes last — static routes above must be declared first ──────
+
+  @Get(':uploadId/status')
+  @ApiOperation({ summary: 'Get upload status' })
+  async getUploadStatus(@Param('uploadId') uploadId: string) {
+    const status = await this.bulkUploadService.getUploadStatus(uploadId);
+    return {
+      status: true,
+      data: status,
+    };
+  }
+
+  @Delete(':uploadId')
+  @ApiOperation({ summary: 'Cancel upload' })
+  async cancelUpload(@Param('uploadId') uploadId: string) {
+    await this.bulkUploadService.cancelUpload(uploadId);
+    return {
+      status: true,
+      message: 'Upload cancelled successfully',
+    };
+  }
+
+  @Get(':uploadId/success-report')
+  @ApiOperation({ summary: 'Download success export report (XLSX)' })
+  async downloadSuccessReport(
+    @Param('uploadId') uploadId: string,
+    @Res() res: any,
+  ) {
+    const result = await this.bulkUploadService.prepareSuccessReport(uploadId);
+    if (!result.ready) {
+      throw new BadRequestException(
+        'Success report not found or not generated yet.',
+      );
     }
 
-    @Get('template/download')
-    @ApiOperation({ summary: 'Download CSV template' })
-    async downloadTemplate(@Res() res: any) {
-        const template = [
-            'Brand,Division,SKU,Description,Size,Color,Product Category/Series,Silhouette/Product Type,Channel Class,Department,Class,Sub Class,Heel Height,Season,Old Season,Gender,Width,Case Material,Band,Movement Type,Movement Name,HS Code,UOM,Currency,FOB,Unit Cost,Unit Price,Sale Tax Rate,Additional Sales Tax,Discount Start Date,Discount End Date,Discount %,BarCode,Launch Date',
-            'BrandX,Mens,SKU-001,Sample Description,M,Red,Shoes,Casual,Retail,Footwear,ClassA,Subclass1,Low,Summer 2026,,Male,Medium,Steel,Leather,Automatic,ETA 5001,1234,PC,PKR,12.50,150,200,5,0,,,0,BAR-001,',
-        ].join('\n');
-        res.header('Content-Type', 'text/csv');
-        res.header('Content-Disposition', 'attachment; filename="item-upload-template.csv"');
-        return res.status(HttpStatus.OK).send(template);
+    await this.bulkUploadService.streamSuccessReport(uploadId, res);
+  }
+
+  // More specific sub-paths before less specific ones
+  @Get(':uploadId/error-report')
+  @ApiOperation({
+    summary:
+      'Download error report (streamed CSV) or check readiness via ?prepare=true',
+  })
+  async downloadErrorReport(
+    @Param('uploadId') uploadId: string,
+    @Res() res: any,
+    @Req() req: any,
+  ) {
+    // ?prepare=true → JSON response to check readiness / kick off generation
+    if (req.query?.prepare === 'true') {
+      const result = await this.bulkUploadService.prepareErrorReport(uploadId);
+      if (!result.ready) {
+        await this.bulkUploadService
+          .regenerateErrorReport(uploadId)
+          .catch(() => {});
+      }
+      res.header('Content-Type', 'application/json');
+      res.send({ status: true, data: result });
+      return;
     }
 
-    // ── Param routes last — static routes above must be declared first ──────
-
-    @Get(':uploadId/status')
-    @ApiOperation({ summary: 'Get upload status' })
-    async getUploadStatus(@Param('uploadId') uploadId: string) {
-        const status = await this.bulkUploadService.getUploadStatus(uploadId);
-        return {
-            status: true,
-            data: status,
-        };
-    }
-
-    @Delete(':uploadId')
-    @ApiOperation({ summary: 'Cancel upload' })
-    async cancelUpload(@Param('uploadId') uploadId: string) {
-        await this.bulkUploadService.cancelUpload(uploadId);
-        return {
-            status: true,
-            message: 'Upload cancelled successfully',
-        };
-    }
-
-    @Get(':uploadId/success-report')
-    @ApiOperation({ summary: 'Download success export report (XLSX)' })
-    async downloadSuccessReport(
-        @Param('uploadId') uploadId: string,
-        @Res() res: any,
-    ) {
-        const result = await this.bulkUploadService.prepareSuccessReport(uploadId);
-        if (!result.ready) {
-            throw new BadRequestException('Success report not found or not generated yet.');
-        }
-
-        await this.bulkUploadService.streamSuccessReport(uploadId, res);
-    }
-
-    // More specific sub-paths before less specific ones
-    @Get(':uploadId/error-report')
-    @ApiOperation({ summary: 'Download error report (streamed CSV) or check readiness via ?prepare=true' })
-    async downloadErrorReport(
-        @Param('uploadId') uploadId: string,
-        @Res() res: any,
-        @Req() req: any,
-    ) {
-        // ?prepare=true → JSON response to check readiness / kick off generation
-        if (req.query?.prepare === 'true') {
-            const result = await this.bulkUploadService.prepareErrorReport(uploadId);
-            if (!result.ready) {
-                await this.bulkUploadService.regenerateErrorReport(uploadId).catch(() => {});
-            }
-            res.header('Content-Type', 'application/json');
-            res.send({ status: true, data: result });
-            return;
-        }
-
-        await this.bulkUploadService.streamErrorReport(uploadId, res);
-    }
+    await this.bulkUploadService.streamErrorReport(uploadId, res);
+  }
 }

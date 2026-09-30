@@ -23,7 +23,9 @@ export class LocationExportService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async queueExport(opts: QueueLocationExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueLocationExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
 
     // Read tenant credentials from the live request context
@@ -50,23 +52,35 @@ export class LocationExportService {
       },
     );
 
-    this.logger.log(`[LocationExport] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId})`);
+    this.logger.log(
+      `[LocationExport] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
   async streamExportFile(jobId: string, res: any): Promise<void> {
-    const filePath = path.join(process.cwd(), 'uploads', 'exports', `export-${jobId}.xlsx`);
+    const filePath = path.join(
+      process.cwd(),
+      'uploads',
+      'exports',
+      `export-${jobId}.xlsx`,
+    );
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
     const stat = fs.statSync(filePath);
@@ -76,7 +90,8 @@ export class LocationExportService {
     const stream = fs.createReadStream(filePath);
     stream.on('close', () => {
       fs.unlink(filePath, (err) => {
-        if (err) this.logger.warn(`Could not delete export file: ${err.message}`);
+        if (err)
+          this.logger.warn(`Could not delete export file: ${err.message}`);
         else this.logger.log(`[LocationExport] Cleaned up ${filePath}`);
       });
     });
@@ -84,7 +99,10 @@ export class LocationExportService {
       this.logger.error(`[LocationExport] Stream error: ${err.message}`);
     });
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
     res.header('Content-Disposition', `attachment; filename="${filename}"`);
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');

@@ -19,7 +19,9 @@ export class PosSessionRsrvProcessor {
 
   @Process('daily-rsrv-generation')
   async handleDailyRsrv(job: Job): Promise<void> {
-    this.logger.log('Starting automated midnight RSRV generation for all locations');
+    this.logger.log(
+      'Starting automated midnight RSRV generation for all locations',
+    );
 
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -51,11 +53,15 @@ export class PosSessionRsrvProcessor {
       });
 
       if (companies.length === 0) {
-        this.logger.warn('No active companies found for daily midnight RSRV generation');
+        this.logger.warn(
+          'No active companies found for daily midnight RSRV generation',
+        );
         return;
       }
 
-      this.logger.log(`Found ${companies.length} active company(ies) for daily midnight RSRV generation`);
+      this.logger.log(
+        `Found ${companies.length} active company(ies) for daily midnight RSRV generation`,
+      );
 
       for (const company of companies) {
         await this.processCompanyRsrv(company, dateStr);
@@ -63,7 +69,9 @@ export class PosSessionRsrvProcessor {
     } catch (err: any) {
       // Fallback: If master DB is unavailable or single-tenant direct DATABASE_URL is in use
       if (!process.env.DATABASE_URL_MANAGEMENT && process.env.DATABASE_URL) {
-        this.logger.log('Executing RSRV generation using direct DATABASE_URL fallback');
+        this.logger.log(
+          'Executing RSRV generation using direct DATABASE_URL fallback',
+        );
         await PrismaService.asyncLocalStorage.run(
           {
             tenantId: 'default',
@@ -76,16 +84,26 @@ export class PosSessionRsrvProcessor {
             });
             for (const loc of locations) {
               try {
-                await this.posSessionService.generateDaywiseReconciliationVoucherForDate(loc.id, dateStr);
-                this.logger.log(`Completed automated RSRV for location ${loc.name} (${dateStr})`);
+                await this.posSessionService.generateDaywiseReconciliationVoucherForDate(
+                  loc.id,
+                  dateStr,
+                );
+                this.logger.log(
+                  `Completed automated RSRV for location ${loc.name} (${dateStr})`,
+                );
               } catch (locErr: any) {
-                this.logger.error(`Failed automated RSRV for location ${loc.name}: ${locErr?.message}`);
+                this.logger.error(
+                  `Failed automated RSRV for location ${loc.name}: ${locErr?.message}`,
+                );
               }
             }
           },
         );
       } else {
-        this.logger.error(`Failed executing daily midnight RSRV cron job: ${err?.message}`, err?.stack);
+        this.logger.error(
+          `Failed executing daily midnight RSRV cron job: ${err?.message}`,
+          err?.stack,
+        );
       }
     }
   }
@@ -111,7 +129,9 @@ export class PosSessionRsrvProcessor {
 
       if (company.dbPassword) {
         try {
-          const plainPassword = this.encryptionService.decrypt(company.dbPassword);
+          const plainPassword = this.encryptionService.decrypt(
+            company.dbPassword,
+          );
           const encodedPassword = encodeURIComponent(String(plainPassword));
           if (company.dbUser && company.dbHost && company.dbName) {
             const port = company.dbPort || 5432;
@@ -129,7 +149,9 @@ export class PosSessionRsrvProcessor {
       }
 
       if (!dbUrl) {
-        this.logger.warn(`No database URL found for company ${company.name} (${company.code})`);
+        this.logger.warn(
+          `No database URL found for company ${company.name} (${company.code})`,
+        );
         return;
       }
 
@@ -142,7 +164,9 @@ export class PosSessionRsrvProcessor {
           dbUrl,
         },
         async () => {
-          this.logger.log(`[RSRV Cron] Processing company: ${company.name} (${company.code}) for date: ${dateStr}`);
+          this.logger.log(
+            `[RSRV Cron] Processing company: ${company.name} (${company.code}) for date: ${dateStr}`,
+          );
 
           const locations = await this.prisma.location.findMany({
             where: { status: 'active', isDeleted: false },
@@ -150,8 +174,13 @@ export class PosSessionRsrvProcessor {
 
           for (const loc of locations) {
             try {
-              await this.posSessionService.generateDaywiseReconciliationVoucherForDate(loc.id, dateStr);
-              this.logger.log(`[RSRV Cron] Completed automated RSRV for ${company.code} - ${loc.name} (${dateStr})`);
+              await this.posSessionService.generateDaywiseReconciliationVoucherForDate(
+                loc.id,
+                dateStr,
+              );
+              this.logger.log(
+                `[RSRV Cron] Completed automated RSRV for ${company.code} - ${loc.name} (${dateStr})`,
+              );
             } catch (err: any) {
               this.logger.error(
                 `[RSRV Cron] Failed automated RSRV for ${company.code} - ${loc.name}: ${err?.message}`,

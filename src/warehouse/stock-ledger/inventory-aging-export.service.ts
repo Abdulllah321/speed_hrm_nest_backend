@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import * as fs from 'fs';
@@ -114,7 +119,11 @@ export class InventoryAgingExportService {
   }) {
     const jobId = uuidv4();
     const ext = opts.format === 'pdf' ? 'pdf' : 'xlsx';
-    const relativePath = path.join('uploads', 'exports', `export-${jobId}.${ext}`);
+    const relativePath = path.join(
+      'uploads',
+      'exports',
+      `export-${jobId}.${ext}`,
+    );
     const fullPath = path.join(process.cwd(), relativePath);
 
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -125,7 +134,9 @@ export class InventoryAgingExportService {
       data: {
         id: jobId,
         userId: opts.userId,
-        fileName: opts.fileName || `inventory-aging-${new Date().toISOString().slice(0, 10)}.${ext}`,
+        fileName:
+          opts.fileName ||
+          `inventory-aging-${new Date().toISOString().slice(0, 10)}.${ext}`,
         filePath: relativePath,
         moduleName: 'INVENTORY_AGING_REPORT',
         status: 'PENDING',
@@ -134,11 +145,15 @@ export class InventoryAgingExportService {
 
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : this.prisma;
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : this.prisma;
 
-    const mimeType = opts.format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const mimeType =
+      opts.format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
     await this.exportHistoryService.completeAndUploadExport(
       prisma,
@@ -182,8 +197,11 @@ export class InventoryAgingExportService {
             wJob.name === 'generate-report-preview' &&
             wJob.data?.userId === opts.userId
           ) {
-            this.logger.log(`Pruning superseded waiting aging preview job ${wJob.id} for user ${opts.userId}`);
-            if (wJob.data?.jobId) this.cancelledPreviewJobIds.add(wJob.data.jobId);
+            this.logger.log(
+              `Pruning superseded waiting aging preview job ${wJob.id} for user ${opts.userId}`,
+            );
+            if (wJob.data?.jobId)
+              this.cancelledPreviewJobIds.add(wJob.data.jobId);
             await wJob.remove();
           }
         }
@@ -194,12 +212,16 @@ export class InventoryAgingExportService {
             aJob.data?.userId === opts.userId
           ) {
             const activeJobId = aJob.data?.jobId;
-            this.logger.log(`Cancelling active running aging preview job ${activeJobId} for user ${opts.userId}`);
+            this.logger.log(
+              `Cancelling active running aging preview job ${activeJobId} for user ${opts.userId}`,
+            );
             if (activeJobId) this.cancelledPreviewJobIds.add(activeJobId);
           }
         }
       } catch (err: any) {
-        this.logger.warn(`Could not prune aging preview jobs for user ${opts.userId}: ${err.message}`);
+        this.logger.warn(
+          `Could not prune aging preview jobs for user ${opts.userId}: ${err.message}`,
+        );
       }
     }
 
@@ -282,7 +304,12 @@ export class InventoryAgingExportService {
   }
 
   getPreviewFilePath(jobId: string): string {
-    return path.join(process.cwd(), 'uploads', 'previews', `preview-${jobId}.json.gz`);
+    return path.join(
+      process.cwd(),
+      'uploads',
+      'previews',
+      `preview-${jobId}.json.gz`,
+    );
   }
 
   async getPreviewResult(jobId: string): Promise<{
@@ -292,7 +319,10 @@ export class InventoryAgingExportService {
   }> {
     const filePath = this.getPreviewFilePath(jobId);
     if (!fs.existsSync(filePath)) {
-      return { status: false, message: 'Preview result file not found or expired.' };
+      return {
+        status: false,
+        message: 'Preview result file not found or expired.',
+      };
     }
     const gzipped = fs.readFileSync(filePath);
     const jsonStr = zlib.gunzipSync(gzipped).toString('utf-8');
@@ -336,13 +366,21 @@ export class InventoryAgingExportService {
     const onProgress = opts.onProgress || (async () => {});
     await onProgress(5, 'Initializing inventory aging engine...');
 
-    const locationIdFilter = opts.locationId ? opts.locationId.split(',').filter(Boolean) : [];
-    const warehouseIdFilter = opts.warehouseId ? opts.warehouseId.split(',').filter(Boolean) : [];
+    const locationIdFilter = opts.locationId
+      ? opts.locationId.split(',').filter(Boolean)
+      : [];
+    const warehouseIdFilter = opts.warehouseId
+      ? opts.warehouseId.split(',').filter(Boolean)
+      : [];
 
     let asOfDate: Date;
     if (opts.fiscalYear) {
       const match = opts.fiscalYear.match(/(\d{4})/);
-      const startYear = match ? parseInt(match[1], 10) : (new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1);
+      const startYear = match
+        ? parseInt(match[1], 10)
+        : new Date().getMonth() >= 6
+          ? new Date().getFullYear()
+          : new Date().getFullYear() - 1;
       asOfDate = new Date(Date.UTC(startYear + 1, 5, 30, 23, 59, 59, 999));
     } else if (opts.asOfDate) {
       asOfDate = new Date(opts.asOfDate);
@@ -355,7 +393,11 @@ export class InventoryAgingExportService {
     }
 
     // Resolve nearest Fiscal Opening Snapshot date to prune historical closed fiscal years
-    const snapshotDate = await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(prisma, asOfDate);
+    const snapshotDate =
+      await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(
+        prisma,
+        asOfDate,
+      );
     const queryStartDate = snapshotDate || undefined;
 
     // 1. Fetch Location & Warehouse metadata
@@ -378,7 +420,11 @@ export class InventoryAgingExportService {
 
     for (const wh of allWarehouses) {
       const matchingLocs = allLocations.filter(
-        l => (l as any).warehouseId === wh.id || l.id === wh.id || l.code === `WH-${wh.code}` || l.code === wh.code
+        (l) =>
+          (l as any).warehouseId === wh.id ||
+          l.id === wh.id ||
+          l.code === `WH-${wh.code}` ||
+          l.code === wh.code,
       );
       for (const ml of matchingLocs) {
         whLocIdToWhIdMap.set(ml.id, wh.id);
@@ -389,10 +435,16 @@ export class InventoryAgingExportService {
     const targetLocationIds: string[] = [...locationIdFilter];
     if (warehouseIdFilter.length > 0) {
       for (const whId of warehouseIdFilter) {
-        const whObj = allWarehouses.find(w => w.id === whId || w.code === whId);
+        const whObj = allWarehouses.find(
+          (w) => w.id === whId || w.code === whId,
+        );
         const whCode = whObj?.code || whId;
         const matchingLocs = allLocations.filter(
-          l => (l as any).warehouseId === whId || l.id === whId || l.code === `WH-${whCode}` || l.code === whCode
+          (l) =>
+            (l as any).warehouseId === whId ||
+            l.id === whId ||
+            l.code === `WH-${whCode}` ||
+            l.code === whCode,
         );
         for (const ml of matchingLocs) {
           targetLocationIds.push(ml.id);
@@ -401,9 +453,12 @@ export class InventoryAgingExportService {
     }
 
     const uniqueTargetLocationIds = [...new Set(targetLocationIds)];
-    const locationWhere = uniqueTargetLocationIds.length > 1
-      ? { in: uniqueTargetLocationIds }
-      : (uniqueTargetLocationIds.length === 1 ? uniqueTargetLocationIds[0] : undefined);
+    const locationWhere =
+      uniqueTargetLocationIds.length > 1
+        ? { in: uniqueTargetLocationIds }
+        : uniqueTargetLocationIds.length === 1
+          ? uniqueTargetLocationIds[0]
+          : undefined;
 
     // 2. Fetch inventory items stock balances
     await onProgress(35, 'Calculating stock balances & ledger movements...');
@@ -419,12 +474,19 @@ export class InventoryAgingExportService {
       },
     });
 
-    const rawItemIds = [...new Set(inventoryItems.map((inv: any) => inv.itemId).filter(Boolean))];
-    
+    const rawItemIds = [
+      ...new Set(inventoryItems.map((inv: any) => inv.itemId).filter(Boolean)),
+    ];
+
     // Chunk items into 1,000 item batches to avoid database query parameter limits
     const itemChunks = chunkArray(rawItemIds, 1000);
 
-    const [itemsNested, tenantSettingsNested, latestLedgerCostsNested, transitItemsNested] = await Promise.all([
+    const [
+      itemsNested,
+      tenantSettingsNested,
+      latestLedgerCostsNested,
+      transitItemsNested,
+    ] = await Promise.all([
       Promise.all(
         itemChunks.map((chunk) =>
           prisma.item.findMany({
@@ -455,13 +517,17 @@ export class InventoryAgingExportService {
             where: {
               itemId: { in: chunk },
               ...(locationWhere ? { locationId: locationWhere } : {}),
-              ...(queryStartDate ? { createdAt: { gte: queryStartDate, lte: asOfDate } } : { createdAt: { lte: asOfDate } }),
-              OR: [
-                { unitCost: { gt: 0 } },
-                { rate: { gt: 0 } },
-              ],
+              ...(queryStartDate
+                ? { createdAt: { gte: queryStartDate, lte: asOfDate } }
+                : { createdAt: { lte: asOfDate } }),
+              OR: [{ unitCost: { gt: 0 } }, { rate: { gt: 0 } }],
             },
-            select: { itemId: true, unitCost: true, rate: true, createdAt: true },
+            select: {
+              itemId: true,
+              unitCost: true,
+              rate: true,
+              createdAt: true,
+            },
             orderBy: { createdAt: 'desc' },
             distinct: ['itemId'],
           }),
@@ -474,8 +540,25 @@ export class InventoryAgingExportService {
               itemId: { in: chunk },
               transferRequest: {
                 ...(locationWhere ? { toLocationId: locationWhere } : {}),
-                status: { in: ['PENDING', 'PENDING_CHECKER', 'SOURCE_APPROVED', 'DISPATCHED', 'SHIPPED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] },
-                transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE', 'WAREHOUSE_TO_WAREHOUSE'] },
+                status: {
+                  in: [
+                    'PENDING',
+                    'PENDING_CHECKER',
+                    'SOURCE_APPROVED',
+                    'DISPATCHED',
+                    'SHIPPED',
+                    'IN_TRANSIT',
+                    'PARTIALLY_RECEIVED',
+                  ],
+                },
+                transferType: {
+                  in: [
+                    'WAREHOUSE_TO_OUTLET',
+                    'OUTLET_TO_OUTLET',
+                    'OUTLET_TO_WAREHOUSE',
+                    'WAREHOUSE_TO_WAREHOUSE',
+                  ],
+                },
               },
             },
             select: {
@@ -502,7 +585,9 @@ export class InventoryAgingExportService {
     }
 
     const itemObjMap = new Map<string, any>(items.map((i: any) => [i.id, i]));
-    const settingMap = new Map<string, any>(tenantSettings.map((s: any) => [s.itemId, s]));
+    const settingMap = new Map<string, any>(
+      tenantSettings.map((s: any) => [s.itemId, s]),
+    );
     const ledgerCostMap = new Map<string, number>();
 
     for (const l of latestLedgerCosts) {
@@ -512,15 +597,21 @@ export class InventoryAgingExportService {
       }
     }
 
-    await onProgress(60, 'Categorizing inventory into aging brackets & resolving unit cost valuation...');
+    await onProgress(
+      60,
+      'Categorizing inventory into aging brackets & resolving unit cost valuation...',
+    );
 
     // Group inventory items by SKU/Item ID
-    const itemMap = new Map<string, {
-      item: any;
-      totalQty: number;
-      locationStocks: Record<string, number>;
-      warehouseStocks: Record<string, number>;
-    }>();
+    const itemMap = new Map<
+      string,
+      {
+        item: any;
+        totalQty: number;
+        locationStocks: Record<string, number>;
+        warehouseStocks: Record<string, number>;
+      }
+    >();
 
     for (const inv of inventoryItems) {
       const qty = Number(inv.quantity || 0);
@@ -543,12 +634,15 @@ export class InventoryAgingExportService {
       if (inv.locationId) {
         if (whLocIdToWhIdMap.has(inv.locationId)) {
           const whId = whLocIdToWhIdMap.get(inv.locationId)!;
-          entry.warehouseStocks[whId] = (entry.warehouseStocks[whId] || 0) + qty;
+          entry.warehouseStocks[whId] =
+            (entry.warehouseStocks[whId] || 0) + qty;
         } else {
-          entry.locationStocks[inv.locationId] = (entry.locationStocks[inv.locationId] || 0) + qty;
+          entry.locationStocks[inv.locationId] =
+            (entry.locationStocks[inv.locationId] || 0) + qty;
         }
       } else if (inv.warehouseId) {
-        entry.warehouseStocks[inv.warehouseId] = (entry.warehouseStocks[inv.warehouseId] || 0) + qty;
+        entry.warehouseStocks[inv.warehouseId] =
+          (entry.warehouseStocks[inv.warehouseId] || 0) + qty;
       }
     }
 
@@ -574,12 +668,15 @@ export class InventoryAgingExportService {
       if (tr?.toLocationId) {
         if (whLocIdToWhIdMap.has(tr.toLocationId)) {
           const whId = whLocIdToWhIdMap.get(tr.toLocationId)!;
-          entry.warehouseStocks[whId] = (entry.warehouseStocks[whId] || 0) + qty;
+          entry.warehouseStocks[whId] =
+            (entry.warehouseStocks[whId] || 0) + qty;
         } else {
-          entry.locationStocks[tr.toLocationId] = (entry.locationStocks[tr.toLocationId] || 0) + qty;
+          entry.locationStocks[tr.toLocationId] =
+            (entry.locationStocks[tr.toLocationId] || 0) + qty;
         }
       } else if (tr?.toWarehouseId) {
-        entry.warehouseStocks[tr.toWarehouseId] = (entry.warehouseStocks[tr.toWarehouseId] || 0) + qty;
+        entry.warehouseStocks[tr.toWarehouseId] =
+          (entry.warehouseStocks[tr.toWarehouseId] || 0) + qty;
       }
     }
 
@@ -593,8 +690,17 @@ export class InventoryAgingExportService {
           where: {
             itemId: { in: chunk },
             ...(locationWhere ? { toLocationId: locationWhere } : {}),
-            createdAt: queryStartDate ? { gte: queryStartDate, lte: asOfDate } : { lte: asOfDate },
-            type: { in: [MovementType.INBOUND, MovementType.OPENING_BALANCE, MovementType.TRANSFER, MovementType.ADJUSTMENT] },
+            createdAt: queryStartDate
+              ? { gte: queryStartDate, lte: asOfDate }
+              : { lte: asOfDate },
+            type: {
+              in: [
+                MovementType.INBOUND,
+                MovementType.OPENING_BALANCE,
+                MovementType.TRANSFER,
+                MovementType.ADJUSTMENT,
+              ],
+            },
           },
           select: {
             itemId: true,
@@ -608,7 +714,10 @@ export class InventoryAgingExportService {
     const stockMovements = stockMovementsNested.flat();
 
     // Map movements by itemId for FIFO allocation
-    const movementMap = new Map<string, Array<{ quantity: number; createdAt: Date }>>();
+    const movementMap = new Map<
+      string,
+      Array<{ quantity: number; createdAt: Date }>
+    >();
     for (const m of stockMovements) {
       let list = movementMap.get(m.itemId);
       if (!list) {
@@ -659,7 +768,13 @@ export class InventoryAgingExportService {
       }
       if (unitCost === 0) {
         const setting = settingMap.get(item.id);
-        unitCost = Number(setting?.averageCost || setting?.standardCost || item.fob || item.unitPrice || 0);
+        unitCost = Number(
+          setting?.averageCost ||
+            setting?.standardCost ||
+            item.fob ||
+            item.unitPrice ||
+            0,
+        );
       }
 
       const unitPrice = Number(item.unitPrice || 0);
@@ -689,7 +804,13 @@ export class InventoryAgingExportService {
         const allocQty = Math.min(remainingToAllocate, mov.quantity);
         remainingToAllocate -= allocQty;
 
-        const ageDays = Math.max(0, Math.floor((asOfDate.getTime() - new Date(mov.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
+        const ageDays = Math.max(
+          0,
+          Math.floor(
+            (asOfDate.getTime() - new Date(mov.createdAt).getTime()) /
+              (1000 * 60 * 60 * 24),
+          ),
+        );
         itemAgeDaysSum += ageDays * allocQty;
 
         if (ageDays <= 180) b0to6 += allocQty;
@@ -706,7 +827,8 @@ export class InventoryAgingExportService {
         itemAgeDaysSum += 540 * remainingToAllocate;
       }
 
-      const avgAgeDays = totalQty > 0 ? Math.round(itemAgeDaysSum / totalQty) : 0;
+      const avgAgeDays =
+        totalQty > 0 ? Math.round(itemAgeDaysSum / totalQty) : 0;
       totalAgeWeightedDaysSum += itemAgeDaysSum;
 
       const record: InventoryAgingRecord = {
@@ -767,26 +889,35 @@ export class InventoryAgingExportService {
       grandTotals.totalBucket18mPlusValue += b18plus * unitCost;
 
       for (const [locId, q] of Object.entries(data.locationStocks)) {
-        grandTotals.locationTotals[locId] = (grandTotals.locationTotals[locId] || 0) + q;
+        grandTotals.locationTotals[locId] =
+          (grandTotals.locationTotals[locId] || 0) + q;
       }
       for (const [whId, q] of Object.entries(data.warehouseStocks)) {
-        grandTotals.warehouseTotals[whId] = (grandTotals.warehouseTotals[whId] || 0) + q;
+        grandTotals.warehouseTotals[whId] =
+          (grandTotals.warehouseTotals[whId] || 0) + q;
       }
     }
 
-    grandTotals.overallAvgAgeDays = grandTotals.totalStockQty > 0
-      ? Math.round(totalAgeWeightedDaysSum / grandTotals.totalStockQty)
-      : 0;
+    grandTotals.overallAvgAgeDays =
+      grandTotals.totalStockQty > 0
+        ? Math.round(totalAgeWeightedDaysSum / grandTotals.totalStockQty)
+        : 0;
 
     await onProgress(100, 'Inventory aging calculations completed.');
 
     const locations = allLocations.filter((l: any) => {
       if (warehouseLocIdsSet.has(l.id)) return false;
       if (locationIdFilter.length > 0) return locationIdFilter.includes(l.id);
-      if (warehouseIdFilter.length > 0 && locationIdFilter.length === 0) return false;
+      if (warehouseIdFilter.length > 0 && locationIdFilter.length === 0)
+        return false;
       return true;
     });
-    const warehouses = allWarehouses.filter((w: any) => warehouseIdFilter.length === 0 || warehouseIdFilter.includes(w.id) || warehouseIdFilter.includes(w.code));
+    const warehouses = allWarehouses.filter(
+      (w: any) =>
+        warehouseIdFilter.length === 0 ||
+        warehouseIdFilter.includes(w.id) ||
+        warehouseIdFilter.includes(w.code),
+    );
 
     return {
       status: true,

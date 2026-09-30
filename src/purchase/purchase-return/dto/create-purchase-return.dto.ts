@@ -1,11 +1,20 @@
-import { IsString, IsOptional, IsArray, ValidateNested, IsNumber, IsEnum, IsNotEmpty, IsPositive } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+  IsEnum,
+  IsNotEmpty,
+  IsPositive,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export enum ReturnSourceType {
   GRN = 'GRN',
   LANDED_COST = 'LANDED_COST',
-  INVOICE = 'INVOICE'
+  INVOICE = 'INVOICE',
 }
 
 export enum ReturnType {
@@ -13,7 +22,7 @@ export enum ReturnType {
   EXCESS = 'EXCESS',
   WRONG_ITEM = 'WRONG_ITEM',
   DAMAGED = 'DAMAGED',
-  SHORTAGE = 'SHORTAGE'
+  SHORTAGE = 'SHORTAGE',
 }
 
 export class CreatePurchaseReturnItemDto {

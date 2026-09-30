@@ -129,6 +129,35 @@ export class EmployeeService {
     };
   }
 
+  // --- USER BRANDS ---
+  async getUserBrands(userId: string) {
+    const userBrands = await this.prisma.userBrand.findMany({
+      where: { userId },
+      include: { brand: true },
+    });
+    return { status: true, data: userBrands.map((ub) => ub.brand) };
+  }
+
+  async updateUserBrands(userId: string, brandIds: string[]) {
+    // Delete existing
+    await this.prisma.userBrand.deleteMany({
+      where: { userId },
+    });
+
+    // Insert new
+    if (brandIds && brandIds.length > 0) {
+      await this.prisma.userBrand.createMany({
+        data: brandIds.map((brandId) => ({
+          userId,
+          brandId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return { status: true, message: 'User brands updated successfully' };
+  }
+
   // Lightweight method to fetch only required fields for attendance management
   async listForAttendance(query?: {
     departmentId?: string;
@@ -256,7 +285,10 @@ export class EmployeeService {
     }
 
     if (query?.locationId) {
-      const locIds = query.locationId.split(',').map((s) => s.trim()).filter(Boolean);
+      const locIds = query.locationId
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       if (locIds.length === 1) {
         where.locationId = locIds[0];
       } else if (locIds.length > 1) {
@@ -282,19 +314,23 @@ export class EmployeeService {
 
     if (query?.employmentStatusName) {
       where.employmentStatus = {
-        status: { equals: query.employmentStatusName, mode: 'insensitive' }
+        status: { equals: query.employmentStatusName, mode: 'insensitive' },
       };
     }
 
     if (query?.excludeEmploymentStatusName) {
       where.AND = [
-        ...(where.AND as any || []),
+        ...((where.AND as any) || []),
         {
           OR: [
             { employmentStatusId: null },
-            { employmentStatus: { status: { not: query.excludeEmploymentStatusName } } }
-          ]
-        }
+            {
+              employmentStatus: {
+                status: { not: query.excludeEmploymentStatusName },
+              },
+            },
+          ],
+        },
       ];
     }
 

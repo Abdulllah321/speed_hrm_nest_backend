@@ -1,4 +1,16 @@
-import { Controller, Get, Put, Post, Body, Req, Query, Param, UseGuards, UnauthorizedException, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Put,
+  Post,
+  Body,
+  Req,
+  Query,
+  Param,
+  UseGuards,
+  UnauthorizedException,
+  Res,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSessionService } from './pos-session.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -11,241 +23,281 @@ import * as jwt from 'jsonwebtoken';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PosSessionController {
-    constructor(private readonly sessionService: PosSessionService,) { }
+  constructor(private readonly sessionService: PosSessionService) {}
 
-    private extractTerminalContext(req: any) {
-        const token = req.cookies?.posTerminalToken;
-        if (!token) throw new UnauthorizedException('No terminal token found');
+  private extractTerminalContext(req: any) {
+    const token = req.cookies?.posTerminalToken;
+    if (!token) throw new UnauthorizedException('No terminal token found');
 
-        try {
-            const decoded: any = jwt.decode(token);
-            if (!decoded || !decoded.terminalId || !decoded.posId || !decoded.locationId) {
-                throw new UnauthorizedException('Invalid terminal token');
-            }
-            return {
-                terminalId: decoded.terminalId, // UUID
-                posId: decoded.posId, // Code (e.g. 001)
-                locationId: decoded.locationId, // UUID
-            };
-        } catch (e) {
-            throw new UnauthorizedException('Invalid terminal token format');
-        }
+    try {
+      const decoded: any = jwt.decode(token);
+      if (
+        !decoded ||
+        !decoded.terminalId ||
+        !decoded.posId ||
+        !decoded.locationId
+      ) {
+        throw new UnauthorizedException('Invalid terminal token');
+      }
+      return {
+        terminalId: decoded.terminalId, // UUID
+        posId: decoded.posId, // Code (e.g. 001)
+        locationId: decoded.locationId, // UUID
+      };
+    } catch (e) {
+      throw new UnauthorizedException('Invalid terminal token format');
     }
+  }
 
-    @Get('current')
-    @ApiOperation({ summary: 'Get current drawer status and cash metrics' })
-    async getCurrentSession(@Req() req: any) {
-        const { terminalId, posId, locationId } = this.extractTerminalContext(req);
-        return this.sessionService.getCurrentSession(terminalId, posId, locationId);
-    }
+  @Get('current')
+  @ApiOperation({ summary: 'Get current drawer status and cash metrics' })
+  async getCurrentSession(@Req() req: any) {
+    const { terminalId, posId, locationId } = this.extractTerminalContext(req);
+    return this.sessionService.getCurrentSession(terminalId, posId, locationId);
+  }
 
-    @Put('current/open')
-    @Permissions('pos.shift.open')
-    @ApiOperation({ summary: 'Open the drawer by adding a float amount' })
-    async openDrawer(
-        @Req() req: any,
-        @Body() body: { amount: number; note?: string },
-    ) {
-        const { terminalId } = this.extractTerminalContext(req);
-        const ctx = {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        };
-        return this.sessionService.openDrawer(terminalId, body.amount, body.note, ctx);
-    }
+  @Put('current/open')
+  @Permissions('pos.shift.open')
+  @ApiOperation({ summary: 'Open the drawer by adding a float amount' })
+  async openDrawer(
+    @Req() req: any,
+    @Body() body: { amount: number; note?: string },
+  ) {
+    const { terminalId } = this.extractTerminalContext(req);
+    const ctx = {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    };
+    return this.sessionService.openDrawer(
+      terminalId,
+      body.amount,
+      body.note,
+      ctx,
+    );
+  }
 
-    @Post('current/close')
-    @Permissions('pos.shift.close')
-    @ApiOperation({ summary: 'Close the drawer and record counted variance' })
-    async closeDrawer(
-        @Req() req: any,
-        @Body() body: { actualCash: number; note?: string },
-    ) {
-        const { terminalId, posId, locationId } = this.extractTerminalContext(req);
-        const ctx = {
-            userId: req.user?.id,
-            ipAddress: req.ip,
-            userAgent: req.headers['user-agent'],
-        };
-        return this.sessionService.closeDrawer(terminalId, posId, locationId, body.actualCash, body.note, ctx);
-    }
+  @Post('current/close')
+  @Permissions('pos.shift.close')
+  @ApiOperation({ summary: 'Close the drawer and record counted variance' })
+  async closeDrawer(
+    @Req() req: any,
+    @Body() body: { actualCash: number; note?: string },
+  ) {
+    const { terminalId, posId, locationId } = this.extractTerminalContext(req);
+    const ctx = {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    };
+    return this.sessionService.closeDrawer(
+      terminalId,
+      posId,
+      locationId,
+      body.actualCash,
+      body.note,
+      ctx,
+    );
+  }
 
-    @Get('history')
-    @ApiOperation({ summary: 'Get paginated shift history for this terminal' })
-    async getSessionHistory(
-        @Req() req: any,
-        @Query('page') page?: string,
-        @Query('limit') limit?: string,
-    ) {
-        const { terminalId, posId } = this.extractTerminalContext(req);
-        return this.sessionService.getSessionHistory(
-            terminalId,
-            posId,
-            page ? parseInt(page, 10) : 1,
-            limit ? parseInt(limit, 10) : 20,
-        );
-    }
+  @Get('history')
+  @ApiOperation({ summary: 'Get paginated shift history for this terminal' })
+  async getSessionHistory(
+    @Req() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const { terminalId, posId } = this.extractTerminalContext(req);
+    return this.sessionService.getSessionHistory(
+      terminalId,
+      posId,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+    );
+  }
 
-    @Get('reconciliation/daywise')
-    @ApiOperation({ summary: 'Get detailed reconciliation report metrics for a date' })
-    async getDaywiseReconciliation(
-        @Req() req: any,
-        @Query('date') date: string,
-        @Query('locationId') queryLocationId?: string,
-    ) {
-        let locationId = queryLocationId;
-        if (locationId === undefined || locationId === null) {
-            try {
-                locationId = this.extractTerminalContext(req).locationId;
-            } catch {
-                locationId = req.user?.locationId || '';
-            }
-        }
-        return this.sessionService.getDaywiseReconciliation(locationId || '', date);
+  @Get('reconciliation/daywise')
+  @ApiOperation({
+    summary: 'Get detailed reconciliation report metrics for a date',
+  })
+  async getDaywiseReconciliation(
+    @Req() req: any,
+    @Query('date') date: string,
+    @Query('locationId') queryLocationId?: string,
+  ) {
+    let locationId = queryLocationId;
+    if (locationId === undefined || locationId === null) {
+      try {
+        locationId = this.extractTerminalContext(req).locationId;
+      } catch {
+        locationId = req.user?.locationId || '';
+      }
     }
+    return this.sessionService.getDaywiseReconciliation(locationId || '', date);
+  }
 
-    @Get('reconciliation/daywise/excel')
-    @ApiOperation({ summary: 'Export detailed daywise reconciliation report metrics as Excel' })
-    async getDaywiseReconciliationExcel(
-        @Req() req: any,
-        @Query('date') date: string,
-        @Query('locationId') queryLocationId: string,
-        @Res() res: any,
-    ) {
-        let locationId = queryLocationId;
-        if (locationId === undefined || locationId === null) {
-            try {
-                locationId = this.extractTerminalContext(req).locationId;
-            } catch {
-                locationId = req.user?.locationId || '';
-            }
-        }
-        return this.sessionService.exportDaywiseReconciliationExcel(locationId || '', date, res);
+  @Get('reconciliation/daywise/excel')
+  @ApiOperation({
+    summary: 'Export detailed daywise reconciliation report metrics as Excel',
+  })
+  async getDaywiseReconciliationExcel(
+    @Req() req: any,
+    @Query('date') date: string,
+    @Query('locationId') queryLocationId: string,
+    @Res() res: any,
+  ) {
+    let locationId = queryLocationId;
+    if (locationId === undefined || locationId === null) {
+      try {
+        locationId = this.extractTerminalContext(req).locationId;
+      } catch {
+        locationId = req.user?.locationId || '';
+      }
     }
+    return this.sessionService.exportDaywiseReconciliationExcel(
+      locationId || '',
+      date,
+      res,
+    );
+  }
 
-    @Post('reconciliation/daywise/export/queue')
-    @ApiOperation({ summary: 'Queue daywise reconciliation export' })
-    async queueReconciliationExport(
-        @Req() req: any,
-        @Query('date') date: string,
-        @Query('locationId') queryLocationId?: string,
-    ) {
-        let locationId = queryLocationId;
-        if (locationId === undefined || locationId === null) {
-            try {
-                locationId = this.extractTerminalContext(req).locationId;
-            } catch {
-                locationId = req.user?.locationId || '';
-            }
-        }
-        const userId = req.user?.userId;
-        const result = await this.sessionService.queueDaywiseReconciliationExcel(userId, locationId || '', date);
-        return {
-            status: true,
-            message: "Reconciliation export queued. You'll receive a notification when it is ready.",
-            data: result,
-        };
+  @Post('reconciliation/daywise/export/queue')
+  @ApiOperation({ summary: 'Queue daywise reconciliation export' })
+  async queueReconciliationExport(
+    @Req() req: any,
+    @Query('date') date: string,
+    @Query('locationId') queryLocationId?: string,
+  ) {
+    let locationId = queryLocationId;
+    if (locationId === undefined || locationId === null) {
+      try {
+        locationId = this.extractTerminalContext(req).locationId;
+      } catch {
+        locationId = req.user?.locationId || '';
+      }
     }
+    const userId = req.user?.userId;
+    const result = await this.sessionService.queueDaywiseReconciliationExcel(
+      userId,
+      locationId || '',
+      date,
+    );
+    return {
+      status: true,
+      message:
+        "Reconciliation export queued. You'll receive a notification when it is ready.",
+      data: result,
+    };
+  }
 
-    @Get('reconciliation/daywise/export/:jobId/status')
-    @ApiOperation({ summary: 'Check daywise reconciliation export status' })
-    async getReconciliationExportStatus(@Param('jobId') jobId: string) {
-        const result = await this.sessionService.getDaywiseReconciliationExportStatus(jobId);
-        return { status: true, data: result };
-    }
+  @Get('reconciliation/daywise/export/:jobId/status')
+  @ApiOperation({ summary: 'Check daywise reconciliation export status' })
+  async getReconciliationExportStatus(@Param('jobId') jobId: string) {
+    const result =
+      await this.sessionService.getDaywiseReconciliationExportStatus(jobId);
+    return { status: true, data: result };
+  }
 
-    @Get('reconciliation/daywise/export/:jobId/download')
-    @ApiOperation({ summary: 'Download completed daywise reconciliation export' })
-    async downloadReconciliationExport(
-        @Param('jobId') jobId: string,
-        @Res() res: any,
-    ) {
-        try {
-            await this.sessionService.streamDaywiseReconciliationExcelFile(jobId, res);
-        } catch (err: any) {
-            const status = err?.status ?? 404;
-            res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
-        }
+  @Get('reconciliation/daywise/export/:jobId/download')
+  @ApiOperation({ summary: 'Download completed daywise reconciliation export' })
+  async downloadReconciliationExport(
+    @Param('jobId') jobId: string,
+    @Res() res: any,
+  ) {
+    try {
+      await this.sessionService.streamDaywiseReconciliationExcelFile(
+        jobId,
+        res,
+      );
+    } catch (err: any) {
+      const status = err?.status ?? 404;
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
+  }
 
-    @Get('cash-compare')
-    @ApiOperation({ summary: 'Get cash comparison report by date range or month' })
-    async getCashCompareReport(
-        @Req() req: any,
-        @Query('startDate') startDate?: string,
-        @Query('endDate') endDate?: string,
-        @Query('month') monthStr?: string,
-        @Query('year') yearStr?: string,
-        @Query('locationId') queryLocationId?: string,
-    ) {
-        let locationId = queryLocationId;
-        if (locationId === undefined || locationId === null) {
-            try {
-                locationId = this.extractTerminalContext(req).locationId;
-            } catch {
-                locationId = req.user?.locationId || '';
-            }
-        }
-        const month = monthStr ? parseInt(monthStr, 10) : undefined;
-        const year = yearStr ? parseInt(yearStr, 10) : undefined;
-        return this.sessionService.getCashCompareReport(
-            locationId || '',
-            startDate,
-            endDate,
-            month,
-            year,
-        );
+  @Get('cash-compare')
+  @ApiOperation({
+    summary: 'Get cash comparison report by date range or month',
+  })
+  async getCashCompareReport(
+    @Req() req: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('month') monthStr?: string,
+    @Query('year') yearStr?: string,
+    @Query('locationId') queryLocationId?: string,
+  ) {
+    let locationId = queryLocationId;
+    if (locationId === undefined || locationId === null) {
+      try {
+        locationId = this.extractTerminalContext(req).locationId;
+      } catch {
+        locationId = req.user?.locationId || '';
+      }
     }
+    const month = monthStr ? parseInt(monthStr, 10) : undefined;
+    const year = yearStr ? parseInt(yearStr, 10) : undefined;
+    return this.sessionService.getCashCompareReport(
+      locationId || '',
+      startDate,
+      endDate,
+      month,
+      year,
+    );
+  }
 
-    @Get('cash-compare/excel')
-    @ApiOperation({ summary: 'Export cash comparison report as Excel by date range or month' })
-    async exportCashCompareExcel(
-        @Req() req: any,
-        @Query('startDate') startDate?: string,
-        @Query('endDate') endDate?: string,
-        @Query('month') monthStr?: string,
-        @Query('year') yearStr?: string,
-        @Query('locationId') queryLocationId?: string,
-        @Res() res?: any,
-    ) {
-        let locationId = queryLocationId;
-        if (locationId === undefined || locationId === null) {
-            try {
-                locationId = this.extractTerminalContext(req).locationId;
-            } catch {
-                locationId = req.user?.locationId || '';
-            }
-        }
-        const month = monthStr ? parseInt(monthStr, 10) : undefined;
-        const year = yearStr ? parseInt(yearStr, 10) : undefined;
-        return this.sessionService.exportCashCompareExcel(
-            locationId || '',
-            startDate,
-            endDate,
-            month,
-            year,
-            res,
-        );
+  @Get('cash-compare/excel')
+  @ApiOperation({
+    summary: 'Export cash comparison report as Excel by date range or month',
+  })
+  async exportCashCompareExcel(
+    @Req() req: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('month') monthStr?: string,
+    @Query('year') yearStr?: string,
+    @Query('locationId') queryLocationId?: string,
+    @Res() res?: any,
+  ) {
+    let locationId = queryLocationId;
+    if (locationId === undefined || locationId === null) {
+      try {
+        locationId = this.extractTerminalContext(req).locationId;
+      } catch {
+        locationId = req.user?.locationId || '';
+      }
     }
+    const month = monthStr ? parseInt(monthStr, 10) : undefined;
+    const year = yearStr ? parseInt(yearStr, 10) : undefined;
+    return this.sessionService.exportCashCompareExcel(
+      locationId || '',
+      startDate,
+      endDate,
+      month,
+      year,
+      res,
+    );
+  }
 
-    @Get(':id/close-summary')
-    @ApiOperation({ summary: 'Get session-wise shift close summary report' })
-    async getSessionCloseSummary(
-        @Param('id') sessionId: string,
-    ) {
-        return this.sessionService.getSessionCloseSummary(sessionId);
-    }
+  @Get(':id/close-summary')
+  @ApiOperation({ summary: 'Get session-wise shift close summary report' })
+  async getSessionCloseSummary(@Param('id') sessionId: string) {
+    return this.sessionService.getSessionCloseSummary(sessionId);
+  }
 
-    @Get(':id/reconciliation')
-    @ApiOperation({ summary: 'Get detailed reconciliation report metrics for a POS shift' })
-    async getReconciliationDetails(
-        @Req() req: any,
-        @Param('id') sessionId: string,
-        @Query('date') date?: string,
-    ) {
-        this.extractTerminalContext(req);
-        return this.sessionService.getReconciliationDetails(sessionId, date);
-    }
+  @Get(':id/reconciliation')
+  @ApiOperation({
+    summary: 'Get detailed reconciliation report metrics for a POS shift',
+  })
+  async getReconciliationDetails(
+    @Req() req: any,
+    @Param('id') sessionId: string,
+    @Query('date') date?: string,
+  ) {
+    this.extractTerminalContext(req);
+    return this.sessionService.getReconciliationDetails(sessionId, date);
+  }
 }
-

@@ -25,21 +25,47 @@ export interface PurchaseOrderExportJobData {
 }
 
 // ── Colour palette ────────────────────────────────────────────────────────────
-const PRIMARY_BG   = '1E3A5F'; // Dark Slate Navy
-const PRIMARY_FG   = 'FFFFFF';
+const PRIMARY_BG = '1E3A5F'; // Dark Slate Navy
+const PRIMARY_FG = 'FFFFFF';
 const SUBHEADER_BG = '2563EB'; // Blue-600
-const ALT_ROW_BG   = 'F8FAFC'; // Slate-50
+const ALT_ROW_BG = 'F8FAFC'; // Slate-50
 const BORDER_COLOR = 'CBD5E1'; // Slate-300
 const HIGHLIGHT_BG = 'F1F5F9';
 
 function numberToWords(amount: number): string {
   const a = [
-    '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
-    'Seventeen', 'Eighteen', 'Nineteen',
+    '',
+    'One',
+    'Two',
+    'Three',
+    'Four',
+    'Five',
+    'Six',
+    'Seven',
+    'Eight',
+    'Nine',
+    'Ten',
+    'Eleven',
+    'Twelve',
+    'Thirteen',
+    'Fourteen',
+    'Fifteen',
+    'Sixteen',
+    'Seventeen',
+    'Eighteen',
+    'Nineteen',
   ];
   const b = [
-    '', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety',
+    '',
+    '',
+    'Twenty',
+    'Thirty',
+    'Forty',
+    'Fifty',
+    'Sixty',
+    'Seventy',
+    'Eighty',
+    'Ninety',
   ];
 
   const inWords = (num: number): string => {
@@ -48,11 +74,33 @@ function numberToWords(amount: number): string {
 
     const convert = (val: number): string => {
       if (val < 20) return a[val];
-      if (val < 100) return b[Math.floor(val / 10)] + (val % 10 !== 0 ? '-' + a[val % 10] : '');
-      if (val < 1000) return a[Math.floor(val / 100)] + ' Hundred' + (val % 100 !== 0 ? ' ' + convert(val % 100) : '');
-      if (val < 1000000) return convert(Math.floor(val / 1000)) + ' Thousand' + (val % 1000 !== 0 ? ' ' + convert(val % 1000) : '');
-      if (val < 1000000000) return convert(Math.floor(val / 1000000)) + ' Million' + (val % 1000000 !== 0 ? ' ' + convert(val % 1000000) : '');
-      return convert(Math.floor(val / 1000000000)) + ' Billion' + (val % 1000000000 !== 0 ? ' ' + convert(val % 1000000000) : '');
+      if (val < 100)
+        return (
+          b[Math.floor(val / 10)] + (val % 10 !== 0 ? '-' + a[val % 10] : '')
+        );
+      if (val < 1000)
+        return (
+          a[Math.floor(val / 100)] +
+          ' Hundred' +
+          (val % 100 !== 0 ? ' ' + convert(val % 100) : '')
+        );
+      if (val < 1000000)
+        return (
+          convert(Math.floor(val / 1000)) +
+          ' Thousand' +
+          (val % 1000 !== 0 ? ' ' + convert(val % 1000) : '')
+        );
+      if (val < 1000000000)
+        return (
+          convert(Math.floor(val / 1000000)) +
+          ' Million' +
+          (val % 1000000 !== 0 ? ' ' + convert(val % 1000000) : '')
+        );
+      return (
+        convert(Math.floor(val / 1000000000)) +
+        ' Billion' +
+        (val % 1000000000 !== 0 ? ' ' + convert(val % 1000000000) : '')
+      );
     };
 
     return convert(n) + ' Only';
@@ -88,7 +136,9 @@ export class PurchaseOrderExportProcessor {
       search,
     } = job.data;
 
-    this.logger.log(`[PurchaseOrderExport ${jobId}] Starting export for user ${userId}${poId ? ` (PO: ${poId})` : ''}`);
+    this.logger.log(
+      `[PurchaseOrderExport ${jobId}] Starting export for user ${userId}${poId ? ` (PO: ${poId})` : ''}`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
 
@@ -119,7 +169,8 @@ export class PurchaseOrderExportProcessor {
         }
       }
 
-      const mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const mimeType =
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       await this.exportHistoryService.completeAndUploadExport(
         prisma,
         jobId,
@@ -128,7 +179,9 @@ export class PurchaseOrderExportProcessor {
         mimeType,
       );
 
-      this.logger.log(`[PurchaseOrderExport ${jobId}] File uploaded and export completed`);
+      this.logger.log(
+        `[PurchaseOrderExport ${jobId}] File uploaded and export completed`,
+      );
 
       await this.notificationsService.create({
         userId,
@@ -147,7 +200,10 @@ export class PurchaseOrderExportProcessor {
 
       await job.progress(100);
     } catch (error: any) {
-      this.logger.error(`[PurchaseOrderExport ${jobId}] FAILED: ${error.message}`, error.stack);
+      this.logger.error(
+        `[PurchaseOrderExport ${jobId}] FAILED: ${error.message}`,
+        error.stack,
+      );
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
       await this.exportHistoryService.failExport(prisma, jobId);
@@ -212,30 +268,35 @@ export class PurchaseOrderExportProcessor {
     });
 
     const ws = workbook.addWorksheet(`PO_${po.poNumber || 'Detail'}`, {
-      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+      pageSetup: {
+        paperSize: 9,
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+      },
       views: [{ state: 'frozen', xSplit: 0, ySplit: 11 }],
     });
 
     // Define columns
     ws.columns = [
-      { key: 'lineNo',      width: 8 },
-      { key: 'sku',         width: 18 },
-      { key: 'barCode',     width: 18 },
+      { key: 'lineNo', width: 8 },
+      { key: 'sku', width: 18 },
+      { key: 'barCode', width: 18 },
       { key: 'description', width: 32 },
-      { key: 'brand',       width: 16 },
-      { key: 'division',    width: 14 },
-      { key: 'category',    width: 16 },
+      { key: 'brand', width: 16 },
+      { key: 'division', width: 14 },
+      { key: 'category', width: 16 },
       { key: 'subCategory', width: 16 },
-      { key: 'gender',      width: 12 },
-      { key: 'silhouette',  width: 14 },
-      { key: 'color',       width: 14 },
-      { key: 'size',        width: 10 },
-      { key: 'quantity',    width: 14 },
+      { key: 'gender', width: 12 },
+      { key: 'silhouette', width: 14 },
+      { key: 'color', width: 14 },
+      { key: 'size', width: 10 },
+      { key: 'quantity', width: 14 },
       { key: 'receivedQty', width: 14 },
-      { key: 'unitPrice',   width: 15 },
-      { key: 'taxPercent',  width: 10 },
+      { key: 'unitPrice', width: 15 },
+      { key: 'taxPercent', width: 10 },
       { key: 'discountPercent', width: 10 },
-      { key: 'lineTotal',   width: 16 },
+      { key: 'lineTotal', width: 16 },
     ];
 
     // ── Row 1: Company Header ────────────────────────────────────────────────
@@ -244,7 +305,11 @@ export class PurchaseOrderExportProcessor {
     r1.getCell(1).font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
     for (let c = 1; c <= 18; c++) {
       const cell = r1.getCell(c);
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${PRIMARY_BG}` } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: `FF${PRIMARY_BG}` },
+      };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     }
     r1.height = 32;
@@ -256,7 +321,11 @@ export class PurchaseOrderExportProcessor {
     r2.getCell(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
     for (let c = 1; c <= 18; c++) {
       const cell = r2.getCell(c);
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: `FF${SUBHEADER_BG}` },
+      };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     }
     r2.height = 24;
@@ -268,33 +337,69 @@ export class PurchaseOrderExportProcessor {
     r3.commit();
 
     // ── Row 4-7: Order & Vendor Meta Information ─────────────────────────────
-    const orderDateStr = po.orderDate ? new Date(po.orderDate).toLocaleDateString('en-GB') : '-';
-    const deliveryDateStr = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate).toLocaleDateString('en-GB') : '-';
+    const orderDateStr = po.orderDate
+      ? new Date(po.orderDate).toLocaleDateString('en-GB')
+      : '-';
+    const deliveryDateStr = po.expectedDeliveryDate
+      ? new Date(po.expectedDeliveryDate).toLocaleDateString('en-GB')
+      : '-';
 
     const metaRowsData = [
       [
-        'PO Number:', po.poNumber, '',
-        'Vendor Name:', po.vendor?.name || 'N/A', '',
-        'Order Type:', po.orderType || 'N/A', '',
-        'Status:', po.status,
+        'PO Number:',
+        po.poNumber,
+        '',
+        'Vendor Name:',
+        po.vendor?.name || 'N/A',
+        '',
+        'Order Type:',
+        po.orderType || 'N/A',
+        '',
+        'Status:',
+        po.status,
       ],
       [
-        'Order Date:', orderDateStr, '',
-        'Vendor Code:', po.vendor?.code || 'N/A', '',
-        'Goods Type:', po.goodsType || 'N/A', '',
-        'Ship To:', 'Logistic Area',
+        'Order Date:',
+        orderDateStr,
+        '',
+        'Vendor Code:',
+        po.vendor?.code || 'N/A',
+        '',
+        'Goods Type:',
+        po.goodsType || 'N/A',
+        '',
+        'Ship To:',
+        'Logistic Area',
       ],
       [
-        'Expected Delivery:', deliveryDateStr, '',
-        'Vendor Email:', po.vendor?.email || 'N/A', '',
-        'Vendor Contact:', po.vendor?.contactNo || 'N/A', '',
-        'Vendor City:', po.vendor?.city || 'N/A',
+        'Expected Delivery:',
+        deliveryDateStr,
+        '',
+        'Vendor Email:',
+        po.vendor?.email || 'N/A',
+        '',
+        'Vendor Contact:',
+        po.vendor?.contactNo || 'N/A',
+        '',
+        'Vendor City:',
+        po.vendor?.city || 'N/A',
       ],
       [
-        'Maker / Prepared:', po.createdById || 'Prepared', '',
-        'Checker / Checked:', po.checkedAt ? new Date(po.checkedAt).toLocaleDateString('en-GB') : 'Pending', '',
-        'Authorizer / Approved:', po.authorizedAt ? new Date(po.authorizedAt).toLocaleDateString('en-GB') : 'Pending', '',
-        'Export Date:', new Date().toLocaleDateString('en-GB'),
+        'Maker / Prepared:',
+        po.createdById || 'Prepared',
+        '',
+        'Checker / Checked:',
+        po.checkedAt
+          ? new Date(po.checkedAt).toLocaleDateString('en-GB')
+          : 'Pending',
+        '',
+        'Authorizer / Approved:',
+        po.authorizedAt
+          ? new Date(po.authorizedAt).toLocaleDateString('en-GB')
+          : 'Pending',
+        '',
+        'Export Date:',
+        new Date().toLocaleDateString('en-GB'),
       ],
     ];
 
@@ -305,14 +410,22 @@ export class PurchaseOrderExportProcessor {
           const cell = r.getCell(cIdx + 1);
           cell.value = val;
           const isLabel = cIdx % 3 === 0;
-          cell.font = { bold: isLabel, size: 9, color: { argb: isLabel ? 'FF334155' : 'FF0F172A' } };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isLabel ? `FF${HIGHLIGHT_BG}` : 'FFFFFFFF' } };
+          cell.font = {
+            bold: isLabel,
+            size: 9,
+            color: { argb: isLabel ? 'FF334155' : 'FF0F172A' },
+          };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: isLabel ? `FF${HIGHLIGHT_BG}` : 'FFFFFFFF' },
+          };
           cell.alignment = { vertical: 'middle' };
           cell.border = {
-            top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-            left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+            top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+            left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
             bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-            right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+            right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           };
         }
       });
@@ -328,22 +441,26 @@ export class PurchaseOrderExportProcessor {
     // ── Row 9: Group Header Band ─────────────────────────────────────────────
     const r9 = ws.getRow(9);
     const groups = [
-      { start: 1,  end: 12, label: 'ITEM INFORMATION',       color: '1E3A5F' },
-      { start: 13, end: 14, label: 'QUANTITY',               color: '1E4D2B' },
+      { start: 1, end: 12, label: 'ITEM INFORMATION', color: '1E3A5F' },
+      { start: 13, end: 14, label: 'QUANTITY', color: '1E4D2B' },
       { start: 15, end: 18, label: 'PRICING & LINE AMOUNTS', color: '7C3A00' },
     ];
     groups.forEach((g) => {
       for (let c = g.start; c <= g.end; c++) {
         const cell = r9.getCell(c);
         if (c === g.start) cell.value = g.label;
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${g.color}` } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${g.color}` },
+        };
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
         cell.border = {
-          top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         };
       }
     });
@@ -352,38 +469,42 @@ export class PurchaseOrderExportProcessor {
 
     // ── Row 10: Column Headers ────────────────────────────────────────────────
     const headers = [
-      { text: 'Line #',         align: 'center' },
-      { text: 'SKU',            align: 'left' },
-      { text: 'Barcode',        align: 'left' },
-      { text: 'Description',    align: 'left' },
-      { text: 'Brand',          align: 'left' },
-      { text: 'Division',       align: 'left' },
-      { text: 'Category',       align: 'left' },
-      { text: 'Sub Category',   align: 'left' },
-      { text: 'Gender',         align: 'center' },
-      { text: 'Silhouette',     align: 'left' },
-      { text: 'Color',          align: 'left' },
-      { text: 'Size',           align: 'center' },
-      { text: 'Ordered Qty',    align: 'right' },
-      { text: 'Received Qty',   align: 'right' },
-      { text: 'Unit Price (Rs)',align: 'right' },
-      { text: 'Tax (%)',        align: 'right' },
-      { text: 'Discount (%)',   align: 'right' },
-      { text: 'Line Total (Rs)',align: 'right' },
+      { text: 'Line #', align: 'center' },
+      { text: 'SKU', align: 'left' },
+      { text: 'Barcode', align: 'left' },
+      { text: 'Description', align: 'left' },
+      { text: 'Brand', align: 'left' },
+      { text: 'Division', align: 'left' },
+      { text: 'Category', align: 'left' },
+      { text: 'Sub Category', align: 'left' },
+      { text: 'Gender', align: 'center' },
+      { text: 'Silhouette', align: 'left' },
+      { text: 'Color', align: 'left' },
+      { text: 'Size', align: 'center' },
+      { text: 'Ordered Qty', align: 'right' },
+      { text: 'Received Qty', align: 'right' },
+      { text: 'Unit Price (Rs)', align: 'right' },
+      { text: 'Tax (%)', align: 'right' },
+      { text: 'Discount (%)', align: 'right' },
+      { text: 'Line Total (Rs)', align: 'right' },
     ];
 
     const r10 = ws.getRow(10);
     headers.forEach((h, idx) => {
       const cell = r10.getCell(idx + 1);
       cell.value = h.text;
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE2E8F0' },
+      };
       cell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 9 };
       cell.alignment = { horizontal: h.align as any, vertical: 'middle' };
       cell.border = {
-        top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-        left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         bottom: { style: 'medium', color: { argb: 'FF0F172A' } },
-        right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
       };
     });
     r10.height = 22;
@@ -438,12 +559,16 @@ export class PurchaseOrderExportProcessor {
         const cell = r.getCell(cIdx + 1);
         cell.value = val;
         cell.font = { size: 9 };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` },
+        };
         cell.border = {
-          top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-          left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+          top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+          left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
           bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-          right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+          right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
         };
 
         if (cIdx === 0 || cIdx === 8 || cIdx === 11) {
@@ -452,10 +577,15 @@ export class PurchaseOrderExportProcessor {
           cell.alignment = { horizontal: 'right', vertical: 'middle' };
           if (cIdx === 12 || cIdx === 13) {
             cell.numFmt = '#,##0.00';
-            cell.font = { size: 9, bold: cIdx === 12, color: { argb: cIdx === 12 ? 'FF1D4ED8' : 'FF15803D' } };
+            cell.font = {
+              size: 9,
+              bold: cIdx === 12,
+              color: { argb: cIdx === 12 ? 'FF1D4ED8' : 'FF15803D' },
+            };
           } else if (cIdx === 14 || cIdx === 17) {
             cell.numFmt = '#,##0.00';
-            if (cIdx === 17) cell.font = { size: 9, bold: true, color: { argb: 'FF0F172A' } };
+            if (cIdx === 17)
+              cell.font = { size: 9, bold: true, color: { argb: 'FF0F172A' } };
           } else {
             cell.numFmt = '0.00';
           }
@@ -478,28 +608,44 @@ export class PurchaseOrderExportProcessor {
 
     for (let c = 1; c <= 18; c++) {
       const cell = rTot.getCell(c);
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF1F5F9' },
+      };
       cell.border = {
-        top:    { style: 'medium', color: { argb: 'FF0F172A' } },
+        top: { style: 'medium', color: { argb: 'FF0F172A' } },
         bottom: { style: 'medium', color: { argb: 'FF0F172A' } },
-        left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-        right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
       };
     }
 
     rTot.getCell(13).value = totalQty;
     rTot.getCell(13).numFmt = '#,##0.00';
-    rTot.getCell(13).font = { bold: true, size: 9, color: { argb: 'FF1D4ED8' } };
+    rTot.getCell(13).font = {
+      bold: true,
+      size: 9,
+      color: { argb: 'FF1D4ED8' },
+    };
     rTot.getCell(13).alignment = { horizontal: 'right', vertical: 'middle' };
 
     rTot.getCell(14).value = totalReceivedQty;
     rTot.getCell(14).numFmt = '#,##0.00';
-    rTot.getCell(14).font = { bold: true, size: 9, color: { argb: 'FF15803D' } };
+    rTot.getCell(14).font = {
+      bold: true,
+      size: 9,
+      color: { argb: 'FF15803D' },
+    };
     rTot.getCell(14).alignment = { horizontal: 'right', vertical: 'middle' };
 
     rTot.getCell(18).value = calculatedTotal;
     rTot.getCell(18).numFmt = '#,##0.00';
-    rTot.getCell(18).font = { bold: true, size: 10, color: { argb: 'FF0F172A' } };
+    rTot.getCell(18).font = {
+      bold: true,
+      size: 10,
+      color: { argb: 'FF0F172A' },
+    };
     rTot.getCell(18).alignment = { horizontal: 'right', vertical: 'middle' };
 
     rTot.height = 22;
@@ -527,7 +673,12 @@ export class PurchaseOrderExportProcessor {
         r.getCell(1).value = 'Amount in Words:';
         r.getCell(1).font = { bold: true, size: 9 };
         r.getCell(2).value = numberToWords(finalTotalVal);
-        r.getCell(2).font = { italic: true, size: 9, bold: true, color: { argb: 'FF1E3A5F' } };
+        r.getCell(2).font = {
+          italic: true,
+          size: 9,
+          bold: true,
+          color: { argb: 'FF1E3A5F' },
+        };
       }
 
       r.getCell(16).value = item[0];
@@ -535,15 +686,29 @@ export class PurchaseOrderExportProcessor {
       r.getCell(16).alignment = { horizontal: 'right', vertical: 'middle' };
 
       r.getCell(18).value = item[1];
-      r.getCell(18).font = { bold: true, size: isGrand ? 11 : 9, color: { argb: isGrand ? 'FF1E3A5F' : 'FF0F172A' } };
+      r.getCell(18).font = {
+        bold: true,
+        size: isGrand ? 11 : 9,
+        color: { argb: isGrand ? 'FF1E3A5F' : 'FF0F172A' },
+      };
       r.getCell(18).numFmt = '#,##0.00';
       r.getCell(18).alignment = { horizontal: 'right', vertical: 'middle' };
-      r.getCell(18).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isGrand ? 'FFE0F2FE' : 'FFF8FAFC' } };
+      r.getCell(18).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: isGrand ? 'FFE0F2FE' : 'FFF8FAFC' },
+      };
       r.getCell(18).border = {
-        top:    { style: isGrand ? 'medium' : 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-        bottom: { style: isGrand ? 'double' : 'thin', color: { argb: 'FF0F172A' } },
-        left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-        right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        top: {
+          style: isGrand ? 'medium' : 'thin',
+          color: { argb: `FF${BORDER_COLOR}` },
+        },
+        bottom: {
+          style: isGrand ? 'double' : 'thin',
+          color: { argb: 'FF0F172A' },
+        },
+        left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
       };
 
       r.height = 20;
@@ -559,7 +724,9 @@ export class PurchaseOrderExportProcessor {
     rNotes.commit();
 
     const rNotesVal = ws.getRow(notesRowIdx + 1);
-    rNotesVal.getCell(1).value = po.notes || '1. Please quote PO number on all correspondence.\n2. Payment terms: As agreed.';
+    rNotesVal.getCell(1).value =
+      po.notes ||
+      '1. Please quote PO number on all correspondence.\n2. Payment terms: As agreed.';
     rNotesVal.getCell(1).font = { size: 9, color: { argb: 'FF475569' } };
     rNotesVal.height = 24;
     rNotesVal.commit();
@@ -591,13 +758,26 @@ export class PurchaseOrderExportProcessor {
     job: Job<PurchaseOrderExportJobData>,
     filePath: string,
   ): Promise<void> {
-    const { status, vendorId, brandId, orderType, goodsType, startDate, endDate, search } = job.data;
+    const {
+      status,
+      vendorId,
+      brandId,
+      orderType,
+      goodsType,
+      startDate,
+      endDate,
+      search,
+    } = job.data;
 
     const andClauses: any[] = [];
-    if (status && status !== 'ALL' && status !== 'all') andClauses.push({ status });
-    if (vendorId && vendorId !== 'ALL' && vendorId !== 'all') andClauses.push({ vendorId });
-    if (orderType && orderType !== 'ALL' && orderType !== 'all') andClauses.push({ orderType });
-    if (goodsType && goodsType !== 'ALL' && goodsType !== 'all') andClauses.push({ goodsType });
+    if (status && status !== 'ALL' && status !== 'all')
+      andClauses.push({ status });
+    if (vendorId && vendorId !== 'ALL' && vendorId !== 'all')
+      andClauses.push({ vendorId });
+    if (orderType && orderType !== 'ALL' && orderType !== 'all')
+      andClauses.push({ orderType });
+    if (goodsType && goodsType !== 'ALL' && goodsType !== 'all')
+      andClauses.push({ goodsType });
 
     if (brandId && brandId !== 'ALL' && brandId !== 'all') {
       andClauses.push({
@@ -612,7 +792,8 @@ export class PurchaseOrderExportProcessor {
     if (startDate || endDate) {
       const dateFilter: any = {};
       if (startDate) dateFilter.gte = new Date(startDate);
-      if (endDate)   dateFilter.lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
+      if (endDate)
+        dateFilter.lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
       andClauses.push({ orderDate: dateFilter });
     }
 
@@ -635,26 +816,76 @@ export class PurchaseOrderExportProcessor {
     });
 
     const ws = workbook.addWorksheet('Purchase Orders', {
-      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+      pageSetup: {
+        paperSize: 9,
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+      },
       views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }],
     });
 
     const columns = [
-      { header: 'PO Number',         key: 'poNumber',         width: 20 },
-      { header: 'Order Date',         key: 'orderDate',        width: 14, numFmt: 'dd-mmm-yyyy' },
-      { header: 'Expected Date',      key: 'expectedDate',     width: 14, numFmt: 'dd-mmm-yyyy' },
-      { header: 'Status',             key: 'status',           width: 16 },
-      { header: 'Order Type',         key: 'orderType',        width: 14 },
-      { header: 'Goods Type',         key: 'goodsType',        width: 14 },
-      { header: 'Vendor Name',        key: 'vendorName',       width: 28 },
-      { header: 'Vendor Code',        key: 'vendorCode',       width: 16 },
-      { header: 'Total SKU Types',    key: 'itemCount',        width: 14, numFmt: '#,##0' },
-      { header: 'Total Ordered Qty',  key: 'totalOrderedQty',  width: 16, numFmt: '#,##0.00' },
-      { header: 'Total Received Qty', key: 'totalReceivedQty', width: 16, numFmt: '#,##0.00' },
-      { header: 'Subtotal (Rs)',      key: 'subtotal',         width: 16, numFmt: '#,##0.00' },
-      { header: 'Tax Amount (Rs)',    key: 'taxAmount',        width: 14, numFmt: '#,##0.00' },
-      { header: 'Discount (Rs)',      key: 'discountAmount',   width: 14, numFmt: '#,##0.00' },
-      { header: 'Total Amount (Rs)',  key: 'totalAmount',      width: 18, numFmt: '#,##0.00' },
+      { header: 'PO Number', key: 'poNumber', width: 20 },
+      {
+        header: 'Order Date',
+        key: 'orderDate',
+        width: 14,
+        numFmt: 'dd-mmm-yyyy',
+      },
+      {
+        header: 'Expected Date',
+        key: 'expectedDate',
+        width: 14,
+        numFmt: 'dd-mmm-yyyy',
+      },
+      { header: 'Status', key: 'status', width: 16 },
+      { header: 'Order Type', key: 'orderType', width: 14 },
+      { header: 'Goods Type', key: 'goodsType', width: 14 },
+      { header: 'Vendor Name', key: 'vendorName', width: 28 },
+      { header: 'Vendor Code', key: 'vendorCode', width: 16 },
+      {
+        header: 'Total SKU Types',
+        key: 'itemCount',
+        width: 14,
+        numFmt: '#,##0',
+      },
+      {
+        header: 'Total Ordered Qty',
+        key: 'totalOrderedQty',
+        width: 16,
+        numFmt: '#,##0.00',
+      },
+      {
+        header: 'Total Received Qty',
+        key: 'totalReceivedQty',
+        width: 16,
+        numFmt: '#,##0.00',
+      },
+      {
+        header: 'Subtotal (Rs)',
+        key: 'subtotal',
+        width: 16,
+        numFmt: '#,##0.00',
+      },
+      {
+        header: 'Tax Amount (Rs)',
+        key: 'taxAmount',
+        width: 14,
+        numFmt: '#,##0.00',
+      },
+      {
+        header: 'Discount (Rs)',
+        key: 'discountAmount',
+        width: 14,
+        numFmt: '#,##0.00',
+      },
+      {
+        header: 'Total Amount (Rs)',
+        key: 'totalAmount',
+        width: 18,
+        numFmt: '#,##0.00',
+      },
     ];
 
     ws.columns = columns.map((c) => ({ key: c.key, width: c.width }));
@@ -665,7 +896,11 @@ export class PurchaseOrderExportProcessor {
     r1.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
     for (let c = 1; c <= columns.length; c++) {
       const cell = r1.getCell(c);
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${PRIMARY_BG}` } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: `FF${PRIMARY_BG}` },
+      };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     }
     r1.height = 24;
@@ -677,13 +912,17 @@ export class PurchaseOrderExportProcessor {
       const cell = r2.getCell(idx + 1);
       cell.value = col.header;
       cell.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${SUBHEADER_BG}` } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: `FF${SUBHEADER_BG}` },
+      };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border = {
-        top:    { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
-        left:   { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        top: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        left: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
         bottom: { style: 'medium', color: { argb: `FF${BORDER_COLOR}` } },
-        right:  { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
+        right: { style: 'thin', color: { argb: `FF${BORDER_COLOR}` } },
       };
     });
     r2.height = 20;
@@ -709,11 +948,17 @@ export class PurchaseOrderExportProcessor {
       if (!chunk.length) break;
 
       for (const po of chunk) {
-        const isAlt = (rowIdx % 2 === 1);
+        const isAlt = rowIdx % 2 === 1;
         const r = ws.getRow(rowIdx);
 
-        const orderedQty = po.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-        const receivedQty = po.items.reduce((sum, item) => sum + Number(item.receivedQty || 0), 0);
+        const orderedQty = po.items.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        );
+        const receivedQty = po.items.reduce(
+          (sum, item) => sum + Number(item.receivedQty || 0),
+          0,
+        );
 
         const values = [
           po.poNumber,
@@ -737,15 +982,25 @@ export class PurchaseOrderExportProcessor {
           const cell = r.getCell(cIdx + 1);
           cell.value = val;
           cell.font = { size: 9 };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: `FF${isAlt ? ALT_ROW_BG : 'FFFFFF'}` },
+          };
           cell.border = {
-            top:    { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-            left:   { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+            top: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+            left: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
             bottom: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
-            right:  { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
+            right: { style: 'hair', color: { argb: `FF${BORDER_COLOR}` } },
           };
 
-          if (cIdx === 0 || cIdx === 3 || cIdx === 4 || cIdx === 5 || cIdx === 7) {
+          if (
+            cIdx === 0 ||
+            cIdx === 3 ||
+            cIdx === 4 ||
+            cIdx === 5 ||
+            cIdx === 7
+          ) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
           } else if (cIdx === 1 || cIdx === 2) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };

@@ -14,7 +14,14 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ExportHistoryService } from './export-history.service';
-import { CreateFolderDto, RenameFolderDto, UpdateExportDto, BulkDeleteDto, BulkMoveDto, BulkRenameDto } from './dto/export-history.dto';
+import {
+  CreateFolderDto,
+  RenameFolderDto,
+  UpdateExportDto,
+  BulkDeleteDto,
+  BulkMoveDto,
+  BulkRenameDto,
+} from './dto/export-history.dto';
 
 @ApiTags('Export History')
 @Controller('api/export-history')
@@ -71,8 +78,9 @@ export class ExportHistoryController {
     @Query('limit') limit?: string,
   ) {
     const userId = req.user?.userId || req.user?.id;
-    
-    const favoriteBool = isFavorite === 'true' ? true : isFavorite === 'false' ? false : undefined;
+
+    const favoriteBool =
+      isFavorite === 'true' ? true : isFavorite === 'false' ? false : undefined;
     const pageNum = page ? parseInt(page, 10) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : undefined;
 
@@ -118,10 +126,15 @@ export class ExportHistoryController {
     const userId = req.user?.userId || req.user?.id;
     const isInline = inline === 'true';
     try {
-      await this.service.downloadExport(userId, exportId, res, { inline: isInline });
+      await this.service.downloadExport(userId, exportId, res, {
+        inline: isInline,
+      });
     } catch (err: any) {
       const statusCode = err?.status ?? 404;
-      res.status(statusCode).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(statusCode).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 

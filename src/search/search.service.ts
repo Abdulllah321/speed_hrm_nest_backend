@@ -16,7 +16,6 @@ export class SearchService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private cacheManager: cacheManager_1.Cache,
-   
   ) {}
 
   async globalSearch(query: string): Promise<SearchResult[]> {

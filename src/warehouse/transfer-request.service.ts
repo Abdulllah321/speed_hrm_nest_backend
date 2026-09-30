@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransferRequest, Prisma } from '@prisma/client';
 import { StockMovementService } from './stock-movement.service';
@@ -11,22 +15,95 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 
 @Injectable()
 export class TransferRequestService {
-    constructor(
+  constructor(
     private prisma: PrismaService,
-        private stockMovementService: StockMovementService,
-        private stockLedgerService: StockLedgerService,
+    private stockMovementService: StockMovementService,
+    private stockLedgerService: StockLedgerService,
     private activityLogs: ActivityLogsService,
     private notifications: NotificationsService,
     private prismaMaster: PrismaMasterService,
-  ) { }
+  ) {}
 
-    private async getCurrentItemRate(tx: Prisma.TransactionClient, itemId: string): Promise<number> {
-        const item = await tx.item.findUnique({
-            where: { id: itemId },
-            select: { unitCost: true },
+  private async getCurrentItemRate(
+    tx: Prisma.TransactionClient,
+    itemId: string,
+  ): Promise<number> {
+    const item = await tx.item.findUnique({
+      where: { id: itemId },
+      select: { unitCost: true },
+    });
+    return Number(item?.unitCost || 0);
+  }
+
+  async createRequest(
+    data: {
+      fromWarehouseId?: string; // Optional for outlet-to-warehouse
+      fromLocationId?: string; // Source outlet for returns and outlet-to-outlet
+      toLocationId?: string; // Destination outlet (null for warehouse)
+      transferType?:
+        | 'WAREHOUSE_TO_OUTLET'
+        | 'OUTLET_TO_WAREHOUSE'
+        | 'OUTLET_TO_OUTLET';
+      items: { itemId: string; quantity: number }[];
+      createdById?: string;
+      notes?: string;
+      isDirectTransfer?: boolean;
+      dispatchType?: string;
+      courierName?: string;
+      trackingNumber?: string;
+      dispatchDate?: Date | string;
+      estimatedDeliveryDate?: Date | string;
+      riderName?: string;
+      riderPhone?: string;
+      vehicleNumber?: string;
+      receiverPerson?: string;
+      shippingCost?: number;
+      dispatchNotes?: string;
+    },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const transferType = data.transferType || 'WAREHOUSE_TO_OUTLET';
+      const isDirect =
+        data.isDirectTransfer && transferType === 'OUTLET_TO_OUTLET';
+
+      // Validation based on transfer type
+      if (transferType === 'WAREHOUSE_TO_OUTLET') {
+        if (!data.fromWarehouseId || !data.toLocationId) {
+          throw new BadRequestException(
+            'fromWarehouseId and toLocationId required for warehouse-to-outlet transfers',
+          );
+        }
+      } else if (transferType === 'OUTLET_TO_WAREHOUSE') {
+        if (!data.fromLocationId || !data.fromWarehouseId) {
+          throw new BadRequestException(
+            'fromLocationId and fromWarehouseId required for outlet-to-warehouse transfers',
+          );
+        }
+      } else if (transferType === 'OUTLET_TO_OUTLET') {
+        if (!data.fromLocationId || !data.toLocationId) {
+          throw new BadRequestException(
+            'fromLocationId and toLocationId required for outlet-to-outlet transfers',
+          );
+        }
+        if (data.fromLocationId === data.toLocationId) {
+          throw new BadRequestException(
+            'Source and destination outlets cannot be the same',
+          );
+        }
+      }
+
+      // Validate that locations exist
+      if (data.toLocationId) {
+        const toLocation = await this.prisma.location.findUnique({
+          where: { id: data.toLocationId },
         });
-        return Number(item?.unitCost || 0);
-    }
+        if (!toLocation) {
+          throw new BadRequestException(
+            `Destination location ${data.toLocationId} not found`,
+          );
+        }
+      }
 
     async createRequest(data: {
         fromWarehouseId?: string; // Optional for outlet-to-warehouse
@@ -78,28 +155,52 @@ export class TransferRequestService {
                 }
             }
 
-            // Validate that locations exist
-            if (data.toLocationId) {
-                const toLocation = await this.prisma.location.findUnique({
-                    where: { id: data.toLocationId }
-                });
-                if (!toLocation) {
-                    throw new BadRequestException(`Destination location ${data.toLocationId} not found`);
-                }
-            }
+        // Validate stock availability based on transfer type
+        for (const item of data.items) {
+          let availableQty = 0;
+          if (transferType === 'WAREHOUSE_TO_OUTLET') {
+            const stock = await tx.inventoryItem.findFirst({
+              where: {
+                warehouseId: data.fromWarehouseId,
+                locationId: null, // Ensure we check warehouse main stock
+                itemId: item.itemId,
+                status: 'AVAILABLE',
+              },
+            });
+            const physicalQty = stock ? Number(stock.quantity) : 0;
 
-            if (data.fromLocationId) {
-                const fromLocation = await this.prisma.location.findUnique({
-                    where: { id: data.fromLocationId }
-                });
-                if (!fromLocation) {
-                    throw new BadRequestException(`Source location ${data.fromLocationId} not found`);
-                }
-            }
+            // Deduct active reservations
+            const reservations = await tx.stockReserve.aggregate({
+              where: {
+                itemId: item.itemId,
+                warehouseId: data.fromWarehouseId,
+                OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+              },
+              _sum: {
+                quantity: true,
+              },
+            });
+            const reservedQty = reservations._sum.quantity
+              ? Number(reservations._sum.quantity)
+              : 0;
+            availableQty = Math.max(0, physicalQty - reservedQty);
+          } else {
+            const stock = await tx.inventoryItem.findFirst({
+              where: {
+                locationId: data.fromLocationId,
+                itemId: item.itemId,
+                status: 'AVAILABLE',
+              },
+            });
+            availableQty = stock ? Number(stock.quantity) : 0;
+          }
 
-            const created = await this.prisma.$transaction(async (tx) => {
-                const { nextTransferNumber } = await this.getNextTransferNumber(tx);
-                const requestNo = nextTransferNumber;
+          if (availableQty < item.quantity) {
+            throw new BadRequestException(
+              `Insufficient stock for item ID: ${item.itemId}. Available (unreserved): ${availableQty}, Requested: ${item.quantity}`,
+            );
+          }
+        }
 
                 // Validate stock availability based on transfer type
                 for (const item of data.items) {
@@ -262,571 +363,1024 @@ export class TransferRequestService {
                 return createdRequest;
             });
 
-            if (created.toLocationId && data.items && data.items.length > 0) {
-                const totalPcs = data.items.reduce((s, i) => s + (i.quantity > 0 ? Number(i.quantity) : 0), 0);
-                runInBackground(
-                    'Send POS Location Notification on Transfer Request',
-                    this.notifications.sendPosLocationNotification({
-                        locationId: created.toLocationId,
-                        title: `Incoming Stock Transfer: ${created.requestNo}`,
-                        message: `Stock Transfer ${created.requestNo} (${data.items.length} items, ${totalPcs} pcs) has been dispatched for your outlet.`,
-                        category: 'pos_stock_transfer',
-                        priority: 'high',
-                        actionType: 'NAVIGATE',
-                        actionPayload: { url: '/pos/inventory/receiving' },
-                        entityType: 'TransferRequest',
-                        entityId: created.id,
-                    }),
-                );
+            if (
+              !sourceStock ||
+              Number(sourceStock.quantity) < Number(item.quantity)
+            ) {
+              throw new BadRequestException(
+                `Insufficient stock for item ${item.itemId} at source outlet. Current: ${sourceStock?.quantity || 0}, Requested: ${item.quantity}`,
+              );
             }
 
-            runInBackground(
-                'Create Transfer Request',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'create',
-                    module: 'transfer-request',
-                    entity: 'TransferRequest',
-                    entityId: created.id,
-                    description: `Created transfer request ${created.requestNo}`,
-                    newValues: JSON.stringify(data),
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'success',
-                }),
-            );
-
-            return created;
-        } catch (error: any) {
-            runInBackground(
-                'Create Transfer Request (Failure)',
-                this.activityLogs.log({
-                    userId: ctx?.userId,
-                    action: 'create',
-                    module: 'transfer-request',
-                    entity: 'TransferRequest',
-                    description: `Failed to create transfer request`,
-                    errorMessage: error?.message,
-                    newValues: JSON.stringify(data),
-                    ipAddress: ctx?.ipAddress,
-                    userAgent: ctx?.userAgent,
-                    status: 'failure',
-                }),
-            );
-            throw error;
-        }
-    }
-
-    async getRequests(
-        warehouseId?: string,
-        status?: string,
-        id?: string,
-        transferType?: string,
-        search?: string,
-        dateFrom?: string,
-        dateTo?: string,
-        dispatchType?: string,
-        page?: number,
-        limit?: number,
-    ) {
-        const andClauses: any[] = [];
-        
-        if (id) {
-            andClauses.push({ id });
-        }
-        if (warehouseId && warehouseId !== 'all') {
-            andClauses.push({ fromWarehouseId: warehouseId });
-        }
-        if (status && status !== 'all') {
-            andClauses.push({ status });
-        }
-        if (transferType && transferType !== 'all') {
-            andClauses.push({ transferType });
-        }
-        if (dispatchType && dispatchType !== 'all') {
-            andClauses.push({ dispatchType });
-        }
-        if (search) {
-            andClauses.push({
-                OR: [
-                    { requestNo: { contains: search.trim(), mode: 'insensitive' } },
-                    { trackingNumber: { contains: search.trim(), mode: 'insensitive' } },
-                    { courierName: { contains: search.trim(), mode: 'insensitive' } },
-                    { riderName: { contains: search.trim(), mode: 'insensitive' } },
-                ]
+            // Decrease source outlet stock
+            await tx.inventoryItem.update({
+              where: { id: sourceStock.id },
+              data: { quantity: { decrement: Number(item.quantity) } },
             });
+
+            // Use actual warehouseId from the inventoryItem record
+            const actualWarehouseId = sourceStock.warehouseId;
+            const transferRate = await this.getCurrentItemRate(tx, item.itemId);
+
+            // Create outbound ledger entry
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: actualWarehouseId,
+                locationId: data.fromLocationId!,
+                qty: -Number(item.quantity),
+                movementType: 'OUTBOUND' as any,
+                referenceType: 'OUTLET_TRANSFER_OUT',
+                referenceId: createdRequest.id,
+                rate: transferRate,
+              },
+              tx,
+            );
+          }
+        } else if (transferType === 'WAREHOUSE_TO_OUTLET') {
+          // Immediately decrement warehouse inventory upon dispatch/creation
+          for (const item of createdRequest.items) {
+            const sourceStock = await tx.inventoryItem.findFirst({
+              where: {
+                warehouseId: data.fromWarehouseId!,
+                locationId: null,
+                itemId: item.itemId,
+                status: 'AVAILABLE',
+              },
+            });
+
+            if (
+              !sourceStock ||
+              Number(sourceStock.quantity) < Number(item.quantity)
+            ) {
+              throw new BadRequestException(
+                `Insufficient stock for item ${item.itemId} in warehouse. Current: ${sourceStock?.quantity || 0}, Requested: ${item.quantity}`,
+              );
+            }
+
+            // Decrease warehouse stock immediately
+            await tx.inventoryItem.update({
+              where: { id: sourceStock.id },
+              data: { quantity: { decrement: Number(item.quantity) } },
+            });
+
+            const transferRate = await this.getCurrentItemRate(tx, item.itemId);
+
+            // Create outbound ledger entry for warehouse
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: data.fromWarehouseId!,
+                qty: -Number(item.quantity),
+                movementType: 'OUTBOUND' as any,
+                referenceType: 'TRANSFER_REQUEST',
+                referenceId: createdRequest.id,
+                rate: transferRate,
+              },
+              tx,
+            );
+          }
         }
-        if (dateFrom || dateTo) {
-            const dateFilter: any = {};
-            if (dateFrom) dateFilter.gte = new Date(dateFrom);
-            if (dateTo)   dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
-            andClauses.push({ createdAt: dateFilter });
-        }
-        
-        const where = andClauses.length ? { AND: andClauses } : {};
 
-        const pageNum = page ? Math.max(1, Number(page)) : 1;
-        const limitNum = limit !== undefined ? Math.max(0, Number(limit)) : 10;
+        return createdRequest;
+      });
 
-        const findOptions: Prisma.TransferRequestFindManyArgs = {
-            where,
-            include: {
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true,
-                                category: true,
-                                gender: true,
-                                segment: true,
-                            }
-                        }
-                    }
-                },
-                fromWarehouse: { select: { name: true, code: true } },
-                toWarehouse: { select: { name: true, code: true } },
-                fromLocation: { select: { name: true, code: true } },
-                toLocation: { select: { name: true, code: true } },
-                stockRequisition: { select: { id: true, requisitionNo: true } },
-            },
-            orderBy: { createdAt: 'desc' },
-        };
+      if (created.toLocationId && data.items && data.items.length > 0) {
+        const totalPcs = data.items.reduce(
+          (s, i) => s + (i.quantity > 0 ? Number(i.quantity) : 0),
+          0,
+        );
+        runInBackground(
+          'Send POS Location Notification on Transfer Request',
+          this.notifications.sendPosLocationNotification({
+            locationId: created.toLocationId,
+            title: `Incoming Stock Transfer: ${created.requestNo}`,
+            message: `Stock Transfer ${created.requestNo} (${data.items.length} items, ${totalPcs} pcs) has been dispatched for your outlet.`,
+            category: 'pos_stock_transfer',
+            priority: 'high',
+            actionType: 'NAVIGATE',
+            actionPayload: { url: '/pos/inventory/receiving' },
+            entityType: 'TransferRequest',
+            entityId: created.id,
+          }),
+        );
+      }
 
-        if (limitNum > 0) {
-            findOptions.skip = (pageNum - 1) * limitNum;
-            findOptions.take = limitNum;
-        }
+      runInBackground(
+        'Create Transfer Request',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'transfer-request',
+          entity: 'TransferRequest',
+          entityId: created.id,
+          description: `Created transfer request ${created.requestNo}`,
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
 
-        const [total, requests] = await Promise.all([
-            this.prisma.transferRequest.count({ where }),
-            this.prisma.transferRequest.findMany(findOptions),
-        ]);
+      return created;
+    } catch (error: any) {
+      runInBackground(
+        'Create Transfer Request (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'create',
+          module: 'transfer-request',
+          entity: 'TransferRequest',
+          description: `Failed to create transfer request`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify(data),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
 
-        const enriched = await Promise.all(requests.map(req => this.enrichRequest(req)));
+  async getRequests(
+    warehouseId?: string,
+    status?: string,
+    id?: string,
+    transferType?: string,
+    search?: string,
+    dateFrom?: string,
+    dateTo?: string,
+    dispatchType?: string,
+    page?: number,
+    limit?: number,
+  ) {
+    const andClauses: any[] = [];
 
-        return {
-            data: enriched,
-            meta: {
-                total,
-                page: pageNum,
-                limit: limitNum > 0 ? limitNum : total,
-                totalPages: limitNum > 0 ? Math.ceil(total / limitNum) : 1,
-            },
-        };
+    if (id) {
+      andClauses.push({ id });
+    }
+    if (warehouseId && warehouseId !== 'all') {
+      andClauses.push({ fromWarehouseId: warehouseId });
+    }
+    if (status && status !== 'all') {
+      andClauses.push({ status });
+    }
+    if (transferType && transferType !== 'all') {
+      andClauses.push({ transferType });
+    }
+    if (dispatchType && dispatchType !== 'all') {
+      andClauses.push({ dispatchType });
+    }
+    if (search) {
+      andClauses.push({
+        OR: [
+          { requestNo: { contains: search.trim(), mode: 'insensitive' } },
+          { trackingNumber: { contains: search.trim(), mode: 'insensitive' } },
+          { courierName: { contains: search.trim(), mode: 'insensitive' } },
+          { riderName: { contains: search.trim(), mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (dateFrom || dateTo) {
+      const dateFilter: any = {};
+      if (dateFrom) dateFilter.gte = new Date(dateFrom);
+      if (dateTo)
+        dateFilter.lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+      andClauses.push({ createdAt: dateFilter });
     }
 
-    async updateDispatchDetails(
-        id: string,
-        data: {
-            dispatchType?: string;
-            courierName?: string;
-            trackingNumber?: string;
-            dispatchDate?: Date | string;
-            estimatedDeliveryDate?: Date | string;
-            riderName?: string;
-            riderPhone?: string;
-            vehicleNumber?: string;
-            receiverPerson?: string;
-            shippingCost?: number;
-            dispatchNotes?: string;
+    const where = andClauses.length ? { AND: andClauses } : {};
+
+    const pageNum = page ? Math.max(1, Number(page)) : 1;
+    const limitNum = limit !== undefined ? Math.max(0, Number(limit)) : 10;
+
+    const findOptions: Prisma.TransferRequestFindManyArgs = {
+      where,
+      include: {
+        items: {
+          include: {
+            item: {
+              include: {
+                color: true,
+                size: true,
+                category: true,
+                gender: true,
+                segment: true,
+              },
+            },
+          },
         },
-        ctx?: { userId?: string; ipAddress?: string; userAgent?: string }
-    ) {
-        const existing = await this.prisma.transferRequest.findUnique({
-            where: { id },
+        fromWarehouse: { select: { name: true, code: true } },
+        toWarehouse: { select: { name: true, code: true } },
+        fromLocation: { select: { name: true, code: true } },
+        toLocation: { select: { name: true, code: true } },
+        stockRequisition: { select: { id: true, requisitionNo: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    };
+
+    if (limitNum > 0) {
+      findOptions.skip = (pageNum - 1) * limitNum;
+      findOptions.take = limitNum;
+    }
+
+    const [total, requests] = await Promise.all([
+      this.prisma.transferRequest.count({ where }),
+      this.prisma.transferRequest.findMany(findOptions),
+    ]);
+
+    const enriched = await Promise.all(
+      requests.map((req) => this.enrichRequest(req)),
+    );
+
+    return {
+      data: enriched,
+      meta: {
+        total,
+        page: pageNum,
+        limit: limitNum > 0 ? limitNum : total,
+        totalPages: limitNum > 0 ? Math.ceil(total / limitNum) : 1,
+      },
+    };
+  }
+
+  async updateDispatchDetails(
+    id: string,
+    data: {
+      dispatchType?: string;
+      courierName?: string;
+      trackingNumber?: string;
+      dispatchDate?: Date | string;
+      estimatedDeliveryDate?: Date | string;
+      riderName?: string;
+      riderPhone?: string;
+      vehicleNumber?: string;
+      receiverPerson?: string;
+      shippingCost?: number;
+      dispatchNotes?: string;
+    },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    const existing = await this.prisma.transferRequest.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Transfer request with ID ${id} not found`);
+    }
+
+    const updated = await this.prisma.transferRequest.update({
+      where: { id },
+      data: {
+        dispatchType:
+          data.dispatchType !== undefined
+            ? data.dispatchType
+            : existing.dispatchType,
+        courierName:
+          data.courierName !== undefined
+            ? data.courierName
+            : existing.courierName,
+        trackingNumber:
+          data.trackingNumber !== undefined
+            ? data.trackingNumber
+            : existing.trackingNumber,
+        dispatchDate: data.dispatchDate
+          ? new Date(data.dispatchDate)
+          : data.dispatchDate === null
+            ? null
+            : existing.dispatchDate,
+        estimatedDeliveryDate: data.estimatedDeliveryDate
+          ? new Date(data.estimatedDeliveryDate)
+          : data.estimatedDeliveryDate === null
+            ? null
+            : existing.estimatedDeliveryDate,
+        riderName:
+          data.riderName !== undefined ? data.riderName : existing.riderName,
+        riderPhone:
+          data.riderPhone !== undefined ? data.riderPhone : existing.riderPhone,
+        vehicleNumber:
+          data.vehicleNumber !== undefined
+            ? data.vehicleNumber
+            : existing.vehicleNumber,
+        receiverPerson:
+          data.receiverPerson !== undefined
+            ? data.receiverPerson
+            : existing.receiverPerson,
+        shippingCost:
+          data.shippingCost !== undefined && data.shippingCost !== null
+            ? new Prisma.Decimal(data.shippingCost)
+            : data.shippingCost === null
+              ? null
+              : existing.shippingCost,
+        dispatchNotes:
+          data.dispatchNotes !== undefined
+            ? data.dispatchNotes
+            : existing.dispatchNotes,
+      },
+      include: {
+        items: {
+          include: {
+            item: {
+              include: {
+                color: true,
+                size: true,
+              },
+            },
+          },
+        },
+        fromWarehouse: { select: { name: true, code: true } },
+        toWarehouse: { select: { name: true, code: true } },
+        fromLocation: { select: { name: true, code: true } },
+        toLocation: { select: { name: true, code: true } },
+      },
+    });
+
+    runInBackground(
+      'Update Transfer Request Dispatch',
+      this.activityLogs.log({
+        userId: ctx?.userId,
+        action: 'update',
+        module: 'transfer-request',
+        entity: 'TransferRequest',
+        entityId: id,
+        description: `Updated dispatch details for transfer request ${existing.requestNo}`,
+        newValues: JSON.stringify(data),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        status: 'success',
+      }),
+    );
+
+    return updated;
+  }
+
+  async getIncomingRequests(locationId: string) {
+    const requests = await this.prisma.transferRequest.findMany({
+      where: {
+        toLocationId: locationId,
+        transferType: 'WAREHOUSE_TO_OUTLET',
+        status: { in: ['PENDING', 'APPROVED'] },
+      },
+      include: {
+        fromWarehouse: true,
+        toWarehouse: true,
+        fromLocation: true,
+        toLocation: true,
+        stockRequisition: {
+          include: {
+            fromWarehouse: true,
+          },
+        },
+        items: {
+          include: {
+            item: {
+              include: {
+                color: true,
+                size: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return Promise.all(requests.map((req) => this.enrichRequest(req)));
+  }
+
+  async getReturnRequests(locationId: string) {
+    const requests = await this.prisma.transferRequest.findMany({
+      where: {
+        fromLocationId: locationId,
+        transferType: 'OUTLET_TO_WAREHOUSE',
+        status: { in: ['PENDING', 'APPROVED', 'PENDING_CHECKER'] },
+      },
+      include: {
+        items: {
+          include: {
+            item: {
+              include: {
+                color: true,
+                size: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return Promise.all(requests.map((req) => this.enrichRequest(req)));
+  }
+
+  async getOutboundRequests(locationId: string, status?: string) {
+    // Get requests where this location is the source
+    const whereClause: any = {
+      fromLocationId: locationId,
+    };
+
+    if (status === 'history') {
+      whereClause.transferType = {
+        in: ['OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE'],
+      };
+      whereClause.status = {
+        in: ['SOURCE_APPROVED', 'APPROVED', 'COMPLETED', 'REJECTED'],
+      };
+    } else {
+      whereClause.transferType = 'OUTLET_TO_OUTLET';
+      whereClause.status = 'PENDING';
+      whereClause.requiresSourceApproval = true;
+      whereClause.sourceApprovedById = null;
+    }
+
+    const requests = await this.prisma.transferRequest.findMany({
+      where: whereClause,
+      include: {
+        items: {
+          include: {
+            item: {
+              include: {
+                color: true,
+                size: true,
+              },
+            },
+          },
+        },
+        toLocation: { select: { name: true, code: true } },
+        toWarehouse: { select: { name: true, code: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return Promise.all(requests.map((req) => this.enrichRequest(req)));
+  }
+
+  async getInboundRequests(locationId: string, status?: string) {
+    // Get requests where this location is the destination
+    const whereClause: any = {
+      toLocationId: locationId,
+    };
+
+    if (status === 'history') {
+      whereClause.transferType = {
+        in: ['OUTLET_TO_OUTLET', 'WAREHOUSE_TO_OUTLET'],
+      };
+      whereClause.status = { in: ['COMPLETED', 'REJECTED', 'APPROVED'] };
+    } else {
+      whereClause.transferType = 'OUTLET_TO_OUTLET';
+      whereClause.status = { in: ['PENDING', 'SOURCE_APPROVED'] };
+    }
+
+    const requests = await this.prisma.transferRequest.findMany({
+      where: whereClause,
+      include: {
+        items: {
+          include: {
+            item: {
+              include: {
+                color: true,
+                size: true,
+              },
+            },
+          },
+        },
+        fromLocation: { select: { name: true, code: true } },
+        fromWarehouse: { select: { name: true, code: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return Promise.all(requests.map((req) => this.enrichRequest(req)));
+  }
+
+  /**
+   * Helper to compute and attach per-outlet location serial numbers (1-indexed starting at 1 for each location)
+   */
+  private async attachLocationSerialNumbers(
+    locationId: string,
+    requests: any[],
+    type: 'INBOUND' | 'OUTBOUND' | 'RECEIPT',
+  ) {
+    if (!locationId || requests.length === 0) return requests;
+
+    let whereClause: any = {};
+    if (type === 'INBOUND') {
+      whereClause = {
+        toLocationId: locationId,
+      };
+    } else if (type === 'OUTBOUND') {
+      whereClause = {
+        fromLocationId: locationId,
+      };
+    } else if (type === 'RECEIPT') {
+      whereClause = {
+        toLocationId: locationId,
+        status: 'COMPLETED',
+      };
+    }
+
+    const allLocationRequests = await this.prisma.transferRequest.findMany({
+      where: whereClause,
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const serialMap = new Map<string, number>();
+    allLocationRequests.forEach((req, idx) => {
+      serialMap.set(req.id, idx + 1);
+    });
+
+    const prefix =
+      type === 'INBOUND' ? 'TR-IN' : type === 'OUTBOUND' ? 'TR-OUT' : 'REC';
+
+    requests.forEach((req) => {
+      const seqNum = serialMap.get(req.id) || 1;
+      const formattedNo = `${prefix}-${seqNum.toString().padStart(4, '0')}`;
+      req.locationSerialNo = seqNum;
+      req.formattedSerialNo = formattedNo;
+      if (type === 'INBOUND') req.inboundNo = formattedNo;
+      if (type === 'OUTBOUND') req.outboundNo = formattedNo;
+      if (type === 'RECEIPT') req.receiptNo = formattedNo;
+    });
+
+    return requests;
+  }
+
+  /**
+   * Helper to manually enrichment location data and claim data
+   */
+  private async enrichRequest(req: any) {
+    // Clean requestNo format to ensure standard STN-FY-XXXXX or STN-YYYY-XXXX
+    if (req.requestNo && req.requestNo.includes('STN-')) {
+      const parts = req.requestNo.split('-');
+      if (parts.length > 4) {
+        req.requestNo = `STN-${parts[parts.length - 3]}-${parts[parts.length - 2]}-${parts[parts.length - 1]}`;
+      }
+    }
+
+    if (req.toLocationId) {
+      const masterLoc = await this.prisma.location.findUnique({
+        where: { id: req.toLocationId },
+      });
+      if (masterLoc) req.toLocation = masterLoc;
+
+      const countInbound = await this.prisma.transferRequest.count({
+        where: {
+          toLocationId: req.toLocationId,
+          createdAt: { lte: req.createdAt },
+        },
+      });
+      req.inboundNo = `TR-IN-${countInbound.toString().padStart(4, '0')}`;
+
+      if (req.status === 'COMPLETED') {
+        const countReceipt = await this.prisma.transferRequest.count({
+          where: {
+            toLocationId: req.toLocationId,
+            status: 'COMPLETED',
+            createdAt: { lte: req.createdAt },
+          },
         });
-        if (!existing) {
-            throw new NotFoundException(`Transfer request with ID ${id} not found`);
+        req.receiptNo = `REC-${countReceipt.toString().padStart(4, '0')}`;
+      }
+    }
+
+    if (req.fromLocationId) {
+      const sourceLoc = await this.prisma.location.findUnique({
+        where: { id: req.fromLocationId },
+      });
+      if (sourceLoc) req.fromLocation = sourceLoc;
+
+      const countOutbound = await this.prisma.transferRequest.count({
+        where: {
+          fromLocationId: req.fromLocationId,
+          createdAt: { lte: req.createdAt },
+        },
+      });
+      req.outboundNo = `TR-OUT-${countOutbound.toString().padStart(4, '0')}`;
+    }
+
+    if (req.fromWarehouseId && !req.fromWarehouse) {
+      const sourceWH = await this.prisma.warehouse.findUnique({
+        where: { id: req.fromWarehouseId },
+      });
+      if (sourceWH) req.fromWarehouse = sourceWH;
+    }
+
+    if (req.toWarehouseId && !req.toWarehouse) {
+      const destWH = await this.prisma.warehouse.findUnique({
+        where: { id: req.toWarehouseId },
+      });
+      if (destWH) req.toWarehouse = destWH;
+    }
+
+    // Fetch claim data if this is a claim transfer
+    if (req.transferType === 'CLAIM_TO_PLM') {
+      const claim = await this.prisma.posClaim.findFirst({
+        where: { transferRequestId: req.id },
+        select: { claimNumber: true, claimType: true },
+      });
+      if (claim) {
+        req.claim = {
+          claimNo: claim.claimNumber,
+          claimType: claim.claimType,
+        };
+      }
+    }
+
+    // Resolve User Names (Maker, Checker, Authorizer)
+    const userIds = [
+      req.createdById,
+      req.checkedById,
+      req.authorizedById,
+    ].filter(Boolean) as string[];
+    if (userIds.length > 0) {
+      const users = await this.prismaMaster.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      const userMap = new Map(
+        users.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]),
+      );
+      req.creatorName = req.createdById
+        ? userMap.get(req.createdById) || 'Unknown User'
+        : null;
+      req.checkerName = req.checkedById
+        ? userMap.get(req.checkedById) || 'Unknown User'
+        : null;
+      req.authorizerName = req.authorizedById
+        ? userMap.get(req.authorizedById) || 'Unknown User'
+        : null;
+    } else {
+      req.creatorName = null;
+      req.checkerName = null;
+      req.authorizerName = null;
+    }
+
+    return req;
+  }
+
+  async updateStatus(
+    id: string,
+    status: string,
+    approvedById?: string,
+    ctx?: {
+      userId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+      userPermissions?: string[];
+      roleName?: string;
+    },
+  ) {
+    try {
+      const request = await this.prisma.transferRequest.findUnique({
+        where: { id },
+      });
+      if (!request) {
+        throw new NotFoundException(`Transfer request ${id} not found`);
+      }
+
+      const userPermissions = ctx?.userPermissions || [];
+      const isSuperAdmin =
+        userPermissions.includes('*') ||
+        ctx?.roleName?.toLowerCase() === 'super_admin' ||
+        ctx?.roleName?.toLowerCase() === 'admin';
+
+      const updateData: any = { status };
+
+      // Enforce hierarchical approvals for Maker-Checker-Authorizer
+      if (request.status === 'PENDING_CHECKER') {
+        if (status !== 'PENDING_AUTHORIZER' && status !== 'REJECTED') {
+          throw new BadRequestException(
+            `Invalid status transition from PENDING_CHECKER to ${status}.`,
+          );
+        }
+        if (
+          !isSuperAdmin &&
+          !userPermissions.includes('erp.inventory.transfer.check') &&
+          !userPermissions.includes('pos.inventory.transfer.check')
+        ) {
+          throw new BadRequestException(
+            'You do not have permission to check this Stock Transfer (requires erp.inventory.transfer.check).',
+          );
         }
 
-        const updated = await this.prisma.transferRequest.update({
-            where: { id },
-            data: {
-                dispatchType: data.dispatchType !== undefined ? data.dispatchType : existing.dispatchType,
-                courierName: data.courierName !== undefined ? data.courierName : existing.courierName,
-                trackingNumber: data.trackingNumber !== undefined ? data.trackingNumber : existing.trackingNumber,
-                dispatchDate: data.dispatchDate ? new Date(data.dispatchDate) : (data.dispatchDate === null ? null : existing.dispatchDate),
-                estimatedDeliveryDate: data.estimatedDeliveryDate ? new Date(data.estimatedDeliveryDate) : (data.estimatedDeliveryDate === null ? null : existing.estimatedDeliveryDate),
-                riderName: data.riderName !== undefined ? data.riderName : existing.riderName,
-                riderPhone: data.riderPhone !== undefined ? data.riderPhone : existing.riderPhone,
-                vehicleNumber: data.vehicleNumber !== undefined ? data.vehicleNumber : existing.vehicleNumber,
-                receiverPerson: data.receiverPerson !== undefined ? data.receiverPerson : existing.receiverPerson,
-                shippingCost: data.shippingCost !== undefined && data.shippingCost !== null ? new Prisma.Decimal(data.shippingCost) : (data.shippingCost === null ? null : existing.shippingCost),
-                dispatchNotes: data.dispatchNotes !== undefined ? data.dispatchNotes : existing.dispatchNotes,
-            },
-            include: {
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true,
-                            }
-                        }
-                    }
-                },
-                fromWarehouse: { select: { name: true, code: true } },
-                toWarehouse: { select: { name: true, code: true } },
-                fromLocation: { select: { name: true, code: true } },
-                toLocation: { select: { name: true, code: true } },
+        updateData.checkedById = ctx?.userId || null;
+        updateData.checkedAt = new Date();
+      } else if (request.status === 'PENDING_AUTHORIZER') {
+        if (
+          status !== 'PENDING' &&
+          status !== 'REJECTED' &&
+          status !== 'APPROVED' &&
+          status !== 'COMPLETED'
+        ) {
+          throw new BadRequestException(
+            `Invalid status transition from PENDING_AUTHORIZER to ${status}.`,
+          );
+        }
+        if (
+          !isSuperAdmin &&
+          !userPermissions.includes('erp.inventory.transfer.authorize') &&
+          !userPermissions.includes('pos.inventory.transfer.authorize')
+        ) {
+          throw new BadRequestException(
+            'You do not have permission to authorize this Stock Transfer (requires erp.inventory.transfer.authorize).',
+          );
+        }
+
+        updateData.authorizedById = ctx?.userId || null;
+        updateData.authorizedAt = new Date();
+
+        // If authorized to APPROVED/PENDING, transition status to PENDING so it enters the active flow
+        if (status === 'APPROVED' || status === 'PENDING') {
+          updateData.status = 'PENDING';
+        }
+      } else {
+        if (status === 'APPROVED' || status === 'COMPLETED') {
+          updateData.approvedById = approvedById || ctx?.userId || null;
+        }
+      }
+
+      const updated = await this.prisma.transferRequest.update({
+        where: { id },
+        data: updateData,
+      });
+
+      runInBackground(
+        'Update Transfer Request Status',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'transfer-request',
+          entity: 'TransferRequest',
+          entityId: updated.id,
+          description: `Updated transfer request ${updated.requestNo} status to ${status}`,
+          newValues: JSON.stringify({ status, approvedById }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return updated;
+    } catch (error: any) {
+      runInBackground(
+        'Update Transfer Request Status (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'transfer-request',
+          entity: 'TransferRequest',
+          entityId: id,
+          description: `Failed to update transfer request status`,
+          errorMessage: error?.message,
+          newValues: JSON.stringify({ status, approvedById }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  async approveSource(
+    id: string,
+    userId?: string,
+    items?: { itemId: string; quantity: number }[],
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const request = await this.prisma.transferRequest.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+
+      if (!request) {
+        throw new NotFoundException(`Transfer request ${id} not found`);
+      }
+
+      if (request.transferType !== 'OUTLET_TO_OUTLET') {
+        throw new BadRequestException(
+          'Source approval only applies to outlet-to-outlet transfers',
+        );
+      }
+
+      if (request.status !== 'PENDING') {
+        throw new BadRequestException(
+          `Request is not in PENDING status (Current: ${request.status})`,
+        );
+      }
+
+      if (request.sourceApprovedById) {
+        throw new BadRequestException(
+          'Request already approved by source outlet',
+        );
+      }
+
+      // Validate that locations exist
+      if (request.fromLocationId) {
+        const fromLocation = await this.prisma.location.findUnique({
+          where: { id: request.fromLocationId },
+        });
+        if (!fromLocation) {
+          throw new BadRequestException(
+            `Source location ${request.fromLocationId} not found`,
+          );
+        }
+      }
+
+      if (request.toLocationId) {
+        const toLocation = await this.prisma.location.findUnique({
+          where: { id: request.toLocationId },
+        });
+        if (!toLocation) {
+          throw new BadRequestException(
+            `Destination location ${request.toLocationId} not found`,
+          );
+        }
+      }
+
+      return this.prisma.$transaction(async (tx) => {
+        // If adjusted items are provided, update them first
+        if (items && items.length > 0) {
+          for (const adjustedItem of items) {
+            const existingItem = request.items.find(
+              (i) => i.itemId === adjustedItem.itemId,
+            );
+            if (existingItem) {
+              if (adjustedItem.quantity <= 0) {
+                throw new BadRequestException(
+                  `Quantity for item ${adjustedItem.itemId} must be greater than 0`,
+                );
+              }
+              // Update quantity in the database
+              await tx.transferRequestItem.update({
+                where: { id: existingItem.id },
+                data: { quantity: adjustedItem.quantity },
+              });
+              // Update our local memory of the item quantity so the subsequent stock check uses the new quantity
+              existingItem.quantity = adjustedItem.quantity as any;
             }
+          }
+        }
+
+        // 1. Check and reserve stock at source outlet
+        for (const item of request.items) {
+          const sourceStock = await tx.inventoryItem.findFirst({
+            where: {
+              locationId: request.fromLocationId!,
+              itemId: item.itemId,
+              status: 'AVAILABLE',
+            },
+          });
+
+          if (
+            !sourceStock ||
+            Number(sourceStock.quantity) < Number(item.quantity)
+          ) {
+            throw new BadRequestException(
+              `Insufficient stock for item ${item.itemId} at source outlet. Current: ${sourceStock?.quantity || 0}, Requested: ${item.quantity}`,
+            );
+          }
+
+          // Decrease source outlet stock
+          await tx.inventoryItem.update({
+            where: { id: sourceStock.id },
+            data: { quantity: { decrement: Number(item.quantity) } },
+          });
+
+          // Use actual warehouseId from the inventoryItem record
+          const actualWarehouseId = sourceStock.warehouseId;
+          const transferRate = await this.getCurrentItemRate(tx, item.itemId);
+
+          // Create outbound ledger entry
+          await this.stockLedgerService.createEntry(
+            {
+              itemId: item.itemId,
+              warehouseId: actualWarehouseId,
+              locationId: request.fromLocationId!,
+              qty: -Number(item.quantity),
+              movementType: 'OUTBOUND' as any,
+              referenceType: 'OUTLET_TRANSFER_OUT',
+              referenceId: request.id,
+              rate: transferRate,
+            },
+            tx,
+          );
+        }
+
+        // 2. Update request status
+        const updated = await tx.transferRequest.update({
+          where: { id },
+          data: {
+            status: 'SOURCE_APPROVED',
+            sourceApprovedById: userId,
+            sourceApprovedAt: new Date(),
+          },
         });
 
         runInBackground(
-            'Update Transfer Request Dispatch',
-            this.activityLogs.log({
-                userId: ctx?.userId,
-                action: 'update',
-                module: 'transfer-request',
-                entity: 'TransferRequest',
-                entityId: id,
-                description: `Updated dispatch details for transfer request ${existing.requestNo}`,
-                newValues: JSON.stringify(data),
-                ipAddress: ctx?.ipAddress,
-                userAgent: ctx?.userAgent,
-                status: 'success',
-            }),
+          'Approve Transfer Request Source',
+          this.activityLogs.log({
+            userId: ctx?.userId,
+            action: 'update',
+            module: 'transfer-request',
+            entity: 'TransferRequest',
+            entityId: updated.id,
+            description: `Source approved transfer request ${updated.requestNo}`,
+            newValues: JSON.stringify({ status: 'SOURCE_APPROVED' }),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            status: 'success',
+          }),
         );
 
         return updated;
+      });
+    } catch (error: any) {
+      runInBackground(
+        'Approve Transfer Request Source (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'transfer-request',
+          entity: 'TransferRequest',
+          entityId: id,
+          description: `Failed to source approve transfer request`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
+  }
 
+  async acceptRequest(
+    id: string,
+    userId?: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const request = await this.prisma.transferRequest.findUnique({
+        where: { id },
+        include: { items: true },
+      });
 
-    async getIncomingRequests(locationId: string) {
-        const requests = await this.prisma.transferRequest.findMany({
-            where: {
-                toLocationId: locationId,
-                transferType: 'WAREHOUSE_TO_OUTLET',
-                status: { in: ['PENDING', 'APPROVED'] },
-            },
-            include: {
-                fromWarehouse: true,
-                toWarehouse: true,
-                fromLocation: true,
-                toLocation: true,
-                stockRequisition: {
-                    include: {
-                        fromWarehouse: true,
-                    },
-                },
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true
-                            }
-                        }
-                    }
-                },
-            },
-            orderBy: { createdAt: 'desc' },
+      if (!request) {
+        throw new NotFoundException(`Transfer request ${id} not found`);
+      }
+
+      // Validate that locations exist before processing
+      if (request.toLocationId) {
+        const toLocation = await this.prisma.location.findUnique({
+          where: { id: request.toLocationId },
         });
+        if (!toLocation) {
+          throw new BadRequestException(
+            `Destination location ${request.toLocationId} not found`,
+          );
+        }
+      }
 
-        return Promise.all(requests.map(req => this.enrichRequest(req)));
-    }
-
-    async getReturnRequests(locationId: string) {
-        const requests = await this.prisma.transferRequest.findMany({
-            where: {
-                fromLocationId: locationId,
-                transferType: 'OUTLET_TO_WAREHOUSE',
-                status: { in: ['PENDING', 'APPROVED', 'PENDING_CHECKER'] },
-            },
-            include: {
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true
-                            }
-                        }
-                    }
-                },
-            },
-            orderBy: { createdAt: 'desc' },
+      if (request.fromLocationId) {
+        const fromLocation = await this.prisma.location.findUnique({
+          where: { id: request.fromLocationId },
         });
-
-        return Promise.all(requests.map(req => this.enrichRequest(req)));
-    }
-
-    async getOutboundRequests(locationId: string, status?: string) {
-        // Get requests where this location is the source
-        const whereClause: any = {
-            fromLocationId: locationId,
-        };
-
-        if (status === 'history') {
-            whereClause.transferType = { in: ['OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE'] };
-            whereClause.status = { in: ['SOURCE_APPROVED', 'APPROVED', 'COMPLETED', 'REJECTED'] };
-        } else {
-            whereClause.transferType = 'OUTLET_TO_OUTLET';
-            whereClause.status = 'PENDING';
-            whereClause.requiresSourceApproval = true;
-            whereClause.sourceApprovedById = null;
+        if (!fromLocation) {
+          throw new BadRequestException(
+            `Source location ${request.fromLocationId} not found`,
+          );
         }
+      }
 
-        const requests = await this.prisma.transferRequest.findMany({
-            where: whereClause,
-            include: {
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true
-                            }
-                        }
-                    }
-                },
-                toLocation: { select: { name: true, code: true } },
-                toWarehouse: { select: { name: true, code: true } }
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+      return this.prisma.$transaction(async (tx) => {
+        if (request.transferType === 'WAREHOUSE_TO_OUTLET') {
+          // Normal transfer: Warehouse → Outlet (Receiving into Outlet)
+          if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+            throw new BadRequestException(
+              `Request is not in PENDING or APPROVED status (Current: ${request.status})`,
+            );
+          }
 
-        return Promise.all(requests.map(req => this.enrichRequest(req)));
-    }
+          for (const item of request.items) {
+            const itemRate = await this.getCurrentItemRate(tx, item.itemId);
 
-    async getInboundRequests(locationId: string, status?: string) {
-        // Get requests where this location is the destination
-        const whereClause: any = {
-            toLocationId: locationId,
-        };
-
-        if (status === 'history') {
-            whereClause.transferType = { in: ['OUTLET_TO_OUTLET', 'WAREHOUSE_TO_OUTLET'] };
-            whereClause.status = { in: ['COMPLETED', 'REJECTED', 'APPROVED'] };
-        } else {
-            whereClause.transferType = 'OUTLET_TO_OUTLET';
-            whereClause.status = { in: ['PENDING', 'SOURCE_APPROVED'] };
-        }
-
-        const requests = await this.prisma.transferRequest.findMany({
-            where: whereClause,
-            include: {
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true
-                            }
-                        }
-                    }
-                },
-                fromLocation: { select: { name: true, code: true } },
-                fromWarehouse: { select: { name: true, code: true } }
-            },
-            orderBy: { createdAt: 'desc' },
-        });
-
-        return Promise.all(requests.map(req => this.enrichRequest(req)));
-    }
-
-    /**
-     * Helper to compute and attach per-outlet location serial numbers (1-indexed starting at 1 for each location)
-     */
-    private async attachLocationSerialNumbers(locationId: string, requests: any[], type: 'INBOUND' | 'OUTBOUND' | 'RECEIPT') {
-        if (!locationId || requests.length === 0) return requests;
-
-        let whereClause: any = {};
-        if (type === 'INBOUND') {
-            whereClause = {
-                toLocationId: locationId,
-            };
-        } else if (type === 'OUTBOUND') {
-            whereClause = {
-                fromLocationId: locationId,
-            };
-        } else if (type === 'RECEIPT') {
-            whereClause = {
-                toLocationId: locationId,
-                status: 'COMPLETED',
-            };
-        }
-
-        const allLocationRequests = await this.prisma.transferRequest.findMany({
-            where: whereClause,
-            select: { id: true },
-            orderBy: { createdAt: 'asc' },
-        });
-
-        const serialMap = new Map<string, number>();
-        allLocationRequests.forEach((req, idx) => {
-            serialMap.set(req.id, idx + 1);
-        });
-
-        const prefix = type === 'INBOUND' ? 'TR-IN' : type === 'OUTBOUND' ? 'TR-OUT' : 'REC';
-
-        requests.forEach((req) => {
-            const seqNum = serialMap.get(req.id) || 1;
-            const formattedNo = `${prefix}-${seqNum.toString().padStart(4, '0')}`;
-            req.locationSerialNo = seqNum;
-            req.formattedSerialNo = formattedNo;
-            if (type === 'INBOUND') req.inboundNo = formattedNo;
-            if (type === 'OUTBOUND') req.outboundNo = formattedNo;
-            if (type === 'RECEIPT') req.receiptNo = formattedNo;
-        });
-
-        return requests;
-    }
-
-    /**
-     * Helper to manually enrichment location data and claim data
-     */
-    private async enrichRequest(req: any) {
-        // Clean requestNo format to ensure standard STN-FY-XXXXX or STN-YYYY-XXXX
-        if (req.requestNo && req.requestNo.includes('STN-')) {
-            const parts = req.requestNo.split('-');
-            if (parts.length > 4) {
-                req.requestNo = `STN-${parts[parts.length - 3]}-${parts[parts.length - 2]}-${parts[parts.length - 1]}`;
-            }
-        }
-
-        if (req.toLocationId) {
-            const masterLoc = await this.prisma.location.findUnique({
-                where: { id: req.toLocationId }
+            // 1. Inbound into Destination Outlet Inventory
+            const existingStock = await tx.inventoryItem.findFirst({
+              where: {
+                itemId: item.itemId,
+                locationId: request.toLocationId!,
+                status: 'AVAILABLE',
+              },
             });
-            if (masterLoc) req.toLocation = masterLoc;
 
-            const countInbound = await this.prisma.transferRequest.count({
-                where: {
-                    toLocationId: req.toLocationId,
-                    createdAt: { lte: req.createdAt },
-                },
-            });
-            req.inboundNo = `TR-IN-${countInbound.toString().padStart(4, '0')}`;
-
-            if (req.status === 'COMPLETED') {
-                const countReceipt = await this.prisma.transferRequest.count({
-                    where: {
-                        toLocationId: req.toLocationId,
-                        status: 'COMPLETED',
-                        createdAt: { lte: req.createdAt },
-                    },
-                });
-                req.receiptNo = `REC-${countReceipt.toString().padStart(4, '0')}`;
-            }
-        }
-
-        if (req.fromLocationId) {
-            const sourceLoc = await this.prisma.location.findUnique({
-                where: { id: req.fromLocationId }
-            });
-            if (sourceLoc) req.fromLocation = sourceLoc;
-
-            const countOutbound = await this.prisma.transferRequest.count({
-                where: {
-                    fromLocationId: req.fromLocationId,
-                    createdAt: { lte: req.createdAt },
-                },
-            });
-            req.outboundNo = `TR-OUT-${countOutbound.toString().padStart(4, '0')}`;
-        }
-
-        if (req.fromWarehouseId && !req.fromWarehouse) {
-            const sourceWH = await this.prisma.warehouse.findUnique({
-                where: { id: req.fromWarehouseId }
-            });
-            if (sourceWH) req.fromWarehouse = sourceWH;
-        }
-
-        if (req.toWarehouseId && !req.toWarehouse) {
-            const destWH = await this.prisma.warehouse.findUnique({
-                where: { id: req.toWarehouseId }
-            });
-            if (destWH) req.toWarehouse = destWH;
-        }
-
-        // Fetch claim data if this is a claim transfer
-        if (req.transferType === 'CLAIM_TO_PLM') {
-            const claim = await this.prisma.posClaim.findFirst({
-                where: { transferRequestId: req.id },
-                select: { claimNumber: true, claimType: true }
-            });
-            if (claim) {
-                req.claim = {
-                    claimNo: claim.claimNumber,
-                    claimType: claim.claimType
-                };
-            }
-        }
-
-        // Resolve User Names (Maker, Checker, Authorizer)
-        const userIds = [req.createdById, req.checkedById, req.authorizedById].filter(Boolean) as string[];
-        if (userIds.length > 0) {
-            const users = await this.prismaMaster.user.findMany({
-                where: { id: { in: userIds } },
-                select: { id: true, firstName: true, lastName: true },
-            });
-            const userMap = new Map(users.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
-            req.creatorName = req.createdById ? userMap.get(req.createdById) || 'Unknown User' : null;
-            req.checkerName = req.checkedById ? userMap.get(req.checkedById) || 'Unknown User' : null;
-            req.authorizerName = req.authorizedById ? userMap.get(req.authorizedById) || 'Unknown User' : null;
-        } else {
-            req.creatorName = null;
-            req.checkerName = null;
-            req.authorizerName = null;
-        }
-
-        return req;
-    }
-
-    async updateStatus(
-        id: string,
-        status: string,
-        approvedById?: string,
-        ctx?: {
-            userId?: string;
-            ipAddress?: string;
-            userAgent?: string;
-            userPermissions?: string[];
-            roleName?: string;
-        }
-    ) {
-        try {
-            const request = await this.prisma.transferRequest.findUnique({ where: { id } });
-            if (!request) {
-                throw new NotFoundException(`Transfer request ${id} not found`);
-            }
-
-            const userPermissions = ctx?.userPermissions || [];
-            const isSuperAdmin =
-                userPermissions.includes('*') ||
-                ctx?.roleName?.toLowerCase() === 'super_admin' ||
-                ctx?.roleName?.toLowerCase() === 'admin';
-
-            const updateData: any = { status };
-
-            // Enforce hierarchical approvals for Maker-Checker-Authorizer
-            if (request.status === 'PENDING_CHECKER') {
-                if (status !== 'PENDING_AUTHORIZER' && status !== 'REJECTED') {
-                    throw new BadRequestException(`Invalid status transition from PENDING_CHECKER to ${status}.`);
-                }
-                if (!isSuperAdmin && !userPermissions.includes('erp.inventory.transfer.check') && !userPermissions.includes('pos.inventory.transfer.check')) {
-                    throw new BadRequestException('You do not have permission to check this Stock Transfer (requires erp.inventory.transfer.check).');
-                }
-
-                updateData.checkedById = ctx?.userId || null;
-                updateData.checkedAt = new Date();
-            } else if (request.status === 'PENDING_AUTHORIZER') {
-                if (status !== 'PENDING' && status !== 'REJECTED' && status !== 'APPROVED' && status !== 'COMPLETED') {
-                    throw new BadRequestException(`Invalid status transition from PENDING_AUTHORIZER to ${status}.`);
-                }
-                if (!isSuperAdmin && !userPermissions.includes('erp.inventory.transfer.authorize') && !userPermissions.includes('pos.inventory.transfer.authorize')) {
-                    throw new BadRequestException('You do not have permission to authorize this Stock Transfer (requires erp.inventory.transfer.authorize).');
-                }
-
-                updateData.authorizedById = ctx?.userId || null;
-                updateData.authorizedAt = new Date();
-
-                // If authorized to APPROVED/PENDING, transition status to PENDING so it enters the active flow
-                if (status === 'APPROVED' || status === 'PENDING') {
-                    updateData.status = 'PENDING';
-                }
+            if (existingStock) {
+              await tx.inventoryItem.update({
+                where: { id: existingStock.id },
+                data: { quantity: { increment: Number(item.quantity) } },
+              });
             } else {
                 if (status === 'APPROVED' || status === 'COMPLETED') {
                     updateData.approvedById = approvedById || ctx?.userId || null;
@@ -1625,21 +2179,549 @@ export class TransferRequestService {
                 requestNo: {
                     startsWith: `${prefix}-${currentYear}`,
                 },
-            },
-            orderBy: {
-                createdAt: 'desc',
-            },
-        });
-
-        let nextNumber = 1;
-        if (lastRequest) {
-            const lastNumber = parseInt(lastRequest.requestNo.split('-').pop() || '0');
-            if (!isNaN(lastNumber)) {
-                nextNumber = lastNumber + 1;
+              });
             }
+
+            // 2. Inbound Stock Ledger for Outlet
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: request.fromWarehouseId!,
+                locationId: request.toLocationId!,
+                qty: Number(item.quantity),
+                movementType: 'INBOUND' as any,
+                referenceType: 'TRANSFER_RECEIPT',
+                referenceId: request.id,
+                rate: itemRate,
+              },
+              tx,
+            );
+          }
+
+          const updated = await tx.transferRequest.update({
+            where: { id },
+            data: {
+              status: 'COMPLETED',
+              approvedById: userId || null,
+            },
+          });
+
+          return updated;
+        } else if (request.transferType === 'OUTLET_TO_WAREHOUSE') {
+          // Return transfer: Outlet → Warehouse
+          if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+            throw new BadRequestException(
+              `Request is not in PENDING or APPROVED status (Current: ${request.status})`,
+            );
+          }
+
+          // Check if this is a claim-based transfer (items need to be added to POS first)
+          const isClaimBased = request.notes?.includes('approved claim');
+
+          if (isClaimBased) {
+            // For claim-based transfers: First add items to POS inventory, then transfer to warehouse
+            for (const item of request.items) {
+              const posStock = await tx.inventoryItem.findFirst({
+                where: {
+                  itemId: item.itemId,
+                  locationId: request.fromLocationId!,
+                  status: 'AVAILABLE',
+                },
+              });
+
+              const actualWarehouseId =
+                posStock?.warehouseId || request.fromWarehouseId!;
+              const itemRate = await this.getCurrentItemRate(tx, item.itemId);
+
+              // 1. Add items to POS inventory (claim approved items)
+              if (posStock) {
+                await tx.inventoryItem.update({
+                  where: { id: posStock.id },
+                  data: { quantity: { increment: Number(item.quantity) } },
+                });
+              } else {
+                await tx.inventoryItem.create({
+                  data: {
+                    itemId: item.itemId,
+                    warehouseId: actualWarehouseId,
+                    locationId: request.fromLocationId!,
+                    quantity: Number(item.quantity),
+                    status: 'AVAILABLE',
+                  },
+                });
+              }
+
+              // 2. Create inbound ledger entry for POS (claim approved)
+              await this.stockLedgerService.createEntry(
+                {
+                  itemId: item.itemId,
+                  warehouseId: actualWarehouseId,
+                  locationId: request.fromLocationId!,
+                  qty: Number(item.quantity),
+                  movementType: 'INBOUND' as any,
+                  referenceType: 'POS_CLAIM_APPROVED',
+                  referenceId: request.id,
+                  rate: itemRate,
+                },
+                tx,
+              );
+
+              // 3. Now execute the normal outlet-to-warehouse transfer
+              await this.stockMovementService.executeMovement({
+                itemId: item.itemId,
+                fromLocationId: request.fromLocationId!,
+                toWarehouseId: request.fromWarehouseId!,
+                quantity: Number(item.quantity),
+                type: 'RETURN_TRANSFER',
+                referenceType: 'CLAIM_RETURN_REQUEST',
+                referenceId: request.id,
+                userId: userId,
+              });
+            }
+          } else {
+            // Normal outlet-to-warehouse transfer (non-claim)
+            for (const item of request.items) {
+              await this.stockMovementService.executeMovement({
+                itemId: item.itemId,
+                fromLocationId: request.fromLocationId!,
+                toWarehouseId: request.fromWarehouseId!,
+                quantity: Number(item.quantity),
+                type: 'RETURN_TRANSFER',
+                referenceType: 'RETURN_REQUEST',
+                referenceId: request.id,
+                userId: userId,
+              });
+            }
+          }
+        } else if (request.transferType === 'OUTLET_TO_OUTLET') {
+          // Outlet-to-outlet transfer: Only destination can accept after source approval
+          if (request.status !== 'SOURCE_APPROVED') {
+            throw new BadRequestException(
+              `Request must be source-approved first (Current: ${request.status})`,
+            );
+          }
+
+          for (const item of request.items) {
+            // Only need to add stock to destination (source already decreased)
+            const destItem = await tx.inventoryItem.findFirst({
+              where: {
+                locationId: request.toLocationId!,
+                itemId: item.itemId,
+                status: 'AVAILABLE',
+              },
+            });
+
+            // Find source stock to get actual warehouseId
+            const sourceStock = await tx.inventoryItem.findFirst({
+              where: {
+                locationId: request.fromLocationId!,
+                itemId: item.itemId,
+              },
+            });
+            const actualWarehouseId =
+              sourceStock?.warehouseId || request.fromWarehouseId!;
+            const transferRate = await this.getCurrentItemRate(tx, item.itemId);
+
+            if (destItem) {
+              // Update existing stock at destination
+              await tx.inventoryItem.update({
+                where: { id: destItem.id },
+                data: { quantity: { increment: Number(item.quantity) } },
+              });
+            } else {
+              // Create new stock entry at destination
+              await tx.inventoryItem.create({
+                data: {
+                  warehouseId: actualWarehouseId,
+                  locationId: request.toLocationId!,
+                  itemId: item.itemId,
+                  quantity: Number(item.quantity),
+                  status: 'AVAILABLE',
+                },
+              });
+            }
+
+            // Create inbound ledger entry for destination
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: actualWarehouseId,
+                locationId: request.toLocationId!,
+                qty: Number(item.quantity),
+                movementType: 'INBOUND' as any,
+                referenceType: 'OUTLET_TRANSFER_IN',
+                referenceId: request.id,
+                rate: transferRate,
+              },
+              tx,
+            );
+          }
         }
 
-        const nextTransferNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
-        return { nextTransferNumber };
+        // Update request status to completed
+        const updated = await tx.transferRequest.update({
+          where: { id },
+          data: {
+            status: 'COMPLETED',
+            approvedById: userId,
+          },
+        });
+
+        runInBackground(
+          'Accept Transfer Request',
+          this.activityLogs.log({
+            userId: ctx?.userId,
+            action: 'update',
+            module: 'transfer-request',
+            entity: 'TransferRequest',
+            entityId: updated.id,
+            description: `Completed transfer request ${updated.requestNo}`,
+            newValues: JSON.stringify({ status: 'COMPLETED' }),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            status: 'success',
+          }),
+        );
+
+        return updated;
+      });
+    } catch (error: any) {
+      runInBackground(
+        'Accept Transfer Request (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'transfer-request',
+          entity: 'TransferRequest',
+          entityId: id,
+          description: `Failed to accept transfer request`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
     }
+  }
+
+  /**
+   * PLM Acknowledgment: Manually acknowledge receipt of claim items
+   * This updates inventory only after PLM physically receives the product
+   */
+  async acknowledgeClaim(
+    id: string,
+    userId?: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const request = await this.prisma.transferRequest.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+
+      if (!request) {
+        throw new NotFoundException(`Transfer request ${id} not found`);
+      }
+
+      if (request.transferType !== 'CLAIM_TO_PLM') {
+        throw new BadRequestException(
+          'This endpoint is only for claim-based transfers',
+        );
+      }
+
+      if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+        throw new BadRequestException(
+          `Request is not in PENDING or APPROVED status (Current: ${request.status})`,
+        );
+      }
+
+      console.log('🔄 [PLM Acknowledgment] Starting claim acknowledgment:', {
+        transferRequestId: id,
+        requestNo: request.requestNo,
+        itemCount: request.items.length,
+      });
+
+      return this.prisma.$transaction(async (tx) => {
+        const plmWarehouseId = request.toWarehouseId!;
+
+        // Fetch claim to link it
+        const claim = await tx.posClaim.findFirst({
+          where: { transferRequestId: id },
+          select: { id: true },
+        });
+
+        // Process each item: Add to PLM warehouse inventory
+        for (const item of request.items) {
+          console.log('📦 [PLM Acknowledgment] Processing item:', {
+            itemId: item.itemId,
+            quantity: item.quantity,
+          });
+
+          const itemRate = await this.getCurrentItemRate(tx, item.itemId);
+
+          // 1. POS Claim Return (Inbound to POS Outlet Location)
+          // 2. Outlet Transfer Out (Outbound from POS Outlet Location)
+          if (request.fromLocationId && request.fromWarehouseId) {
+            // Inbound Entry
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: request.fromWarehouseId,
+                locationId: request.fromLocationId,
+                qty: Number(item.quantity),
+                movementType: 'INBOUND',
+                referenceType: 'POS_CLAIM_APPROVED',
+                referenceId: claim?.id || request.id,
+                rate: itemRate,
+              },
+              tx,
+            );
+
+            // Increment POS location inventory
+            const posStock = await tx.inventoryItem.findFirst({
+              where: {
+                itemId: item.itemId,
+                locationId: request.fromLocationId,
+                status: 'AVAILABLE',
+              },
+            });
+
+            if (posStock) {
+              await tx.inventoryItem.update({
+                where: { id: posStock.id },
+                data: { quantity: { increment: Number(item.quantity) } },
+              });
+            } else {
+              await tx.inventoryItem.create({
+                data: {
+                  itemId: item.itemId,
+                  warehouseId: request.fromWarehouseId,
+                  locationId: request.fromLocationId,
+                  quantity: Number(item.quantity),
+                  status: 'AVAILABLE',
+                },
+              });
+            }
+
+            // Outbound Entry
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: request.fromWarehouseId,
+                locationId: request.fromLocationId,
+                qty: -Number(item.quantity),
+                movementType: 'OUTBOUND',
+                referenceType: 'OUTLET_TRANSFER_OUT',
+                referenceId: request.id,
+                rate: itemRate,
+              },
+              tx,
+            );
+
+            // Decrement POS location inventory
+            const posStockUpdated = await tx.inventoryItem.findFirst({
+              where: {
+                itemId: item.itemId,
+                locationId: request.fromLocationId,
+                status: 'AVAILABLE',
+              },
+            });
+
+            if (posStockUpdated) {
+              await tx.inventoryItem.update({
+                where: { id: posStockUpdated.id },
+                data: { quantity: { decrement: Number(item.quantity) } },
+              });
+            }
+          }
+
+          // 2. Create stock ledger entry: Customer → PLM (direct transfer)
+          await this.stockLedgerService.createEntry(
+            {
+              itemId: item.itemId,
+              warehouseId: plmWarehouseId,
+              locationId: null, // Warehouse-level
+              qty: Number(item.quantity),
+              movementType: 'INBOUND' as any,
+              referenceType: 'CLAIM_ACKNOWLEDGED',
+              referenceId: request.id,
+              rate: itemRate,
+            },
+            tx,
+          );
+
+          console.log('✅ [PLM Acknowledgment] Stock ledger entries created');
+
+          // 2. Add item to PLM warehouse inventory
+          const plmStock = await tx.inventoryItem.findFirst({
+            where: {
+              itemId: item.itemId,
+              warehouseId: plmWarehouseId,
+              locationId: null, // Warehouse-level
+              status: 'AVAILABLE',
+            },
+          });
+
+          if (plmStock) {
+            await tx.inventoryItem.update({
+              where: { id: plmStock.id },
+              data: { quantity: { increment: Number(item.quantity) } },
+            });
+            console.log(
+              '✅ [PLM Acknowledgment] PLM inventory updated (incremented)',
+            );
+          } else {
+            await tx.inventoryItem.create({
+              data: {
+                itemId: item.itemId,
+                warehouseId: plmWarehouseId,
+                locationId: null, // Warehouse-level
+                quantity: Number(item.quantity),
+                status: 'AVAILABLE',
+              },
+            });
+            console.log(
+              '✅ [PLM Acknowledgment] PLM inventory created (new entry)',
+            );
+          }
+        }
+
+        // 3. Update transfer request status to COMPLETED
+        const updated = await tx.transferRequest.update({
+          where: { id },
+          data: {
+            status: 'COMPLETED',
+            approvedById: userId,
+            notes: `${request.notes || ''}\n\nPLM acknowledged receipt and inventory updated on ${new Date().toISOString()}`,
+          },
+        });
+
+        console.log('✅ [PLM Acknowledgment] Transfer request completed');
+
+        runInBackground(
+          'Acknowledge Claim Transfer',
+          this.activityLogs.log({
+            userId: ctx?.userId,
+            action: 'update',
+            module: 'transfer-request',
+            entity: 'TransferRequest',
+            entityId: updated.id,
+            description: `PLM acknowledged claim transfer ${updated.requestNo} and inventory updated`,
+            newValues: JSON.stringify({
+              status: 'COMPLETED',
+              acknowledgedBy: userId,
+            }),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            status: 'success',
+          }),
+        );
+
+        // 🔔 Notify POS location about PLM acknowledgment
+        if (request.fromLocationId) {
+          runInBackground(
+            'Notify POS - Transfer Acknowledged',
+            this.notifyLocationUsers(request.fromLocationId, {
+              title: '📦 Transfer Acknowledged',
+              message: `PLM has acknowledged receipt of transfer ${updated.requestNo}. Inventory updated.`,
+              category: 'inventory',
+              priority: 'normal',
+              actionType: 'view_transfer',
+              actionPayload: {
+                transferId: updated.id,
+                requestNo: updated.requestNo,
+              },
+              entityType: 'TransferRequest',
+              entityId: updated.id,
+            }),
+          );
+        }
+
+        return updated;
+      });
+    } catch (error: any) {
+      runInBackground(
+        'Acknowledge Claim Transfer (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'transfer-request',
+          entity: 'TransferRequest',
+          entityId: id,
+          description: `Failed to acknowledge claim transfer`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
+
+  // 🔔 Helper: Notify users at specific location
+  private async notifyLocationUsers(
+    locationId: string,
+    notificationData: {
+      title: string;
+      message: string;
+      category: string;
+      priority: 'low' | 'normal' | 'high' | 'urgent';
+      actionType?: string;
+      actionPayload?: any;
+      entityType?: string;
+      entityId?: string;
+    },
+  ) {
+    try {
+      // For now, get all users and let notification system handle filtering
+      // In future, can add location-based filtering when user-location relationship is clarified
+      const allUsers = await this.prismaMaster.user.findMany({
+        select: { id: true },
+      });
+
+      // Send notification to each user (notification system will handle user preferences)
+      for (const user of allUsers) {
+        await this.notifications.create({
+          userId: user.id,
+          ...notificationData,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to notify location users:', error);
+    }
+  }
+
+  async getNextTransferNumber(
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ nextTransferNumber: string }> {
+    const prismaClient = tx || this.prisma;
+    const currentYear = new Date().getFullYear();
+    const prefix = 'STN';
+
+    const lastRequest = await prismaClient.transferRequest.findFirst({
+      where: {
+        requestNo: {
+          startsWith: `${prefix}-${currentYear}`,
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    let nextNumber = 1;
+    if (lastRequest) {
+      const lastNumber = parseInt(
+        lastRequest.requestNo.split('-').pop() || '0',
+      );
+      if (!isNaN(lastNumber)) {
+        nextNumber = lastNumber + 1;
+      }
+    }
+
+    const nextTransferNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+    return { nextTransferNumber };
+  }
 }

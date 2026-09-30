@@ -23,11 +23,13 @@ export class LandedCostExportService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async queueExport(opts: QueueLandedCostExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueueLandedCostExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
 
     // Read tenant credentials from the live request context
-    const tenantId    = this.prisma.getTenantId()    ?? '';
+    const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
 
     await this.exportQueue.add(
@@ -37,9 +39,9 @@ export class LandedCostExportService {
         landedCostId: opts.landedCostId,
         tenantId,
         tenantDbUrl,
-        search:  opts.search,
+        search: opts.search,
         hsCodes: opts.hsCodes,
-        skus:    opts.skus,
+        skus: opts.skus,
       },
       {
         jobId,
@@ -50,41 +52,57 @@ export class LandedCostExportService {
       },
     );
 
-    this.logger.log(`[LandedCostExport] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId}, landedCostId: ${opts.landedCostId})`);
+    this.logger.log(
+      `[LandedCostExport] Queued job ${jobId} for user ${opts.userId} (tenant: ${tenantId}, landedCostId: ${opts.landedCostId})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
-    const state    = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const state = await job.getState();
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
   async streamExportFile(jobId: string, res: any): Promise<void> {
-    const filePath = path.join(process.cwd(), 'uploads', 'exports', `export-${jobId}.xlsx`);
+    const filePath = path.join(
+      process.cwd(),
+      'uploads',
+      'exports',
+      `export-${jobId}.xlsx`,
+    );
 
     if (!fs.existsSync(filePath)) {
-      throw new NotFoundException('Export file not found. It may have expired or the job is still running.');
+      throw new NotFoundException(
+        'Export file not found. It may have expired or the job is still running.',
+      );
     }
 
-    const stat      = fs.statSync(filePath);
+    const stat = fs.statSync(filePath);
     const timestamp = new Date().toISOString().slice(0, 10);
-    const filename  = `landed-cost-export-${timestamp}.xlsx`;
+    const filename = `landed-cost-export-${timestamp}.xlsx`;
 
     const stream = fs.createReadStream(filePath);
     stream.on('close', () => {
       fs.unlink(filePath, (err) => {
-        if (err) this.logger.warn(`Could not delete export file: ${err.message}`);
-        else     this.logger.log(`[LandedCostExport] Cleaned up ${filePath}`);
+        if (err)
+          this.logger.warn(`Could not delete export file: ${err.message}`);
+        else this.logger.log(`[LandedCostExport] Cleaned up ${filePath}`);
       });
     });
     stream.on('error', (err) => {
       this.logger.error(`[LandedCostExport] Stream error: ${err.message}`);
     });
 
-    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.header(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
     res.header('Content-Disposition', `attachment; filename="${filename}"`);
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');

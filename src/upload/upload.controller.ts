@@ -24,7 +24,7 @@ import {
 @ApiTags('Upload')
 @Controller('api')
 export class UploadController {
-  constructor(private readonly uploadService: UploadService,) {}
+  constructor(private readonly uploadService: UploadService) {}
 
   @Post('uploads')
   @UseGuards(JwtAuthGuard)
@@ -111,7 +111,10 @@ export class UploadController {
       }
 
       reply.header('Content-Type', item.mimetype);
-      reply.header('Content-Disposition', `inline; filename="${item.filename}"`);
+      reply.header(
+        'Content-Disposition',
+        `inline; filename="${item.filename}"`,
+      );
       reply.header('Cache-Control', 'public, max-age=31536000');
       return reply.send(result.stream);
     } catch (error: any) {
@@ -135,7 +138,10 @@ export class UploadController {
     }
 
     reply.header('Content-Type', item.mimetype);
-    reply.header('Content-Disposition', `attachment; filename="${item.filename}"`);
+    reply.header(
+      'Content-Disposition',
+      `attachment; filename="${item.filename}"`,
+    );
     return reply.send(result.stream);
   }
 

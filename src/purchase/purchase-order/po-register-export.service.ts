@@ -150,7 +150,15 @@ export class PoRegisterExportService {
 
     const endDate = endStr
       ? new Date(endStr)
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      : new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
 
     const where: any = {
       orderDate: {
@@ -184,8 +192,14 @@ export class PoRegisterExportService {
               OR: [
                 { description: { contains: search, mode: 'insensitive' } },
                 { item: { sku: { contains: search, mode: 'insensitive' } } },
-                { item: { description: { contains: search, mode: 'insensitive' } } },
-                { item: { barCode: { contains: search, mode: 'insensitive' } } },
+                {
+                  item: {
+                    description: { contains: search, mode: 'insensitive' },
+                  },
+                },
+                {
+                  item: { barCode: { contains: search, mode: 'insensitive' } },
+                },
               ],
             },
           },
@@ -230,14 +244,23 @@ export class PoRegisterExportService {
     for (const po of purchaseOrders) {
       const supplierName = po.vendor?.name || 'Unknown Supplier';
       const supplierLocation =
-        po.vendor?.city || po.vendor?.address || po.vendor?.code || 'Location N/A';
-      const poDateStr = po.orderDate ? new Date(po.orderDate).toISOString().slice(0, 10) : '';
+        po.vendor?.city ||
+        po.vendor?.address ||
+        po.vendor?.code ||
+        'Location N/A';
+      const poDateStr = po.orderDate
+        ? new Date(po.orderDate).toISOString().slice(0, 10)
+        : '';
 
-      const grns: PoRegisterGrnInfo[] = (po.goodsReceiptNotes || []).map((g: any) => ({
-        grnNumber: g.grnNumber,
-        status: g.status,
-        receivedDate: g.receivedDate ? new Date(g.receivedDate).toISOString().slice(0, 10) : '',
-      }));
+      const grns: PoRegisterGrnInfo[] = (po.goodsReceiptNotes || []).map(
+        (g: any) => ({
+          grnNumber: g.grnNumber,
+          status: g.status,
+          receivedDate: g.receivedDate
+            ? new Date(g.receivedDate).toISOString().slice(0, 10)
+            : '',
+        }),
+      );
 
       // Collect distinct brands for this PO document
       const brandNamesSet = new Set<string>();
@@ -247,7 +270,9 @@ export class PoRegisterExportService {
         }
       }
       const brandsDisplay =
-        brandNamesSet.size > 0 ? Array.from(brandNamesSet).join(' | ') : 'UNASSIGNED BRAND';
+        brandNamesSet.size > 0
+          ? Array.from(brandNamesSet).join(' | ')
+          : 'UNASSIGNED BRAND';
 
       const docGroup: PoRegisterDocumentGroup = {
         poId: po.id,
@@ -269,12 +294,17 @@ export class PoRegisterExportService {
         const itemObj = itemRow.item;
         const divName = (itemObj?.division?.name || 'GENERAL').toUpperCase();
         const catName = (itemObj?.category?.name || 'GENERAL').toUpperCase();
-        const subCatName = (itemObj?.subCategory?.name || 'GENERAL').toUpperCase();
-        const genderName = (itemObj?.gender?.name || 'UNASSIGNED').toUpperCase();
+        const subCatName = (
+          itemObj?.subCategory?.name || 'GENERAL'
+        ).toUpperCase();
+        const genderName = (
+          itemObj?.gender?.name || 'UNASSIGNED'
+        ).toUpperCase();
         const silName = (itemObj?.silhouette?.name || 'GENERAL').toUpperCase();
 
         const sku = itemObj?.sku || itemObj?.itemId || 'N/A';
-        const description = itemObj?.description || itemRow.description || 'N/A';
+        const description =
+          itemObj?.description || itemRow.description || 'N/A';
         const barCode = itemObj?.barCode || 'N/A';
         const colorName = (itemObj?.color?.name || 'N/A').toUpperCase();
         const sizeName = (itemObj?.size?.name || 'N/A').toUpperCase();
@@ -284,7 +314,9 @@ export class PoRegisterExportService {
         const lineTotal = Number(itemRow.lineTotal) || qty * unitPrice;
 
         // Division Level
-        let divGroup = docGroup.divisions.find((d) => d.divisionName === divName);
+        let divGroup = docGroup.divisions.find(
+          (d) => d.divisionName === divName,
+        );
         if (!divGroup) {
           divGroup = {
             divisionName: divName,
@@ -296,7 +328,9 @@ export class PoRegisterExportService {
         }
 
         // Category Level
-        let catGroup = divGroup.categories.find((c) => c.categoryName === catName);
+        let catGroup = divGroup.categories.find(
+          (c) => c.categoryName === catName,
+        );
         if (!catGroup) {
           catGroup = {
             categoryName: catName,
@@ -309,7 +343,9 @@ export class PoRegisterExportService {
         }
 
         // Gender Level
-        let genGroup = catGroup.genders.find((g) => g.genderName === genderName);
+        let genGroup = catGroup.genders.find(
+          (g) => g.genderName === genderName,
+        );
         if (!genGroup) {
           genGroup = {
             genderName,
@@ -321,7 +357,9 @@ export class PoRegisterExportService {
         }
 
         // Silhouette Level
-        let silGroup = genGroup.silhouettes.find((s) => s.silhouetteName === silName);
+        let silGroup = genGroup.silhouettes.find(
+          (s) => s.silhouetteName === silName,
+        );
         if (!silGroup) {
           silGroup = {
             silhouetteName: silName,
@@ -405,7 +443,9 @@ export class PoRegisterExportService {
     };
   }
 
-  async queueExport(opts: QueuePoRegisterExportOptions): Promise<{ jobId: string }> {
+  async queueExport(
+    opts: QueuePoRegisterExportOptions,
+  ): Promise<{ jobId: string }> {
     const jobId = uuidv4();
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
@@ -447,15 +487,20 @@ export class PoRegisterExportService {
       },
     );
 
-    this.logger.log(`[PoRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`);
+    this.logger.log(
+      `[PoRegisterExport] Queued job ${jobId} for user ${opts.userId} (format: ${opts.format})`,
+    );
     return { jobId };
   }
 
-  async getJobStatus(jobId: string): Promise<{ state: string; progress: number }> {
+  async getJobStatus(
+    jobId: string,
+  ): Promise<{ state: string; progress: number }> {
     const job = await this.exportQueue.getJob(jobId);
     if (!job) throw new NotFoundException(`Export job ${jobId} not found`);
     const state = await job.getState();
-    const progress = typeof job.progress() === 'number' ? (job.progress() as number) : 0;
+    const progress =
+      typeof job.progress() === 'number' ? (job.progress() as number) : 0;
     return { state, progress };
   }
 
@@ -475,7 +520,9 @@ export class PoRegisterExportService {
         data: { downloadCount: { increment: 1 } },
       });
     } catch (err: any) {
-      this.logger.warn(`Could not update export download count for job ${jobId}: ${err.message}`);
+      this.logger.warn(
+        `Could not update export download count for job ${jobId}: ${err.message}`,
+      );
     }
 
     if (record.filePath.startsWith('s3://')) {
@@ -484,7 +531,10 @@ export class PoRegisterExportService {
       return res.redirect(signedUrl, 302);
     }
 
-    if (record.filePath.startsWith('http://') || record.filePath.startsWith('https://')) {
+    if (
+      record.filePath.startsWith('http://') ||
+      record.filePath.startsWith('https://')
+    ) {
       return res.redirect(record.filePath, 302);
     }
 
@@ -497,8 +547,16 @@ export class PoRegisterExportService {
     const stream = fs.createReadStream(filePath);
 
     const isPdf = record.fileName.endsWith('.pdf');
-    res.header('Content-Type', isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.header('Content-Disposition', `attachment; filename="${record.fileName}"`);
+    res.header(
+      'Content-Type',
+      isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="${record.fileName}"`,
+    );
     res.header('Content-Length', stat.size);
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(stream);

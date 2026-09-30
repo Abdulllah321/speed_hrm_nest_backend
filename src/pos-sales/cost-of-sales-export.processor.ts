@@ -29,9 +29,27 @@ const COLUMNS = [
   { header: 'SKU', key: 'sku', width: 16 },
   { header: 'Size', key: 'size', width: 10, align: 'center' },
   { header: 'Color', key: 'color', width: 14, align: 'center' },
-  { header: 'Quantity', key: 'quantity', width: 14, align: 'right', numFmt: '#,##0' },
-  { header: 'Cost Price (Rs.)', key: 'costPrice', width: 18, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Total Cost (Rs.)', key: 'totalCost', width: 20, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Quantity',
+    key: 'quantity',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0',
+  },
+  {
+    header: 'Cost Price (Rs.)',
+    key: 'costPrice',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Total Cost (Rs.)',
+    key: 'totalCost',
+    width: 20,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
 ];
 
 @Processor('cost-of-sales-export')
@@ -51,7 +69,9 @@ export class CostOfSalesExportProcessor {
           () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
@@ -59,48 +79,83 @@ export class CostOfSalesExportProcessor {
   @Process('generate-cost-of-sales-preview')
   async handleCostOfSalesPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
-    this.logger.log(`[CostOfSalesPreview ${jobId}] Starting background cost-of-sales preview computation`);
+    this.logger.log(
+      `[CostOfSalesPreview ${jobId}] Starting background cost-of-sales preview computation`,
+    );
     try {
-      await job.progress({ percent: 5, message: 'Worker active. Connecting to tenant database...' });
-      const prisma = (tenantId && tenantDbUrl)
-        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-        : new PrismaService({ tenantId, tenantDbUrl } as any);
+      await job.progress({
+        percent: 5,
+        message: 'Worker active. Connecting to tenant database...',
+      });
+      const prisma =
+        tenantId && tenantDbUrl
+          ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+          : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      const data = await this.costOfSalesExportService.generateCostOfSalesReportDataInternal(
-        prisma,
-        {
-          ...opts,
-          previewJobId: jobId,
-          onProgress: async (percent: number, message: string) => {
-            await job.progress({ percent, message });
+      const data =
+        await this.costOfSalesExportService.generateCostOfSalesReportDataInternal(
+          prisma,
+          {
+            ...opts,
+            previewJobId: jobId,
+            onProgress: async (percent: number, message: string) => {
+              await job.progress({ percent, message });
+            },
           },
-        },
-      );
+        );
 
       if (this.costOfSalesExportService.isJobCancelled(jobId)) {
-        this.logger.log(`[CostOfSalesPreview ${jobId}] Job cancelled by user. Skipping result save.`);
+        this.logger.log(
+          `[CostOfSalesPreview ${jobId}] Job cancelled by user. Skipping result save.`,
+        );
         return;
       }
 
-      await job.progress({ percent: 90, message: 'Compressing report payload & caching preview result...' });
+      await job.progress({
+        percent: 90,
+        message: 'Compressing report payload & caching preview result...',
+      });
       this.costOfSalesExportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({ percent: 100, message: 'Cost of sales report computation complete!' });
-      this.logger.log(`[CostOfSalesPreview ${jobId}] Successfully generated and saved preview result`);
+      await job.progress({
+        percent: 100,
+        message: 'Cost of sales report computation complete!',
+      });
+      this.logger.log(
+        `[CostOfSalesPreview ${jobId}] Successfully generated and saved preview result`,
+      );
     } catch (err: any) {
-      this.logger.error(`[CostOfSalesPreview ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[CostOfSalesPreview ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       throw err;
     }
   }
 
   @Process({ concurrency: 1 })
   async handleExport(job: Job<CostOfSalesExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate, endDate, format, search, exportType, previewJobId } = job.data;
-    this.logger.log(`[CostOfSalesExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export`);
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate,
+      endDate,
+      format,
+      search,
+      exportType,
+      previewJobId,
+    } = job.data;
+    this.logger.log(
+      `[CostOfSalesExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export`,
+    );
 
-    const prisma = (tenantId && tenantDbUrl)
-      ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
-      : new PrismaService({ tenantId, tenantDbUrl } as any);
+    const prisma =
+      tenantId && tenantDbUrl
+        ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
+        : new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
     fs.mkdirSync(exportDir, { recursive: true });
     const ext = format === 'pdf' ? 'pdf' : 'xlsx';
@@ -112,16 +167,21 @@ export class CostOfSalesExportProcessor {
 
       let reportData: any = null;
       if (previewJobId) {
-        reportData = this.costOfSalesExportService.getReportPreviewResult(previewJobId);
+        reportData =
+          this.costOfSalesExportService.getReportPreviewResult(previewJobId);
       }
 
       if (!reportData) {
-        reportData = await this.costOfSalesExportService.generateCostOfSalesReportDataInternal(prisma, {
-          locationId,
-          startDate,
-          endDate,
-          search,
-        });
+        reportData =
+          await this.costOfSalesExportService.generateCostOfSalesReportDataInternal(
+            prisma,
+            {
+              locationId,
+              startDate,
+              endDate,
+              search,
+            },
+          );
       }
 
       await job.progress(40);
@@ -134,7 +194,10 @@ export class CostOfSalesExportProcessor {
 
       await job.progress(90);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma as any,
@@ -156,17 +219,25 @@ export class CostOfSalesExportProcessor {
         }),
       );
     } catch (err: any) {
-      this.logger.error(`[CostOfSalesExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[CostOfSalesExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       try {
         await this.exportHistoryService.failExport(prisma as any, jobId);
       } catch (e: any) {
-        this.logger.error(`Failed to update export history status to FAILED for job ${jobId}`);
+        this.logger.error(
+          `Failed to update export history status to FAILED for job ${jobId}`,
+        );
       }
       throw err;
     }
   }
 
-  private async generateExcel(filePath: string, reportData: any): Promise<void> {
+  private async generateExcel(
+    filePath: string,
+    reportData: any,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -199,7 +270,10 @@ export class CostOfSalesExportProcessor {
       };
       cell.font = { bold: true, color: { argb: 'FFFFFF' }, size: 10 };
       cell.border = borderThin;
-      cell.alignment = { vertical: 'middle', horizontal: (COLUMNS[c - 1].align as any) || 'left' };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: (COLUMNS[c - 1].align as any) || 'left',
+      };
     }
     headerRow.commit();
 
@@ -217,7 +291,11 @@ export class CostOfSalesExportProcessor {
       for (let c = 1; c <= COLUMNS.length; c++) {
         const cell = brandRow.getCell(c);
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF1E293B' },
+        };
         cell.border = borderThin;
         const col = COLUMNS[c - 1];
         if (col.align) cell.alignment = { horizontal: col.align as any };
@@ -239,7 +317,11 @@ export class CostOfSalesExportProcessor {
         for (let c = 1; c <= COLUMNS.length; c++) {
           const cell = divRow.getCell(c);
           cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF334155' },
+          };
           cell.border = borderThin;
           const col = COLUMNS[c - 1];
           if (col.align) cell.alignment = { horizontal: col.align as any };
@@ -261,7 +343,11 @@ export class CostOfSalesExportProcessor {
           for (let c = 1; c <= COLUMNS.length; c++) {
             const cell = genderRow.getCell(c);
             cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9.5 };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FF475569' },
+            };
             cell.border = borderThin;
             const col = COLUMNS[c - 1];
             if (col.align) cell.alignment = { horizontal: col.align as any };
@@ -282,8 +368,16 @@ export class CostOfSalesExportProcessor {
             catRow.height = 20;
             for (let c = 1; c <= COLUMNS.length; c++) {
               const cell = catRow.getCell(c);
-              cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9.5 };
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF64748B' } };
+              cell.font = {
+                bold: true,
+                color: { argb: 'FFFFFFFF' },
+                size: 9.5,
+              };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF64748B' },
+              };
               cell.border = borderThin;
               const col = COLUMNS[c - 1];
               if (col.align) cell.alignment = { horizontal: col.align as any };
@@ -304,11 +398,20 @@ export class CostOfSalesExportProcessor {
               prodRow.height = 22;
               for (let c = 1; c <= COLUMNS.length; c++) {
                 const cell = prodRow.getCell(c);
-                cell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 10 };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+                cell.font = {
+                  bold: true,
+                  color: { argb: 'FF0F172A' },
+                  size: 10,
+                };
+                cell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb: 'FFF1F5F9' },
+                };
                 cell.border = borderThin;
                 const col = COLUMNS[c - 1];
-                if (col.align) cell.alignment = { horizontal: col.align as any };
+                if (col.align)
+                  cell.alignment = { horizontal: col.align as any };
                 if (col.numFmt) cell.numFmt = col.numFmt;
               }
               prodRow.commit();
@@ -327,7 +430,8 @@ export class CostOfSalesExportProcessor {
                   const cell = itemRow.getCell(c);
                   cell.border = borderThin;
                   const col = COLUMNS[c - 1];
-                  if (col.align) cell.alignment = { horizontal: col.align as any };
+                  if (col.align)
+                    cell.alignment = { horizontal: col.align as any };
                   if (col.numFmt) cell.numFmt = col.numFmt;
                 }
                 itemRow.commit();
@@ -352,7 +456,11 @@ export class CostOfSalesExportProcessor {
     for (let c = 1; c <= COLUMNS.length; c++) {
       const cell = grandRow.getCell(c);
       cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' },
+      };
       cell.border = borderThin;
       const col = COLUMNS[c - 1];
       if (col.align) cell.alignment = { horizontal: col.align as any };
@@ -364,9 +472,17 @@ export class CostOfSalesExportProcessor {
   }
 
   private async generatePdf(filePath: string, reportData: any): Promise<void> {
-    const launchArgs = process.platform === 'linux'
-      ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
-      : [];
+    const launchArgs =
+      process.platform === 'linux'
+        ? [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+          ]
+        : [];
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -529,6 +645,8 @@ export class CostOfSalesExportProcessor {
 
 function runInBackground(promise: Promise<any>) {
   promise.catch((err) => {
-    Logger.error(`[CostOfSalesExportProcessor] Background error: ${err?.message || err}`);
+    Logger.error(
+      `[CostOfSalesExportProcessor] Background error: ${err?.message || err}`,
+    );
   });
 }

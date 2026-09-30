@@ -30,7 +30,7 @@ export class SizeService {
 
     const sizes = await this.prisma.size.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
 
     const userIds = [
@@ -58,9 +58,7 @@ export class SizeService {
 
   async getSizeById(id: string) {
     const size = await this.prisma.size.findFirst({
-      where: { id,
-          isDeleted: false
-    },
+      where: { id, isDeleted: false },
     });
     if (!size) return { status: false, message: 'Size not found' };
 
@@ -90,14 +88,14 @@ export class SizeService {
       runInBackground(
         'Created sizes (${sizes.count})',
         this.activityLogs.log({
-        userId: createdById,
-        action: 'create',
-        module: 'sizes',
-        entity: 'Size',
-        description: `Created sizes (${sizes.count})`,
-        newValues: JSON.stringify(items),
-        status: 'success',
-      }),
+          userId: createdById,
+          action: 'create',
+          module: 'sizes',
+          entity: 'Size',
+          description: `Created sizes (${sizes.count})`,
+          newValues: JSON.stringify(items),
+          status: 'success',
+        }),
         this.cacheManager.del('sizes_all'),
       );
       return {
@@ -117,9 +115,7 @@ export class SizeService {
   ) {
     try {
       const existing = await this.prisma.size.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       const size = await this.prisma.size.update({
         where: { id },
@@ -129,18 +125,18 @@ export class SizeService {
       runInBackground(
         'Updated size ${size.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'sizes',
-        entity: 'Size',
-        entityId: id,
-        description: `Updated size ${size.name}`,
-        oldValues: JSON.stringify(existing),
-        newValues: JSON.stringify(dto),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sizes',
+          entity: 'Size',
+          entityId: id,
+          description: `Updated size ${size.name}`,
+          oldValues: JSON.stringify(existing),
+          newValues: JSON.stringify(dto),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('sizes_all'),
       );
       return { status: true, data: size, message: 'Size updated successfully' };
@@ -168,16 +164,16 @@ export class SizeService {
       runInBackground(
         'Bulk updated sizes (${updated.length})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'update',
-        module: 'sizes',
-        entity: 'Size',
-        description: `Bulk updated sizes (${updated.length})`,
-        newValues: JSON.stringify(dtos),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'sizes',
+          entity: 'Size',
+          description: `Bulk updated sizes (${updated.length})`,
+          newValues: JSON.stringify(dtos),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('sizes_all'),
       );
       return {
@@ -197,21 +193,21 @@ export class SizeService {
     try {
       const result = await this.prisma.size.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
       runInBackground(
         'Bulk deleted sizes (${result.count})',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'sizes',
-        entity: 'Size',
-        description: `Bulk deleted sizes (${result.count})`,
-        oldValues: JSON.stringify(ids),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'sizes',
+          entity: 'Size',
+          description: `Bulk deleted sizes (${result.count})`,
+          oldValues: JSON.stringify(ids),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('sizes_all'),
       );
       return {
@@ -230,28 +226,27 @@ export class SizeService {
   ) {
     try {
       const existing = await this.prisma.size.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
-      const result = await this.prisma.size.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const result = await this.prisma.size.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Deleted size ${existing?.name}',
         this.activityLogs.log({
-        userId: ctx?.userId,
-        action: 'delete',
-        module: 'sizes',
-        entity: 'Size',
-        entityId: id,
-        description: `Deleted size ${existing?.name}`,
-        oldValues: JSON.stringify(existing),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        status: 'success',
-      }),
+          userId: ctx?.userId,
+          action: 'delete',
+          module: 'sizes',
+          entity: 'Size',
+          entityId: id,
+          description: `Deleted size ${existing?.name}`,
+          oldValues: JSON.stringify(existing),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
         this.cacheManager.del('sizes_all'),
       );
       return {

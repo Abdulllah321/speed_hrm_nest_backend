@@ -30,15 +30,29 @@ const COLUMNS = [
   { header: 'Customer Detail', key: 'customerDetail', width: 30 },
   { header: 'Valid Till', key: 'validTill', width: 16 },
   { header: 'Base Invoice / Claim #', key: 'baseInvoiceNumber', width: 24 },
-  { header: 'Discount Amount (Rs.)', key: 'discountAmount', width: 20, align: 'right', numFmt: '#,##0.00' },
-  { header: 'Amount (Rs.)', key: 'amount', width: 18, align: 'right', numFmt: '#,##0.00' },
+  {
+    header: 'Discount Amount (Rs.)',
+    key: 'discountAmount',
+    width: 20,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Amount (Rs.)',
+    key: 'amount',
+    width: 18,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
   { header: 'Settled In Invoice', key: 'settledInInvoice', width: 24 },
   { header: 'Settled Date Time', key: 'settledDateTime', width: 20 },
 ];
 
 @Processor('gift-voucher-sale-register-export')
 export class GiftVoucherSaleRegisterExportProcessor {
-  private readonly logger = new Logger(GiftVoucherSaleRegisterExportProcessor.name);
+  private readonly logger = new Logger(
+    GiftVoucherSaleRegisterExportProcessor.name,
+  );
 
   constructor(
     private readonly notificationsService: NotificationsService,
@@ -53,15 +67,31 @@ export class GiftVoucherSaleRegisterExportProcessor {
           () => {},
         );
       } catch (e: any) {
-        this.logger.warn(`Error installing Chromium dependencies: ${e.message}`);
+        this.logger.warn(
+          `Error installing Chromium dependencies: ${e.message}`,
+        );
       }
     }
   }
 
   @Process({ concurrency: 1 })
-  async handleExport(job: Job<GiftVoucherSaleRegisterExportJobData>): Promise<void> {
-    const { jobId, userId, tenantId, tenantDbUrl, locationId, startDate, endDate, format, search } = job.data;
-    this.logger.log(`[GiftVoucherSaleRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`);
+  async handleExport(
+    job: Job<GiftVoucherSaleRegisterExportJobData>,
+  ): Promise<void> {
+    const {
+      jobId,
+      userId,
+      tenantId,
+      tenantDbUrl,
+      locationId,
+      startDate,
+      endDate,
+      format,
+      search,
+    } = job.data;
+    this.logger.log(
+      `[GiftVoucherSaleRegisterExport ${jobId}] Starting ${format.toUpperCase()} export`,
+    );
 
     const prisma = new PrismaService({ tenantId, tenantDbUrl } as any);
     const exportDir = path.join(process.cwd(), 'uploads', 'exports');
@@ -90,7 +120,10 @@ export class GiftVoucherSaleRegisterExportProcessor {
 
       await job.progress(90);
 
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
       await this.exportHistoryService.completeAndUploadExport(
         prisma as any,
@@ -112,17 +145,25 @@ export class GiftVoucherSaleRegisterExportProcessor {
         }),
       );
     } catch (err: any) {
-      this.logger.error(`[GiftVoucherSaleRegisterExport ${jobId}] Failed: ${err.message}`, err.stack);
+      this.logger.error(
+        `[GiftVoucherSaleRegisterExport ${jobId}] Failed: ${err.message}`,
+        err.stack,
+      );
       try {
         await this.exportHistoryService.failExport(prisma as any, jobId);
       } catch (e: any) {
-        this.logger.error(`Failed to update export history status to FAILED for job ${jobId}`);
+        this.logger.error(
+          `Failed to update export history status to FAILED for job ${jobId}`,
+        );
       }
       throw err;
     }
   }
 
-  private async generateExcel(filePath: string, reportData: any): Promise<void> {
+  private async generateExcel(
+    filePath: string,
+    reportData: any,
+  ): Promise<void> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: filePath,
       useStyles: true,
@@ -155,7 +196,10 @@ export class GiftVoucherSaleRegisterExportProcessor {
       };
       cell.font = { bold: true, color: { argb: 'FFFFFF' }, size: 10 };
       cell.border = borderThin;
-      cell.alignment = { vertical: 'middle', horizontal: (COLUMNS[c - 1].align as any) || 'left' };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: (COLUMNS[c - 1].align as any) || 'left',
+      };
     }
     headerRow.commit();
 
@@ -202,7 +246,11 @@ export class GiftVoucherSaleRegisterExportProcessor {
     for (let c = 1; c <= COLUMNS.length; c++) {
       const cell = summaryRow.getCell(c);
       cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0F172A' },
+      };
       cell.border = borderThin;
       const col = COLUMNS[c - 1];
       if (col.align) cell.alignment = { horizontal: col.align as any };
@@ -214,9 +262,17 @@ export class GiftVoucherSaleRegisterExportProcessor {
   }
 
   private async generatePdf(filePath: string, reportData: any): Promise<void> {
-    const launchArgs = process.platform === 'linux'
-      ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-zygote']
-      : [];
+    const launchArgs =
+      process.platform === 'linux'
+        ? [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+          ]
+        : [];
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -324,6 +380,8 @@ export class GiftVoucherSaleRegisterExportProcessor {
 
 function runInBackground(promise: Promise<any>) {
   promise.catch((err) => {
-    Logger.error(`[GiftVoucherSaleRegisterExportProcessor] Background error: ${err?.message || err}`);
+    Logger.error(
+      `[GiftVoucherSaleRegisterExportProcessor] Background error: ${err?.message || err}`,
+    );
   });
 }

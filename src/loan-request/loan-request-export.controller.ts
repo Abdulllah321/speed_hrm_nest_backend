@@ -27,7 +27,10 @@ export class LoanRequestExportController {
    */
   @Post()
   @Permissions('hr.loan-request.read')
-  @ApiOperation({ summary: 'Queue a loan request export job (returns immediately, notifies when done)' })
+  @ApiOperation({
+    summary:
+      'Queue a loan request export job (returns immediately, notifies when done)',
+  })
   async queueExport(@Req() req: any) {
     const result = await this.exportService.queueExport({
       userId: req.user?.userId,
@@ -35,7 +38,8 @@ export class LoanRequestExportController {
 
     return {
       status: true,
-      message: "Export queued. You'll receive a notification when your file is ready.",
+      message:
+        "Export queued. You'll receive a notification when your file is ready.",
       data: result,
     };
   }
@@ -63,7 +67,10 @@ export class LoanRequestExportController {
       await this.exportService.streamExportFile(jobId, res);
     } catch (err: any) {
       const status = err?.status ?? 404;
-      res.status(status).send({ status: false, message: err?.message ?? 'Export file not found' });
+      res.status(status).send({
+        status: false,
+        message: err?.message ?? 'Export file not found',
+      });
     }
   }
 }

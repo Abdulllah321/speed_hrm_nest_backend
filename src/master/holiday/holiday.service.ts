@@ -5,7 +5,6 @@ import { PrismaMasterService } from '../../database/prisma-master.service';
 import { PrismaService } from '../../database/prisma.service';
 import { runInBackground } from '../../common/utils/run-in-background.util';
 
-
 @Injectable()
 export class HolidayService {
   constructor(
@@ -16,7 +15,7 @@ export class HolidayService {
   async list() {
     const items = await this.prisma.holiday.findMany({
       orderBy: { createdAt: 'desc' },
-        where: { isDeleted: false }
+      where: { isDeleted: false },
     });
     // Convert dates to current year for display (holidays are recurring annually)
     const currentYear = new Date().getFullYear();
@@ -44,9 +43,9 @@ export class HolidayService {
   }
 
   async get(id: string) {
-    const item = await this.prisma.holiday.findFirst({ where: { id,
-        isDeleted: false
-    } });
+    const item = await this.prisma.holiday.findFirst({
+      where: { id, isDeleted: false },
+    });
     if (!item) return { status: false, message: 'Holiday not found' };
     // Convert dates to current year for display
     const currentYear = new Date().getFullYear();
@@ -159,9 +158,7 @@ export class HolidayService {
   ) {
     try {
       const existing = await this.prisma.holiday.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) {
         return { status: false, message: 'Holiday not found' };
@@ -281,17 +278,16 @@ export class HolidayService {
   ) {
     try {
       const existing = await this.prisma.holiday.findFirst({
-        where: { id,
-            isDeleted: false
-        },
+        where: { id, isDeleted: false },
       });
       if (!existing) {
         return { status: false, message: 'Holiday not found' };
       }
 
-      const removed = await this.prisma.holiday.update({ where: { id },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+      const removed = await this.prisma.holiday.update({
+        where: { id },
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Delete Record',
@@ -309,7 +305,11 @@ export class HolidayService {
         }),
       );
 
-      return { status: true, data: removed, message: 'Holiday deleted successfully' };
+      return {
+        status: true,
+        data: removed,
+        message: 'Holiday deleted successfully',
+      };
     } catch (error: any) {
       runInBackground(
         'Failed to delete holiday',
@@ -346,9 +346,7 @@ export class HolidayService {
     try {
       for (const item of items) {
         const existing = await this.prisma.holiday.findFirst({
-          where: { id: item.id,
-              isDeleted: false
-        },
+          where: { id: item.id, isDeleted: false },
         });
         if (!existing) continue;
 
@@ -517,14 +515,12 @@ export class HolidayService {
 
     try {
       const existing = await this.prisma.holiday.findMany({
-        where: { id: { in: ids },
-            isDeleted: false
-        },
+        where: { id: { in: ids }, isDeleted: false },
       });
       const result = await this.prisma.holiday.updateMany({
         where: { id: { in: ids } },
-          data: { isDeleted: true, deletedAt: new Date() }
-    });
+        data: { isDeleted: true, deletedAt: new Date() },
+      });
 
       runInBackground(
         'Bulk Delete Records',

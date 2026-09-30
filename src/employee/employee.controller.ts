@@ -48,12 +48,30 @@ export class EmployeeController {
     private service: EmployeeService,
     private bulkUploadService: EmployeeBulkUploadService,
     private eventsService: EmployeeUploadEventsService,
-  ) { }
+  ) {}
 
   @Get('employees/next-code')
   @ApiOperation({ summary: 'Get next employee code sequence' })
   async getNextEmployeeCode() {
     return this.service.getNextEmployeeCode();
+  }
+
+  // --- USER BRANDS ---
+  @Get('employees/user/:userId/brands')
+  @Permissions('hr.employee.read')
+  @ApiOperation({ summary: 'Get assigned brands for a user' })
+  async getUserBrands(@Param('userId') userId: string) {
+    return this.service.getUserBrands(userId);
+  }
+
+  @Put('employees/user/:userId/brands')
+  @Permissions('hr.employee.update')
+  @ApiOperation({ summary: 'Update assigned brands for a user' })
+  async updateUserBrands(
+    @Param('userId') userId: string,
+    @Body() body: { brandIds: string[] },
+  ) {
+    return this.service.updateUserBrands(userId, body.brandIds);
   }
 
   @Get('employees')
@@ -235,7 +253,8 @@ export class EmployeeController {
     if (fileExtension !== '.csv' && fileExtension !== '.xlsx') {
       return {
         status: false,
-        message: 'Invalid file format. Please upload a CSV (.csv) or Excel (.xlsx) file',
+        message:
+          'Invalid file format. Please upload a CSV (.csv) or Excel (.xlsx) file',
       };
     }
 
@@ -243,7 +262,11 @@ export class EmployeeController {
     const userId = user?.userId || user?.sub || user?.id || 'system';
 
     const fileBuffer = await data.toBuffer();
-    return this.bulkUploadService.initiateValidation(fileBuffer, data.filename, userId);
+    return this.bulkUploadService.initiateValidation(
+      fileBuffer,
+      data.filename,
+      userId,
+    );
   }
 
   @Get('employees/bulk-upload/:uploadId/status')
@@ -260,7 +283,10 @@ export class EmployeeController {
   @Post('employees/bulk-upload/:uploadId/confirm')
   @Permissions('hr.employee.create')
   @ApiOperation({ summary: 'Confirm and start employee import' })
-  async confirmBulkUpload(@Param('uploadId') uploadId: string, @Req() req: FastifyRequest) {
+  async confirmBulkUpload(
+    @Param('uploadId') uploadId: string,
+    @Req() req: FastifyRequest,
+  ) {
     const user = req.user as any;
     const userId = user?.userId || user?.sub || user?.id || 'system';
     return this.bulkUploadService.confirmUpload(uploadId, userId);
@@ -269,7 +295,10 @@ export class EmployeeController {
   @Get('employees/bulk-upload/:uploadId/errors/stream')
   @Permissions('hr.employee.read')
   @ApiOperation({ summary: 'Stream bulk upload error report' })
-  async streamBulkUploadErrors(@Param('uploadId') uploadId: string, @Res() res: any) {
+  async streamBulkUploadErrors(
+    @Param('uploadId') uploadId: string,
+    @Res() res: any,
+  ) {
     return this.bulkUploadService.streamErrorReport(uploadId, res);
   }
 
@@ -279,12 +308,20 @@ export class EmployeeController {
   async downloadTemplate(@Res() res: any) {
     try {
       const buffer = await this.bulkUploadService.generateTemplate();
-      res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.header('Content-Disposition', 'attachment; filename=employee_import_template.xlsx');
+      res.header(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.header(
+        'Content-Disposition',
+        'attachment; filename=employee_import_template.xlsx',
+      );
       res.send(buffer);
     } catch (error) {
       this.logger.error(`Failed to generate template: ${error.message}`);
-      res.status(500).send({ status: false, message: 'Failed to generate template' });
+      res
+        .status(500)
+        .send({ status: false, message: 'Failed to generate template' });
     }
   }
 
