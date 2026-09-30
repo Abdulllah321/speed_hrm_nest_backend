@@ -24,9 +24,11 @@ export class CreateDeliveryChallanDto {
   @IsString()
   salesOrderId: string;
 
+  @IsOptional()
   @IsString()
   driverName: string;
 
+  @IsOptional()
   @IsString()
   vehicleNo: string;
 
