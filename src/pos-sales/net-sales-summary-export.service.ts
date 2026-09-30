@@ -2006,7 +2006,7 @@ export class NetSalesSummaryExportService {
 
     return {
       reportType,
-      locations: isSeparate ? Array.from(locationNodesMap.values()) : undefined,
+      locations: Array.from(locationNodesMap.values()),
       categories: Array.from(globalCategoryNodesMap.values()),
       flatItems,
       grandTotals,

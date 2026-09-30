@@ -1131,7 +1131,7 @@ export class GrossSalesExportService {
           quantity: qty,
           unitPrice,
           wostAmount: valExcl,
-          discountAmount: disc,
+          discountAmount: discWost,
           discountWostAmount: discWost,
           taxAmount: tax,
           subTotal: lineTotal,
@@ -1187,7 +1187,7 @@ export class GrossSalesExportService {
         totalItems: retTotalQty,
         grossAmount: retGross,
         wostAmount: retWost,
-        discountAmount: retDisc,
+        discountAmount: retDiscWost,
         discountWostAmount: retDiscWost,
         amountAfterDiscount: Number(
           Math.max(0, retWost - retDiscWost).toFixed(2),
@@ -1247,13 +1247,13 @@ export class GrossSalesExportService {
           quantity: line.quantity,
           unitPrice: line.unitPrice,
           wostAmount: line.wostAmount,
-          discountAmount: line.discountAmount,
-          discountWostAmount: line.discountWostAmount,
+          discountAmount: line.discountWostAmount || 0,
+          discountWostAmount: line.discountWostAmount || 0,
           taxAmount: line.taxAmount,
           subTotal: line.subTotal,
           returnGrossAmount: retGross,
           returnWostAmount: retWost,
-          returnDiscountAmount: retDisc,
+          returnDiscountAmount: retDiscWost,
           returnDiscountWostAmount: retDiscWost,
           returnNetAmount: totalRefundAmt,
           returnTaxAmount: retTax,
@@ -1455,7 +1455,7 @@ export class GrossSalesExportService {
 
     const finalResult = {
       reportType,
-      locations: isSeparate ? Array.from(locationNodesMap.values()) : undefined,
+      locations: Array.from(locationNodesMap.values()),
       returns: returnNodes,
       flatItems,
       grandTotals,
@@ -1877,7 +1877,7 @@ export class GrossSalesExportService {
           totalItems: totalItemsCount,
           grossAmount: retailGross,
           wostAmount: grossWost,
-          discountAmount: totalDiscRetail,
+          discountAmount: totalDiscWost,
           discountWostAmount: totalDiscWost,
           amountAfterDiscount: totalAmtAfterDisc,
           netAmount: net,
@@ -1915,7 +1915,7 @@ export class GrossSalesExportService {
             totalItems: qty,
             grossAmount: lineRetailGross,
             wostAmount: valueExcl,
-            discountAmount: discAmtRetail,
+            discountAmount: discAmtWost,
             discountWostAmount: discAmtWost,
             amountAfterDiscount,
             netAmount: lineTotal,
@@ -1966,7 +1966,7 @@ export class GrossSalesExportService {
           existingRecord.wostAmount =
             Math.round((existingRecord.wostAmount + valueExcl) * 100) / 100;
           existingRecord.discountAmount =
-            Math.round((existingRecord.discountAmount + discAmtRetail) * 100) /
+            Math.round((existingRecord.discountAmount + discAmtWost) * 100) /
             100;
           existingRecord.discountWostAmount =
             Math.round(
@@ -2026,7 +2026,7 @@ export class GrossSalesExportService {
 
     return {
       reportType,
-      locations: isSeparate ? Array.from(locationNodesMap.values()) : undefined,
+      locations: Array.from(locationNodesMap.values()),
       categories: Array.from(globalCategoryNodesMap.values()),
       flatItems,
       grandTotals,
