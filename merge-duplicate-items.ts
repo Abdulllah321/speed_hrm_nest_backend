@@ -167,21 +167,21 @@ async function main() {
         if (company.dbPassword) {
           try {
             const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
-            connectionString = \`postgresql://\${company.dbUser}:\${decPassword}@\${company.dbHost || 'localhost'}:\${company.dbPort || 5432}/\${company.dbName}?schema=public\`;
+            connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
           } catch (e) {
-            console.warn(\`  ⚠️ Decryption failed for \${company.name}\`);
+            console.warn(`  ⚠️ Decryption failed for ${company.name}`);
           }
         }
         if (!connectionString) continue;
 
         const tenantPool = new Pool({ connectionString });
         const tenantAdapter = new PrismaPg(tenantPool);
-        const tenantPrisma = new PrismaClient({ adapter: tenantAdapter } as any);
+        const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
         try {
           await tenantPrisma.$connect();
           await runMergeForTenant(tenantPrisma, company.name);
         } catch (e) {
-           console.error(\`❌ Failed to run for tenant \${company.name}: \`, e);
+           console.error(`❌ Failed to run for tenant ${company.name}: `, e);
         } finally {
           await tenantPrisma.$disconnect();
           await tenantPool.end();
@@ -195,7 +195,7 @@ async function main() {
   console.log('🔗 Running on primary DATABASE_URL (single-tenant fallback)...');
   const pool = new Pool({ connectionString: managementUrl });
   const adapter = new PrismaPg(pool);
-  const prisma = new PrismaClient({ adapter } as any);
+  const prisma = new PrismaClient({ adapter });
   try {
     await prisma.$connect();
     await runMergeForTenant(prisma, 'Primary');
