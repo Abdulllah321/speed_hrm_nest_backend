@@ -238,6 +238,12 @@ export interface QueueGrossSalesExportOptions {
   showArticle?: boolean;
   showVariant?: boolean;
   showInvoices?: boolean;
+  showLocation?: boolean;
+  showMonth?: boolean;
+  showDate?: boolean;
+  showDocument?: boolean;
+  showSalesPerson?: boolean;
+  showTaxRate?: boolean;
   reportType: 'summary' | 'return';
 }
 
