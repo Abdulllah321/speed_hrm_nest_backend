@@ -617,7 +617,7 @@ export class TransferRequestService {
       where: {
         fromLocationId: locationId,
         transferType: 'OUTLET_TO_WAREHOUSE',
-        status: { in: ['PENDING', 'APPROVED'] },
+        status: { in: ['PENDING', 'APPROVED', 'PENDING_CHECKER'] },
       },
       include: {
         items: {
