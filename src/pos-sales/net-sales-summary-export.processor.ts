@@ -94,6 +94,7 @@ export class NetSalesSummaryExportProcessor {
       tenantId,
       tenantDbUrl,
       locationId,
+      locationIds,
       startDate,
       endDate,
       cashierUserId,
@@ -103,6 +104,8 @@ export class NetSalesSummaryExportProcessor {
       minAmount,
       maxAmount,
       fbrOnly,
+      fiscalYear,
+      year,
     } = job.data;
     this.logger.log(`[NetSalesSummaryPreview ${jobId}] Starting background net-sales-summary preview computation`);
 
@@ -117,6 +120,7 @@ export class NetSalesSummaryExportProcessor {
         prisma as any,
         {
           locationId,
+          locationIds,
           startDate,
           endDate,
           cashierUserId,
@@ -126,6 +130,8 @@ export class NetSalesSummaryExportProcessor {
           minAmount,
           maxAmount,
           fbrOnly,
+          fiscalYear,
+          year,
           onProgress: async (percent, message) => {
             await job.progress({ percent, message });
           },

@@ -2456,6 +2456,7 @@ export class PosSalesController {
     @Body()
     body: {
       locationId?: string;
+      locationIds?: string[];
       startDate?: string;
       endDate?: string;
       cashierUserId?: string;
@@ -2465,6 +2466,8 @@ export class PosSalesController {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: string | number;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
