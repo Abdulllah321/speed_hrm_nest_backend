@@ -1476,11 +1476,9 @@ export class PosSalesService implements OnModuleInit {
       if (endDate) whereCondition.createdAt.lte = new Date(endDate);
     }
 
-    const prisma = prismaClient || this.prisma;
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await this.prisma.salesOrder.findMany({
       where: whereCondition,
       include: {
-        location: true,
         items: {
           select: {
             id: true,
@@ -1839,7 +1837,6 @@ export class PosSalesService implements OnModuleInit {
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
-        location: true,
         items: {
           include: {
             item: {
@@ -2186,7 +2183,6 @@ export class PosSalesService implements OnModuleInit {
     const posReturnsList = await this.prisma.posReturn.findMany({
       where: { salesOrderId: { in: orderIds } },
       include: {
-        location: true,
         items: {
           include: {
             item: {
@@ -2753,7 +2749,6 @@ export class PosSalesService implements OnModuleInit {
     const allPosReturns = await this.prisma.posReturn.findMany({
       where: { salesOrderId: { in: Array.from(targetOrderIds) } },
       include: {
-        location: true,
         items: {
           include: {
             item: {
@@ -2774,7 +2769,6 @@ export class PosSalesService implements OnModuleInit {
     const rawOrders = await this.prisma.salesOrder.findMany({
       where,
       include: {
-        location: true,
         items: {
           include: {
             item: {
@@ -5948,12 +5942,10 @@ export class PosSalesService implements OnModuleInit {
     if (posId) where.posId = posId;
     if (locationId) where.locationId = locationId;
 
-    const prisma = prismaClient || this.prisma;
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await this.prisma.salesOrder.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
-        location: true,
         items: {
           include: {
             item: {
@@ -6640,7 +6632,6 @@ export class PosSalesService implements OnModuleInit {
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: {
-        location: true,
         items: {
           include: {
             item: {
@@ -7834,8 +7825,7 @@ export class PosSalesService implements OnModuleInit {
     const endDate = endStr ? new Date(endStr) : new Date(now);
     endDate.setHours(23, 59, 59, 999);
 
-    const prisma = prismaClient || this.prisma;
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await this.prisma.salesOrder.findMany({
       where: {
         ...(locationWhere && { locationId: locationWhere }),
         status: {
@@ -8181,8 +8171,7 @@ export class PosSalesService implements OnModuleInit {
           : { locationId }
         : {};
 
-    const prisma = prismaClient || this.prisma;
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await this.prisma.salesOrder.findMany({
       where: {
         ...locFilter,
         status: { in: ['completed', 'partially_returned'] },
@@ -8453,8 +8442,7 @@ export class PosSalesService implements OnModuleInit {
     const endDate = endStr ? new Date(endStr) : new Date(now);
     endDate.setHours(23, 59, 59, 999);
 
-    const prisma = prismaClient || this.prisma;
-    const orders = await prisma.salesOrder.findMany({
+    const orders = await this.prisma.salesOrder.findMany({
       where: {
         ...(locationWhere && { locationId: locationWhere }),
         status: {
