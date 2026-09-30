@@ -118,7 +118,7 @@ async function main() {
         // Fallback: Rename and disable
         await prisma.item.update({
           where: { id: dup.id },
-          data: { barCode: \`DUP-\${dup.barCode}\`, isActive: false, status: 'inactive' }
+          data: { barCode: 'DUP-' + dup.barCode, isActive: false, status: 'inactive' }
         });
       }
     }
