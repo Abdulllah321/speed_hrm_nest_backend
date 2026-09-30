@@ -96,9 +96,7 @@ async function runMergeForTenant(tenantPrisma: any, companyName: string) {
           await tenantPrisma.inventoryItem.update({
             where: { id: existing.id },
             data: {
-              quantity: { increment: inv.quantity },
-              available: { increment: inv.available },
-              reserved: { increment: inv.reserved }
+              quantity: { increment: inv.quantity }
             }
           });
           await tenantPrisma.inventoryItem.delete({ where: { id: inv.id } });
