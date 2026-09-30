@@ -397,7 +397,6 @@ export class PosSalesController {
       body.reason,
       returnLocationId,
       ctx,
-      body.customerId,
     );
   }
 
@@ -472,8 +471,6 @@ export class PosSalesController {
       body.items,
       body.reason,
       ctx,
-      body.customerId,
-      returnLocationId,
     );
   }
 
