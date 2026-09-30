@@ -39,6 +39,12 @@ interface GrossSalesExportJobData {
   showArticle?: boolean;
   showVariant?: boolean;
   showInvoices?: boolean;
+  showLocation?: boolean;
+  showMonth?: boolean;
+  showDate?: boolean;
+  showDocument?: boolean;
+  showSalesPerson?: boolean;
+  showTaxRate?: boolean;
   reportType: 'summary' | 'return';
 }
 
@@ -63,20 +69,23 @@ export interface GrossSalesReturnPreviewJobData {
 
 const COLUMNS = [
   {
-    header: 'GPC / Category / Product',
+    header: 'Product Hierarchy / Location',
     key: 'label',
-    width: 38,
+    width: 50,
     align: 'left',
   },
-  { header: 'Size', key: 'size', width: 10, align: 'center' },
-  { header: 'Color', key: 'color', width: 14, align: 'center' },
-  { header: 'HS CODE', key: 'hsCode', width: 14, align: 'center' },
-  { header: 'Barcode', key: 'barcode', width: 16, align: 'center' },
   { header: 'Qty', key: 'qty', width: 10, align: 'right', numFmt: '#,##0' },
   {
-    header: 'Retail Price (Rs.)',
-    key: 'retailPrice',
-    width: 16,
+    header: 'Unit Price (Rs.)',
+    key: 'unitPrice',
+    width: 14,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Price WOST',
+    key: 'priceWost',
+    width: 14,
     align: 'right',
     numFmt: '#,##0.00',
   },
@@ -88,55 +97,33 @@ const COLUMNS = [
     numFmt: '#,##0.00',
   },
   {
-    header: 'Discount Amount (Rs.)',
+    header: 'Discount Amt (Rs.)',
     key: 'discountAmount',
+    width: 16,
+    align: 'right',
+    numFmt: '#,##0.00',
+  },
+  {
+    header: 'Value Excl. Sales Tax',
+    key: 'valueExclSalesTax',
     width: 18,
     align: 'right',
     numFmt: '#,##0.00',
   },
   {
-    header: 'Excluding Sales Tax',
-    key: 'excludingSalesTax',
-    width: 18,
-    align: 'right',
-    numFmt: '#,##0.00',
-  },
-  {
-    header: 'Sales Tax %',
-    key: 'salesTaxPercent',
-    width: 14,
-    align: 'center',
-    numFmt: '0.00%',
-  },
-  {
-    header: 'Sales Tax Amount',
+    header: 'Sales Tax (Rs.)',
     key: 'salesTaxAmount',
-    width: 18,
+    width: 14,
     align: 'right',
     numFmt: '#,##0.00',
   },
   {
-    header: 'Further Tax Amount',
-    key: 'furtherTaxAmount',
-    width: 18,
-    align: 'right',
-    numFmt: '#,##0.00',
-  },
-  {
-    header: 'Total Tax (Rs.)',
-    key: 'totalTax',
-    width: 18,
-    align: 'right',
-    numFmt: '#,##0.00',
-  },
-  {
-    header: 'Including Sales Tax',
+    header: 'Value Incl. Tax / Revenue',
     key: 'includingSalesTax',
-    width: 20,
+    width: 22,
     align: 'right',
     numFmt: '#,##0.00',
   },
-  { header: 'Sales Person', key: 'salesPerson', width: 18, align: 'left' },
 ];
 
 @Processor('gross-sales-export')
@@ -340,6 +327,12 @@ export class GrossSalesExportProcessor {
       showArticle,
       showVariant,
       showInvoices,
+      showLocation,
+      showMonth,
+      showDate,
+      showDocument,
+      showSalesPerson,
+      showTaxRate,
       reportType,
     } = job.data;
 
@@ -416,6 +409,12 @@ export class GrossSalesExportProcessor {
               showArticle,
               showVariant,
               showInvoices,
+              showLocation,
+              showMonth,
+              showDate,
+              showDocument,
+              showSalesPerson,
+              showTaxRate,
               prismaClient: prisma,
             });
           } else {
@@ -437,6 +436,12 @@ export class GrossSalesExportProcessor {
               showArticle,
               showVariant,
               showInvoices,
+              showLocation,
+              showMonth,
+              showDate,
+              showDocument,
+              showSalesPerson,
+              showTaxRate,
               prismaClient: prisma,
             });
           }
@@ -597,28 +602,35 @@ export class GrossSalesExportProcessor {
                   message: `Streaming row ${processedRows.toLocaleString()} of ${totalRowsCount.toLocaleString()}...`,
                 });
               }
-              const labelPadding = '  '.repeat(r.depth || 0) + r.label;
+              const labelPadding = '  '.repeat(r.depth || 0);
+              const isLeaf = r.type === 'variant' || r.type === 'invoice';
+              let label = labelPadding + r.label;
+              if (r.type === 'product' && r.sku) {
+                label = `${labelPadding}[${r.sku}] ${r.label}`;
+              } else if (isLeaf && r.barcode) {
+                label = `${labelPadding}[${r.barcode}] ${r.color || ''}${r.size ? ' — ' + r.size : ''}`;
+              }
+
+              const uPrice = r.retailPrice || 0;
+              const pWost =
+                uPrice > 0 ? Math.round((uPrice / 1.18) * 100) / 100 : 0;
+              const wost = r.totalPriceWost || 0;
+              const disc = r.discountAmount || 0;
+              const valEx = Math.round((wost - disc) * 100) / 100;
+              const tax = r.salesTaxAmount || 0;
+              const valIncl =
+                r.includingSalesTax || Math.round((valEx + tax) * 100) / 100;
+
               const rowData = {
-                label: labelPadding,
-                size: r.size || '',
-                color: r.color || '',
+                label: label,
                 qty: r.qty,
-                retailPrice:
-                  r.type === 'variant' || r.type === 'invoice'
-                    ? r.retailPrice
-                    : '',
-                totalPriceWost: r.totalPriceWost,
-                discountAmount: r.discountAmount,
-                excludingSalesTax: r.excludingSalesTax,
-                salesTaxPercent:
-                  r.type === 'variant' || r.type === 'invoice'
-                    ? r.salesTaxPercent / 100
-                    : '',
-                salesTaxAmount: r.salesTaxAmount,
-                furtherTaxAmount: r.furtherTaxAmount,
-                totalTax: r.totalTax,
-                includingSalesTax: r.includingSalesTax,
-                salesPerson: r.salesPerson || '',
+                unitPrice: isLeaf ? uPrice : '',
+                priceWost: isLeaf ? pWost : '',
+                totalPriceWost: wost,
+                discountAmount: disc,
+                valueExclSalesTax: valEx,
+                salesTaxAmount: tax,
+                includingSalesTax: valIncl,
               };
 
               const row = ws.addRow(rowData);
@@ -665,22 +677,24 @@ export class GrossSalesExportProcessor {
               row.commit();
             }
 
-            // Add Grand Totals
+            const wostGt = grandTotals.totalPriceWost || 0;
+            const discGt = grandTotals.discountAmount || 0;
+            const valExGt = Math.round((wostGt - discGt) * 100) / 100;
+            const taxGt = grandTotals.salesTaxAmount || 0;
+            const valInclGt =
+              grandTotals.includingSalesTax ||
+              Math.round((valExGt + taxGt) * 100) / 100;
+
             const totalRow = ws.addRow({
               label: 'GRAND TOTALS',
-              size: '',
-              color: '',
               qty: grandTotals.qty,
-              retailPrice: '',
-              totalPriceWost: grandTotals.totalPriceWost,
-              discountAmount: grandTotals.discountAmount,
-              excludingSalesTax: grandTotals.excludingSalesTax,
-              salesTaxPercent: '',
-              salesTaxAmount: grandTotals.salesTaxAmount,
-              furtherTaxAmount: grandTotals.furtherTaxAmount,
-              totalTax: grandTotals.totalTax,
-              includingSalesTax: grandTotals.includingSalesTax,
-              salesPerson: '',
+              unitPrice: '',
+              priceWost: '',
+              totalPriceWost: wostGt,
+              discountAmount: discGt,
+              valueExclSalesTax: valExGt,
+              salesTaxAmount: taxGt,
+              includingSalesTax: valInclGt,
             });
 
             totalRow.eachCell((cell, colNum) => {

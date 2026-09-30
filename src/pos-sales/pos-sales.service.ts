@@ -1476,9 +1476,11 @@ export class PosSalesService implements OnModuleInit {
       if (endDate) whereCondition.createdAt.lte = new Date(endDate);
     }
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const prisma = prismaClient || this.prisma;
+    const orders = await prisma.salesOrder.findMany({
       where: whereCondition,
       include: {
+        location: true,
         items: {
           select: {
             id: true,
@@ -1837,6 +1839,7 @@ export class PosSalesService implements OnModuleInit {
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
+        location: true,
         items: {
           include: {
             item: {
@@ -2183,6 +2186,7 @@ export class PosSalesService implements OnModuleInit {
     const posReturnsList = await this.prisma.posReturn.findMany({
       where: { salesOrderId: { in: orderIds } },
       include: {
+        location: true,
         items: {
           include: {
             item: {
@@ -2749,6 +2753,7 @@ export class PosSalesService implements OnModuleInit {
     const allPosReturns = await this.prisma.posReturn.findMany({
       where: { salesOrderId: { in: Array.from(targetOrderIds) } },
       include: {
+        location: true,
         items: {
           include: {
             item: {
@@ -2769,6 +2774,7 @@ export class PosSalesService implements OnModuleInit {
     const rawOrders = await this.prisma.salesOrder.findMany({
       where,
       include: {
+        location: true,
         items: {
           include: {
             item: {
@@ -5942,10 +5948,12 @@ export class PosSalesService implements OnModuleInit {
     if (posId) where.posId = posId;
     if (locationId) where.locationId = locationId;
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const prisma = prismaClient || this.prisma;
+    const orders = await prisma.salesOrder.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
+        location: true,
         items: {
           include: {
             item: {
@@ -6632,6 +6640,7 @@ export class PosSalesService implements OnModuleInit {
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: {
+        location: true,
         items: {
           include: {
             item: {
@@ -7825,7 +7834,8 @@ export class PosSalesService implements OnModuleInit {
     const endDate = endStr ? new Date(endStr) : new Date(now);
     endDate.setHours(23, 59, 59, 999);
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const prisma = prismaClient || this.prisma;
+    const orders = await prisma.salesOrder.findMany({
       where: {
         ...(locationWhere && { locationId: locationWhere }),
         status: {
@@ -8171,7 +8181,8 @@ export class PosSalesService implements OnModuleInit {
           : { locationId }
         : {};
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const prisma = prismaClient || this.prisma;
+    const orders = await prisma.salesOrder.findMany({
       where: {
         ...locFilter,
         status: { in: ['completed', 'partially_returned'] },
@@ -8442,7 +8453,8 @@ export class PosSalesService implements OnModuleInit {
     const endDate = endStr ? new Date(endStr) : new Date(now);
     endDate.setHours(23, 59, 59, 999);
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const prisma = prismaClient || this.prisma;
+    const orders = await prisma.salesOrder.findMany({
       where: {
         ...(locationWhere && { locationId: locationWhere }),
         status: {
@@ -8885,6 +8897,13 @@ export class PosSalesService implements OnModuleInit {
     showArticle?: boolean;
     showVariant?: boolean;
     showInvoices?: boolean;
+    showLocation?: boolean;
+    showMonth?: boolean;
+    showDate?: boolean;
+    showDocument?: boolean;
+    showSalesPerson?: boolean;
+    showTaxRate?: boolean;
+    prismaClient?: any;
   }) {
     const {
       locationId,
@@ -8904,6 +8923,13 @@ export class PosSalesService implements OnModuleInit {
       showArticle,
       showVariant,
       showInvoices,
+      showLocation,
+      showMonth,
+      showDate,
+      showDocument,
+      showSalesPerson,
+      showTaxRate,
+      prismaClient,
     } = options;
     const locIds = locationId
       ? locationId
@@ -8932,8 +8958,20 @@ export class PosSalesService implements OnModuleInit {
     const sArticle = showArticle !== false;
     const sVariant = showVariant !== false;
     const sInvoices = showInvoices === true;
+    const sLocation = showLocation === true;
+    const sMonth = showMonth === true;
+    const sDate = showDate === true;
+    const sDocument = showDocument === true;
+    const sSalesPerson = showSalesPerson === true;
+    const sTaxRate = showTaxRate === true;
 
     const levels: string[] = [];
+    if (sLocation) levels.push('location');
+    if (sMonth) levels.push('month');
+    if (sDate) levels.push('date');
+    if (sDocument) levels.push('document');
+    if (sSalesPerson) levels.push('salesPerson');
+    if (sTaxRate) levels.push('taxRate');
     if (sBrand) levels.push('brand');
     if (sDivision) levels.push('division');
     if (sCategory) levels.push('category');
@@ -8946,7 +8984,8 @@ export class PosSalesService implements OnModuleInit {
       levels.push('product');
     }
 
-    const orders = await this.prisma.salesOrder.findMany({
+    const prisma = prismaClient || this.prisma;
+    const orders = await prisma.salesOrder.findMany({
       where: {
         ...(locationWhere && { locationId: locationWhere }),
         status: {
@@ -8956,6 +8995,7 @@ export class PosSalesService implements OnModuleInit {
         ...(cashierUserId ? { cashierUserId } : {}),
       },
       include: {
+        location: true,
         items: {
           include: {
             item: {
@@ -9100,6 +9140,16 @@ export class PosSalesService implements OnModuleInit {
         const itemHsCode = it.hsCodeStr || it.hsCode?.hsCode || '-';
         const itemBarcode = it.barCode || '-';
 
+        const locationName = order.location?.name || 'Main Outlet';
+        const monthName = order.createdAt.toLocaleString('en-US', {
+          month: 'long',
+          year: 'numeric',
+        });
+        const dateName = order.createdAt.toLocaleDateString('en-US');
+        const documentName = order.orderNumber || 'No Invoice';
+        const spName = salesPerson;
+        const taxRateName = `${taxPercent.toFixed(2)}%`;
+
         // Traverse & Aggregate
         let currentNode = root;
         for (let i = 0; i < levels.length; i++) {
@@ -9112,7 +9162,31 @@ export class PosSalesService implements OnModuleInit {
           let hsCode = '';
           let barcode = '';
 
-          if (lvl === 'brand') {
+          if (lvl === 'location') {
+            key = locationName;
+            type = 'location';
+            label = locationName;
+          } else if (lvl === 'month') {
+            key = monthName;
+            type = 'month';
+            label = monthName;
+          } else if (lvl === 'date') {
+            key = dateName;
+            type = 'date';
+            label = dateName;
+          } else if (lvl === 'document') {
+            key = documentName;
+            type = 'document';
+            label = documentName;
+          } else if (lvl === 'salesPerson') {
+            key = spName;
+            type = 'salesPerson';
+            label = spName;
+          } else if (lvl === 'taxRate') {
+            key = taxRateName;
+            type = 'taxRate';
+            label = taxRateName;
+          } else if (lvl === 'brand') {
             key = brandName;
             type = 'brand';
             label = brandName;
@@ -9173,7 +9247,13 @@ export class PosSalesService implements OnModuleInit {
         for (let i = 0; i < levels.length; i++) {
           const lvl = levels[i];
           let key = '';
-          if (lvl === 'brand') key = brandName;
+          if (lvl === 'location') key = locationName;
+          else if (lvl === 'month') key = monthName;
+          else if (lvl === 'date') key = dateName;
+          else if (lvl === 'document') key = documentName;
+          else if (lvl === 'salesPerson') key = spName;
+          else if (lvl === 'taxRate') key = taxRateName;
+          else if (lvl === 'brand') key = brandName;
           else if (lvl === 'division') key = `${divisionName}|${taxPercent}`;
           else if (lvl === 'category') key = categoryName;
           else if (lvl === 'gender') key = genderName;
@@ -9324,6 +9404,13 @@ export class PosSalesService implements OnModuleInit {
     showArticle?: boolean;
     showVariant?: boolean;
     showInvoices?: boolean;
+    showLocation?: boolean;
+    showMonth?: boolean;
+    showDate?: boolean;
+    showDocument?: boolean;
+    showSalesPerson?: boolean;
+    showTaxRate?: boolean;
+    prismaClient?: any;
   }) {
     const {
       locationId,
@@ -9343,6 +9430,13 @@ export class PosSalesService implements OnModuleInit {
       showArticle,
       showVariant,
       showInvoices,
+      showLocation,
+      showMonth,
+      showDate,
+      showDocument,
+      showSalesPerson,
+      showTaxRate,
+      prismaClient,
     } = options;
     const locIds = locationId
       ? locationId
@@ -9371,8 +9465,20 @@ export class PosSalesService implements OnModuleInit {
     const sArticle = showArticle !== false;
     const sVariant = showVariant !== false;
     const sInvoices = showInvoices === true;
+    const sLocation = showLocation === true;
+    const sMonth = showMonth === true;
+    const sDate = showDate === true;
+    const sDocument = showDocument === true;
+    const sSalesPerson = showSalesPerson === true;
+    const sTaxRate = showTaxRate === true;
 
     const levels: string[] = [];
+    if (sLocation) levels.push('location');
+    if (sMonth) levels.push('month');
+    if (sDate) levels.push('date');
+    if (sDocument) levels.push('document');
+    if (sSalesPerson) levels.push('salesPerson');
+    if (sTaxRate) levels.push('taxRate');
     if (sBrand) levels.push('brand');
     if (sDivision) levels.push('division');
     if (sCategory) levels.push('category');

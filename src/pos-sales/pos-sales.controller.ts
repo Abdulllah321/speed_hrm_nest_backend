@@ -1100,6 +1100,12 @@ export class PosSalesController {
       showArticle?: boolean;
       showVariant?: boolean;
       showInvoices?: boolean;
+      showLocation?: boolean;
+      showMonth?: boolean;
+      showDate?: boolean;
+      showDocument?: boolean;
+      showSalesPerson?: boolean;
+      showTaxRate?: boolean;
     },
   ) {
     const userId = req.user?.userId || req.user?.id;
@@ -1125,6 +1131,12 @@ export class PosSalesController {
       showArticle: body.showArticle,
       showVariant: body.showVariant,
       showInvoices: body.showInvoices,
+      showLocation: body.showLocation,
+      showMonth: body.showMonth,
+      showDate: body.showDate,
+      showDocument: body.showDocument,
+      showSalesPerson: body.showSalesPerson,
+      showTaxRate: body.showTaxRate,
       reportType: 'summary',
     });
     return { status: true, data: result };
@@ -1204,6 +1216,12 @@ export class PosSalesController {
       showArticle?: boolean;
       showVariant?: boolean;
       showInvoices?: boolean;
+      showLocation?: boolean;
+      showMonth?: boolean;
+      showDate?: boolean;
+      showDocument?: boolean;
+      showSalesPerson?: boolean;
+      showTaxRate?: boolean;
     },
   ) {
     const userId = req.user?.userId || req.user?.id;
@@ -1229,6 +1247,12 @@ export class PosSalesController {
       showArticle: body.showArticle,
       showVariant: body.showVariant,
       showInvoices: body.showInvoices,
+      showLocation: body.showLocation,
+      showMonth: body.showMonth,
+      showDate: body.showDate,
+      showDocument: body.showDocument,
+      showSalesPerson: body.showSalesPerson,
+      showTaxRate: body.showTaxRate,
       reportType: 'return',
     });
     return { status: true, data: result };

@@ -2131,6 +2131,12 @@ export class GrossSalesExportService {
         showArticle: opts.showArticle,
         showVariant: opts.showVariant,
         showInvoices: opts.showInvoices,
+        showLocation: opts.showLocation,
+        showMonth: opts.showMonth,
+        showDate: opts.showDate,
+        showDocument: opts.showDocument,
+        showSalesPerson: opts.showSalesPerson,
+        showTaxRate: opts.showTaxRate,
         reportType: opts.reportType,
       },
       {
