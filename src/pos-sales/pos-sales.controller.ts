@@ -397,7 +397,6 @@ export class PosSalesController {
       body.reason,
       returnLocationId,
       ctx,
-      body.customerId,
     );
   }
 
@@ -472,8 +471,6 @@ export class PosSalesController {
       body.items,
       body.reason,
       ctx,
-      body.customerId,
-      returnLocationId,
     );
   }
 
@@ -2456,6 +2453,7 @@ export class PosSalesController {
     @Body()
     body: {
       locationId?: string;
+      locationIds?: string[];
       startDate?: string;
       endDate?: string;
       cashierUserId?: string;
@@ -2465,6 +2463,8 @@ export class PosSalesController {
       minAmount?: number;
       maxAmount?: number;
       fbrOnly?: boolean;
+      fiscalYear?: string;
+      year?: string | number;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
@@ -2529,67 +2529,15 @@ export class PosSalesController {
 
   @Get('reports/net-sales-summary/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getNetSalesSummaryResult(
-    @Param('jobId') jobId: string,
-    @Query('format') formatQuery: string,
-    @Req() req: any,
-    @Res() res: any,
-  ) {
-    const ndjsonPath = this.netSalesSummaryExportService.getPreviewNdjsonFilePath(jobId);
-    const hasNdjson = fs.existsSync(ndjsonPath);
-    const acceptsNdjson = (formatQuery === 'ndjson' || (req.headers?.['accept'] || '').includes('application/x-ndjson')) && hasNdjson;
-
-    if (!acceptsNdjson) {
-      const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
-      if (!data) {
-        const errPayload = {
-          status: false,
-          message: 'Net sales summary preview result not found or expired',
-        };
-        return typeof res.send === 'function' ? res.status(404).send(errPayload) : res.status(404).json(errPayload);
-      }
-      const payload = { status: true, data };
-      return typeof res.send === 'function' ? res.send(payload) : res.json(payload);
+  async getNetSalesSummaryResult(@Param('jobId') jobId: string) {
+    const data = await this.netSalesSummaryExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return {
+        status: false,
+        message: 'Net sales summary preview result not found or expired',
+      };
     }
-
-    const acceptsGzip = (req.headers?.['accept-encoding'] || '').includes('gzip');
-    const contentType = 'application/x-ndjson';
-
-    if (typeof res.header === 'function') {
-      res.header('Content-Type', contentType);
-      res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
-    } else if (typeof res.setHeader === 'function') {
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    }
-
-    const stream = fs.createReadStream(ndjsonPath);
-    stream.on('error', (err) => {
-      this.logger.error(`NetSalesSummary stream error ${jobId}: ${err.message}`);
-    });
-
-    if (acceptsGzip) {
-      if (typeof res.header === 'function') {
-        res.header('Content-Encoding', 'gzip');
-      } else if (typeof res.setHeader === 'function') {
-        res.setHeader('Content-Encoding', 'gzip');
-      }
-
-      if (typeof res.send === 'function') {
-        return res.send(stream);
-      }
-      return stream.pipe(res);
-    } else {
-      const gunzip = zlib.createGunzip();
-      gunzip.on('error', (err) => {
-        this.logger.error(`NetSalesSummary gunzip error ${jobId}: ${err.message}`);
-      });
-      const unzipped = stream.pipe(gunzip);
-      if (typeof res.send === 'function') {
-        return res.send(unzipped);
-      }
-      return unzipped.pipe(res);
-    }
+    return { status: true, data };
   }
 
   @Post('reports/net-sales-summary/export/register-client-export')
