@@ -156,19 +156,6 @@ export class PosSalesController {
     return this.posSalesService.lookupItem(query, locationId);
   }
 
-  @Get('test-mapping')
-  async testMapping(@Query('sku') sku: string, @Query('locationId') locId: string) {
-    const item = await this.posSalesService['prisma'].item.findFirst({
-        where: { sku: { equals: 'JC5943', mode: 'insensitive' } }
-    });
-    if (!item) return { found: false };
-    const stock = await this.posSalesService['prisma'].stockLedger.aggregate({
-        where: { itemId: item.id, locationId: locId },
-        _sum: { qty: true }
-    });
-    return { item, stock: stock._sum.qty, locId };
-  }
-
   // ─── Barcode scan — exact match, single item ──────────────────────
   @Get('scan')
   @ApiOperation({ summary: 'Scan barcode — exact match single item' })
@@ -2020,22 +2007,16 @@ export class PosSalesController {
 
   @Get('reports/net-sales-list/result/:jobId')
   @UseGuards(JwtAuthGuard)
-  async getNetSalesListResult(
-    @Param('jobId') jobId: string,
-    @Res() res: any,
-  ) {
-    const filePath = this.netSalesListExportService.getPreviewFilePath(jobId);
-    if (!fs.existsSync(filePath)) {
-      return res.status(HttpStatus.NOT_FOUND).json({
-        statusCode: HttpStatus.NOT_FOUND,
-        message: 'Preview result not found or expired',
-      });
+  async getNetSalesListResult(@Param('jobId') jobId: string) {
+    const data =
+      await this.netSalesListExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return {
+        status: false,
+        message: 'Net sales list preview result not found or expired',
+      };
     }
-
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Encoding', 'gzip');
-    const readStream = fs.createReadStream(filePath);
-    return readStream.pipe(res);
+    return { status: true, data };
   }
 
   @Post('reports/net-sales-list/export/queue')
