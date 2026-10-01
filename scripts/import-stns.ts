@@ -1045,7 +1045,7 @@ async function main() {
       for (const company of companies) {
         console.log(`\n👉 Processing Tenant: ${company.name} (${company.code})`);
         let connectionString = company.dbUrl;
-        if (!connectionString && company.dbPassword) {
+        if (company.dbPassword) {
           try {
             const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
             connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
