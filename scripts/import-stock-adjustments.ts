@@ -111,10 +111,11 @@ async function run() {
   const rawRows: RawAdjRow[] = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
   console.log(`📦 Loaded ${rawRows.length} rows from SA.json`);
 
+  const explicitDb = process.argv.find(a => a.startsWith('--db='))?.split('=')[1];
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
 
-  if (managementUrl && masterKey) {
+  if (!explicitDb && managementUrl && masterKey) {
     const mgmtPool = new Pool({ connectionString: managementUrl });
     const mgmtAdapter = new PrismaPg(mgmtPool);
     const management = new ManagementClient({ adapter: mgmtAdapter } as any);
@@ -171,8 +172,8 @@ async function run() {
     }
   }
 
-  // Fallback to DATABASE_URL if management check didn't run or found no companies
-  const dbUrl = process.env.DATABASE_URL!;
+  // Fallback to DATABASE_URL or explicit --db argument
+  const dbUrl = explicitDb || process.env.DATABASE_URL!;
   if (!dbUrl) {
     console.error('DATABASE_URL not set');
     process.exit(1);

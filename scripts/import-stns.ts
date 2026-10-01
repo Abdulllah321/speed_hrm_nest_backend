@@ -1019,10 +1019,11 @@ async function main() {
     console.log(`   - Qty          : ${rows[0].quantity}`);
   }
 
+  const explicitDb = process.argv.find(a => a.startsWith('--db='))?.split('=')[1];
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
 
-  if (managementUrl && masterKey) {
+  if (!explicitDb && managementUrl && masterKey) {
     const pool = new Pool({ connectionString: managementUrl });
     const adapter = new PrismaPg(pool);
     const management = new ManagementClient({ adapter } as any);
@@ -1076,7 +1077,7 @@ async function main() {
   }
 
   console.log('\n🔗 Running on primary DATABASE_URL...');
-  const dbUrl = process.env.DATABASE_URL;
+  const dbUrl = explicitDb || process.env.DATABASE_URL;
   if (!dbUrl) {
     console.error('❌ DATABASE_URL environment variable is missing.');
     process.exit(1);

@@ -998,10 +998,11 @@ async function main() {
     }
   }
 
+  const explicitDb = process.argv.find(a => a.startsWith('--db='))?.split('=')[1];
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
 
-  if (managementUrl && masterKey) {
+  if (!explicitDb && managementUrl && masterKey) {
     const pool = new Pool({ connectionString: managementUrl });
     const adapter = new PrismaPg(pool);
     const management = new ManagementClient({ adapter } as any);
