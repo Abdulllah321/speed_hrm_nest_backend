@@ -1554,13 +1554,24 @@ export class TransferRequestService {
 
     async getNextTransferNumber(tx?: Prisma.TransactionClient): Promise<{ nextTransferNumber: string }> {
         const prismaClient = tx || this.prisma;
-        const currentYear = new Date().getFullYear();
-        const prefix = 'STN';
+        
+        // Calculate Fiscal Year string (July 1 to June 30)
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth(); // 0-indexed (6 = July)
+        let fy = '';
+        if (month >= 6) {
+            fy = `${String(year).slice(-2)}-${String(year + 1).slice(-2)}`;
+        } else {
+            fy = `${String(year - 1).slice(-2)}-${String(year).slice(-2)}`;
+        }
+        
+        const prefix = `STN-${fy}`;
 
         const lastRequest = await prismaClient.transferRequest.findFirst({
             where: {
                 requestNo: {
-                    startsWith: `${prefix}-${currentYear}`,
+                    startsWith: `${prefix}-`,
                 },
             },
             orderBy: {
@@ -1570,13 +1581,14 @@ export class TransferRequestService {
 
         let nextNumber = 1;
         if (lastRequest) {
-            const lastNumber = parseInt(lastRequest.requestNo.split('-').pop() || '0');
+            const parts = lastRequest.requestNo.split('-');
+            const lastNumber = parseInt(parts[parts.length - 1] || '0');
             if (!isNaN(lastNumber)) {
                 nextNumber = lastNumber + 1;
             }
         }
 
-        const nextTransferNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+        const nextTransferNumber = `${prefix}-${nextNumber.toString().padStart(5, '0')}`;
         return { nextTransferNumber };
     }
 }
