@@ -30,7 +30,7 @@ async function main() {
   const pool = new Pool({ connectionString });
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
-  const filePath = path.join(__dirname, '../data/refund register.md');
+  const filePath = path.join(__dirname, '../data/converted.md');
   if (!fs.existsSync(filePath)) {
     throw new Error(`Refund register file not found: ${filePath}`);
   }
@@ -43,7 +43,7 @@ async function main() {
       (l) =>
         l.trim().startsWith('|') &&
         !l.includes('---') &&
-        !l.includes('CostCentre'),
+        !l.includes('| Location |'),
     );
 
   const rows = lines.map((line, idx) => {
@@ -53,12 +53,11 @@ async function main() {
       costCentre: parts[1],
       locId: parts[2],
       docNo: parts[3],
-      emptyCode: parts[4],
-      docDateRaw: parts[5],
-      fkSaleDoc: parts[6] && parts[6] !== '0' && parts[6] !== '-' ? parts[6] : '',
-      docDateSaleRaw: parts[7],
-      totalNet: parseFloat(parts[8]) || 0,
-      remarks: parts[9] && parts[9] !== '-' ? parts[9] : '',
+      docDateRaw: parts[4],
+      fkSaleDoc: parts[5] && parts[5] !== '0' && parts[5] !== '-' ? parts[5] : '',
+      docDateSaleRaw: parts[6],
+      totalNet: parseFloat(parts[7]) || 0,
+      remarks: parts[8] && parts[8] !== '-' ? parts[8] : '',
     };
   });
 
