@@ -130,8 +130,8 @@ export function parseCustomDate(val: any): Date | null {
 
   const dParts = datePart.split('/');
   if (dParts.length === 3) {
-    const month = parseInt(dParts[0], 10);
-    const day = parseInt(dParts[1], 10);
+    const day = parseInt(dParts[0], 10);
+    const month = parseInt(dParts[1], 10);
     let year = parseInt(dParts[2], 10);
 
     if (year < 100) {
