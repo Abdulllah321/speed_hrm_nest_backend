@@ -366,10 +366,20 @@ async function processTenant(
         continue;
       }
 
-      // Requirement: currentQty = 0, adjustedQty = delta, physicalQty = delta
-      const currentQty = 0;
+      // We must fetch the current quantity from the DB to make the Stock Adjustment look correct
+      const stockAgg = await prisma.inventoryItem.aggregate({
+        where: {
+          warehouseId: targetWarehouse!.id,
+          locationId: targetLocation!.id,
+          itemId: itemRecord.id,
+          status: 'AVAILABLE',
+        },
+        _sum: { quantity: true },
+      });
+
+      const currentQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
       const adjustedQty = delta;
-      const physicalQty = delta;
+      const physicalQty = currentQty + adjustedQty;
       const rate = unitPrice || (itemRecord.unitPrice ? Number(itemRecord.unitPrice) : 0);
 
       resolvedItems.push({
