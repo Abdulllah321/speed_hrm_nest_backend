@@ -132,7 +132,7 @@ export function readAndParseCorporateVouchers(filePath: string, limit?: number):
     dateValid: rawHeaders.findIndex((h) => h.toLowerCase().includes('date_valid') || h.toLowerCase().includes('valid')),
     documentNumberSettled: rawHeaders.findIndex(
       (h) =>
-        (h.toLowerCase().includes('setteled') && (h.toLowerCase().includes('document') || h.toLowerCase().includes('doc') || h.toLowerCase().includes('fk'))) ||
+        (h.toLowerCase().includes('setteled') && (h.toLowerCase().includes('document') || h.toLowerCase().includes('doc') || (h.toLowerCase().includes('fk') && !h.toLowerCase().includes('centre')))) ||
         h.toLowerCase().includes('documentnumber_setteled')
     ),
     dateSettled: rawHeaders.findIndex((h) => h.toLowerCase().includes('date_setteled') || h.toLowerCase().includes('datesetteled') || h.toLowerCase().includes('date_settled')),
@@ -206,7 +206,13 @@ export function readAndParseCorporateVouchers(filePath: string, limit?: number):
     });
   }
 
-  return parsedRows;
+  // Deduplicate by voucherCode (keep the latest occurrence, which represents the most up-to-date state)
+  const dedupedMap = new Map<string, ParsedCorporateVoucherRow>();
+  for (const row of parsedRows) {
+    dedupedMap.set(row.voucherCode, row);
+  }
+
+  return Array.from(dedupedMap.values());
 }
 
 /**
