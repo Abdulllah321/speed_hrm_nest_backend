@@ -735,27 +735,11 @@ async function processTransfersForTenant(
 
     const missingBarcodes = allBarcodes.filter((b) => !itemMap.has(b));
     if (missingBarcodes.length > 0) {
-      console.log(`⚠️ Found ${missingBarcodes.length} missing items in database. Creating them now...`);
-      for (let i = 0; i < missingBarcodes.length; i += 1000) {
-        const chunk = missingBarcodes.slice(i, i + 1000);
-        const values: string[] = [];
-        const params: any[] = [];
-        let idx = 1;
-        for (const bc of chunk) {
-          const id = crypto.randomUUID();
-          values.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, 'active', true, 0, 0, NOW(), NOW())`);
-          params.push(id, `ITEM-${bc}`, bc, bc, `STN Item (${bc})`);
-          idx += 5;
-          itemMap.set(bc, id);
-        }
-        await pool.query(
-          `INSERT INTO "Item" (id, "itemId", sku, "barCode", description, status, "isActive", "unitPrice", unit_cost, "createdAt", "updatedAt")
-           VALUES ${values.join(', ')}
-           ON CONFLICT ("itemId") DO NOTHING`,
-          params
-        );
-      }
-      console.log(`  ✅ Created ${missingBarcodes.length} missing items.`);
+      console.log(`⚠️ WARNING: Found ${missingBarcodes.length} missing barcodes in database.`);
+      console.log(`⚠️ These items will NOT be created and their corresponding STN rows will be skipped.`);
+      const missingPath = path.join(__dirname, '..', 'data', 'missing-stn-barcodes.txt');
+      fs.writeFileSync(missingPath, missingBarcodes.join('\n'), 'utf8');
+      console.log(`📁 A list of missing barcodes has been saved to: ${missingPath}`);
     }
   } else {
     for (const bc of allBarcodes) {
@@ -765,7 +749,12 @@ async function processTransfersForTenant(
 
   // Group STN rows into single Transfer Requests
   const transferGroups = new Map<string, ParsedStnRow[]>();
+  let skippedRows = 0;
   for (const row of rows) {
+    if (!itemMap.has(row.barCode)) {
+      skippedRows++;
+      continue;
+    }
     const groupKey = `${row.codeTrOut}_${row.codeTrIn}_${row.documentNumber}_${row.documentDate.toISOString().slice(0, 10)}`;
     if (!transferGroups.has(groupKey)) {
       transferGroups.set(groupKey, []);
@@ -773,7 +762,7 @@ async function processTransfersForTenant(
     transferGroups.get(groupKey)!.push(row);
   }
 
-  console.log(`📋 Grouped ${rows.length} total rows into ${transferGroups.size} STN Transfer Request documents.`);
+  console.log(`📋 Grouped ${rows.length - skippedRows} valid rows into ${transferGroups.size} STN Transfer Request documents. (Skipped ${skippedRows} rows with missing barcodes)`);
 
   // Sequential counters per Fiscal Year (Global STN-FY-XXXXX)
   const fyCounters = new Map<string, number>();
