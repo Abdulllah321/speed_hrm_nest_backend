@@ -506,6 +506,7 @@ export async function syncOrderTendersWithRedemptions(prisma: PrismaClient) {
           },
         }),
       ),
+      { timeout: 120000 },
     );
     updatedCount += chunk.length;
   }
