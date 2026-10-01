@@ -885,6 +885,46 @@ async function processTenantGiftVouchers(
     }
   }
 
+  // Pre-filter existing vouchers to avoid Unique/FK constraint errors when --keep-existing is used
+  if (keepExisting && voucherDataList.length > 0) {
+    const existingVouchers = await prisma.voucher.findMany({
+      where: { code: { in: voucherDataList.map((v) => v.code) } },
+      select: { code: true },
+    });
+    
+    if (existingVouchers.length > 0) {
+      const existingCodes = new Set(existingVouchers.map((v) => v.code));
+      console.log(`\n⚠️ Found ${existingCodes.size} vouchers that already exist in DB. Skipping them (--keep-existing active).`);
+      
+      const prevLen = voucherDataList.length;
+      
+      // Filter out vouchers whose code is in existingCodes
+      const validVouchers = voucherDataList.filter((v) => !existingCodes.has(v.code));
+      
+      // Get the set of IDs for the valid vouchers
+      const validVoucherIds = new Set(validVouchers.map(v => v.id));
+      
+      // Now overwrite the main lists
+      voucherDataList.length = 0;
+      voucherDataList.push(...validVouchers);
+      
+      // Filter related lists
+      const validLocations = locationDataList.filter(l => validVoucherIds.has(l.voucherId));
+      locationDataList.length = 0;
+      locationDataList.push(...validLocations);
+      
+      const validRedemptions = redemptionDataList.filter(r => validVoucherIds.has(r.voucherId));
+      redemptionDataList.length = 0;
+      redemptionDataList.push(...validRedemptions);
+      
+      const validTransactions = transactionDataList.filter(t => validVoucherIds.has(t.voucherId));
+      transactionDataList.length = 0;
+      transactionDataList.push(...validTransactions);
+      
+      console.log(`   (Reduced batch from ${prevLen} to ${voucherDataList.length} new vouchers)`);
+    }
+  }
+
   if (isDryRun) {
     console.log(`\n⚠️ [DRY-RUN] Simulated preparation for ${voucherDataList.length.toLocaleString()} Gift vouchers.`);
   } else {
