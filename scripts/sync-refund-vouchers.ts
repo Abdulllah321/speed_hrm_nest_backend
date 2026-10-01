@@ -1,9 +1,34 @@
 import 'dotenv/config';
+import { PrismaClient as ManagementClient } from '@prisma/management-client';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+
+function decrypt(encryptedText: string, masterKeyString: string): string {
+  if (!masterKeyString || masterKeyString.length < 32) {
+    throw new Error('MASTER_ENCRYPTION_KEY must be at least 32 characters');
+  }
+  const masterKey = Buffer.from(masterKeyString.slice(0, 32), 'utf-8');
+  const parts = encryptedText.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted text format');
+  }
+
+  const iv = Buffer.from(parts[0], 'hex');
+  const authTag = Buffer.from(parts[1], 'hex');
+  const encrypted = parts[2];
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', masterKey, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
+}
 
 function cleanLocCode(code: string): string {
   return code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
@@ -16,52 +41,10 @@ function parseExcelSerialDate(val: string | number): Date {
   return new Date(excelEpoch.getTime() + num * 86400000);
 }
 
-async function main() {
-  const connectionString =
-    process.argv.find((a) => a.startsWith('--db='))?.split('=')[1] ||
-    process.env.DATABASE_URL_TENANT ||
-    'postgresql://postgres:root@localhost:5432/tenant_speed_main_mox1gfsi';
-
+export async function processTenantRefundVouchers(prisma: PrismaClient, rows: any[], tenantName: string) {
   console.log(`\n======================================================`);
-  console.log(`🔄 Synchronizing Refund Vouchers from refund register.md`);
+  console.log(`🏢 Processing Tenant: ${tenantName}`);
   console.log(`======================================================`);
-  console.log(`🔌 Connecting to database (${connectionString})...`);
-
-  const pool = new Pool({ connectionString });
-  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
-
-  const filePath = path.join(__dirname, '../data/converted.md');
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Refund register file not found: ${filePath}`);
-  }
-
-  console.log(`📖 Reading refund register from ${filePath}...`);
-  const content = fs.readFileSync(filePath, 'utf8');
-  const lines = content
-    .split('\n')
-    .filter(
-      (l) =>
-        l.trim().startsWith('|') &&
-        !l.includes('---') &&
-        !l.includes('| Location |'),
-    );
-
-  const rows = lines.map((line, idx) => {
-    const parts = line.split('|').map((s) => s.trim());
-    return {
-      lineIdx: idx + 1,
-      costCentre: parts[1],
-      locId: parts[2],
-      docNo: parts[3],
-      docDateRaw: parts[4],
-      fkSaleDoc: parts[5] && parts[5] !== '0' && parts[5] !== '-' ? parts[5] : '',
-      docDateSaleRaw: parts[6],
-      totalNet: parseFloat(parts[7]) || 0,
-      remarks: parts[8] && parts[8] !== '-' ? parts[8] : '',
-    };
-  });
-
-  console.log(`📦 Loaded ${rows.length} total refund item rows.`);
 
   // Group items by (Location ID, DocumentNumber)
   const groups = new Map<string, typeof rows>();
@@ -269,8 +252,115 @@ async function main() {
   console.log(`- Total REFUND Face Value in DB     : PKR ${Number(finalFaceValueSum._sum.faceValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
   console.log(`- Preserved Redemptions in DB       : ${finalRedemptionsCount}`);
   console.log(`- Unlinked REFUND PosReturns in DB : ${finalUnlinkedReturns}`);
+}
 
-  await pool.end();
+async function main() {
+  const filePath = path.join(__dirname, '../data/converted.md');
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Refund register file not found: ${filePath}`);
+  }
+
+  console.log(`📖 Reading refund register from ${filePath}...`);
+  const content = fs.readFileSync(filePath, 'utf8');
+  const lines = content
+    .split('\n')
+    .filter(
+      (l) =>
+        l.trim().startsWith('|') &&
+        !l.includes('---') &&
+        !l.includes('| Location |'),
+    );
+
+  const rows = lines.map((line, idx) => {
+    const parts = line.split('|').map((s) => s.trim());
+    return {
+      lineIdx: idx + 1,
+      costCentre: parts[1],
+      locId: parts[2],
+      docNo: parts[3],
+      docDateRaw: parts[4],
+      fkSaleDoc: parts[5] && parts[5] !== '0' && parts[5] !== '-' ? parts[5] : '',
+      docDateSaleRaw: parts[6],
+      totalNet: parseFloat(parts[7]) || 0,
+      remarks: parts[8] && parts[8] !== '-' ? parts[8] : '',
+    };
+  });
+
+  console.log(`📦 Loaded ${rows.length} total refund item rows.`);
+
+  const explicitDb = process.argv.find(a => a.startsWith('--db='))?.split('=')[1];
+  const managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL;
+  const masterKey = process.env.MASTER_ENCRYPTION_KEY;
+  const tenantFilter = process.argv.find(arg => arg.startsWith('--tenant='))?.split('=')[1];
+
+  if (!explicitDb && managementUrl && masterKey) {
+    const pool = new Pool({ connectionString: managementUrl });
+    const adapter = new PrismaPg(pool);
+    const management = new ManagementClient({ adapter } as any);
+
+    let companies: any[] = [];
+    try {
+      const where: any = { status: 'active' };
+      if (tenantFilter) {
+        where.OR = [
+          { name: { contains: tenantFilter, mode: 'insensitive' } },
+          { dbName: { contains: tenantFilter, mode: 'insensitive' } },
+          { code: { contains: tenantFilter, mode: 'insensitive' } },
+        ];
+      }
+      companies = await management.company.findMany({ where });
+    } catch (err: any) {
+      console.warn(`ℹ️ Multi-tenant lookup skipped: ${err.message}`);
+    } finally {
+      await management.$disconnect();
+      await pool.end();
+    }
+
+    if (companies.length > 0) {
+      console.log(`\n🏢 Found ${companies.length} active tenant companies. Executing...`);
+      for (const company of companies) {
+        let connectionString = company.dbUrl;
+        if (company.dbPassword) {
+          try {
+            const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
+            connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+          } catch (e: any) {
+            console.warn(`⚠️ Could not decrypt password for company ${company.name}, using dbUrl directly.`);
+          }
+        }
+        const tenantPool = new Pool({ connectionString });
+        const tenantAdapter = new PrismaPg(tenantPool);
+        const prisma = new PrismaClient({ adapter: tenantAdapter } as any);
+
+        try {
+          await processTenantRefundVouchers(prisma, rows, company.name);
+        } catch (err: any) {
+          console.error(`❌ Error processing tenant ${company.name}:`, err);
+        } finally {
+          await prisma.$disconnect();
+          await tenantPool.end();
+        }
+      }
+      return;
+    }
+  }
+
+  // Fallback to direct DATABASE_URL
+  const directConn =
+    explicitDb ||
+    process.env.DATABASE_URL_TENANT ||
+    'postgresql://postgres:root@localhost:5432/tenant_speed_main_mox1gfsi';
+  console.log(`\n⚙️ Connecting directly via database (${directConn})...`);
+  const directPool = new Pool({ connectionString: directConn });
+  const directAdapter = new PrismaPg(directPool);
+  const prisma = new PrismaClient({ adapter: directAdapter } as any);
+
+  try {
+    await processTenantRefundVouchers(prisma, rows, 'Direct Database');
+  } finally {
+    await prisma.$disconnect();
+    await directPool.end();
+  }
 }
 
 main().catch((err) => {

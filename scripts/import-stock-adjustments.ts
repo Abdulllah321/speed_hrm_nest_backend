@@ -311,9 +311,32 @@ async function processTenant(
     );
 
     if (!targetLocation) {
-      console.warn(`  ⚠️ Unknown location code "${rawLocId}" ("${costCentre}") - skipping group`);
-      skipped++;
-      continue;
+      if (isWarehouse && targetWarehouse) {
+        console.log(`  ⚠️ Unknown warehouse location "${rawLocId}" - creating default location on the fly...`);
+        if (!dryRun) {
+          targetLocation = await prisma.location.create({
+            data: {
+              code: rawLocId,
+              shortCode: whCode || rawLocId,
+              name: costCentre || `${targetWarehouse.name} Default`,
+              warehouseId: targetWarehouse.id,
+              isActive: true,
+            },
+          });
+          allLocations.push(targetLocation);
+        } else {
+          targetLocation = {
+            id: 'dry-run-loc',
+            code: rawLocId,
+            name: `${targetWarehouse.name} Default`,
+            warehouseId: targetWarehouse.id,
+          } as any;
+        }
+      } else {
+        console.warn(`  ⚠️ Unknown location code "${rawLocId}" ("${costCentre}") - skipping group`);
+        skipped++;
+        continue;
+      }
     }
 
     const adjNo = buildAdjNo(docDate, seqCounter);
