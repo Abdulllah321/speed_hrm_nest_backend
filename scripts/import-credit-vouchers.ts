@@ -99,8 +99,15 @@ export function readAndParseCreditVouchers(filePath: string): ParsedRow[] {
     }
     const cols = line.split('|').map((c) => c.trim()).filter(Boolean);
     if (cols.length >= 5) {
-      const storeName = cols[0];
-      const locCode = cols[1];
+      let storeName = cols[0];
+      let locCode = cols[1];
+
+      // Smart detect swapped columns: locCode is typically short (e.g., N10001) while storeName is long
+      if (storeName.length <= 10 && /\d/.test(storeName) && locCode.length > 10) {
+        storeName = cols[1];
+        locCode = cols[0];
+      }
+
       const serialDate = parseFloat(cols[2]);
       const crNo = String(cols[3]).trim();
       const creditAmt = parseFloat(cols[4]);
