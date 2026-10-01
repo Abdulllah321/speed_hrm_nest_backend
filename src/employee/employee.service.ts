@@ -1935,7 +1935,7 @@ export class EmployeeService {
             const lastName = nameParts.slice(1).join(' ') || '';
 
             // Generate temporary password and hash it
-            const tempPassword = 'Access@123';
+            const tempPassword = 'Password@123';
             const hashedPassword: string = await bcrypt.hash(tempPassword, 10);
 
             user = await this.prismaMaster.user.create({
