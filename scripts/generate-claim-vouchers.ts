@@ -25,7 +25,7 @@ async function main() {
   const pool = new Pool({ connectionString });
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
-  const filePath = path.join(__dirname, '../data/claim-register.md');
+  const filePath = path.join(__dirname, '../data/claim.md');
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
@@ -38,7 +38,7 @@ async function main() {
       (l) =>
         l.trim().startsWith('|') &&
         !l.includes('---') &&
-        !l.includes('CostCentre'),
+        !l.includes('| Location |'),
     );
 
   const rows = lines.map((line, idx) => {
@@ -53,17 +53,17 @@ async function main() {
       saleDocDateRaw: parts[6],
       redeemDocNo: parts[7] || '',
       redeemDocDateRaw: parts[8] || '',
-      amount: parseFloat(parts[9]) || 0,
-      customerName: parts[10] && parts[10] !== '-' ? parts[10] : '',
-      customerMobile: parts[11] && parts[11] !== '-' ? parts[11] : '',
-      customerEmail: parts[12] && parts[12] !== '-' ? parts[12] : '',
-      customerAddress: parts[13] && parts[13] !== '-' ? parts[13] : '',
-      remarks: parts[14],
+      customerName: parts[9] && parts[9] !== '-' ? parts[9] : '',
+      customerMobile: parts[10] && parts[10] !== '-' ? parts[10] : '',
+      customerEmail: parts[11] && parts[11] !== '-' ? parts[11] : '',
+      customerAddress: parts[12] && parts[12] !== '-' ? parts[12] : '',
+      remarks: parts[13],
+      amount: parseFloat(parts[14]) || 0,
       settlementRemarks: parts[15],
     };
   });
 
-  console.log(`📦 Loaded ${rows.length} claim rows from claim-register.md`);
+  console.log(`📦 Loaded ${rows.length} claim rows from claim.md`);
 
   const locations = await prisma.location.findMany({
     select: { id: true, code: true, shortCode: true, name: true },
@@ -143,7 +143,7 @@ async function main() {
   });
 
   // 2. Process all 200 rows and generate vouchers
-  console.log(`\n🚀 Generating ${rows.length} Claim Vouchers directly from claim-register.md...`);
+  console.log(`\n🚀 Generating ${rows.length} Claim Vouchers directly from claim.md...`);
 
   let createdVoucherCount = 0;
   let redeemedCount = 0;
