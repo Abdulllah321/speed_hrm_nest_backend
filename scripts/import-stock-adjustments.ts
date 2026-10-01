@@ -37,6 +37,7 @@ if (isDryRun) console.log('🔍 DRY-RUN mode - no database writes will occur.');
 // Raw JSON shape
 interface RawAdjRow {
   CostCentre?: string;
+  'Location Name'?: string;
   'Location ID'?: string;
   Concept?: string;
   DocumentNumber?: string | number;
@@ -102,13 +103,13 @@ function groupKey(row: RawAdjRow): string {
 }
 
 async function run() {
-  const jsonPath = path.join(__dirname, '../data/stock-adjustment.json');
+  const jsonPath = path.join(__dirname, '../data/SA.json');
   if (!fs.existsSync(jsonPath)) {
     console.error(`File not found: ${jsonPath}`);
     process.exit(1);
   }
   const rawRows: RawAdjRow[] = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-  console.log(`📦 Loaded ${rawRows.length} rows from stock-adjustment.json`);
+  console.log(`📦 Loaded ${rawRows.length} rows from SA.json`);
 
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
@@ -275,7 +276,7 @@ async function processTenant(
   for (const [_key, rows] of groups) {
     const firstRow = rows[0];
     const rawLocId = (firstRow['Location ID'] || firstRow.Concept || '').trim();
-    const costCentre = (firstRow.CostCentre || '').trim();
+    const costCentre = (firstRow.CostCentre || firstRow['Location Name'] || '').trim();
     const docDate = parseDate(String(firstRow.DocumentDate || ''));
     const remarks = firstRow.Remarks || '';
     const docNo = String(firstRow.DocumentNumber || '');
