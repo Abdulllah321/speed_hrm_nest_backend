@@ -8983,7 +8983,6 @@ export class PosSalesService implements OnModuleInit {
         ...(cashierUserId ? { cashierUserId } : {}),
       },
       include: {
-        location: true,
         items: {
           include: {
             item: {
@@ -9002,6 +9001,20 @@ export class PosSalesService implements OnModuleInit {
         },
       },
     });
+
+    const locationIds = [
+      ...new Set(orders.map((o) => o.locationId).filter(Boolean)),
+    ] as string[];
+    const locationMap = new Map<string, string>();
+    if (locationIds.length) {
+      const locations = await prisma.location.findMany({
+        where: { id: { in: locationIds } },
+        select: { id: true, name: true },
+      });
+      for (const loc of locations) {
+        locationMap.set(loc.id, loc.name);
+      }
+    }
 
     const cashierUserIds = [
       ...new Set(orders.map((o) => o.cashierUserId).filter(Boolean)),
@@ -9128,7 +9141,7 @@ export class PosSalesService implements OnModuleInit {
         const itemHsCode = it.hsCodeStr || it.hsCode?.hsCode || '-';
         const itemBarcode = it.barCode || '-';
 
-        const locationName = order.location?.name || 'Main Outlet';
+        const locationName = order.locationId ? (locationMap.get(order.locationId) || 'Main Outlet') : 'Main Outlet';
         const monthName = order.createdAt.toLocaleString('en-US', {
           month: 'long',
           year: 'numeric',
