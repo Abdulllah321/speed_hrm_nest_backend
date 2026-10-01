@@ -990,7 +990,7 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'ST_july_aug_sep.md');
+  let filePath = path.join(__dirname, '..', 'data', 'TRansfers.md');
   if (!fs.existsSync(filePath)) {
     filePath = path.join(__dirname, '..', 'data', 'stn.json');
   }
