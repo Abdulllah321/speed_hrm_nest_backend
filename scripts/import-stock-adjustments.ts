@@ -320,7 +320,6 @@ async function processTenant(
               shortCode: whCode || rawLocId,
               name: costCentre || `${targetWarehouse.name} Default`,
               warehouseId: targetWarehouse.id,
-              isActive: true,
             },
           });
           allLocations.push(targetLocation);
@@ -375,7 +374,7 @@ async function processTenant(
 
       resolvedItems.push({
         itemId: itemRecord.id,
-        locationId: targetLocation.id,
+        locationId: targetLocation!.id,
         currentQty: new Prisma.Decimal(currentQty),
         physicalQty: new Prisma.Decimal(physicalQty),
         adjustedQty: new Prisma.Decimal(adjustedQty),
@@ -392,7 +391,7 @@ async function processTenant(
 
     if (dryRun) {
       console.log(
-        `    [DRY-RUN] ${adjNo} | Wh: [${targetWarehouse.code}] "${targetWarehouse.name}" | Loc: [${targetLocation.code}] "${targetLocation.name}" | ${resolvedItems.length} items (${failedCount} failed)`,
+        `    [DRY-RUN] ${adjNo} | Wh: [${targetWarehouse.code}] "${targetWarehouse.name}" | Loc: [${targetLocation!.code}] "${targetLocation!.name}" | ${resolvedItems.length} items (${failedCount} failed)`,
       );
       created++;
       seqCounter++;
@@ -501,7 +500,7 @@ async function processTenant(
       );
 
       console.log(
-        `  ✔ Created ${adjNo} | Wh: [${targetWarehouse.code}] "${targetWarehouse.name}" | Loc: [${targetLocation.code}] "${targetLocation.name}" | ${resolvedItems.length} items (${remarks.slice(0, 45)})`,
+        `  ✔ Created ${adjNo} | Wh: [${targetWarehouse.code}] "${targetWarehouse.name}" | Loc: [${targetLocation!.code}] "${targetLocation!.name}" | ${resolvedItems.length} items (${remarks.slice(0, 45)})`,
       );
       created++;
     } catch (err: any) {
