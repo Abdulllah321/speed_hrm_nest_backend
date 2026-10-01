@@ -96,13 +96,19 @@ export function excelSerialToDate(serial: number): Date {
   const minutes = totalSeconds % 60;
   const hours = Math.floor(totalSeconds / 60);
   return new Date(
-    dateInfo.getFullYear(),
-    dateInfo.getMonth(),
-    dateInfo.getDate(),
+    dateInfo.getUTCFullYear(),
+    dateInfo.getUTCMonth(),
+    dateInfo.getUTCDate(),
     hours,
     minutes,
     seconds,
   );
+}
+
+function formatDateLocal(d: Date): string {
+  if (!d || isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export function parseCustomDate(val: any): Date | null {
@@ -211,12 +217,18 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       const receivingDocDate = parseCustomDate(rawRecDate);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
 
+      const rawDocDateStr = String(rawDocDate || '');
+      const rawRecDateStr = String(rawRecDate || '');
+      
+      const documentDateStr = /^\d+(\.\d+)?$/.test(rawDocDateStr) ? formatDateLocal(documentDate) : rawDocDateStr;
+      const receivingDocDateStr = isReceived && /^\d+(\.\d+)?$/.test(rawRecDateStr) ? formatDateLocal(receivingDocDate!) : rawRecDateStr;
+
       rawParsed.push({
         rowNum: 0,
         stockOutLocationName,
         codeTrOut,
         documentNumber,
-        documentDateStr: String(rawDocDate || ''),
+        documentDateStr,
         documentDate,
         documentType,
         stockInLocationName,
@@ -224,7 +236,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
         barCode,
         quantity,
         receivingDocNo,
-        receivingDocDateStr: String(rawRecDate || ''),
+        receivingDocDateStr,
         receivingDocDate: isReceived ? receivingDocDate : null,
         remarks,
         documentStatus,
@@ -312,12 +324,15 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       const receivingDocDate = parseCustomDate(receivingDocDateStr);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
 
+      const finalDocDateStr = /^\d+(\.\d+)?$/.test(documentDateStr) ? formatDateLocal(documentDate) : documentDateStr;
+      const finalRecDateStr = isReceived && /^\d+(\.\d+)?$/.test(receivingDocDateStr) ? formatDateLocal(receivingDocDate!) : receivingDocDateStr;
+
       rawParsed.push({
         rowNum: 0,
         stockOutLocationName,
         codeTrOut,
         documentNumber,
-        documentDateStr,
+        documentDateStr: finalDocDateStr,
         documentDate,
         documentType,
         stockInLocationName,
@@ -325,7 +340,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
         barCode,
         quantity,
         receivingDocNo,
-        receivingDocDateStr,
+        receivingDocDateStr: finalRecDateStr,
         receivingDocDate: isReceived ? receivingDocDate : null,
         remarks,
         documentStatus,
@@ -990,7 +1005,7 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'TRansfers.md');
+  let filePath = path.join(__dirname, '..', 'data', 'Stock Transfer.md');
   if (!fs.existsSync(filePath)) {
     filePath = path.join(__dirname, '..', 'data', 'stn.json');
   }
