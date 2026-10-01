@@ -253,6 +253,7 @@ async function processTenant(
       await prisma.stockLedger.deleteMany({
         where: { referenceType: 'STOCK_ADJUSTMENT' },
       });
+      await prisma.stockAdjustmentItem.deleteMany();
       await prisma.stockAdjustment.deleteMany();
       console.log(`  âœ… Successfully purged ${existingAdjs.length} previous adjustments and reverted stock.`);
     } else {
