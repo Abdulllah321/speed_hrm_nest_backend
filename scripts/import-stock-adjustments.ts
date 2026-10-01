@@ -70,13 +70,13 @@ function decrypt(encryptedText: string, masterKeyString: string): string {
 }
 
 /**
- * Parse M/D/YY or M/D/YYYY -> Date (midnight UTC to avoid tz drift)
+ * Parse DD/MM/YY or DD/MM/YYYY -> Date (midnight UTC to avoid tz drift)
  */
 function parseDate(s: string): Date {
   const parts = s.trim().split('/');
   if (parts.length !== 3) return new Date();
-  const month = parseInt(parts[0], 10) - 1;
-  const day = parseInt(parts[1], 10);
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
   let year = parseInt(parts[2], 10);
   if (year < 100) year += 2000;
   return new Date(Date.UTC(year, month, day, 12, 0, 0));
