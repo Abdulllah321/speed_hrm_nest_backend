@@ -26,7 +26,7 @@ export class JobTypeController {
   constructor(private service: JobTypeService) {}
 
   @Get('job-types')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all job types' })
   async list() {
@@ -34,7 +34,7 @@ export class JobTypeController {
   }
 
   @Get('job-types/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.job-type.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get job type by id' })
   async get(@Param('id') id: string) {

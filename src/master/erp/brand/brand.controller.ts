@@ -40,7 +40,7 @@ export class BrandController {
   }
 
   @Get('brands/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.brand.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get brand by id' })
   async get(@Param('id') id: string) {
@@ -112,7 +112,7 @@ export class BrandController {
   // --- DIVISIONS ---
 
   @Get('divisions')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.division.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all divisions' })
   async listDivisions() {
@@ -120,7 +120,7 @@ export class BrandController {
   }
 
   @Get('divisions/brand/:brandId')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.division.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List divisions by brand' })
   async listDivisionsByBrand(@Param('brandId') brandId: string) {

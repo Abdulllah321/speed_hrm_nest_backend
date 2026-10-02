@@ -20,7 +20,7 @@ export class AllocationController {
   constructor(private service: AllocationService) {}
 
   @Get('allocations')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all allocations' })
   async list() {
@@ -28,7 +28,7 @@ export class AllocationController {
   }
 
   @Get('allocations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.allocation.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get allocation by id' })
   async get(@Param('id') id: string) {

@@ -27,7 +27,7 @@ export class TaxSlabController {
   constructor(private service: TaxSlabService) {}
 
   @Get('tax-slabs')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all tax slabs' })
   async list() {
@@ -35,7 +35,7 @@ export class TaxSlabController {
   }
 
   @Get('tax-slabs/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.tax-slab.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get tax slab by id' })
   async get(@Param('id') id: string) {

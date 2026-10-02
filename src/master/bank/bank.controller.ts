@@ -27,7 +27,7 @@ export class BankController {
   constructor(private service: BankService) {}
 
   @Get('banks')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all banks' })
   async list() {
@@ -35,7 +35,7 @@ export class BankController {
   }
 
   @Get('banks/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.bank.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get bank by id' })
   async get(@Param('id') id: string) {

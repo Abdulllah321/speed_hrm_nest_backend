@@ -322,7 +322,8 @@ export class ItemBulkUploadService {
       'bulk',
       `errors-${uploadId}.jsonl`,
     );
-    const tmpPath = errorFilePath + '.tmp';
+    const { v4: uuidv4 } = await import('uuid');
+    const tmpPath = errorFilePath + '.' + uuidv4() + '.tmp';
 
     if (fs.existsSync(errorFilePath)) return;
     if (!fs.existsSync(uploadFilePath))

@@ -24,7 +24,7 @@ export class EmployeeStatusController {
   constructor(private service: EmployeeStatusService) {}
 
   @Get('employee-statuses')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all employee statuses' })
   async list() {
@@ -32,7 +32,7 @@ export class EmployeeStatusController {
   }
 
   @Get('employee-statuses/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-status.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get employee status by id' })
   async get(@Param('id') id: string) {

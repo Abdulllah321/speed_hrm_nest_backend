@@ -30,7 +30,7 @@ export class MaritalStatusController {
   constructor(private service: MaritalStatusService) {}
 
   @Get('marital-statuses')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all marital statuses' })
   async list() {
@@ -38,7 +38,7 @@ export class MaritalStatusController {
   }
 
   @Get('marital-statuses/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.marital-status.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get marital status by id' })
   async get(@Param('id') id: string) {

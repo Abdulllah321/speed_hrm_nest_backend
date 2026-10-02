@@ -27,14 +27,14 @@ export class SilhouetteController {
 
   @Get('silhouettes')
   @ApiOperation({ summary: 'Get all silhouettes' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.silhouette.read'))
+  @UseGuards(JwtAuthGuard)
   async getAllSilhouettes() {
     return this.silhouetteService.getAllSilhouettes();
   }
 
   @Get('silhouettes/:id')
   @ApiOperation({ summary: 'Get silhouette by ID' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.silhouette.read'))
+  @UseGuards(JwtAuthGuard)
   async getSilhouetteById(@Param('id') id: string) {
     return this.silhouetteService.getSilhouetteById(id);
   }

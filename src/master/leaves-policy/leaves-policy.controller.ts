@@ -31,7 +31,7 @@ export class LeavesPolicyController {
   constructor(private service: LeavesPolicyService) {}
 
   @Get('leaves-policies')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all leaves policies' })
   async list() {
@@ -39,7 +39,7 @@ export class LeavesPolicyController {
   }
 
   @Get('leaves-policies/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.leaves-policy.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get leaves policy by id' })
   async get(@Param('id') id: string) {

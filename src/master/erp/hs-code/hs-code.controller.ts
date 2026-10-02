@@ -24,13 +24,13 @@ export class HsCodeController {
   }
 
   @Get('hs-codes')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.read'))
+  @UseGuards(JwtAuthGuard)
   list() {
     return this.hsCodeService.list();
   }
 
   @Get('hs-codes/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.hs-code.read'))
+  @UseGuards(JwtAuthGuard)
   get(@Param('id') id: string) {
     return this.hsCodeService.get(id);
   }

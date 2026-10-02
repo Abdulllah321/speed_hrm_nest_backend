@@ -26,7 +26,7 @@ export class EquipmentController {
   constructor(private service: EquipmentService) {}
 
   @Get('equipments')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all equipment' })
   async list() {
@@ -34,7 +34,7 @@ export class EquipmentController {
   }
 
   @Get('equipments/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.equipment.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get equipment by id' })
   async get(@Param('id') id: string) {

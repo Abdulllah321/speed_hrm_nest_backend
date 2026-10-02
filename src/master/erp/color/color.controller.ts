@@ -27,14 +27,14 @@ export class ColorController {
 
   @Get('colors')
   @ApiOperation({ summary: 'Get all colors' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.color.read'))
+  @UseGuards(JwtAuthGuard)
   async getAllColors() {
     return this.colorService.getAllColors();
   }
 
   @Get('colors/:id')
   @ApiOperation({ summary: 'Get color by ID' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.color.read'))
+  @UseGuards(JwtAuthGuard)
   async getColorById(@Param('id') id: string) {
     return this.colorService.getColorById(id);
   }

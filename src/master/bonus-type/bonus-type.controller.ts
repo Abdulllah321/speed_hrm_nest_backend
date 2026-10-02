@@ -33,7 +33,7 @@ export class BonusTypeController {
   constructor(private service: BonusTypeService) {}
 
   @Get('bonus-types')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all bonus types' })
   async list() {
@@ -41,7 +41,7 @@ export class BonusTypeController {
   }
 
   @Get('bonus-types/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.bonus-type.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get bonus type by id' })
   async get(@Param('id') id: string) {

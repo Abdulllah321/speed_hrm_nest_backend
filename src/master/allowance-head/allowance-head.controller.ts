@@ -30,7 +30,7 @@ export class AllowanceHeadController {
   constructor(private service: AllowanceHeadService) {}
 
   @Get('allowance-heads')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all allowance heads' })
   async list() {
@@ -38,7 +38,7 @@ export class AllowanceHeadController {
   }
 
   @Get('allowance-heads/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.allowance-head.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get allowance head by id' })
   async get(@Param('id') id: string) {

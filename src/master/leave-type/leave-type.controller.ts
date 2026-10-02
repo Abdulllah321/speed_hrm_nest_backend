@@ -26,7 +26,7 @@ export class LeaveTypeController {
   constructor(private service: LeaveTypeService) {}
 
   @Get('leave-types')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all leave types' })
   async list() {
@@ -34,7 +34,7 @@ export class LeaveTypeController {
   }
 
   @Get('leave-types/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.leave-type.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get leave type by id' })
   async get(@Param('id') id: string) {

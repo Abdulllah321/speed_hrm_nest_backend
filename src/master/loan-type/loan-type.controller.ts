@@ -32,7 +32,7 @@ export class LoanTypeController {
   constructor(private service: LoanTypeService) {}
 
   @Get('loan-types')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all loan types' })
   async list() {
@@ -40,7 +40,7 @@ export class LoanTypeController {
   }
 
   @Get('loan-types/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.loan-type.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get loan type by id' })
   async get(@Param('id') id: string) {

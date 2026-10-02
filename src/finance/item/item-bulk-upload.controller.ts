@@ -175,13 +175,15 @@ export class ItemBulkUploadController {
     @Res() res: any,
     @Req() req: any,
   ) {
-    // ?prepare=true → JSON response to check readiness / kick off generation
     if (req.query?.prepare === 'true') {
       const result = await this.bulkUploadService.prepareErrorReport(uploadId);
       if (!result.ready) {
-        await this.bulkUploadService
-          .regenerateErrorReport(uploadId)
-          .catch(() => {});
+        const status = await this.bulkUploadService.getUploadStatus(uploadId);
+        if (status.status !== 'validating' && status.status !== 'processing' && status.status !== 'pending') {
+          await this.bulkUploadService
+            .regenerateErrorReport(uploadId)
+            .catch(() => {});
+        }
       }
       res.header('Content-Type', 'application/json');
       res.send({ status: true, data: result });

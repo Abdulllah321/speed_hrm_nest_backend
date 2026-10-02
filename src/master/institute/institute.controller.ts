@@ -26,7 +26,7 @@ export class InstituteController {
   constructor(private service: InstituteService) {}
 
   @Get('institutes')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all institutes' })
   async list() {
@@ -34,7 +34,7 @@ export class InstituteController {
   }
 
   @Get('institutes/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.institute.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get institute by id' })
   async get(@Param('id') id: string) {

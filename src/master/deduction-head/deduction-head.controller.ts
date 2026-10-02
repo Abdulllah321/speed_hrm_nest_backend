@@ -30,7 +30,7 @@ export class DeductionHeadController {
   constructor(private service: DeductionHeadService) {}
 
   @Get('deduction-heads')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all deduction heads' })
   async list() {
@@ -38,7 +38,7 @@ export class DeductionHeadController {
   }
 
   @Get('deduction-heads/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.deduction-head.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get deduction head by id' })
   async get(@Param('id') id: string) {

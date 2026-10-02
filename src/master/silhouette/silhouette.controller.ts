@@ -34,7 +34,7 @@ export class SilhouetteController {
 
   @Get('silhouettes/:id')
   @ApiOperation({ summary: 'Get silhouette by ID' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.silhouette.read'))
+  @UseGuards(JwtAuthGuard)
   async getSilhouetteById(@Param('id') id: string) {
     return this.silhouetteService.getSilhouetteById(id);
   }

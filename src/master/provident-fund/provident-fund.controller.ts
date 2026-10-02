@@ -30,7 +30,7 @@ export class ProvidentFundController {
   constructor(private service: ProvidentFundService) {}
 
   @Get('provident-funds')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all provident funds' })
   async list() {
@@ -38,7 +38,7 @@ export class ProvidentFundController {
   }
 
   @Get('provident-funds/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.provident-fund.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get provident fund by id' })
   async get(@Param('id') id: string) {
