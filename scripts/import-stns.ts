@@ -136,9 +136,32 @@ export function parseCustomDate(val: any): Date | null {
 
   const dParts = datePart.split('/');
   if (dParts.length === 3) {
-    const month = parseInt(dParts[0], 10);
-    const day = parseInt(dParts[1], 10);
-    let year = parseInt(dParts[2], 10);
+    const p0 = parseInt(dParts[0], 10);
+    const p1 = parseInt(dParts[1], 10);
+    const p2 = parseInt(dParts[2], 10);
+
+    let day, month, year;
+    if (p0 > 1000) {
+      // YYYY/MM/DD
+      year = p0;
+      month = p1;
+      day = p2;
+    } else if (p0 > 12) {
+      // DD/MM/YYYY
+      day = p0;
+      month = p1;
+      year = p2;
+    } else if (p1 > 12) {
+      // MM/DD/YYYY
+      month = p0;
+      day = p1;
+      year = p2;
+    } else {
+      // Ambiguous (e.g. 07/07/2026), default to Pakistani format DD/MM/YYYY
+      day = p0;
+      month = p1;
+      year = p2;
+    }
 
     if (year < 100) {
       year += 2000;
