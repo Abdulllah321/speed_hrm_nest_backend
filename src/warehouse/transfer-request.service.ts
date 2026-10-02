@@ -510,8 +510,8 @@ export class TransferRequestService {
         const requests = await this.prisma.transferRequest.findMany({
             where: {
                 toLocationId: locationId,
-                transferType: 'WAREHOUSE_TO_OUTLET',
-                status: { in: ['PENDING', 'APPROVED'] },
+                transferType: { in: ['WAREHOUSE_TO_OUTLET', 'OUTLET_TO_OUTLET'] },
+                status: { in: ['PENDING', 'APPROVED', 'SOURCE_APPROVED'] },
             },
             include: {
                 fromWarehouse: true,
