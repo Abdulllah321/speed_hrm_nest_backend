@@ -546,22 +546,26 @@ export class ItemService {
       }
 
       // Restore each item to its pre-campaign discount state, then delete campaign — atomically
-      await this.prisma.$transaction(async (tx) => {
-        await Promise.all(
-          campaign.items.map((ci) =>
-            tx.item.update({
-              where: { id: ci.itemId },
-              data: {
-                discountRate: ci.prevDiscountRate ?? 0,
-                discountAmount: ci.prevDiscountAmount ?? 0,
-                discountStartDate: ci.prevStartDate ?? null,
-                discountEndDate: ci.prevEndDate ?? null,
-              },
-            }),
-          ),
-        );
-        await tx.discountCampaign.delete({ where: { id: dto.campaignId } });
-      });
+      // Using a single raw SQL query to prevent transaction timeout when dealing with thousands of items
+      await this.prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`
+            UPDATE "Item" i
+            SET "discountRate" = COALESCE(ci.prev_discount_rate, 0),
+                "discountAmount" = COALESCE(ci.prev_discount_amount, 0),
+                "discountStartDate" = ci.prev_start_date,
+                "discountEndDate" = ci.prev_end_date
+            FROM "discount_campaign_items" ci
+            WHERE i.id = ci.item_id AND ci.campaign_id = ${dto.campaignId}
+          `;
+          
+          await tx.discountCampaign.delete({ where: { id: dto.campaignId } });
+        },
+        {
+          maxWait: 15000,
+          timeout: 90000,
+        }
+      );
 
       return {
         status: true,
