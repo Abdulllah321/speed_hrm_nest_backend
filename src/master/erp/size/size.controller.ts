@@ -27,14 +27,14 @@ export class SizeController {
 
   @Get('sizes')
   @ApiOperation({ summary: 'Get all sizes' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.size.read'))
+  @UseGuards(JwtAuthGuard)
   async getAllSizes() {
     return this.sizeService.getAllSizes();
   }
 
   @Get('sizes/:id')
   @ApiOperation({ summary: 'Get size by ID' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.size.read'))
+  @UseGuards(JwtAuthGuard)
   async getSizeById(@Param('id') id: string) {
     return this.sizeService.getSizeById(id);
   }

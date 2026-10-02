@@ -27,14 +27,14 @@ export class ChannelClassController {
 
   @Get('channel-classes')
   @ApiOperation({ summary: 'Get all channel classes' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.channel-class.read'))
+  @UseGuards(JwtAuthGuard)
   async getAllChannelClasses() {
     return this.channelClassService.getAllChannelClasses();
   }
 
   @Get('channel-classes/:id')
   @ApiOperation({ summary: 'Get channel class by ID' })
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.channel-class.read'))
+  @UseGuards(JwtAuthGuard)
   async getChannelClassById(@Param('id') id: string) {
     return this.channelClassService.getChannelClassById(id);
   }

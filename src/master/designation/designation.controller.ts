@@ -26,7 +26,7 @@ export class DesignationController {
   constructor(private service: DesignationService) {}
 
   @Get('designations')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all designations' })
   async list() {
@@ -34,7 +34,7 @@ export class DesignationController {
   }
 
   @Get('designations/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.designation.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get designation by id' })
   async get(@Param('id') id: string) {

@@ -24,7 +24,7 @@ export class EmployeeGradeController {
   constructor(private service: EmployeeGradeService) {}
 
   @Get('employee-grades')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all employee grades' })
   async list() {
@@ -32,7 +32,7 @@ export class EmployeeGradeController {
   }
 
   @Get('employee-grades/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.employee-grade.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get employee grade by id' })
   async get(@Param('id') id: string) {

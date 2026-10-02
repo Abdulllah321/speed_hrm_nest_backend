@@ -26,7 +26,7 @@ export class QualificationController {
   constructor(private service: QualificationService) {}
 
   @Get('qualifications')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all qualifications' })
   async list() {
@@ -34,7 +34,7 @@ export class QualificationController {
   }
 
   @Get('qualifications/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.qualification.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get qualification by id' })
   async get(@Param('id') id: string) {

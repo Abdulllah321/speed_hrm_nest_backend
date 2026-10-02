@@ -27,7 +27,7 @@ export class CityController {
   constructor(private service: CityService) {}
 
   @Get('countries')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all countries' })
   async countries() {
@@ -35,7 +35,7 @@ export class CityController {
   }
 
   @Get('states')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all states' })
   async states() {
@@ -43,7 +43,7 @@ export class CityController {
   }
 
   @Get('states/country/:countryId')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List states by country' })
   async statesByCountry(@Param('countryId') countryId: string) {
@@ -51,7 +51,7 @@ export class CityController {
   }
 
   @Get('cities/state/:stateId')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List cities by state' })
   async citiesByState(@Param('stateId') stateId: string) {
@@ -59,7 +59,7 @@ export class CityController {
   }
 
   @Get('cities')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.city.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all cities' })
   async cities() {

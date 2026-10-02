@@ -27,7 +27,7 @@ export class EobiController {
   constructor(private service: EobiService) {}
 
   @Get('eobis')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all EOBI records' })
   async list() {
@@ -35,7 +35,7 @@ export class EobiController {
   }
 
   @Get('eobis/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.eobi.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get EOBI record by id' })
   async get(@Param('id') id: string) {

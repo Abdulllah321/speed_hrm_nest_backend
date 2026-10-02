@@ -32,7 +32,7 @@ export class DepartmentController {
   constructor(private service: DepartmentService) {}
 
   @Get('departments')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all departments' })
   async list() {
@@ -40,7 +40,7 @@ export class DepartmentController {
   }
 
   @Get('departments/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.department.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get department by id' })
   async get(@Param('id') id: string) {
@@ -143,7 +143,7 @@ export class DepartmentController {
   }
 
   @Get('sub-departments')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all sub-departments' })
   async subDepartments() {
@@ -151,7 +151,7 @@ export class DepartmentController {
   }
 
   @Get('sub-departments/department/:departmentId')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.sub-department.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List sub-departments by department' })
   async subDepartmentsByDept(@Param('departmentId') departmentId: string) {

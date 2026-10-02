@@ -29,7 +29,7 @@ export class SalaryBreakupController {
   constructor(private service: SalaryBreakupService) {}
 
   @Get('salary-breakups')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.salary-breakup.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all salary breakups' })
   async list() {
@@ -37,7 +37,7 @@ export class SalaryBreakupController {
   }
 
   @Get('salary-breakups/:id')
-  @UseGuards(JwtAuthGuard, PermissionGuard('master.salary-breakup.read'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get salary breakup by id' })
   async get(@Param('id') id: string) {
