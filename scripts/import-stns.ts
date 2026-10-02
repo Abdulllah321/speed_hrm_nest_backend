@@ -598,7 +598,7 @@ async function processTransfersForTenant(
     const existingStnsRes = await pool.query(`
       SELECT id, "requestNo", "fromLocationId", "toLocationId", "fromWarehouseId", "toWarehouseId", status
       FROM "TransferRequest"
-      WHERE ("requestNo" LIKE 'STN-%' AND "requestDate" < '2026-10-02')
+      WHERE ("requestNo" LIKE 'STN-%' AND "createdAt" < '2026-10-02')
          OR notes LIKE '%TR-OUT-%'
          OR notes LIKE '%TR-IN-%'
          OR notes LIKE '%OrigDocNo:%'
