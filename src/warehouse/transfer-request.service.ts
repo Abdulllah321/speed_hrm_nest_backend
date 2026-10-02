@@ -90,8 +90,12 @@ export class TransferRequestService {
                 }
             }
 
-            const created = await this.prisma.$transaction(async (tx) => {
-                const { nextTransferNumber } = await this.getNextTransferNumber(tx);
+            let retries = 5;
+            let created: any;
+            while (retries > 0) {
+                try {
+                    created = await this.prisma.$transaction(async (tx) => {
+                        const { nextTransferNumber } = await this.getNextTransferNumber(tx);
                 const requestNo = nextTransferNumber;
 
                 // Validate stock availability based on transfer type
@@ -253,6 +257,16 @@ export class TransferRequestService {
 
                 return createdRequest;
             });
+                    break;
+                } catch (error: any) {
+                    if (error.code === 'P2002' && error.meta?.target?.includes('requestNo') && retries > 1) {
+                        retries--;
+                        await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 200));
+                        continue;
+                    }
+                    throw error;
+                }
+            }
 
             if (created.toLocationId && data.items && data.items.length > 0) {
                 const totalPcs = data.items.reduce((s, i) => s + (i.quantity > 0 ? Number(i.quantity) : 0), 0);
