@@ -83,7 +83,8 @@ export class PosSalesService implements OnModuleInit {
     const year = now.getFullYear();
     const month = now.getMonth(); // 0-indexed, July is 6
     const fiscalYearStartYear = month >= 6 ? year : year - 1;
-    const fySuffix = String(fiscalYearStartYear).slice(-2);
+    const fiscalYearEndYear = fiscalYearStartYear + 1;
+    const fySuffix = String(fiscalYearEndYear).slice(-2);
     const fiscalYearStartDate = new Date(
       Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0),
     );
@@ -1114,6 +1115,7 @@ export class PosSalesService implements OnModuleInit {
           status: 'failure',
         }),
       );
+      console.error('[createOrder FAILED]', error?.message, error?.stack?.split('\n').slice(0,5).join(' | '));
       return { status: false, message: error.message };
     }
   }
@@ -2051,6 +2053,7 @@ export class PosSalesService implements OnModuleInit {
       }
     }
     if (locationId) where.locationId = locationId;
+    console.log('[listOrders] filter:', JSON.stringify({ posId, locationId, status }));
     if (status) {
       where.status = status;
     } else {
