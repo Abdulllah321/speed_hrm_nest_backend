@@ -53,6 +53,13 @@ export class TransferRequestService {
             const transferType = data.transferType || 'WAREHOUSE_TO_OUTLET';
             const isDirect = data.isDirectTransfer && transferType === 'OUTLET_TO_OUTLET';
 
+            // Aggregate duplicate items
+            const itemMap = new Map<string, number>();
+            for (const item of data.items) {
+                itemMap.set(item.itemId, (itemMap.get(item.itemId) || 0) + Number(item.quantity));
+            }
+            data.items = Array.from(itemMap.entries()).map(([itemId, quantity]) => ({ itemId, quantity }));
+
             // Validation based on transfer type
             if (transferType === 'WAREHOUSE_TO_OUTLET') {
                 if (!data.fromWarehouseId || !data.toLocationId) {
@@ -1568,24 +1575,15 @@ export class TransferRequestService {
 
     async getNextTransferNumber(tx?: Prisma.TransactionClient): Promise<{ nextTransferNumber: string }> {
         const prismaClient = tx || this.prisma;
-        
-        // Calculate Fiscal Year string (July 1 to June 30)
         const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth(); // 0-indexed (6 = July)
-        let fy = '';
-        if (month >= 6) {
-            fy = `${String(year).slice(-2)}-${String(year + 1).slice(-2)}`;
-        } else {
-            fy = `${String(year - 1).slice(-2)}-${String(year).slice(-2)}`;
-        }
-        
-        const prefix = `STN-${fy}`;
+        const currentMonth = now.getMonth();
+        const fiscalYear = currentMonth >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+        const prefix = 'STN';
 
         const lastRequest = await prismaClient.transferRequest.findFirst({
             where: {
                 requestNo: {
-                    startsWith: `${prefix}-`,
+                    startsWith: `${prefix}-${fiscalYear}`,
                 },
             },
             orderBy: {
@@ -1602,7 +1600,7 @@ export class TransferRequestService {
             }
         }
 
-        const nextTransferNumber = `${prefix}-${nextNumber.toString().padStart(5, '0')}`;
+        const nextTransferNumber = `${prefix}-${fiscalYear}-${nextNumber.toString().padStart(4, '0')}`;
         return { nextTransferNumber };
     }
 }

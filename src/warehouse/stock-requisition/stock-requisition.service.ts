@@ -91,8 +91,6 @@ export class StockRequisitionService {
       throw new BadRequestException('SRN must contain at least one item');
     }
 
-    const { nextRequisitionNumber } = await this.getNextRequisitionNumber();
-    const requisitionNo = nextRequisitionNumber;
     const status = data.status || 'PENDING';
     const isDraft = status === 'DRAFT';
 
@@ -115,8 +113,16 @@ export class StockRequisitionService {
     }
 
     // Perform check and block in a transaction to prevent race conditions
-    return this.prisma.$transaction(async (tx) => {
-      // 1. Verify stock and block/reserve
+    let retries = 5;
+    let requisitionResult: any;
+
+    while (retries > 0) {
+      try {
+        requisitionResult = await this.prisma.$transaction(async (tx) => {
+          const { nextRequisitionNumber } = await this.getNextRequisitionNumber(tx);
+          const requisitionNo = nextRequisitionNumber;
+
+          // 1. Verify stock and block/reserve
       for (const reqItem of data.items) {
         if (reqItem.quantity <= 0) {
           throw new BadRequestException(
@@ -223,6 +229,17 @@ export class StockRequisitionService {
 
       return requisition;
     });
+        break;
+      } catch (error: any) {
+        if (error.code === 'P2002' && error.meta?.target?.includes('requisitionNo') && retries > 1) {
+          retries--;
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 200));
+          continue;
+        }
+        throw error;
+      }
+    }
+    return requisitionResult;
   }
 
   /**
@@ -1398,14 +1415,17 @@ export class StockRequisitionService {
     return { items: candidates, totalNetSales };
   }
 
-  async getNextRequisitionNumber(): Promise<{ nextRequisitionNumber: string }> {
-    const currentYear = new Date().getFullYear();
+  async getNextRequisitionNumber(tx?: Prisma.TransactionClient): Promise<{ nextRequisitionNumber: string }> {
+    const prismaClient = tx || this.prisma;
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const fiscalYear = currentMonth >= 6 ? now.getFullYear() + 1 : now.getFullYear();
     const prefix = 'SRN';
 
-    const lastRequisition = await this.prisma.stockRequisition.findFirst({
+    const lastRequisition = await prismaClient.stockRequisition.findFirst({
       where: {
         requisitionNo: {
-          startsWith: `${prefix}-${currentYear}`,
+          startsWith: `${prefix}-${fiscalYear}`,
         },
       },
       orderBy: {
@@ -1423,7 +1443,7 @@ export class StockRequisitionService {
       }
     }
 
-    const nextRequisitionNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+    const nextRequisitionNumber = `${prefix}-${fiscalYear}-${nextNumber.toString().padStart(4, '0')}`;
     return { nextRequisitionNumber };
   }
 }
