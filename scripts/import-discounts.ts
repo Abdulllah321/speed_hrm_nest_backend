@@ -40,6 +40,7 @@ async function processTenant(prisma: PrismaClient, rows: { sku: string; discount
 
   let updatedCount = 0;
   let notFoundCount = 0;
+  const missingSkus: string[] = [];
 
   // Process in chunks to avoid overwhelming the database
   const chunkSize = 100;
@@ -49,22 +50,18 @@ async function processTenant(prisma: PrismaClient, rows: { sku: string; discount
     await Promise.all(
       chunk.map(async (row) => {
         try {
-          const item = await prisma.item.findFirst({
+          const result = await prisma.item.updateMany({
             where: { sku: row.sku },
-            select: { id: true },
-          });
-
-          if (!item) {
-            notFoundCount++;
-            return;
-          }
-
-          await prisma.item.update({
-            where: { id: item.id },
             data: { discountRate: row.discount },
           });
-          
-          updatedCount++;
+
+          if (result.count === 0) {
+            notFoundCount++;
+            missingSkus.push(row.sku);
+          } else {
+            // Count how many SKUs we actually processed successfully (or count items, but let's count rows for consistency with "13336 items")
+            updatedCount++; 
+          }
         } catch (err: any) {
           console.error(`    ❌ Error updating SKU ${row.sku}:`, err.message);
         }
@@ -73,6 +70,12 @@ async function processTenant(prisma: PrismaClient, rows: { sku: string; discount
   }
 
   console.log(`  ✅ Successfully updated discounts for ${updatedCount} items. (Not found: ${notFoundCount})`);
+  
+  if (missingSkus.length > 0) {
+    const missingPath = path.join(__dirname, '../data/missing-discounts.txt');
+    fs.writeFileSync(missingPath, missingSkus.join('\n'), 'utf8');
+    console.log(`  📁 A list of ${missingSkus.length} missing SKUs has been saved to: ${missingPath}`);
+  }
 }
 
 async function run() {

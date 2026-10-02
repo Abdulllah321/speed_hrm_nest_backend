@@ -95,20 +95,20 @@ export function excelSerialToDate(serial: number): Date {
   totalSeconds = Math.floor(totalSeconds / 60);
   const minutes = totalSeconds % 60;
   const hours = Math.floor(totalSeconds / 60);
-  return new Date(
+  return new Date(Date.UTC(
     dateInfo.getUTCFullYear(),
     dateInfo.getUTCMonth(),
     dateInfo.getUTCDate(),
     hours,
     minutes,
     seconds,
-  );
+  ));
 }
 
 function formatDateLocal(d: Date): string {
   if (!d || isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
 export function parseCustomDate(val: any): Date | null {
@@ -149,11 +149,17 @@ export function parseCustomDate(val: any): Date | null {
     const minutes = parseInt(tParts[1] || '0', 10);
     const seconds = parseInt(tParts[2] || '0', 10);
 
-    const d = new Date(year, month - 1, day, hours, minutes, seconds);
+    const d = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
     return isNaN(d.getTime()) ? null : d;
   }
 
-  const fallback = new Date(str);
+  let isoStr = str.replace(' ', 'T');
+  if (isoStr.includes('T') && !isoStr.endsWith('Z') && !isoStr.includes('+') && !isoStr.match(/-\d{2}:\d{2}$/)) {
+    isoStr += 'Z';
+  } else if (!isoStr.includes('T') && /^\d{4}-\d{2}-\d{2}$/.test(isoStr)) {
+    isoStr += 'T00:00:00Z';
+  }
+  const fallback = new Date(isoStr);
   return isNaN(fallback.getTime()) ? null : fallback;
 }
 
@@ -215,7 +221,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       if (!documentDate || isNaN(documentDate.getTime())) continue;
       
       // Skip all records before October 2, 2026 since the system went live on Oct 2nd
-      if (documentDate.getTime() < new Date(2026, 9, 2).getTime()) continue;
+      if (documentDate.getTime() < Date.UTC(2026, 9, 2)) continue;
 
       const receivingDocDate = parseCustomDate(rawRecDate);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
@@ -325,7 +331,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       if (!documentDate || isNaN(documentDate.getTime())) continue;
 
       // Skip all records before October 2, 2026 since the system went live on Oct 2nd
-      if (documentDate.getTime() < new Date(2026, 9, 2).getTime()) continue;
+      if (documentDate.getTime() < Date.UTC(2026, 9, 2)) continue;
 
       const receivingDocDate = parseCustomDate(receivingDocDateStr);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
