@@ -32,6 +32,7 @@ model Warehouse {
   salesReturns          SalesReturn[]   @relation("SalesReturn_warehouse")
   finalWarehouseReturns SalesReturn[]   @relation("SalesReturn_finalWarehouse")
   purchaseInvoices PurchaseInvoice[]
+  monthlyStockSnapshots MonthlyStockSnapshot[]
 
   @@index([companyId])
   @@index([type])
@@ -96,6 +97,7 @@ model Location {
   discountCampaignLocations DiscountCampaignLocation[]
   merchantConfigLocations   MerchantConfigLocation[]
   locationBrands            LocationBrand[]
+  monthlyStockSnapshots     MonthlyStockSnapshot[]
 
   @@index([warehouseId])
   @@index([centerId])

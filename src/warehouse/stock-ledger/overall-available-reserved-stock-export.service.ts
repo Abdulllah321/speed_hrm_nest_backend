@@ -639,38 +639,48 @@ export class OverallAvailableReservedStockExportService {
       return new Date(fyYear, 6, 1, 0, 0, 0, 0);
     };
 
-    const snapshotDate =
-      await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(
-        prisma,
-        endDate,
-      );
-    const startDate =
-      snapshotDate && snapshotDate < endDate
-        ? snapshotDate
-        : getDefaultFiscalYearStart(endDate);
-    const queryStartDate =
-      snapshotDate && snapshotDate < startDate ? snapshotDate : undefined;
+    // 1. Get the latest Monthly Snapshot (instead of Fiscal Year Opening)
+    const latestSnapshot = await prisma.monthlyStockSnapshot.findFirst({
+      where: { date: { lte: endDate } },
+      orderBy: { date: 'desc' },
+      select: { date: true }
+    });
+
+    const snapshotDate = latestSnapshot?.date;
+    const startDate = snapshotDate && snapshotDate < endDate ? snapshotDate : getDefaultFiscalYearStart(endDate);
+    const queryStartDate = snapshotDate; // Prevent scanning full history for distinct items!
 
     await onProgress?.(20, 'Querying stock ledgers & inventory items...');
 
-    // Fetch inventory item ids within active date window
-    const [inventoryItems, ledgerItems] = await Promise.all([
-      prisma.inventoryItem.findMany({
-        where: {
-          ...locationOrWarehouseWhere,
-        },
-        select: { itemId: true, locationId: true, warehouseId: true },
-      }),
-      prisma.stockLedger.findMany({
-        where: {
-          ...locationOrWarehouseWhere,
-          createdAt: queryStartDate
-            ? { gte: queryStartDate, lte: endDate }
-            : { lte: endDate },
-        },
-        select: { itemId: true, locationId: true, warehouseId: true },
-        distinct: ['itemId', 'locationId'],
-      }),
+    // Bypass Prisma engine overhead for massive queries
+    const locationInClauseDb = uniqueTargetLocationIds.length > 0
+      ? `AND location_id IN (${uniqueTargetLocationIds.map(id => `'${id}'`).join(',')})`
+      : '';
+    const locationInClausePrisma = uniqueTargetLocationIds.length > 0
+      ? `AND "locationId" IN (${uniqueTargetLocationIds.map(id => `'${id}'`).join(',')})`
+      : '';
+
+    const [inventoryItems, ledgerItems, snapshotResults] = await Promise.all([
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT "itemId", "locationId", "warehouseId" 
+        FROM "InventoryItem" 
+        WHERE 1=1 ${locationInClausePrisma}
+      `),
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT DISTINCT item_id as "itemId", location_id as "locationId", warehouse_id as "warehouseId" 
+        FROM stock_ledgers 
+        WHERE created_at <= '${endDate.toISOString()}'
+        ${queryStartDate ? `AND created_at >= '${queryStartDate.toISOString()}'` : ''}
+        ${locationInClauseDb}
+      `),
+      snapshotDate 
+        ? prisma.$queryRawUnsafe<any[]>(`
+            SELECT item_id as "itemId", location_id as "locationId", warehouse_id as "warehouseId", closing_qty as "closingQty" 
+            FROM monthly_stock_snapshots 
+            WHERE date = '${snapshotDate.toISOString()}'
+            ${locationInClauseDb}
+          `)
+        : Promise.resolve([])
     ]);
 
     const activeStockLocIds = [
@@ -678,6 +688,7 @@ export class OverallAvailableReservedStockExportService {
         [
           ...inventoryItems.map((i) => i.locationId),
           ...ledgerItems.map((l) => l.locationId),
+          ...snapshotResults.map((s) => s.locationId),
         ].filter(Boolean),
       ),
     ] as string[];
@@ -694,6 +705,7 @@ export class OverallAvailableReservedStockExportService {
       ...new Set([
         ...inventoryItems.map((i) => i.itemId),
         ...ledgerItems.map((l) => l.itemId),
+        ...snapshotResults.map((s) => s.itemId),
       ]),
     ];
 
@@ -753,13 +765,11 @@ export class OverallAvailableReservedStockExportService {
       reserveGroupResults,
       tenantSettingsResults,
     ] = await Promise.all([
-      prisma.stockLedger.groupBy({
+      snapshotDate ? Promise.resolve([]) : prisma.stockLedger.groupBy({
         by: groupByCols,
         where: {
           ...locationOrWarehouseWhere,
-          createdAt: queryStartDate
-            ? { gte: queryStartDate, lt: startDate }
-            : { lt: startDate },
+          createdAt: { lt: startDate },
         },
         _sum: { qty: true },
       }),
@@ -869,6 +879,15 @@ export class OverallAvailableReservedStockExportService {
 
     // Build B/F Opening map
     const bfMap = new Map<string, number>();
+
+    // Apply Snapshot Data (Instantly!)
+    for (const r of snapshotResults) {
+      const locKey = getLocOrWhKey(r.locationId, r.warehouseId, 'SNAPSHOT');
+      const key = `${locKey}_${r.itemId}`;
+      bfMap.set(key, (bfMap.get(key) || 0) + Number(r.closingQty || 0));
+    }
+
+    // Apply Fallback Legacy Ledger Data (If no snapshot)
     for (const r of bfGroupResults) {
       const locKey = getLocOrWhKey(
         r.locationId,
@@ -1047,27 +1066,45 @@ export class OverallAvailableReservedStockExportService {
       return chunks;
     };
 
-    const itemChunks = chunkArray(activeItemIds, 1000);
-    const itemsNested = await Promise.all(
-      itemChunks.map((chunk) =>
-        prisma.item.findMany({
-          where: {
-            OR: [{ id: { in: chunk } }, { itemId: { in: chunk } }],
-          },
-          include: {
-            color: true,
-            size: true,
-            gender: true,
-            category: true,
-            division: true,
-            brand: true,
-            silhouette: true,
-          },
-        }),
-      ),
-    );
-
-    const items = itemsNested.flat();
+    const BATCH_SIZE = 5000;
+    const itemsMap = new Map<string, any>();
+    for (let i = 0; i < activeItemIds.length; i += BATCH_SIZE) {
+      const chunk = activeItemIds.slice(i, i + BATCH_SIZE);
+      const chunkIn = chunk.map((id) => `'${id}'`).join(',');
+      const itemsDb = await prisma.$queryRawUnsafe<any[]>(`
+        SELECT 
+          i.*,
+          c."id" as "categoryId", c."name" as "categoryName",
+          b."id" as "brandId", b."name" as "brandName",
+          co."id" as "colorId", co."name" as "colorName",
+          sz."id" as "sizeId", sz."name" as "sizeName",
+          g."id" as "genderId", g."name" as "genderName",
+          d."id" as "divisionId", d."name" as "divisionName",
+          sl."id" as "silhouetteId", sl."name" as "silhouetteName"
+        FROM "Item" i
+        LEFT JOIN "Category" c ON i."categoryId" = c."id"
+        LEFT JOIN "Brand" b ON i."brandId" = b."id"
+        LEFT JOIN "Color" co ON i."colorId" = co."id"
+        LEFT JOIN "Size" sz ON i."sizeId" = sz."id"
+        LEFT JOIN "Gender" g ON i."genderId" = g."id"
+        LEFT JOIN "Division" d ON i."divisionId" = d."id"
+        LEFT JOIN "Silhouette" sl ON i."silhouetteId" = sl."id"
+        WHERE i."id" IN (${chunkIn}) OR i."itemId" IN (${chunkIn})
+      `);
+      for (const row of itemsDb) {
+        itemsMap.set(row.id, {
+          ...row,
+          category: row.categoryId ? { id: row.categoryId, name: row.categoryName } : null,
+          brand: row.brandId ? { id: row.brandId, name: row.brandName } : null,
+          color: row.colorId ? { id: row.colorId, name: row.colorName } : null,
+          size: row.sizeId ? { id: row.sizeId, name: row.sizeName } : null,
+          gender: row.genderId ? { id: row.genderId, name: row.genderName } : null,
+          division: row.divisionId ? { id: row.divisionId, name: row.divisionName } : null,
+          silhouette: row.silhouetteId ? { id: row.silhouetteId, name: row.silhouetteName } : null,
+        });
+      }
+    }
+    const items = Array.from(itemsMap.values());
 
     const settingMap = new Map<string, any>();
     for (const s of tenantSettingsResults) settingMap.set(s.itemId, s);
