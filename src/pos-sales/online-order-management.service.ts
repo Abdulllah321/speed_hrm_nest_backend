@@ -557,6 +557,7 @@ export class OnlineOrderManagementService {
       locationId: locationId,
       posId: posId || ctxUser?.posId,
       terminalId: terminalId || ctxUser?.terminalId,
+      cashierUserId: cashierUserId, // Required for order context
       notes: `Online Order: ${orderNumber}`,
       items: itemsPayload,
       tenders: [
@@ -578,7 +579,15 @@ export class OnlineOrderManagementService {
       ctx,
     );
 
-    // Update the online order status to "posted"
+    // CRITICAL: Check if the order was actually created successfully
+    // createOrder returns { status: false, message } on error instead of throwing
+    if (!createdOrder.status || !createdOrder.data) {
+      throw new BadRequestException(
+        createdOrder.message || 'Failed to create sales order in POS'
+      );
+    }
+
+    // Update the online order status to "posted" ONLY after successful POS order creation
     await this.prisma.onlineOrder.updateMany({
       where: { orderNumber },
       data: { itemStatus: 'posted' },
