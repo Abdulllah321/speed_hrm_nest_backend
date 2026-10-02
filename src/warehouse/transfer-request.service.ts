@@ -53,6 +53,13 @@ export class TransferRequestService {
             const transferType = data.transferType || 'WAREHOUSE_TO_OUTLET';
             const isDirect = data.isDirectTransfer && transferType === 'OUTLET_TO_OUTLET';
 
+            // Aggregate duplicate items
+            const itemMap = new Map<string, number>();
+            for (const item of data.items) {
+                itemMap.set(item.itemId, (itemMap.get(item.itemId) || 0) + Number(item.quantity));
+            }
+            data.items = Array.from(itemMap.entries()).map(([itemId, quantity]) => ({ itemId, quantity }));
+
             // Validation based on transfer type
             if (transferType === 'WAREHOUSE_TO_OUTLET') {
                 if (!data.fromWarehouseId || !data.toLocationId) {
@@ -1568,13 +1575,15 @@ export class TransferRequestService {
 
     async getNextTransferNumber(tx?: Prisma.TransactionClient): Promise<{ nextTransferNumber: string }> {
         const prismaClient = tx || this.prisma;
-        const currentYear = new Date().getFullYear();
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const fiscalYear = currentMonth >= 6 ? now.getFullYear() + 1 : now.getFullYear();
         const prefix = 'STN';
 
         const lastRequest = await prismaClient.transferRequest.findFirst({
             where: {
                 requestNo: {
-                    startsWith: `${prefix}-${currentYear}`,
+                    startsWith: `${prefix}-${fiscalYear}`,
                 },
             },
             orderBy: {
@@ -1590,7 +1599,7 @@ export class TransferRequestService {
             }
         }
 
-        const nextTransferNumber = `${prefix}-${currentYear}-${nextNumber.toString().padStart(4, '0')}`;
+        const nextTransferNumber = `${prefix}-${fiscalYear}-${nextNumber.toString().padStart(4, '0')}`;
         return { nextTransferNumber };
     }
 }
