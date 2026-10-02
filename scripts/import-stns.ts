@@ -213,6 +213,9 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
 
       const documentDate = parseCustomDate(rawDocDate);
       if (!documentDate || isNaN(documentDate.getTime())) continue;
+      
+      // Skip all records before October 2, 2026 since the system went live on Oct 2nd
+      if (documentDate.getTime() < new Date(2026, 9, 2).getTime()) continue;
 
       const receivingDocDate = parseCustomDate(rawRecDate);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
@@ -320,6 +323,9 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
 
       const documentDate = parseCustomDate(documentDateStr);
       if (!documentDate || isNaN(documentDate.getTime())) continue;
+
+      // Skip all records before October 2, 2026 since the system went live on Oct 2nd
+      if (documentDate.getTime() < new Date(2026, 9, 2).getTime()) continue;
 
       const receivingDocDate = parseCustomDate(receivingDocDateStr);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
