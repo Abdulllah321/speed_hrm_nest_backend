@@ -29,6 +29,15 @@ function decrypt(encryptedText: string, masterKeyString: string): string {
 async function processTenant(prisma: PrismaClient, rows: { sku: string; discount: number }[]) {
   console.log(`\n  Processing ${rows.length} discount rows...`);
   
+  console.log(`  🧹 Wiping all existing item discounts...`);
+  try {
+    await prisma.item.updateMany({
+      data: { discountRate: null },
+    });
+  } catch (err: any) {
+    console.error(`  ❌ Failed to wipe existing discounts:`, err.message);
+  }
+
   let updatedCount = 0;
   let notFoundCount = 0;
 
