@@ -243,8 +243,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       const documentDate = parseCustomDate(rawDocDate);
       if (!documentDate || isNaN(documentDate.getTime())) continue;
       
-      // Skip all records before October 2, 2026 since the system went live on Oct 2nd
-      if (documentDate.getTime() < Date.UTC(2026, 9, 2)) continue;
+
 
       const receivingDocDate = parseCustomDate(rawRecDate);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
@@ -353,8 +352,7 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
       const documentDate = parseCustomDate(documentDateStr);
       if (!documentDate || isNaN(documentDate.getTime())) continue;
 
-      // Skip all records before October 2, 2026 since the system went live on Oct 2nd
-      if (documentDate.getTime() < Date.UTC(2026, 9, 2)) continue;
+
 
       const receivingDocDate = parseCustomDate(receivingDocDateStr);
       const isReceived = Boolean(receivingDocDate && !isNaN(receivingDocDate.getTime()));
@@ -600,7 +598,7 @@ async function processTransfersForTenant(
     const existingStnsRes = await pool.query(`
       SELECT id, "requestNo", "fromLocationId", "toLocationId", "fromWarehouseId", "toWarehouseId", status
       FROM "TransferRequest"
-      WHERE "requestNo" LIKE 'STN-%'
+      WHERE ("requestNo" LIKE 'STN-%' AND "requestDate" < '2026-10-02')
          OR notes LIKE '%TR-OUT-%'
          OR notes LIKE '%TR-IN-%'
          OR notes LIKE '%OrigDocNo:%'
