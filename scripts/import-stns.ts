@@ -157,9 +157,9 @@ export function parseCustomDate(val: any): Date | null {
       day = p1;
       year = p2;
     } else {
-      // Ambiguous (e.g. 07/07/2026), default to Pakistani format DD/MM/YYYY
-      day = p0;
-      month = p1;
+      // Ambiguous (e.g. 07/07/2026), default to MM/DD/YYYY for this export
+      month = p0;
+      day = p1;
       year = p2;
     }
 
@@ -223,13 +223,13 @@ export function readAndParseGeneralizedStns(filePath: string, maxRows?: number):
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const stockOutLocationName = r['From'] || r['Stock TR Out Location'] || r['Stock Out Location'] || '';
-      const codeTrOut = String(r['From Location Code'] || r['Stock TR Out Location Code'] || r['Code TR Out'] || '').trim();
+      const stockOutLocationName = r['Location'] || r['StockDeliverFromFKCostCentre'] || r['From'] || r['Stock TR Out Location'] || r['Stock Out Location'] || '';
+      const codeTrOut = String(r['Location ID'] || r['From Location Code'] || r['Stock TR Out Location Code'] || r['Code TR Out'] || '').trim();
       const documentNumber = String(r['DocumentNumber'] !== undefined && r['DocumentNumber'] !== null ? r['DocumentNumber'] : r['DocNo'] || '').trim();
       const rawDocDate = r['DocumentDate'] !== undefined && r['DocumentDate'] !== null ? r['DocumentDate'] : r['DocDate'];
       const documentType = r['TextLine'] || r['DocumentType'] || 'Transfer Out';
-      const stockInLocationName = r['To'] || r['Stock Deliver To Location'] || r['Stock In Location'] || '';
-      const codeTrIn = String(r['To Location Code'] || r['Stock Deliver to Location Code'] || r['Code TR In'] || '').trim();
+      const stockInLocationName = r['StockDeliver To Location'] || r['To'] || r['Stock In Location'] || '';
+      const codeTrIn = String(r['TO Location'] || r['To Location Code'] || r['Stock Deliver to Location Code'] || r['Code TR In'] || '').trim();
       const barCode = String(r['BarCode'] || r['Barcode'] || '').replace(/"/g, '').trim();
       const rawQty = r['Quantity'] !== undefined ? r['Quantity'] : r['Qty'] !== undefined ? r['Qty'] : 1;
       const quantity = parseFloat(rawQty) || 1;
@@ -1040,10 +1040,7 @@ async function main() {
     limit = parseInt(limitArg.split('=')[1], 10);
   }
 
-  let filePath = path.join(__dirname, '..', 'data', 'Stock Transfer.md');
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(__dirname, '..', 'data', 'stn.json');
-  }
+  let filePath = path.join(__dirname, '..', 'data', 'stn.json');
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
