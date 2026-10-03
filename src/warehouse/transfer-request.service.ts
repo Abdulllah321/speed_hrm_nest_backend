@@ -1756,4 +1756,56 @@ export class TransferRequestService {
         const nextTransferNumber = `${prefix}-${fiscalYear}-${nextNumber.toString().padStart(4, '0')}`;
         return { nextTransferNumber };
     }
+
+    async getLocationReceipts(locationId: string, params?: { page?: number; limit?: number; search?: string }) {
+        const whereClause: any = {
+            OR: [
+                { fromLocationId: locationId },
+                { toLocationId: locationId }
+            ],
+            status: 'COMPLETED'
+        };
+
+        if (params?.search) {
+            const q = params.search;
+            whereClause.AND = [
+                {
+                    OR: [
+                        { requestNo: { contains: q, mode: 'insensitive' } },
+                        { inboundNo: { contains: q, mode: 'insensitive' } },
+                        { outboundNo: { contains: q, mode: 'insensitive' } },
+                        { formattedSerialNo: { contains: q, mode: 'insensitive' } },
+                        { items: { some: { item: { barCode: { contains: q, mode: 'insensitive' } } } } },
+                        { items: { some: { item: { sku: { contains: q, mode: 'insensitive' } } } } },
+                        { items: { some: { item: { description: { contains: q, mode: 'insensitive' } } } } }
+                    ]
+                }
+            ];
+        }
+
+        const page = params?.page ? Number(params.page) : 1;
+        const limit = params?.limit ? Number(params.limit) : 20;
+
+        const [total, requests] = await Promise.all([
+            this.prisma.transferRequest.count({ where: whereClause }),
+            this.prisma.transferRequest.findMany({
+                where: whereClause,
+                include: {
+                    items: { include: { item: true } },
+                    fromLocation: true,
+                    toLocation: true,
+                    fromWarehouse: true,
+                    toWarehouse: true,
+                },
+                orderBy: { createdAt: 'desc' },
+                skip: (page - 1) * limit,
+                take: limit,
+            })
+        ]);
+
+        return {
+            data: await Promise.all(requests.map(req => this.enrichRequest(req))),
+            meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+        };
+    }
 }

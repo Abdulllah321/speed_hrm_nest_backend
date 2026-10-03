@@ -252,4 +252,21 @@ export class TransferRequestController {
         });
         return { status: true, data, message: 'Courier & dispatch details updated successfully' };
     }
+
+    @Get('location-receipts')
+    @Permissions('pos.inventory.receipt.view')
+    @ApiOperation({ summary: 'Get unified STN library for a location' })
+    async getLocationReceipts(
+        @Query('locationId') locationId: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+    ) {
+        const data = await this.transferRequestService.getLocationReceipts(locationId, {
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 20,
+            search
+        });
+        return { status: true, data: data.data, meta: data.meta };
+    }
 }
