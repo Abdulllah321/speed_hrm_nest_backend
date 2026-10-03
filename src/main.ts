@@ -224,6 +224,14 @@ async function bootstrap() {
     `Swagger documentation available at: http://${host}:${port}/api/docs`,
   );
   logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  // Signal PM2 that this instance is fully ready to serve traffic.
+  // PM2 will NOT kill the old instance until it receives this signal,
+  // ensuring true zero-downtime reloads in cluster mode.
+  if (typeof process.send === 'function') {
+    process.send('ready');
+    logger.log('PM2 ready signal sent — zero-downtime handoff enabled');
+  }
 }
 
 bootstrap().catch((error) => {
