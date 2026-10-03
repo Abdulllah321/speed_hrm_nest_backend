@@ -86,6 +86,8 @@ export class TransferRequestController {
         @Query('search') search?: string,
         @Query('sortBy') sortBy?: string,
         @Query('statusFilter') statusFilter?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
     ) {
         const data = await this.transferRequestService.getIncomingRequests(locationId, {
             status,
@@ -93,7 +95,9 @@ export class TransferRequestController {
             limit: limit ? parseInt(limit, 10) : 20,
             search,
             sortBy,
-            statusFilter
+            statusFilter,
+            dateFrom,
+            dateTo
         });
         return { status: true, data: data.data, meta: data.meta };
     }
@@ -117,6 +121,8 @@ export class TransferRequestController {
         @Query('search') search?: string,
         @Query('sortBy') sortBy?: string,
         @Query('statusFilter') statusFilter?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
     ) {
         const data = await this.transferRequestService.getOutboundRequests(locationId, {
             status,
@@ -124,7 +130,9 @@ export class TransferRequestController {
             limit: limit ? parseInt(limit, 10) : 20,
             search,
             sortBy,
-            statusFilter
+            statusFilter,
+            dateFrom,
+            dateTo
         });
         return { status: true, data: data.data, meta: data.meta };
     }
@@ -140,6 +148,8 @@ export class TransferRequestController {
         @Query('search') search?: string,
         @Query('sortBy') sortBy?: string,
         @Query('statusFilter') statusFilter?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
     ) {
         const data = await this.transferRequestService.getInboundRequests(locationId, {
             status,
@@ -147,7 +157,9 @@ export class TransferRequestController {
             limit: limit ? parseInt(limit, 10) : 20,
             search,
             sortBy,
-            statusFilter
+            statusFilter,
+            dateFrom,
+            dateTo
         });
         return { status: true, data: data.data, meta: data.meta };
     }
@@ -261,11 +273,15 @@ export class TransferRequestController {
         @Query('page') page?: string,
         @Query('limit') limit?: string,
         @Query('search') search?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
     ) {
         const data = await this.transferRequestService.getLocationReceipts(locationId, {
             page: page ? parseInt(page, 10) : 1,
             limit: limit ? parseInt(limit, 10) : 20,
-            search
+            search,
+            dateFrom,
+            dateTo
         });
         return { status: true, data: data.data, meta: data.meta };
     }

@@ -548,7 +548,7 @@ export class TransferRequestService {
         };
     }
 
-    async getIncomingRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string }) {
+    async getIncomingRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string }) {
         const whereClause: any = {
             toLocationId: locationId,
             transferType: { in: ['WAREHOUSE_TO_OUTLET'] },
@@ -574,6 +574,13 @@ export class TransferRequestService {
                 { items: { some: { item: { sku: { contains: q, mode: 'insensitive' } } } } },
                 { items: { some: { item: { description: { contains: q, mode: 'insensitive' } } } } }
             ];
+        }
+
+        if (params?.dateFrom || params?.dateTo) {
+            const dateFilter: any = {};
+            if (params.dateFrom) dateFilter.gte = new Date(params.dateFrom);
+            if (params.dateTo)   dateFilter.lte = new Date(new Date(params.dateTo).setHours(23, 59, 59, 999));
+            whereClause.createdAt = dateFilter;
         }
 
         const page = params?.page || 1;
@@ -648,7 +655,7 @@ export class TransferRequestService {
         return Promise.all(requests.map(req => this.enrichRequest(req)));
     }
 
-    async getOutboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string }) {
+    async getOutboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string }) {
         // Get requests where this location is the source
         const whereClause: any = {
             fromLocationId: locationId,
@@ -720,7 +727,7 @@ export class TransferRequestService {
         };
     }
 
-    async getInboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string }) {
+    async getInboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string }) {
         // Get requests where this location is the destination
         const whereClause: any = {
             toLocationId: locationId,
@@ -1757,7 +1764,7 @@ export class TransferRequestService {
         return { nextTransferNumber };
     }
 
-    async getLocationReceipts(locationId: string, params?: { page?: number; limit?: number; search?: string }) {
+    async getLocationReceipts(locationId: string, params?: { page?: number; limit?: number; search?: string; dateFrom?: string; dateTo?: string }) {
         const whereClause: any = {
             OR: [
                 { fromLocationId: locationId },
