@@ -90,6 +90,8 @@ model SalesOrder {
   cardAmount            Decimal?            @map("card_amount") @db.Decimal(15, 2)
   changeAmount          Decimal?            @map("change_amount") @db.Decimal(15, 2)
   voucherAmount         Decimal?            @map("voucher_amount") @db.Decimal(15, 2)
+  /// Amount paid via Reward Voucher tender (offline/manual reward vouchers — tracked separately from On Credit)
+  rewardVoucherAmount   Decimal?            @map("reward_voucher_amount") @db.Decimal(15, 2)
   holdExpiresAt         DateTime?           @map("hold_expires_at")
   fbrInvoiceNumber      String?             @map("fbr_invoice_number")
   fbrQrCode             String?             @map("fbr_qr_code") @db.Text

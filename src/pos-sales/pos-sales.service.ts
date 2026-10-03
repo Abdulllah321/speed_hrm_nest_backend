@@ -403,18 +403,22 @@ export class PosSalesService implements OnModuleInit {
           );
           const tenderMethods = [...new Set(tenders.map((t) => t.method))];
           const paymentMethod =
-            tenderMethods.length === 1 ? tenderMethods[0] : 'split';
+            tenderMethods.length === 1 ? tenderMethods[0] : tenderMethods.join('+');
           const cashAmount = tenders
             .filter((t) => t.method === 'cash')
             .reduce((a, t) => a + Number(t.amount), 0);
           const voucherAmount = tenders
             .filter((t) => t.method === 'voucher')
             .reduce((a, t) => a + Number(t.amount), 0);
+          const rewardVoucherAmount = tenders
+            .filter((t) => t.method === 'reward_voucher')
+            .reduce((a, t) => a + Number(t.amount), 0);
           const cardAmount = tenders
             .filter(
               (t) =>
                 t.method !== 'cash' &&
                 t.method !== 'voucher' &&
+                t.method !== 'reward_voucher' &&
                 t.method !== 'credit_account',
             )
             .reduce((a, t) => a + Number(t.amount), 0);
@@ -804,6 +808,7 @@ export class PosSalesService implements OnModuleInit {
                 cashAmount: cashAmount || undefined,
                 cardAmount: cardAmount || undefined,
                 voucherAmount: voucherAmount || undefined,
+                rewardVoucherAmount: rewardVoucherAmount || undefined,
                 changeAmount: changeAmount || undefined,
                 isGiftReceipt: dto.isGiftReceipt || false,
                 items: {
@@ -889,6 +894,7 @@ export class PosSalesService implements OnModuleInit {
                 cashAmount: cashAmount || undefined,
                 cardAmount: cardAmount || undefined,
                 voucherAmount: voucherAmount || undefined,
+                rewardVoucherAmount: rewardVoucherAmount || undefined,
                 changeAmount: changeAmount || undefined,
                 isGiftReceipt: dto.isGiftReceipt || false,
                 items: {

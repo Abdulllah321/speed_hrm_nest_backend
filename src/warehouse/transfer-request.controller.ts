@@ -78,9 +78,24 @@ export class TransferRequestController {
     @Get('incoming')
     @Permissions('pos.inventory.receiving.view')
     @ApiOperation({ summary: 'Get incoming pending requests for a location' })
-    async getIncoming(@Query('locationId') locationId: string) {
-        const data = await this.transferRequestService.getIncomingRequests(locationId);
-        return { status: true, data };
+    async getIncoming(
+        @Query('locationId') locationId: string, 
+        @Query('status') status?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+        @Query('sortBy') sortBy?: string,
+        @Query('statusFilter') statusFilter?: string,
+    ) {
+        const data = await this.transferRequestService.getIncomingRequests(locationId, {
+            status,
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 20,
+            search,
+            sortBy,
+            statusFilter
+        });
+        return { status: true, data: data.data, meta: data.meta };
     }
 
     @Get('return-requests')
@@ -96,10 +111,22 @@ export class TransferRequestController {
     @ApiOperation({ summary: 'Get outbound requests for source approval (outlet to outlet)' })
     async getOutboundRequests(
         @Query('locationId') locationId: string,
-        @Query('status') status?: string
+        @Query('status') status?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+        @Query('sortBy') sortBy?: string,
+        @Query('statusFilter') statusFilter?: string,
     ) {
-        const data = await this.transferRequestService.getOutboundRequests(locationId, status);
-        return { status: true, data };
+        const data = await this.transferRequestService.getOutboundRequests(locationId, {
+            status,
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 20,
+            search,
+            sortBy,
+            statusFilter
+        });
+        return { status: true, data: data.data, meta: data.meta };
     }
 
     @Get('inbound-requests')
@@ -107,10 +134,22 @@ export class TransferRequestController {
     @ApiOperation({ summary: 'Get inbound requests for destination acceptance (outlet to outlet)' })
     async getInboundRequests(
         @Query('locationId') locationId: string,
-        @Query('status') status?: string
+        @Query('status') status?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+        @Query('sortBy') sortBy?: string,
+        @Query('statusFilter') statusFilter?: string,
     ) {
-        const data = await this.transferRequestService.getInboundRequests(locationId, status);
-        return { status: true, data };
+        const data = await this.transferRequestService.getInboundRequests(locationId, {
+            status,
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 20,
+            search,
+            sortBy,
+            statusFilter
+        });
+        return { status: true, data: data.data, meta: data.meta };
     }
 
     @Get('next-transfer-number')
@@ -176,6 +215,14 @@ export class TransferRequestController {
             userAgent: req.headers['user-agent'],
         });
         return { status: true, data, message: 'Claim acknowledged successfully. PLM inventory updated.' };
+    }
+
+    @Get('pending-counts/:locationId')
+    @Permissions('pos.inventory.view', 'pos.inventory.transfer.view', 'pos.inventory.receiving.view')
+    @ApiOperation({ summary: 'Get pending transfer request counts for a location' })
+    async getPendingCounts(@Param('locationId') locationId: string) {
+        const data = await this.transferRequestService.getPendingCounts(locationId);
+        return { status: true, data };
     }
 
     @Patch(':id/dispatch')

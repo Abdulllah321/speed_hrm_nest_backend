@@ -506,38 +506,121 @@ export class TransferRequestService {
     }
 
 
-    async getIncomingRequests(locationId: string) {
-        const requests = await this.prisma.transferRequest.findMany({
-            where: {
-                toLocationId: locationId,
-                transferType: { in: ['WAREHOUSE_TO_OUTLET'] },
-                status: { in: ['PENDING', 'APPROVED', 'SOURCE_APPROVED'] },
-            },
-            include: {
-                fromWarehouse: true,
-                toWarehouse: true,
-                fromLocation: true,
-                toLocation: true,
-                stockRequisition: {
-                    include: {
-                        fromWarehouse: true,
+    async getPendingCounts(locationId: string) {
+        const [warehouseReceiving, outletStockIn, outletStockOut, returnRequests] = await Promise.all([
+            this.prisma.transferRequest.count({
+                where: {
+                    toLocationId: locationId,
+                    transferType: { in: ['WAREHOUSE_TO_OUTLET'] },
+                    status: { in: ['PENDING', 'APPROVED', 'SOURCE_APPROVED'] },
+                }
+            }),
+            this.prisma.transferRequest.count({
+                where: {
+                    toLocationId: locationId,
+                    transferType: 'OUTLET_TO_OUTLET',
+                    status: { in: ['PENDING', 'SOURCE_APPROVED'] },
+                }
+            }),
+            this.prisma.transferRequest.count({
+                where: {
+                    fromLocationId: locationId,
+                    transferType: 'OUTLET_TO_OUTLET',
+                    status: 'PENDING',
+                    requiresSourceApproval: true,
+                    sourceApprovedById: null,
+                }
+            }),
+            this.prisma.transferRequest.count({
+                where: {
+                    fromLocationId: locationId,
+                    transferType: 'OUTLET_TO_WAREHOUSE',
+                    status: { in: ['PENDING', 'APPROVED', 'PENDING_CHECKER'] },
+                }
+            })
+        ]);
+
+        return {
+            warehouseReceiving,
+            outletStockIn,
+            outletStockOut,
+            returnRequests
+        };
+    }
+
+    async getIncomingRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string }) {
+        const whereClause: any = {
+            toLocationId: locationId,
+            transferType: { in: ['WAREHOUSE_TO_OUTLET'] },
+        };
+
+        if (params?.status === 'history') {
+            whereClause.status = { in: ['COMPLETED', 'REJECTED'] };
+            if (params?.statusFilter && params.statusFilter !== 'ALL') {
+                whereClause.status = params.statusFilter;
+            }
+        } else {
+            whereClause.status = { in: ['PENDING', 'APPROVED', 'SOURCE_APPROVED'] };
+        }
+
+        if (params?.search) {
+            const q = params.search;
+            whereClause.OR = [
+                { requestNo: { contains: q, mode: 'insensitive' } },
+                { notes: { contains: q, mode: 'insensitive' } },
+                { fromWarehouse: { name: { contains: q, mode: 'insensitive' } } },
+                { fromLocation: { name: { contains: q, mode: 'insensitive' } } },
+                { items: { some: { item: { barCode: { contains: q, mode: 'insensitive' } } } } },
+                { items: { some: { item: { sku: { contains: q, mode: 'insensitive' } } } } },
+                { items: { some: { item: { description: { contains: q, mode: 'insensitive' } } } } }
+            ];
+        }
+
+        const page = params?.page || 1;
+        const limit = params?.limit || 20;
+        const skip = (page - 1) * limit;
+
+        let orderBy: any = { createdAt: 'desc' };
+        if (params?.sortBy === 'oldest') {
+            orderBy = { createdAt: 'asc' };
+        }
+
+        const [requests, total] = await Promise.all([
+            this.prisma.transferRequest.findMany({
+                where: whereClause,
+                include: {
+                    fromWarehouse: true,
+                    toWarehouse: true,
+                    fromLocation: true,
+                    toLocation: true,
+                    stockRequisition: {
+                        include: {
+                            fromWarehouse: true,
+                        },
                     },
-                },
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true
+                    items: {
+                        include: {
+                            item: {
+                                include: {
+                                    color: true,
+                                    size: true
+                                }
                             }
                         }
-                    }
+                    },
                 },
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+                orderBy,
+                skip,
+                take: limit,
+            }),
+            this.prisma.transferRequest.count({ where: whereClause })
+        ]);
 
-        return Promise.all(requests.map(req => this.enrichRequest(req)));
+        const enrichedRequests = await Promise.all(requests.map(req => this.enrichRequest(req)));
+        return {
+            data: enrichedRequests,
+            meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+        };
     }
 
     async getReturnRequests(locationId: string) {
@@ -565,15 +648,18 @@ export class TransferRequestService {
         return Promise.all(requests.map(req => this.enrichRequest(req)));
     }
 
-    async getOutboundRequests(locationId: string, status?: string) {
+    async getOutboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string }) {
         // Get requests where this location is the source
         const whereClause: any = {
             fromLocationId: locationId,
         };
 
-        if (status === 'history') {
+        if (params?.status === 'history') {
             whereClause.transferType = { in: ['OUTLET_TO_OUTLET', 'OUTLET_TO_WAREHOUSE'] };
             whereClause.status = { in: ['SOURCE_APPROVED', 'APPROVED', 'COMPLETED', 'REJECTED'] };
+            if (params?.statusFilter && params.statusFilter !== 'ALL') {
+                whereClause.status = params.statusFilter;
+            }
         } else {
             whereClause.transferType = 'OUTLET_TO_OUTLET';
             whereClause.status = 'PENDING';
@@ -581,62 +667,129 @@ export class TransferRequestService {
             whereClause.sourceApprovedById = null;
         }
 
-        const requests = await this.prisma.transferRequest.findMany({
-            where: whereClause,
-            include: {
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true
+        if (params?.search) {
+            const q = params.search;
+            whereClause.OR = [
+                { requestNo: { contains: q, mode: 'insensitive' } },
+                { notes: { contains: q, mode: 'insensitive' } },
+                { toLocation: { name: { contains: q, mode: 'insensitive' } } },
+                { toWarehouse: { name: { contains: q, mode: 'insensitive' } } },
+                { items: { some: { item: { barCode: { contains: q, mode: 'insensitive' } } } } },
+                { items: { some: { item: { sku: { contains: q, mode: 'insensitive' } } } } },
+                { items: { some: { item: { description: { contains: q, mode: 'insensitive' } } } } }
+            ];
+        }
+
+        const page = params?.page || 1;
+        const limit = params?.limit || 20;
+        const skip = (page - 1) * limit;
+
+        let orderBy: any = { createdAt: 'desc' };
+        if (params?.sortBy === 'oldest') {
+            orderBy = { createdAt: 'asc' };
+        }
+
+        const [requests, total] = await Promise.all([
+            this.prisma.transferRequest.findMany({
+                where: whereClause,
+                include: {
+                    items: {
+                        include: {
+                            item: {
+                                include: {
+                                    color: true,
+                                    size: true
+                                }
                             }
                         }
-                    }
+                    },
+                    toLocation: { select: { name: true, code: true } },
+                    toWarehouse: { select: { name: true, code: true } }
                 },
-                toLocation: { select: { name: true, code: true } },
-                toWarehouse: { select: { name: true, code: true } }
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+                orderBy,
+                skip,
+                take: limit,
+            }),
+            this.prisma.transferRequest.count({ where: whereClause })
+        ]);
 
-        return Promise.all(requests.map(req => this.enrichRequest(req)));
+        const enrichedRequests = await Promise.all(requests.map(req => this.enrichRequest(req)));
+        return {
+            data: enrichedRequests,
+            meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+        };
     }
 
-    async getInboundRequests(locationId: string, status?: string) {
+    async getInboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string }) {
         // Get requests where this location is the destination
         const whereClause: any = {
             toLocationId: locationId,
         };
 
-        if (status === 'history') {
+        if (params?.status === 'history') {
             whereClause.transferType = { in: ['OUTLET_TO_OUTLET', 'WAREHOUSE_TO_OUTLET'] };
             whereClause.status = { in: ['COMPLETED', 'REJECTED', 'APPROVED'] };
+            if (params?.statusFilter && params.statusFilter !== 'ALL') {
+                whereClause.status = params.statusFilter;
+            }
         } else {
             whereClause.transferType = 'OUTLET_TO_OUTLET';
             whereClause.status = { in: ['PENDING', 'SOURCE_APPROVED'] };
         }
 
-        const requests = await this.prisma.transferRequest.findMany({
-            where: whereClause,
-            include: {
-                items: {
-                    include: {
-                        item: {
-                            include: {
-                                color: true,
-                                size: true
+        if (params?.search) {
+            const q = params.search;
+            whereClause.OR = [
+                { requestNo: { contains: q, mode: 'insensitive' } },
+                { inboundNo: { contains: q, mode: 'insensitive' } },
+                { formattedSerialNo: { contains: q, mode: 'insensitive' } },
+                { notes: { contains: q, mode: 'insensitive' } },
+                { fromLocation: { name: { contains: q, mode: 'insensitive' } } },
+                { fromWarehouse: { name: { contains: q, mode: 'insensitive' } } },
+                { items: { some: { item: { barCode: { contains: q, mode: 'insensitive' } } } } },
+                { items: { some: { item: { sku: { contains: q, mode: 'insensitive' } } } } },
+                { items: { some: { item: { description: { contains: q, mode: 'insensitive' } } } } }
+            ];
+        }
+
+        const page = params?.page || 1;
+        const limit = params?.limit || 20;
+        const skip = (page - 1) * limit;
+
+        let orderBy: any = { createdAt: 'desc' };
+        if (params?.sortBy === 'oldest') {
+            orderBy = { createdAt: 'asc' };
+        }
+
+        const [requests, total] = await Promise.all([
+            this.prisma.transferRequest.findMany({
+                where: whereClause,
+                include: {
+                    items: {
+                        include: {
+                            item: {
+                                include: {
+                                    color: true,
+                                    size: true
+                                }
                             }
                         }
-                    }
+                    },
+                    fromLocation: { select: { name: true, code: true } },
+                    fromWarehouse: { select: { name: true, code: true } }
                 },
-                fromLocation: { select: { name: true, code: true } },
-                fromWarehouse: { select: { name: true, code: true } }
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+                orderBy,
+                skip,
+                take: limit,
+            }),
+            this.prisma.transferRequest.count({ where: whereClause })
+        ]);
 
-        return Promise.all(requests.map(req => this.enrichRequest(req)));
+        const enrichedRequests = await Promise.all(requests.map(req => this.enrichRequest(req)));
+        return {
+            data: enrichedRequests,
+            meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+        };
     }
 
     /**

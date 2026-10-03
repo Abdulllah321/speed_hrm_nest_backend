@@ -448,7 +448,9 @@ export class PosSessionService {
         order.paymentMethod === 'reward_voucher' ||
         order.tenderType === 'reward_voucher' ||
         order.paymentMethod === 'split' ||
-        order.tenderType === 'split'
+        order.tenderType === 'split' ||
+        order.tenderType?.includes('+') ||
+        order.paymentMethod?.includes('+')
       ) {
         const netCash = Math.max(0, rawCash - Number(order.changeAmount ?? 0));
         const creditAmt = Math.max(
@@ -730,6 +732,8 @@ export class PosSessionService {
 
     // Receivables On Credit
     let totalCreditAmount = 0;
+    // Reward Voucher receivable (offline/manual — tracked separately from credit_account)
+    let totalRewardVoucherRecv = 0;
 
     for (const order of orders) {
       const subtotal = Number(order.subtotal ?? 0);
@@ -762,7 +766,8 @@ export class PosSessionService {
       let card = rawCard;
 
       // Enforce single tender method if non-split, preventing double-counting from stale DB columns
-      if (order.tenderType !== 'split' && order.paymentMethod) {
+      const isSplit = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
+      if (!isSplit && order.paymentMethod) {
         if (order.paymentMethod === 'cash') {
           card = 0;
           if (cash === 0)
@@ -888,24 +893,55 @@ export class PosSessionService {
         }
       }
 
-      // Receivable On Credit
+      // Receivable On Credit (credit_account only)
       if (
         order.paymentMethod === 'credit_account' ||
-        order.tenderType === 'credit_account' ||
-        order.paymentMethod === 'reward_voucher' ||
-        order.tenderType === 'reward_voucher' ||
-        order.paymentMethod === 'split' ||
-        order.tenderType === 'split'
+        order.tenderType === 'credit_account'
       ) {
         const change = Number(order.changeAmount ?? 0);
         const netCash = Math.max(0, cash - change);
-
         const creditAmt = Math.max(
           0,
           Number((grandTotal - netCash - card - voucher).toFixed(2)),
         );
-        if (creditAmt > 0) {
-          totalCreditAmount += creditAmt;
+        if (creditAmt > 0) totalCreditAmount += creditAmt;
+      }
+
+      // Reward Voucher receivable (reward_voucher tender — offline/manual)
+      if (
+        order.paymentMethod === 'reward_voucher' ||
+        order.tenderType === 'reward_voucher'
+      ) {
+        // Prefer the dedicated column; fall back to computing remainder
+        const rvAmt = Number(order.rewardVoucherAmount ?? 0);
+        if (rvAmt > 0) {
+          totalRewardVoucherRecv += rvAmt;
+        } else {
+          // Legacy orders before column existed: compute from grand total minus paid
+          const change = Number(order.changeAmount ?? 0);
+          const netCash = Math.max(0, cash - change);
+          const remainder = Math.max(
+            0,
+            Number((grandTotal - netCash - card - voucher).toFixed(2)),
+          );
+          if (remainder > 0) totalRewardVoucherRecv += remainder;
+        }
+      }
+
+      // Split orders: extract reward_voucher portion
+      const isSplitTender = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
+      if (isSplitTender) {
+        const rvAmt = Number(order.rewardVoucherAmount ?? 0);
+        if (rvAmt > 0) totalRewardVoucherRecv += rvAmt;
+        else {
+          // Remainder after cash+card+voucher = credit or reward_voucher; can't distinguish for legacy
+          const change = Number(order.changeAmount ?? 0);
+          const netCash = Math.max(0, cash - change);
+          const creditAmt = Math.max(
+            0,
+            Number((grandTotal - netCash - card - voucher).toFixed(2)),
+          );
+          if (creditAmt > 0) totalCreditAmount += creditAmt;
         }
       }
     }
@@ -1104,14 +1140,18 @@ export class PosSessionService {
     const cardGiftVouchers = Object.values(cardVoucherGroup);
 
     // Receivables On Credit
+    // Receivables On Credit + Reward Voucher
     const receivables = [
       { description: 'On Credit', amount: totalCreditAmount },
+      ...(totalRewardVoucherRecv > 0
+        ? [{ description: 'Reward Voucher', amount: totalRewardVoucherRecv }]
+        : []),
     ];
 
     // Financials:
     const totalCards = totalCardReceived;
     const totalReceived = totalCashReceived + totalVouchersReceivedAmt;
-    const totalReceivable = totalCreditAmount;
+    const totalReceivable = totalCreditAmount + totalRewardVoucherRecv;
     const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
 
     const creditCardGiftVouchersTotal = cardGiftVouchers.reduce(
@@ -1430,6 +1470,7 @@ export class PosSessionService {
       }> = [];
 
       let totalCreditAmount = 0;
+      let totalRewardVoucherRecv = 0;
 
       for (const order of orders) {
         const subtotal = Number(order.subtotal ?? 0);
@@ -1461,7 +1502,8 @@ export class PosSessionService {
         let card = rawCard;
 
         // Enforce single tender method if non-split, preventing double-counting from stale DB columns
-        if (order.tenderType !== 'split' && order.paymentMethod) {
+        const isSplit = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
+        if (!isSplit && order.paymentMethod) {
           if (order.paymentMethod === 'cash') {
             card = 0;
             if (cash === 0)
@@ -1587,21 +1629,47 @@ export class PosSessionService {
 
         if (
           order.paymentMethod === 'credit_account' ||
-          order.tenderType === 'credit_account' ||
-          order.paymentMethod === 'reward_voucher' ||
-          order.tenderType === 'reward_voucher' ||
-          order.paymentMethod === 'split' ||
-          order.tenderType === 'split'
+          order.tenderType === 'credit_account'
         ) {
           const change = Number(order.changeAmount ?? 0);
           const netCash = Math.max(0, cash - change);
-
           const creditAmt = Math.max(
             0,
             Number((grandTotal - netCash - card - voucher).toFixed(2)),
           );
-          if (creditAmt > 0) {
-            totalCreditAmount += creditAmt;
+          if (creditAmt > 0) totalCreditAmount += creditAmt;
+        }
+
+        if (
+          order.paymentMethod === 'reward_voucher' ||
+          order.tenderType === 'reward_voucher'
+        ) {
+          const rvAmt = Number(order.rewardVoucherAmount ?? 0);
+          if (rvAmt > 0) {
+            totalRewardVoucherRecv += rvAmt;
+          } else {
+            const change = Number(order.changeAmount ?? 0);
+            const netCash = Math.max(0, cash - change);
+            const remainder = Math.max(
+              0,
+              Number((grandTotal - netCash - card - voucher).toFixed(2)),
+            );
+            if (remainder > 0) totalRewardVoucherRecv += remainder;
+          }
+        }
+
+        const isSplitTender = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
+        if (isSplitTender) {
+          const rvAmt = Number(order.rewardVoucherAmount ?? 0);
+          if (rvAmt > 0) totalRewardVoucherRecv += rvAmt;
+          else {
+            const change = Number(order.changeAmount ?? 0);
+            const netCash = Math.max(0, cash - change);
+            const creditAmt = Math.max(
+              0,
+              Number((grandTotal - netCash - card - voucher).toFixed(2)),
+            );
+            if (creditAmt > 0) totalCreditAmount += creditAmt;
           }
         }
       }
@@ -1790,11 +1858,14 @@ export class PosSessionService {
 
       const receivables = [
         { description: 'On Credit', amount: totalCreditAmount },
+        ...(totalRewardVoucherRecv > 0
+          ? [{ description: 'Reward Voucher', amount: totalRewardVoucherRecv }]
+          : []),
       ];
 
       const totalCards = totalCardReceived;
       const totalReceived = totalCashReceived + totalVouchersReceivedAmt;
-      const totalReceivable = totalCreditAmount;
+      const totalReceivable = totalCreditAmount + totalRewardVoucherRecv;
       const fbrTotal = fbrCharges.reduce((sum, f) => sum + f.amount, 0);
 
       const creditCardGiftVouchersTotal = cardGiftVouchers.reduce(
