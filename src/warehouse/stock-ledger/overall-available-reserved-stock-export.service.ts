@@ -11,6 +11,7 @@ import { MovementType, PrismaClient } from '@prisma/client';
 
 export interface QueueOverallAvailableReservedStockExportOptions {
   userId: string;
+  userRole?: string;
   locationId?: string;
   warehouseId?: string;
   asOfDate?: string;
@@ -59,6 +60,7 @@ export class OverallAvailableReservedStockExportService {
 
   async queueReportPreview(opts: {
     userId: string;
+    userRole?: string;
     locationId?: string;
     warehouseId?: string;
     asOfDate?: string;
@@ -124,6 +126,7 @@ export class OverallAvailableReservedStockExportService {
       {
         jobId,
         userId: opts.userId,
+        userRole: opts.userRole,
         tenantId,
         tenantDbUrl,
         locationId: opts.locationId,
@@ -229,6 +232,7 @@ export class OverallAvailableReservedStockExportService {
       {
         jobId,
         userId: opts.userId,
+        userRole: opts.userRole,
         tenantId,
         tenantDbUrl,
         locationId: opts.locationId,
@@ -469,6 +473,8 @@ export class OverallAvailableReservedStockExportService {
     showVariant?: boolean;
     includeCosting?: boolean;
     previewJobId?: string;
+    userId?: string;
+    userRole?: string;
     isAborted?: () => boolean;
   }) {
     const tenantId = this.prisma.getTenantId() ?? '';
@@ -497,6 +503,8 @@ export class OverallAvailableReservedStockExportService {
       showVariant?: boolean;
       includeCosting?: boolean;
       previewJobId?: string;
+      userId?: string;
+      userRole?: string;
       isAborted?: () => boolean;
       onProgress?: (percent: number, message: string) => Promise<void> | void;
     },
@@ -506,6 +514,8 @@ export class OverallAvailableReservedStockExportService {
       warehouseId,
       asOfDate: asOfStr,
       previewJobId,
+      userId,
+      userRole,
       isAborted,
       onProgress,
     } = opts;
@@ -638,6 +648,25 @@ export class OverallAvailableReservedStockExportService {
       const fyYear = month >= 6 ? year : year - 1;
       return new Date(fyYear, 6, 1, 0, 0, 0, 0);
     };
+
+    // ── RBAC / Brand Isolation ─────────────────────────────────────────
+    const roleName = userRole?.toLowerCase();
+    const isAdmin =
+      roleName === 'super_admin' ||
+      roleName === 'super-admin' ||
+      roleName === 'admin';
+    let allowedBrandIds: string[] | null = null;
+
+    if (!isAdmin && userId) {
+      const userBrands = await prisma.userBrand.findMany({
+        where: { userId: userId },
+        select: { brandId: true },
+      });
+      allowedBrandIds = userBrands.map((ub) => ub.brandId);
+    }
+    const brandInClauseDb = (allowedBrandIds?.length ?? 0) > 0
+      ? `AND b."id" IN (${allowedBrandIds!.map(id => `'${id}'`).join(',')})`
+      : (allowedBrandIds !== null ? `AND 1=0` : ``);
 
     // 1. Get the latest Monthly Snapshot (instead of Fiscal Year Opening)
     const latestSnapshot = await prisma.monthlyStockSnapshot.findFirst({
@@ -1089,7 +1118,7 @@ export class OverallAvailableReservedStockExportService {
         LEFT JOIN "Gender" g ON i."genderId" = g."id"
         LEFT JOIN "Division" d ON i."divisionId" = d."id"
         LEFT JOIN "Silhouette" sl ON i."silhouetteId" = sl."id"
-        WHERE i."id" IN (${chunkIn}) OR i."itemId" IN (${chunkIn})
+        WHERE (i."id" IN (${chunkIn}) OR i."itemId" IN (${chunkIn})) ${brandInClauseDb}
       `);
       for (const row of itemsDb) {
         itemsMap.set(row.id, {

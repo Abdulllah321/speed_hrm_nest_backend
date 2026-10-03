@@ -1994,6 +1994,19 @@ export class PosSalesController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
+
+    // POS terminal users are restricted to their own outlet — enforce server-side
+    // so the query only scans that one store's data (faster + secure).
+    const userLocationId =
+      req.user?.terminalLocationId ||
+      req.user?.locationId;
+    if (
+      (req.user?.isPosUser || req.user?.isTerminal || userLocationId) &&
+      userLocationId
+    ) {
+      body.locationId = userLocationId;
+    }
+
     const result = await this.netSalesListExportService.queueReportPreview({
       userId,
       ...body,

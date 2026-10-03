@@ -157,6 +157,8 @@ export class OverallAvailableReservedStockExportProcessor {
           await this.reportService.generateOverallAvailableReservedStockReportDataInternal(
             prisma,
             {
+              userId: job.data.userId,
+              userRole: (job.data as any).userRole,
               locationId,
               warehouseId,
               asOfDate,

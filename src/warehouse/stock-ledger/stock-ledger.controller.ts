@@ -805,6 +805,7 @@ export class StockLedgerController {
   @Get('overall-available-reserved-stock')
   @UseGuards(JwtAuthGuard)
   async getOverallAvailableReservedStockReport(
+    @Req() req: any,
     @Query('locationId') locationId?: string,
     @Query('warehouseId') warehouseId?: string,
     @Query('asOfDate') asOfDate?: string,
@@ -818,9 +819,14 @@ export class StockLedgerController {
     @Query('showVariant') showVariant?: string,
     @Query('includeCosting') includeCosting?: string,
   ) {
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.role?.name || req.user?.roleName;
+
     const data =
       await this.overallAvailableReservedStockExportService.getOverallAvailableReservedStockReportData(
         {
+          userId,
+          userRole,
           locationId,
           warehouseId,
           asOfDate,
@@ -867,9 +873,11 @@ export class StockLedgerController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.role?.name || req.user?.roleName;
     const result =
       await this.overallAvailableReservedStockExportService.queueReportPreview({
         userId,
+        userRole,
         ...body,
       });
     return { status: true, data: result };
@@ -947,9 +955,11 @@ export class StockLedgerController {
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.role?.name || req.user?.roleName;
     const result =
       await this.overallAvailableReservedStockExportService.queueExport({
         userId,
+        userRole,
         locationId: body.locationId,
         warehouseId: body.warehouseId,
         asOfDate: body.asOfDate,
