@@ -548,7 +548,7 @@ export class TransferRequestService {
         };
     }
 
-    async getIncomingRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string }) {
+    async getIncomingRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string ;brand?: string; }) {
         const whereClause: any = {
             toLocationId: locationId,
             transferType: { in: ['WAREHOUSE_TO_OUTLET'] },
@@ -583,6 +583,13 @@ export class TransferRequestService {
             whereClause.createdAt = dateFilter;
         }
 
+        if (params?.brand && params.brand !== 'ALL') {
+            whereClause.AND = whereClause.AND || [];
+            whereClause.AND.push({
+                items: { some: { item: { brand: { name: params.brand } } } }
+            });
+        }
+        
         const page = params?.page || 1;
         const limit = params?.limit || 20;
         const skip = (page - 1) * limit;
@@ -655,7 +662,7 @@ export class TransferRequestService {
         return Promise.all(requests.map(req => this.enrichRequest(req)));
     }
 
-    async getOutboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string }) {
+    async getOutboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string ;brand?: string; }) {
         // Get requests where this location is the source
         const whereClause: any = {
             fromLocationId: locationId,
@@ -687,6 +694,13 @@ export class TransferRequestService {
             ];
         }
 
+        if (params?.brand && params.brand !== 'ALL') {
+            whereClause.AND = whereClause.AND || [];
+            whereClause.AND.push({
+                items: { some: { item: { brand: { name: params.brand } } } }
+            });
+        }
+        
         const page = params?.page || 1;
         const limit = params?.limit || 20;
         const skip = (page - 1) * limit;
@@ -727,7 +741,7 @@ export class TransferRequestService {
         };
     }
 
-    async getInboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string }) {
+    async getInboundRequests(locationId: string, params?: { status?: string; page?: number; limit?: number; search?: string; sortBy?: string; statusFilter?: string; dateFrom?: string; dateTo?: string ;brand?: string; }) {
         // Get requests where this location is the destination
         const whereClause: any = {
             toLocationId: locationId,
@@ -759,6 +773,13 @@ export class TransferRequestService {
             ];
         }
 
+        if (params?.brand && params.brand !== 'ALL') {
+            whereClause.AND = whereClause.AND || [];
+            whereClause.AND.push({
+                items: { some: { item: { brand: { name: params.brand } } } }
+            });
+        }
+        
         const page = params?.page || 1;
         const limit = params?.limit || 20;
         const skip = (page - 1) * limit;
@@ -1764,7 +1785,7 @@ export class TransferRequestService {
         return { nextTransferNumber };
     }
 
-    async getLocationReceipts(locationId: string, params?: { page?: number; limit?: number; search?: string; dateFrom?: string; dateTo?: string }) {
+    async getLocationReceipts(locationId: string, params?: { page?: number; limit?: number; search?: string; dateFrom?: string; dateTo?: string ;brand?: string; }) {
         const whereClause: any = {
             OR: [
                 { fromLocationId: locationId },
@@ -1790,6 +1811,13 @@ export class TransferRequestService {
             ];
         }
 
+        if (params?.brand && params.brand !== 'ALL') {
+            whereClause.AND = whereClause.AND || [];
+            whereClause.AND.push({
+                items: { some: { item: { brand: { name: params.brand } } } }
+            });
+        }
+        
         const page = params?.page ? Number(params.page) : 1;
         const limit = params?.limit ? Number(params.limit) : 20;
 
@@ -1798,7 +1826,7 @@ export class TransferRequestService {
             this.prisma.transferRequest.findMany({
                 where: whereClause,
                 include: {
-                    items: { include: { item: true } },
+                    items: { include: { item: { include: { brand: true, size: true, color: true } } } },
                     fromLocation: true,
                     toLocation: true,
                     fromWarehouse: true,

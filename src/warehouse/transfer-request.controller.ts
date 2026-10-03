@@ -55,6 +55,7 @@ export class TransferRequestController {
         @Query('search') search?: string,
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
+        @Query('brand') brand?: string,
         @Query('dispatchType') dispatchType?: string,
         @Query('page') page?: string,
         @Query('limit') limit?: string,
@@ -88,6 +89,7 @@ export class TransferRequestController {
         @Query('statusFilter') statusFilter?: string,
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
+        @Query('brand') brand?: string,
     ) {
         const data = await this.transferRequestService.getIncomingRequests(locationId, {
             status,
@@ -97,7 +99,8 @@ export class TransferRequestController {
             sortBy,
             statusFilter,
             dateFrom,
-            dateTo
+            dateTo,
+            brand
         });
         return { status: true, data: data.data, meta: data.meta };
     }
@@ -123,6 +126,7 @@ export class TransferRequestController {
         @Query('statusFilter') statusFilter?: string,
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
+        @Query('brand') brand?: string,
     ) {
         const data = await this.transferRequestService.getOutboundRequests(locationId, {
             status,
@@ -132,7 +136,8 @@ export class TransferRequestController {
             sortBy,
             statusFilter,
             dateFrom,
-            dateTo
+            dateTo,
+            brand
         });
         return { status: true, data: data.data, meta: data.meta };
     }
@@ -150,6 +155,7 @@ export class TransferRequestController {
         @Query('statusFilter') statusFilter?: string,
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
+        @Query('brand') brand?: string,
     ) {
         const data = await this.transferRequestService.getInboundRequests(locationId, {
             status,
@@ -159,7 +165,8 @@ export class TransferRequestController {
             sortBy,
             statusFilter,
             dateFrom,
-            dateTo
+            dateTo,
+            brand
         });
         return { status: true, data: data.data, meta: data.meta };
     }
@@ -275,13 +282,15 @@ export class TransferRequestController {
         @Query('search') search?: string,
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
+        @Query('brand') brand?: string,
     ) {
         const data = await this.transferRequestService.getLocationReceipts(locationId, {
             page: page ? parseInt(page, 10) : 1,
             limit: limit ? parseInt(limit, 10) : 20,
             search,
             dateFrom,
-            dateTo
+            dateTo,
+            brand
         });
         return { status: true, data: data.data, meta: data.meta };
     }
