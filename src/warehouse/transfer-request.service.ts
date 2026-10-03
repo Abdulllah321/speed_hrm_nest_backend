@@ -275,22 +275,71 @@ export class TransferRequestService {
                 }
             }
 
-            if (created.toLocationId && data.items && data.items.length > 0) {
+            if (data.items && data.items.length > 0) {
                 const totalPcs = data.items.reduce((s, i) => s + (i.quantity > 0 ? Number(i.quantity) : 0), 0);
-                runInBackground(
-                    'Send POS Location Notification on Transfer Request',
-                    this.notifications.sendPosLocationNotification({
-                        locationId: created.toLocationId,
-                        title: `Incoming Stock Transfer: ${created.requestNo}`,
-                        message: `Stock Transfer ${created.requestNo} (${data.items.length} items, ${totalPcs} pcs) has been dispatched for your outlet.`,
-                        category: 'pos_stock_transfer',
-                        priority: 'high',
-                        actionType: 'NAVIGATE',
-                        actionPayload: { url: '/pos/inventory/receiving' },
-                        entityType: 'TransferRequest',
-                        entityId: created.id,
-                    }),
-                );
+                
+                if (transferType === 'WAREHOUSE_TO_OUTLET' && created.toLocationId) {
+                    runInBackground(
+                        'Send POS Location Notification on Warehouse Dispatch',
+                        this.notifications.sendPosLocationNotification({
+                            locationId: created.toLocationId,
+                            title: `Incoming Stock Transfer: ${created.requestNo}`,
+                            message: `Stock Transfer ${created.requestNo} (${data.items.length} items, ${totalPcs} pcs) has been dispatched from warehouse.`,
+                            category: 'pos_stock_transfer',
+                            priority: 'high',
+                            actionType: 'NAVIGATE',
+                            actionPayload: { url: '/pos/inventory/receiving' },
+                            entityType: 'TransferRequest',
+                            entityId: created.id,
+                        }),
+                    );
+                } else if (transferType === 'OUTLET_TO_OUTLET') {
+                    if (isDirect && created.toLocationId) {
+                        runInBackground(
+                            'Send POS Location Notification on Direct Transfer',
+                            this.notifications.sendPosLocationNotification({
+                                locationId: created.toLocationId,
+                                title: `Incoming Inter-branch Transfer: ${created.requestNo}`,
+                                message: `Transfer ${created.requestNo} (${data.items.length} items, ${totalPcs} pcs) dispatched from another outlet.`,
+                                category: 'pos_stock_transfer',
+                                priority: 'high',
+                                actionType: 'NAVIGATE',
+                                actionPayload: { url: '/pos/inventory/receiving' },
+                                entityType: 'TransferRequest',
+                                entityId: created.id,
+                            }),
+                        );
+                    } else if (!isDirect && created.fromLocationId) {
+                        runInBackground(
+                            'Send POS Location Notification on Transfer Request',
+                            this.notifications.sendPosLocationNotification({
+                                locationId: created.fromLocationId,
+                                title: `New Stock Request: ${created.requestNo}`,
+                                message: `Another outlet has requested ${totalPcs} pcs. Please review and dispatch.`,
+                                category: 'pos_stock_transfer',
+                                priority: 'high',
+                                actionType: 'NAVIGATE',
+                                actionPayload: { url: '/pos/inventory/request-transfer' },
+                                entityType: 'TransferRequest',
+                                entityId: created.id,
+                            }),
+                        );
+                    }
+                } else if (transferType === 'OUTLET_TO_WAREHOUSE' && created.fromWarehouseId) {
+                    runInBackground(
+                        'Send Notification to Warehouse Managers',
+                        this.notifyLocationUsers(created.fromWarehouseId, {
+                            title: `New Return/Transfer Request: ${created.requestNo}`,
+                            message: `An outlet has initiated a transfer of ${totalPcs} pcs.`,
+                            category: 'erp_transfer_request',
+                            priority: 'high',
+                            actionType: 'NAVIGATE',
+                            actionPayload: { url: '/erp/inventory/transactions/return-transfer' },
+                            entityType: 'TransferRequest',
+                            entityId: created.id,
+                        })
+                    );
+                }
             }
 
             runInBackground(
@@ -388,7 +437,7 @@ export class TransferRequestService {
                     include: {
                         item: {
                             include: {
-                                color: true,
+                                brand: true, color: true,
                                 size: true,
                                 category: true,
                                 gender: true,
@@ -473,7 +522,7 @@ export class TransferRequestService {
                     include: {
                         item: {
                             include: {
-                                color: true,
+                                brand: true, color: true,
                                 size: true,
                             }
                         }
@@ -616,7 +665,7 @@ export class TransferRequestService {
                         include: {
                             item: {
                                 include: {
-                                    color: true,
+                                    brand: true, color: true,
                                     size: true
                                 }
                             }
@@ -649,7 +698,7 @@ export class TransferRequestService {
                     include: {
                         item: {
                             include: {
-                                color: true,
+                                brand: true, color: true,
                                 size: true
                             }
                         }
@@ -718,7 +767,7 @@ export class TransferRequestService {
                         include: {
                             item: {
                                 include: {
-                                    color: true,
+                                    brand: true, color: true,
                                     size: true
                                 }
                             }
@@ -797,7 +846,7 @@ export class TransferRequestService {
                         include: {
                             item: {
                                 include: {
-                                    color: true,
+                                    brand: true, color: true,
                                     size: true
                                 }
                             }
@@ -1071,9 +1120,10 @@ export class TransferRequestService {
     }
 
     async approveSource(
-        id: string, 
-        userId?: string, 
+        id: string,
+        userId?: string,
         items?: { itemId: string; quantity: number }[],
+        dispatchDetails?: any,
         ctx?: { userId?: string; ipAddress?: string; userAgent?: string }
     ) {
         try {

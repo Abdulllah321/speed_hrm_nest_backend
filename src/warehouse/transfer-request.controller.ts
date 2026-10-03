@@ -215,8 +215,8 @@ export class TransferRequestController {
     @Post(':id/approve-source')
     @Permissions('pos.inventory.outbound.approve')
     @ApiOperation({ summary: 'Approve transfer at source outlet (outlet to outlet only)' })
-    async approveSource(@Param('id') id: string, @Body() dto: { userId?: string; items?: { itemId: string; quantity: number }[] }, @Req() req: any) {
-        const data = await this.transferRequestService.approveSource(id, dto.userId, dto.items, {
+    async approveSource(@Param('id') id: string, @Body() dto: { userId?: string; items?: { itemId: string; quantity: number }[]; dispatchDetails?: any }, @Req() req: any) {
+        const data = await this.transferRequestService.approveSource(id, dto.userId, dto.items, dto.dispatchDetails, {
             userId: req.user?.id,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
