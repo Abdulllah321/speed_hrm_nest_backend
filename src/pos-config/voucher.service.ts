@@ -55,92 +55,97 @@ export class VoucherService {
     limit?: number;
   }) {
     try {
-      const where: any = {};
+      const baseWhere: any = { AND: [] };
       const now = new Date();
 
       // 1. Status Filter
       const statusFilter = (filters?.status || 'ALL').toUpperCase();
       if (statusFilter === 'ACTIVE') {
-        where.isDeleted = false;
-        where.isRedeemed = false;
-        where.OR = [{ expiresAt: null }, { expiresAt: { gte: now } }];
+        baseWhere.isDeleted = false;
+        baseWhere.isRedeemed = false;
+        baseWhere.AND.push({ OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] });
       } else if (statusFilter === 'REDEEMED') {
-        where.isRedeemed = true;
+        baseWhere.isRedeemed = true;
       } else if (statusFilter === 'VOIDED') {
-        where.isDeleted = true;
+        baseWhere.isDeleted = true;
       } else if (statusFilter === 'EXPIRED') {
-        where.isDeleted = false;
-        where.isRedeemed = false;
-        where.expiresAt = { lt: now };
+        baseWhere.isDeleted = false;
+        baseWhere.isRedeemed = false;
+        baseWhere.expiresAt = { lt: now };
       } else {
         // ALL Statuses
         if (!filters?.includeVoided) {
-          where.isDeleted = false;
-        }
-      }
-
-      // 2. Voucher Type Filter
-      if (filters?.voucherType && filters.voucherType !== 'ALL') {
-        const vType = filters.voucherType.toUpperCase();
-        if (vType === 'CLAIM') {
-          where.OR = [
-            { claims: { some: {} } },
-            {
-              description: { contains: 'approved claim', mode: 'insensitive' },
-            },
-          ];
-        } else if (vType === 'EXCHANGE') {
-          where.voucherType = 'EXCHANGE';
-          where.NOT = [
-            { claims: { some: {} } },
-            {
-              description: { contains: 'approved claim', mode: 'insensitive' },
-            },
-          ];
-        } else {
-          where.voucherType = vType;
+          baseWhere.isDeleted = false;
         }
       }
 
       // 3. Location Filter
       if (filters?.locationId) {
-        where.OR = [
-          { issuedByLocationId: filters.locationId },
-          { locations: { some: { locationId: filters.locationId } } },
-        ];
+        baseWhere.AND.push({
+          OR: [
+            { issuedByLocationId: filters.locationId },
+            { locations: { some: { locationId: filters.locationId } } },
+          ]
+        });
       }
 
       // 4. Date Range Filter (createdAt)
       if (filters?.startDate || filters?.endDate) {
-        where.createdAt = {};
+        baseWhere.createdAt = {};
         if (filters.startDate) {
           const start = new Date(filters.startDate);
           start.setUTCHours(0, 0, 0, 0);
-          where.createdAt.gte = start;
+          baseWhere.createdAt.gte = start;
         }
         if (filters.endDate) {
           const end = new Date(filters.endDate);
           end.setUTCHours(23, 59, 59, 999);
-          where.createdAt.lte = end;
+          baseWhere.createdAt.lte = end;
         }
       }
 
       // 5. Search Filter
       if (filters?.search && filters.search.trim() !== '') {
         const term = filters.search.trim();
-        const searchConditions = [
-          { code: { contains: term, mode: 'insensitive' } },
-          { description: { contains: term, mode: 'insensitive' } },
-          { companyName: { contains: term, mode: 'insensitive' } },
-          { companyGlCode: { contains: term, mode: 'insensitive' } },
-          { customer: { name: { contains: term, mode: 'insensitive' } } },
-          { customer: { traderId: { contains: term, mode: 'insensitive' } } },
-          { customer: { contactNo: { contains: term, mode: 'insensitive' } } },
-        ];
-        if (where.OR) {
-          where.AND = [{ OR: searchConditions }];
+        baseWhere.AND.push({
+          OR: [
+            { code: { contains: term, mode: 'insensitive' } },
+            { description: { contains: term, mode: 'insensitive' } },
+            { companyName: { contains: term, mode: 'insensitive' } },
+            { companyGlCode: { contains: term, mode: 'insensitive' } },
+            { customer: { name: { contains: term, mode: 'insensitive' } } },
+            { customer: { traderId: { contains: term, mode: 'insensitive' } } },
+            { customer: { contactNo: { contains: term, mode: 'insensitive' } } },
+          ]
+        });
+      }
+
+      if (baseWhere.AND.length === 0) {
+        delete baseWhere.AND;
+      }
+
+      // 2. Voucher Type Filter
+      const where: any = { ...baseWhere };
+      if (baseWhere.AND) where.AND = [...baseWhere.AND];
+
+      if (filters?.voucherType && filters.voucherType !== 'ALL') {
+        const vType = filters.voucherType.toUpperCase();
+        if (vType === 'CLAIM') {
+          if (!where.AND) where.AND = [];
+          where.AND.push({
+            OR: [
+              { claims: { some: {} } },
+              { description: { contains: 'approved claim', mode: 'insensitive' } },
+            ]
+          });
+        } else if (vType === 'EXCHANGE') {
+          where.voucherType = 'EXCHANGE';
+          where.NOT = [
+            { claims: { some: {} } },
+            { description: { contains: 'approved claim', mode: 'insensitive' } },
+          ];
         } else {
-          where.OR = searchConditions;
+          where.voucherType = vType;
         }
       }
 
@@ -150,7 +155,30 @@ export class VoucherService {
       const skip = (page - 1) * limit;
 
       // Execute Count & FindMany concurrently for 50k+ dataset performance
-      const [total, vouchers] = await Promise.all([
+      
+      const buildTypeCondition = (vType: string) => {
+        if (vType === 'ALL') return {};
+        if (vType === 'CLAIM') return { OR: [{ claims: { some: {} } }, { description: { contains: 'approved claim', mode: 'insensitive' } }] };
+        if (vType === 'EXCHANGE') return { voucherType: 'EXCHANGE', NOT: [{ claims: { some: {} } }, { description: { contains: 'approved claim', mode: 'insensitive' } }] };
+        return { voucherType: vType };
+      };
+
+      const tabTypes = ['ALL', 'GIFT', 'EXCHANGE', 'CREDIT', 'CORPORATE', 'OUTLET_GIFT', 'REFUND', 'CLAIM'];
+      const countPromises = tabTypes.map((vType) => {
+        const countWhere = { ...baseWhere };
+        const typeCond = buildTypeCondition(vType);
+        
+        if (Object.keys(typeCond).length > 0) {
+          if (typeCond.OR) {
+             countWhere.AND = countWhere.AND ? [...countWhere.AND, typeCond] : [typeCond];
+          } else {
+             Object.assign(countWhere, typeCond);
+          }
+        }
+        return this.prisma.voucher.count({ where: countWhere });
+      });
+
+      const [total, vouchers, ...tabCountsArr] = await Promise.all([
         this.prisma.voucher.count({ where }),
         this.prisma.voucher.findMany({
           where,
@@ -178,6 +206,7 @@ export class VoucherService {
           },
           orderBy: { createdAt: 'desc' },
         }),
+        ...countPromises,
       ]);
 
       // Optimize maps for current page slice only
@@ -243,9 +272,21 @@ export class VoucherService {
 
       const totalPages = Math.ceil(total / limit);
 
+      const tabCounts = {
+        ALL: tabCountsArr[0],
+        GIFT: tabCountsArr[1],
+        EXCHANGE: tabCountsArr[2],
+        CREDIT: tabCountsArr[3],
+        CORPORATE: tabCountsArr[4],
+        OUTLET_GIFT: tabCountsArr[5],
+        REFUND: tabCountsArr[6],
+        CLAIM: tabCountsArr[7],
+      };
+
       return {
         status: true,
         data,
+        tabCounts,
         pagination: {
           page,
           limit,
