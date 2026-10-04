@@ -8,6 +8,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -1132,4 +1133,46 @@ export class AuthController {
   async listDesktopDevices(@Req() req: any) {
     return this.service.listDesktopDevices(req.user.userId);
   }
+
+  @Post('pos/admin-switch-outlet')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Switch outlet for admin/manager without de-registering the terminal',
+  })
+  async adminSwitchOutlet(
+    @Body() body: { locationId: string },
+    @Req() req: any,
+    @Res() res: any,
+  ) {
+    if (!req.user || !req.user.id) {
+       return res.status(401).send({ status: false, message: 'Unauthorized' });
+    }
+
+    const posTerminalToken = req.cookies?.['posTerminalToken'];
+    let decoded: any = null;
+    if (posTerminalToken) {
+       decoded = jwt.decode(posTerminalToken);
+    }
+
+    const result = await this.service.adminSwitchOutlet(req.user.id, body.locationId, decoded);
+    if (!result.status) {
+       return res.status(403).send(result);
+    }
+
+    const cookieOptions = this.getCookieOptions(req);
+    // Replace the terminal token with the newly generated one
+    res.setCookie('posTerminalToken', result.data?.accessToken, {
+      ...cookieOptions,
+      maxAge: 365 * 24 * 60 * 60,
+    });
+    
+    // Also overwrite pos_location_id just in case
+    res.setCookie('pos_location_id', body.locationId, {
+      ...cookieOptions,
+      maxAge: 365 * 24 * 60 * 60,
+    });
+
+    return res.send(result);
+  }
+
 }

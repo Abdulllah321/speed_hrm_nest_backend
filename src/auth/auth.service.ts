@@ -2729,4 +2729,67 @@ export class AuthService {
 
     return { status: true, data: devices };
   }
+
+
+  async adminSwitchOutlet(userId: string, locationId: string, currentTokenDecoded: any) {
+    if (!this.prisma) {
+      return { status: false, message: 'Prisma Service unavailable' };
+    }
+
+    const user = await this.prismaMaster.user.findUnique({
+      where: { id: userId },
+      include: { role: true },
+    });
+
+    if (!user) {
+      return { status: false, message: 'User not found' };
+    }
+
+    const roleName = user.role?.name?.toLowerCase() || '';
+    if (roleName !== 'admin' && roleName !== 'super_admin' && roleName !== 'manager') {
+      return { status: false, message: 'Permission denied. Only Admins and Managers can switch outlets directly.' };
+    }
+
+    const terminal = await this.prisma.pos.findFirst({
+      where: { locationId, status: 'active', isDeleted: false },
+      include: {
+        location: { select: { companyId: true } }
+      }
+    });
+
+    if (!terminal) {
+      return { status: false, message: 'No active POS or Terminals found in the selected location. Please configure one first.' };
+    }
+
+    const accessOpts: jwt.SignOptions = {
+      expiresIn: '8h',
+      issuer: authConfig.jwt.issuer,
+    };
+
+    const accessToken = jwt.sign(
+      {
+        terminalId: terminal.id,
+        posId: terminal.posId,
+        locationId: terminal.locationId,
+        companyId: terminal.location?.companyId || terminal.companyId,
+        tenantId: currentTokenDecoded?.tenantId || this.prisma.getTenantId(),
+        roleName: 'POS_TERMINAL',
+        isTerminal: true,
+        terminalCode: terminal.terminalCode,
+      },
+      authConfig.jwt.accessSecret,
+      accessOpts,
+    );
+
+    return { 
+      status: true, 
+      data: { 
+        accessToken, 
+        terminalCode: terminal.terminalCode, 
+        locationId: terminal.locationId 
+      },
+      message: 'Switched outlet successfully'
+    };
+  }
+
 }
