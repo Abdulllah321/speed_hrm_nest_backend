@@ -3049,199 +3049,357 @@ export class PosSessionService {
       return;
     }
 
-    // Lookup COA accounts dynamically
-    const allAccounts = await this.prisma.chartOfAccount.findMany({
-      select: { id: true, code: true, name: true },
-    });
-    const coaByCode = new Map<string, { id: string; name: string }>();
-    allAccounts.forEach((a) =>
-      coaByCode.set(a.code, { id: a.id, name: a.name }),
-    );
+    const jvDateStr = `${dateStr.split('-').reverse().join('/')}`;
 
-    // Fallback account
-    const fallbackId = allAccounts[0]?.id || 'MISSING';
-
-    // Control Accounts (accountId)
-    const salesControlId =
-      coaByCode.get('4001')?.id || coaByCode.get('40')?.id || fallbackId;
-    const salesReturnControlId =
-      coaByCode.get('5101')?.id || coaByCode.get('51')?.id || fallbackId;
-    const bankControlId =
-      coaByCode.get('3201')?.id || coaByCode.get('32')?.id || fallbackId;
-    const operatingExpControlId =
-      coaByCode.get('5201')?.id || coaByCode.get('52')?.id || fallbackId;
-    const payablesControlId =
-      coaByCode.get('2001')?.id || coaByCode.get('20')?.id || fallbackId;
-
-    // 1. Cash Tag Account: Check location cashGLCode -> UBL '32010002' -> '31090001'
-    let cashTagId = fallbackId;
-    if (locationObj?.cashGLCode && coaByCode.has(locationObj.cashGLCode)) {
-      cashTagId = coaByCode.get(locationObj.cashGLCode)!.id;
-    } else if (coaByCode.has('32010002')) {
-      cashTagId = coaByCode.get('32010002')!.id; // UBL ACC 7741
-    } else if (coaByCode.has('31090001')) {
-      cashTagId = coaByCode.get('31090001')!.id;
-    }
-
-    // 2. Outlet Sales Account mapping (tagAccountId)
-    const outletSalesMap: Record<string, string> = {
-      'ZB1-LHR': '40010013', // IVAR LAHORE SHOP SALE
-      'I81-ISB': '40010015', // IVAR ISLAMABAD SHOP SALE
-      'SFD2-KHI': '40010016', // IVAR SHARFABAD SHOP SALE
-      'BC1-KHI': '40010012', // IVAR BUKHARI SHOP SALE
-    };
-
-    // 3. Outlet Sales Return Account mapping (tagAccountId)
-    const outletSalesReturnMap: Record<string, string> = {
-      'ZB1-LHR': '51010007', // IVAR LAHORE SHOP REFUNDS
-      'I81-ISB': '51010009', // IVAR ISLAMABAD SHOP REFUND
-      'SFD2-KHI': '51010010', // IVAR SHARFABAD SHOP REFUND
-      'BC1-KHI': '51010004', // IVAR BUKHARI SHOP RETURN
-    };
-
-    // 4. Outlet Bank Charges mapping (tagAccountId)
-    const outletBankChargesMap: Record<string, string> = {
-      'ZB1-LHR': '52010034',
-      'I81-ISB': '52010044',
-      'SFD2-KHI': '52010059',
-      'BC1-KHI': '52010017',
+    // Helper to get Account ID
+    const accountMap = new Map<string, string>();
+    const getAccountId = async (
+      code: string | null | undefined,
+    ): Promise<string | null> => {
+      if (!code) return null;
+      if (accountMap.has(code)) return accountMap.get(code)!;
+      const acc = await this.prisma.chartOfAccount.findFirst({
+        where: { code },
+      });
+      if (acc) {
+        accountMap.set(code, acc.id);
+        return acc.id;
+      }
+      return null;
     };
 
     const details: any[] = [];
+    let hasMissingMappings = false;
 
-    // Tenders: Cash
-    const cashAmt = reconData.cashBreakdown?.sale ?? 0;
-    if (cashAmt > 0) {
+    const addLine = async (
+      code: string | null,
+      tagCode: string | null,
+      debit: number,
+      credit: number,
+      baseNarration: string,
+    ) => {
+      if (debit === 0 && credit === 0) return;
+
+      let accountId = await getAccountId(code);
+      const tagId = await getAccountId(tagCode);
+      let narration = baseNarration;
+
+      if (code && !accountId) {
+        const fallback = await this.prisma.chartOfAccount.findFirst();
+        accountId = fallback?.id || 'MISSING';
+        narration = `[MISSING GL CODE: ${code}] ` + narration;
+        hasMissingMappings = true;
+      }
+
+      if (tagCode && !tagId) {
+        narration = `[MISSING TAG: ${tagCode}] ` + narration;
+        hasMissingMappings = true;
+      }
+
+      if (!accountId) return; // if completely failed to fallback
+
       details.push({
-        accountId: bankControlId,
-        tagAccountId: cashTagId,
-        debit: cashAmt,
-        credit: 0,
-        narration: `Cash sales deposited to UBL Bank A/C | ${locCode} | ${dateStr}`,
+        accountId,
+        tagAccountId: tagId,
+        debit,
+        credit,
+        narration,
       });
+    };
+
+    // 1. Credit / Debit Cards (Merchant)
+    let totalCommission = 0;
+
+    for (const card of reconData.cardPayments || []) {
+      // Find bank GL code
+      const merchant = await this.prisma.merchantConfig.findFirst({
+        where: { bankName: card.bank },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (merchant?.bankGlCode) {
+        const comm = Number((card.commission ?? 0).toFixed(2));
+        totalCommission += comm;
+        const netAmount = Number(((card.amount ?? 0) - comm).toFixed(2));
+        await addLine(
+          merchant.bankGlCode,
+          locCode,
+          netAmount,
+          0,
+          `Credit Card Sales ${card.bank} | ${jvDateStr}`,
+        );
+      }
+    }
+    for (const card of reconData.cardGiftVouchers || []) {
+      const merchant = await this.prisma.merchantConfig.findFirst({
+        where: { bankName: card.bank },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (merchant?.bankGlCode) {
+        const comm = Number((card.commission ?? 0).toFixed(2));
+        totalCommission += comm;
+        const netAmount = Number(((card.amount ?? 0) - comm).toFixed(2));
+        await addLine(
+          merchant.bankGlCode,
+          locCode,
+          netAmount,
+          0,
+          `Credit Card Sales ${card.bank} | ${jvDateStr}`,
+        );
+      }
     }
 
-    // Tenders: Cards per Merchant
-    let totalComm = 0;
-    if (reconData.cardPayments) {
-      for (const card of reconData.cardPayments) {
-        const comm = Number((card.commission ?? 0).toFixed(2));
-        totalComm += comm;
-        const netCard = Number(((card.amount ?? 0) - comm).toFixed(2));
+    // 2. Total Credit/Debit Cards Commission
+    await addLine(
+      '80210001',
+      locCode,
+      totalCommission,
+      0,
+      `Total Credit Card Commission | ${jvDateStr}`,
+    );
 
-        // Find merchant config bank GL
-        const merchant = await this.prisma.merchantConfig.findFirst({
-          where: { bankName: card.bank },
-          orderBy: { createdAt: 'desc' },
+    // 3. Cash && Cash - Gift Vouchers Issued
+    const cashGl = locationObj?.cashGLCode || '31090001';
+    if (cashGl) {
+      // Cash Sales entry
+      const netCashSale =
+        (reconData.cashBreakdown?.sale ?? 0) - (reconData.cashBreakdown?.refundVouchers ?? 0);
+      await addLine(
+        cashGl,
+        locCode,
+        netCashSale,
+        0,
+        `CASH SALES | ${jvDateStr}`,
+      );
+
+      // Cash - Gift Vouchers Issued entry
+      await addLine(
+        cashGl,
+        locCode,
+        reconData.cashBreakdown?.giftVouchers ?? 0,
+        0,
+        `Cash - Gift Vouchers Issued | ${jvDateStr}`,
+      );
+    }
+
+    // Vouchers Redeemed (Received)
+    for (const v of reconData.receivedVouchers || []) {
+      if (v.type === 'Gift Vouchers Corporate') {
+        const voucher = await this.prisma.voucher.findFirst({
+          where: { code: v.from },
         });
-
-        let cardTagId = fallbackId;
-        if (merchant?.bankGlCode && coaByCode.has(merchant.bankGlCode)) {
-          cardTagId = coaByCode.get(merchant.bankGlCode)!.id;
-        } else if (
-          card.bank?.toLowerCase().includes('meezan') &&
-          coaByCode.has('32010001')
-        ) {
-          cardTagId = coaByCode.get('32010001')!.id;
-        } else if (coaByCode.has('32010003')) {
-          cardTagId = coaByCode.get('32010003')!.id;
-        }
-
-        if (netCard > 0) {
-          details.push({
-            accountId: bankControlId,
-            tagAccountId: cardTagId,
-            debit: netCard,
-            credit: 0,
-            narration: `Credit Card settlement ${card.bank} | ${locCode} | ${dateStr}`,
-          });
+        const tagId = voucher?.companyGlCode
+          ? voucher.companyGlCode
+          : locCode;
+        await addLine(
+          '12070008',
+          tagId,
+          v.amount,
+          0,
+          `Corporate Gift Vouchers Collected | GVC#${v.from} | ${jvDateStr}`,
+        );
+      } else if (v.type === 'Gift Vouchers') {
+        await addLine(
+          '12070007',
+          locCode,
+          v.amount,
+          0,
+          `Gift Voucher Collected | GV#${v.from} | ${jvDateStr}`,
+        );
+      } else if (v.type === 'Credit Vouchers') {
+        await addLine(
+          '12070006',
+          locCode,
+          v.amount,
+          0,
+          `Credit Voucher Collected | CRV#${v.from} | ${jvDateStr}`,
+        );
+      } else if (v.type === 'Claim Vouchers') {
+        await addLine(
+          '12070009',
+          locCode,
+          v.amount,
+          0,
+          `Claim Voucher Collected | CV#${v.from} | ${jvDateStr}`,
+        );
+      } else if (v.type === 'Exchange Vouchers') {
+        await addLine(
+          '12070010',
+          locCode,
+          v.amount,
+          0,
+          `Exchange Voucher Collected | EV#${v.from} | ${jvDateStr}`,
+        );
+      } else if (v.type === 'Vouchers') {
+        const voucher = await this.prisma.voucher.findFirst({
+          where: { code: v.from },
+        });
+        if (voucher && voucher.voucherType === 'REFUND') {
+          const refundCode = v.from.startsWith('RF#')
+            ? v.from
+            : `RF#${v.from}`;
+          await addLine(
+            '12070015',
+            locCode,
+            v.amount,
+            0,
+            `Refund Voucher Collected | ${refundCode} | ${jvDateStr}`,
+          );
         }
       }
     }
 
-    // Bank Commission
-    if (totalComm > 0) {
-      const commCode = outletBankChargesMap[locCode] || '52010017';
-      const commTagId = coaByCode.has(commCode)
-        ? coaByCode.get(commCode)!.id
-        : fallbackId;
-      details.push({
-        accountId: operatingExpControlId,
-        tagAccountId: commTagId,
-        debit: totalComm,
-        credit: 0,
-        narration: `POS Credit Card merchant commission | ${locCode} | ${dateStr}`,
-      });
-    }
-
-    // Vouchers Redeemed (Tenders: Exchange / Gift / Claim)
-    const voucherAmt = reconData.paymentBreakdown?.voucher?.amount ?? 0;
-    if (voucherAmt > 0) {
-      const vCode = coaByCode.has('20010050') ? '20010050' : '12070010';
-      const vTagId = coaByCode.has(vCode)
-        ? coaByCode.get(vCode)!.id
-        : fallbackId;
-      details.push({
-        accountId: payablesControlId,
-        tagAccountId: vTagId,
-        debit: voucherAmt,
-        credit: 0,
-        narration: `Exchange Vouchers collected/redeemed | ${locCode} | ${dateStr}`,
-      });
-    }
-
-    // Sales Return (Debit)
-    const salesReturnAmt = reconData.financials?.salesReturn ?? 0;
-    if (salesReturnAmt > 0) {
-      const returnCode = outletSalesReturnMap[locCode] || '51010001';
-      const returnTagId = coaByCode.has(returnCode)
-        ? coaByCode.get(returnCode)!.id
-        : fallbackId;
-      details.push({
-        accountId: salesReturnControlId,
-        tagAccountId: returnTagId,
-        debit: salesReturnAmt,
-        credit: 0,
-        narration: `Daily POS Sales Return | ${locCode} | ${dateStr}`,
-      });
-    }
-
-    // FBR POS Service Charges (Credit)
-    const fbrTotal =
-      reconData.fbrCharges?.reduce(
-        (sum: number, f: any) => sum + Number(f.amount || 0),
+    // 9. On Credit (Receivables)
+    for (const rec of reconData.receivables || []) {
+      await addLine(
+        '31030001',
+        locCode,
+        rec.amount,
         0,
-      ) ?? 0;
-    if (fbrTotal > 0) {
-      const fbrTagId = coaByCode.get('20010055')?.id || fallbackId;
-      details.push({
-        accountId: payablesControlId,
-        tagAccountId: fbrTagId,
-        debit: 0,
-        credit: fbrTotal,
-        narration: `FBR POS Service Charges | ${locCode} | ${dateStr}`,
-      });
+        `Ded from staff salary ag.CM#123 NDC | ${jvDateStr}`,
+      );
     }
 
-    // Gross Sales Revenue (Credit)
-    const grossSale = reconData.financials?.sale ?? 0;
-    const salesCode = outletSalesMap[locCode];
-    let salesTagId = fallbackId;
-    if (salesCode && coaByCode.has(salesCode)) {
-      salesTagId = coaByCode.get(salesCode)!.id;
+    // Issued Vouchers
+    for (const ev of reconData.issuedVouchers?.exchangeAndClaims || []) {
+      if (ev.type === 'Exchange Vouchers') {
+        await addLine(
+          '12070010',
+          locCode,
+          0,
+          ev.amount,
+          `Exchange Voucher Issued | EV#${ev.from} | ${jvDateStr}`,
+        );
+      } else if (ev.type === 'Claim Vouchers') {
+        await addLine(
+          '12070009',
+          locCode,
+          0,
+          ev.amount,
+          `Claim Voucher Issued | CV#${ev.from} | ${jvDateStr}`,
+        );
+      }
+    }
+    for (const cv of reconData.issuedVouchers?.creditVouchers || []) {
+      await addLine(
+        '12070006',
+        locCode,
+        0,
+        cv.amount,
+        `Credit Voucher Issued | CRV#${cv.to} | ${jvDateStr}`,
+      );
+    }
+    for (const gv of reconData.issuedVouchers?.giftVouchers || []) {
+      if (gv.type === 'Gift Vouchers Corporate') {
+        await addLine(
+          '12070008',
+          locCode,
+          0,
+          gv.amount,
+          `Corporate Gift Voucher Issued | GVC#${gv.to} | ${jvDateStr}`,
+        );
+      } else {
+        await addLine(
+          '12070007',
+          locCode,
+          0,
+          gv.amount,
+          `Gift Voucher Issued | GV#${gv.to} | ${jvDateStr}`,
+        );
+      }
     }
 
-    if (grossSale > 0) {
-      details.push({
-        accountId: salesControlId,
-        tagAccountId: salesTagId,
-        debit: 0,
-        credit: grossSale,
-        narration: `Daily POS Sales Revenue | ${locCode} | ${dateStr}`,
-      });
+    // Gift Voucher Discount
+    const giftVoucherDiscountAmt =
+      reconData.issuedVouchers?.totalGiftVoucherDiscount || 0;
+    await addLine(
+      '80180012',
+      locCode,
+      giftVoucherDiscountAmt,
+      0,
+      `Gift Voucher Discount | ${jvDateStr}`,
+    );
+    for (const rv of reconData.issuedVouchers?.refundVouchers || []) {
+      const refundCode = rv.from.startsWith('RF#')
+        ? rv.from
+        : `RF#${rv.from}`;
+      await addLine(
+        '12070015',
+        locCode,
+        0,
+        rv.amount,
+        `Refund Voucher Issued | ${refundCode} | ${jvDateStr}`,
+      );
     }
 
-    // Auto-balance check
+    // 14. FBR POS
+    const fbrCash =
+      reconData.fbrCharges?.find((c: any) => c.type === 'Cash')?.amount || 0;
+    const fbrCard =
+      reconData.fbrCharges?.find((c: any) => c.type === 'Card')?.amount || 0;
+    await addLine(
+      '12060009',
+      locCode,
+      0,
+      fbrCard,
+      `POS Service Fee Credit Card | ${jvDateStr}`,
+    );
+    await addLine(
+      '12060009',
+      locCode,
+      0,
+      fbrCash,
+      `POS Service Fee Cash | ${jvDateStr}`,
+    );
+
+    // Sales Return
+    await addLine(
+      '40020014',
+      locCode,
+      reconData.financials?.salesReturn ?? 0,
+      0,
+      `Retail Sales Return | ${jvDateStr}`,
+    );
+
+    // Final Calculations
+    const totalReceived =
+      (reconData.cashBreakdown?.total ?? 0) + (reconData.paymentBreakdown?.voucher?.amount ?? 0);
+    const netReceivedCard = reconData.cardBreakdown?.total ?? 0;
+
+    const unusedBalanceVouchersAmt =
+      reconData.issuedVouchers?.unusedBalanceVouchersTotal || 0;
+    const cashGiftVouchersAmt = reconData.cashBreakdown?.giftVouchers ?? 0;
+    const receivablesAmt = (reconData.receivables || []).reduce(
+      (s: number, r: any) => s + r.amount,
+      0,
+    );
+
+    // AC: 12070002 -> Transfer Current A/c Cash
+    const transferCash =
+      totalReceived +
+      receivablesAmt -
+      unusedBalanceVouchersAmt -
+      cashGiftVouchersAmt -
+      fbrCash;
+
+    await addLine(
+      '12070002',
+      locCode,
+      0,
+      transferCash,
+      `Transfer Current A/c Cash | ${jvDateStr}`,
+    );
+
+    // AC: 12070003 -> Transfer Current A/c Card
+    const transferCard = Number((netReceivedCard - fbrCard).toFixed(2));
+    await addLine(
+      '12070003',
+      locCode,
+      0,
+      transferCard,
+      `Transfer Current A/c Card | ${jvDateStr}`,
+    );
+
+    // Auto-balance the voucher if debits and credits do not match
     let totalDebit = 0;
     let totalCredit = 0;
     details.forEach((d) => {
@@ -3250,31 +3408,56 @@ export class PosSessionService {
     });
 
     const diff = Math.abs(totalDebit - totalCredit);
-    if (diff > 0.001) {
-      if (totalDebit < totalCredit) {
-        const adj = Number((totalCredit - totalDebit).toFixed(2));
-        const firstDebit = details.find((d) => d.debit > 0);
-        if (firstDebit) {
-          firstDebit.debit = Number((firstDebit.debit + adj).toFixed(2));
-          totalDebit = Number((totalDebit + adj).toFixed(2));
-        }
+    let description =
+      `POS Daily Sales Reconciliation for ${reconData.locationName || locCode} (${locCode}) on ${dateStr}` +
+      (hasMissingMappings
+        ? `
+
+ATTENTION: Some entries have missing Tag IDs or Account GL Codes. Please correct them before approving.`
+        : '');
+
+    if (diff > 0.01) {
+      const fallback = await this.prisma.chartOfAccount.findFirst();
+      const accountId = fallback?.id || 'MISSING';
+      let balDebit = 0;
+      let balCredit = 0;
+      if (totalDebit > totalCredit) {
+        balCredit = diff;
       } else {
-        const adj = Number((totalDebit - totalCredit).toFixed(2));
-        const salesLine = details.find(
-          (d) => d.tagAccountId === salesTagId && d.credit > 0,
-        );
-        if (salesLine) {
-          salesLine.credit = Number((salesLine.credit + adj).toFixed(2));
-          totalCredit = Number((totalCredit + adj).toFixed(2));
-        }
+        balDebit = diff;
       }
+      details.push({
+        accountId,
+        tagAccountId: null,
+        debit: balDebit,
+        credit: balCredit,
+        narration: `[AUTO-BALANCING LINE] To balance RV. Total Debit was ${totalDebit.toFixed(2)}, Total Credit was ${totalCredit.toFixed(2)}`,
+      });
+      description += `
+
+ATTENTION: Voucher was unbalanced by ${diff.toFixed(2)}. An auto-balancing line was added. Please review and correct.`;
+
+      totalDebit = 0;
+      totalCredit = 0;
+      details.forEach((d) => {
+        totalDebit = Number((totalDebit + d.debit).toFixed(2));
+        totalCredit = Number((totalCredit + d.credit).toFixed(2));
+      });
+    }
+
+    if (totalDebit === 0) {
+      this.logger.log(
+        `Total debit is 0 for location ${locCode} on ${dateStr}, skipping Receipt Voucher generation.`,
+      );
+      return;
     }
 
     const rvNo = await generateNextRsrvNumber(this.prisma, dateStr);
     const firstDebitLine = details.find((d) => d.debit > 0);
+    const fallback = await this.prisma.chartOfAccount.findFirst();
     const debitAccountId = firstDebitLine
       ? firstDebitLine.accountId
-      : bankControlId;
+      : fallback?.id || 'MISSING';
 
     await this.receiptVoucherService.create({
       type: 'rs_rv',
@@ -3282,9 +3465,15 @@ export class PosSessionService {
       rvDate: new Date(dateStr),
       debitAccountId,
       debitAmount: totalDebit,
-      description: `POS Daily Sales Reconciliation for ${reconData.locationName || locCode} (${locCode}) on ${dateStr}`,
+      description,
       status: 'pending',
-      details,
+      details: details.map((d) => ({
+        accountId: d.accountId,
+        tagAccountId: d.tagAccountId || undefined,
+        debit: d.debit,
+        credit: d.credit,
+        narration: d.narration,
+      })),
     });
 
     this.logger.log(
