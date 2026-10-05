@@ -108,6 +108,7 @@ model SalesOrder {
   claims                PosClaim[]
   voucherRedemptions    VoucherRedemption[]
   posReturns            PosReturn[]
+  onlineOrders          OnlineOrder[]
 
   @@index([posId])
   @@index([terminalId])

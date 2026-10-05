@@ -37,6 +37,8 @@ model OnlineOrder {
   fulfilledByWarehouse String?   @map("fulfilled_by_warehouse")
   shipping             String?
   locationId           String?   @map("location_id")
+  salesOrderId         String?   @map("sales_order_id")
+  salesOrder           SalesOrder? @relation(fields: [salesOrderId], references: [id])
 
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
