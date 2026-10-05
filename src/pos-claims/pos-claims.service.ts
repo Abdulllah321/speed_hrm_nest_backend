@@ -651,7 +651,14 @@ export class PosClaimsService {
 
               // Create automatic transfer request from POS location to PLM Warehouse
               const today = new Date();
-              const prefix = `TR-CLM-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+              const currentMonth = today.getMonth();
+              const startYear = currentMonth >= 6 ? today.getFullYear() : today.getFullYear() - 1;
+              const endYear = startYear + 1;
+              const startYearShort = startYear.toString().slice(-2);
+              const endYearShort = endYear.toString().slice(-2);
+              const fiscalYearStr = `${startYearShort}-${endYearShort}`;
+              const prefix = `TR-CLM-${fiscalYearStr}`;
+              
               const lastTR = await tx.transferRequest.findFirst({
                 where: { requestNo: { startsWith: prefix } },
                 orderBy: { requestNo: 'desc' },
