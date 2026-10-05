@@ -36,6 +36,7 @@ model OnlineOrder {
   note                 String?   @db.Text
   fulfilledByWarehouse String?   @map("fulfilled_by_warehouse")
   shipping             String?
+  locationId           String?   @map("location_id")
 
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")

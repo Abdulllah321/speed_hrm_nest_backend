@@ -18,6 +18,9 @@ export class OnlineOrderManagementService {
       progress: number;
       data: any[];
       subject: ReplaySubject<MessageEvent>;
+      message?: string;
+      successRecords?: number;
+      failedRecords?: number;
     }
   >();
 
@@ -80,16 +83,17 @@ export class OnlineOrderManagementService {
       });
     } catch (error: any) {
       session.status = 'failed';
+      session.message = error.message || 'Failed to parse file';
       session.subject.next({
         data: {
           type: 'failed',
-          data: { message: error.message || 'Failed to parse file' },
+          data: { message: session.message },
         },
       });
     }
   }
 
-  async confirmUpload(uploadId: string) {
+  async confirmUpload(uploadId: string, locationId: string) {
     const session = this.uploads.get(uploadId);
     if (!session || session.status !== 'validated') {
       throw new BadRequestException('Invalid or expired upload session');
@@ -101,12 +105,12 @@ export class OnlineOrderManagementService {
     });
 
     // Process asynchronously
-    setTimeout(() => this.processUpload(uploadId), 100);
+    setTimeout(() => this.processUpload(uploadId, locationId), 100);
 
     return { status: true, message: 'Processing started' };
   }
 
-  private async processUpload(uploadId: string) {
+  private async processUpload(uploadId: string, locationId: string) {
     const session = this.uploads.get(uploadId);
     if (!session) return;
 
@@ -162,6 +166,7 @@ export class OnlineOrderManagementService {
           note: row['Note']?.toString(),
           fulfilledByWarehouse: row['Fulfilled By Warehouse']?.toString(),
           shipping: row['Shipping']?.toString(),
+          locationId: locationId,
         };
       });
 
@@ -267,6 +272,9 @@ export class OnlineOrderManagementService {
       status: session.status,
       progress: session.progress,
       totalRecords: session.data?.length || 0,
+      message: session.message,
+      successRecords: session.successRecords || 0,
+      failedRecords: session.failedRecords || 0,
     };
   }
 
@@ -282,9 +290,10 @@ export class OnlineOrderManagementService {
     }
   }
 
-  async getGroupedOrders() {
+  async getGroupedOrders(locationId?: string) {
     // Fetch all online orders
     const allRows = await this.prisma.onlineOrder.findMany({
+      where: locationId ? { locationId } : undefined,
       orderBy: { createdAt: 'desc' },
     });
 

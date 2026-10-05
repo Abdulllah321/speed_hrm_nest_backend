@@ -27,8 +27,19 @@ export class OnlineOrderManagementController {
 
   @Get()
   @ApiOperation({ summary: 'Get list of online orders grouped by order ID' })
-  async getOrders() {
-    return this.service.getGroupedOrders();
+  async getOrders(@Req() req: any) {
+    let locationId = undefined;
+    if (req.cookies?.posTerminalToken) {
+      try {
+        const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+        locationId = decoded?.locationId;
+      } catch (e) {}
+    }
+    if (!locationId) {
+      locationId = req.user?.locationId;
+    }
+    
+    return this.service.getGroupedOrders(locationId);
   }
 
   @Post()
@@ -57,8 +68,22 @@ export class OnlineOrderManagementController {
 
   @Post(':uploadId/confirm')
   @ApiOperation({ summary: 'Confirm and start import of valid orders' })
-  async confirmUpload(@Param('uploadId') uploadId: string) {
-    return this.service.confirmUpload(uploadId);
+  async confirmUpload(@Param('uploadId') uploadId: string, @Req() req: any) {
+    let locationId = undefined;
+    if (req.cookies?.posTerminalToken) {
+      try {
+        const decoded: any = jwt.decode(req.cookies.posTerminalToken);
+        locationId = decoded?.locationId;
+      } catch (e) {}
+    }
+    if (!locationId) {
+      locationId = req.user?.locationId;
+    }
+    if (!locationId) {
+      throw new BadRequestException('Location context is required to upload orders');
+    }
+
+    return this.service.confirmUpload(uploadId, locationId);
   }
 
   @Post(':orderNumber/post')
@@ -127,6 +152,9 @@ export class OnlineOrderManagementController {
         status: result.status,
         progress: result.progress,
         totalRecords: result.totalRecords,
+        message: result.message,
+        successRecords: result.successRecords,
+        failedRecords: result.failedRecords,
       },
     };
   }
