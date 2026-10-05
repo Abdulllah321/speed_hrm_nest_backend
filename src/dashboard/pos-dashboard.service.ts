@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { PrismaMasterService } from '../database/prisma-master.service';
+import { PosSessionService } from '../pos-session/pos-session.service';
 
 @Injectable()
 export class PosDashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly prismaMaster: PrismaMasterService,
+    private readonly posSessionService: PosSessionService,
   ) {}
 
   /**
@@ -21,7 +23,6 @@ export class PosDashboardService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const [
-      salesAgg,
       completedOrders,
       recentOrders,
       claimStats,
@@ -29,17 +30,6 @@ export class PosDashboardService {
       hourlySales,
       salespersonAgg,
     ] = await Promise.all([
-      // ── Today's totals ──────────────────────────────────────────────
-      this.prisma.salesOrder.aggregate({
-        where: {
-          locationId,
-          status: 'completed',
-          createdAt: { gte: today, lt: tomorrow },
-        },
-        _sum: { grandTotal: true, cashAmount: true, cardAmount: true },
-        _count: { id: true },
-      }),
-
       // ── Unique customers served today ───────────────────────────────
       this.prisma.salesOrder.findMany({
         where: {
@@ -175,10 +165,18 @@ export class PosDashboardService {
       else if (c.status === 'REJECTED') claimSummary.rejected = count;
     }
 
-    const todaySales = Number(salesAgg._sum.grandTotal ?? 0);
-    const transactions = salesAgg._count.id;
-    const cashSales = Number(salesAgg._sum.cashAmount ?? 0);
-    const cardSales = Number(salesAgg._sum.cardAmount ?? 0);
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
+    const reconData = await this.posSessionService.getDaywiseReconciliation(locationId, dateStr);
+    const mergedRecon = reconData.merged || reconData;
+
+    const todaySales = mergedRecon.financials?.netSales ?? 0;
+    const transactions = mergedRecon.metrics?.orderCount ?? 0;
+    const cashSales = mergedRecon.cashBreakdown?.sale ?? 0;
+    const cardSales = mergedRecon.cardBreakdown?.sale ?? 0;
 
     // ── Enrich salesperson rows with names from master DB and local employee DB ───────────
     const spUserIds = salespersonAgg

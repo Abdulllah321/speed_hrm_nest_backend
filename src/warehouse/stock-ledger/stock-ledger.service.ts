@@ -1789,10 +1789,14 @@ export class StockLedgerService {
           ...locationOrWarehouseWhere,
           itemId: { in: chunk },
           createdAt: { gte: startDate, lte: endDate },
-          OR: [
-            { movementType: MovementType.OPENING_BALANCE },
-            { referenceType: 'OPENING_BALANCE' },
-            { referenceType: 'BULK_STOCK_UPLOAD' },
+          AND: [
+            {
+              OR: [
+                { movementType: MovementType.OPENING_BALANCE },
+                { referenceType: 'OPENING_BALANCE' },
+                { referenceType: 'BULK_STOCK_UPLOAD' },
+              ],
+            },
           ],
         },
         _sum: { qty: true },
