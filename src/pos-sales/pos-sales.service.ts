@@ -199,6 +199,7 @@ export class PosSalesService implements OnModuleInit {
           { itemId: { equals: searchTerm, mode: 'insensitive' } },
           { barCode: { contains: searchTerm, mode: 'insensitive' } },
           { sku: { contains: searchTerm, mode: 'insensitive' } },
+          { itemId: { contains: searchTerm, mode: 'insensitive' } },
           { description: { contains: searchTerm, mode: 'insensitive' } },
         ],
       },
@@ -227,7 +228,6 @@ export class PosSalesService implements OnModuleInit {
         isActive: true,
         OR: [
           { barCode: { equals: barcode.trim(), mode: 'insensitive' } },
-          { sku: { equals: barcode.trim(), mode: 'insensitive' } },
         ],
       },
       include: {
