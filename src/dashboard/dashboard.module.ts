@@ -5,9 +5,10 @@ import { PosDashboardController } from './pos-dashboard.controller';
 import { PosDashboardService } from './pos-dashboard.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TaskReportsModule } from '../task-reports/task-reports.module';
+import { PosSessionModule } from '../pos-session/pos-session.module';
 
 @Module({
-  imports: [PrismaModule, TaskReportsModule],
+  imports: [PrismaModule, TaskReportsModule, PosSessionModule],
   controllers: [DashboardController, PosDashboardController],
   providers: [DashboardService, PosDashboardService],
 })
