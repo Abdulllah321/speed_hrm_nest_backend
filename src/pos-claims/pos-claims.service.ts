@@ -63,16 +63,21 @@ export class PosClaimsService {
     const year = now.getFullYear();
     const month = now.getMonth(); // 0-indexed, July is 6
     const fiscalYearStartYear = month >= 6 ? year : year - 1;
+    const fiscalYearEndYear = fiscalYearStartYear + 1;
+    const fiscalYearStr = fiscalYearEndYear.toString().slice(-2); // e.g. '27'
+    
     const fiscalYearStartDate = new Date(
       Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0),
     );
+
+    const prefix = `CLM-${shortCode}-${fiscalYearStr}`;
 
     // Find the latest claim for this location created during the current fiscal year, ordered by claimNumber desc to get the highest suffix directly
     const lastClaim = await prismaClient.posClaim.findFirst({
       where: {
         salesOrder: { locationId },
         createdAt: { gte: fiscalYearStartDate },
-        claimNumber: { startsWith: `CLM-${shortCode}-` },
+        claimNumber: { startsWith: `${prefix}-` },
       },
       orderBy: { claimNumber: 'desc' },
       select: { claimNumber: true },
@@ -87,7 +92,7 @@ export class PosClaimsService {
       }
     }
 
-    let nextClaimNumber = `CLM-${shortCode}-${String(seq).padStart(5, '0')}`;
+    let nextClaimNumber = `${prefix}-${String(seq).padStart(5, '0')}`;
     let exists = await prismaClient.posClaim.findUnique({
       where: { claimNumber: nextClaimNumber },
       select: { id: true },
@@ -95,7 +100,7 @@ export class PosClaimsService {
 
     while (exists) {
       seq++;
-      nextClaimNumber = `CLM-${shortCode}-${String(seq).padStart(5, '0')}`;
+      nextClaimNumber = `${prefix}-${String(seq).padStart(5, '0')}`;
       exists = await prismaClient.posClaim.findUnique({
         where: { claimNumber: nextClaimNumber },
         select: { id: true },
@@ -615,7 +620,21 @@ export class PosClaimsService {
               }
 
               const plmLocationId = plmLocation.id;
-              const plmWarehouseId = plmLocation.warehouseId || null;
+              let plmWarehouseId = plmLocation.warehouseId;
+              
+              if (!plmWarehouseId) {
+                console.log('⚠️ PLM location has no warehouse, using first active warehouse...');
+                const defaultWarehouse = await tx.warehouse.findFirst({
+                  where: { isActive: true },
+                  select: { id: true, name: true },
+                });
+                if (defaultWarehouse) {
+                  plmWarehouseId = defaultWarehouse.id;
+                } else {
+                  throw new BadRequestException('No warehouse found for PLM location');
+                }
+              }
+              
               console.log('✅ Using PLM Location:', {
                 name: plmLocation.name,
                 code: plmLocation.code,
@@ -659,11 +678,11 @@ export class PosClaimsService {
               const startYearShort = startYear.toString().slice(-2);
               const endYearShort = endYear.toString().slice(-2);
               const fiscalYearStr = `${startYearShort}-${endYearShort}`;
-              const prefix = `TR-CLM-${fiscalYearStr}`;
+              const prefix = `STN-${fiscalYearStr}`;
               
               const lastTR = await tx.transferRequest.findFirst({
                 where: { requestNo: { startsWith: prefix } },
-                orderBy: { requestNo: 'desc' },
+                orderBy: { createdAt: 'desc' },
                 select: { requestNo: true },
               });
               const seq = lastTR

@@ -1600,7 +1600,17 @@ export class TransferRequestService {
             });
 
              return this.prisma.$transaction(async (tx) => {
-                const plmWarehouseId = request.toWarehouseId!;
+                let plmWarehouseId = request.toWarehouseId;
+                if (!plmWarehouseId) {
+                    const defaultWarehouse = await tx.warehouse.findFirst({
+                        where: { isActive: true },
+                        select: { id: true }
+                    });
+                    if (!defaultWarehouse) {
+                        throw new BadRequestException('No active warehouse found to acknowledge claim');
+                    }
+                    plmWarehouseId = defaultWarehouse.id;
+                }
  
                 // Fetch claim to link it
                 const claim = await tx.posClaim.findFirst({
