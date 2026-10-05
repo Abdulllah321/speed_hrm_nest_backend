@@ -137,15 +137,14 @@ export class TransferRequestService {
                         const reservedQty = reservations._sum.quantity ? Number(reservations._sum.quantity) : 0;
                         availableQty = Math.max(0, physicalQty - reservedQty);
                     } else {
-                        const stock = await tx.inventoryItem.aggregate({
+                        const ledger = await tx.stockLedger.aggregate({
                             where: {
                                 locationId: data.fromLocationId,
-                                itemId: item.itemId,
-                                status: 'AVAILABLE'
+                                itemId: item.itemId
                             },
-                            _sum: { quantity: true }
+                            _sum: { qty: true }
                         });
-                        availableQty = stock._sum.quantity ? Number(stock._sum.quantity) : 0;
+                        availableQty = ledger._sum.qty ? Number(ledger._sum.qty) : 0;
                     }
 
                     if (availableQty < item.quantity) {
@@ -193,32 +192,37 @@ export class TransferRequestService {
                 // If isDirect is true, decrement stock and create the ledger entry immediately
                 if (isDirect) {
                     for (const item of createdRequest.items) {
-                        const sourceStocks = await tx.inventoryItem.findMany({
+                        const existingInventory = await tx.inventoryItem.findFirst({
                             where: {
                                 locationId: data.fromLocationId!,
                                 itemId: item.itemId,
                                 status: 'AVAILABLE',
-                                quantity: { gt: 0 }
                             },
-                            orderBy: { createdAt: 'asc' }
+                            orderBy: { createdAt: 'desc' }
                         });
 
-                        let remainingToDeduct = Number(item.quantity);
-                        let actualWarehouseId = null;
+                        let actualWarehouseId = existingInventory?.warehouseId || null;
 
-                        for (const sourceStock of sourceStocks) {
-                            if (remainingToDeduct <= 0) break;
-                            const deductQty = Math.min(Number(sourceStock.quantity), remainingToDeduct);
-                            await tx.inventoryItem.update({
-                                where: { id: sourceStock.id },
-                                data: { quantity: { decrement: deductQty } },
-                            });
-                            actualWarehouseId = sourceStock.warehouseId;
-                            remainingToDeduct -= deductQty;
+                        if (!actualWarehouseId) {
+                            const loc = await tx.location.findUnique({ where: { id: data.fromLocationId! } });
+                            actualWarehouseId = loc?.warehouseId || '';
                         }
 
-                        if (remainingToDeduct > 0) {
-                            throw new BadRequestException(`Insufficient stock for item ${item.itemId} at source outlet. Short by: ${remainingToDeduct}`);
+                        if (existingInventory) {
+                            await tx.inventoryItem.update({
+                                where: { id: existingInventory.id },
+                                data: { quantity: { decrement: Number(item.quantity) } },
+                            });
+                        } else {
+                            await tx.inventoryItem.create({
+                                data: {
+                                    itemId: item.itemId,
+                                    locationId: data.fromLocationId!,
+                                    warehouseId: actualWarehouseId,
+                                    quantity: -Number(item.quantity),
+                                    status: 'AVAILABLE'
+                                }
+                            });
                         }
 
                         const transferRate = await this.getCurrentItemRate(tx, item.itemId);
@@ -238,31 +242,31 @@ export class TransferRequestService {
                 } else if (transferType === 'WAREHOUSE_TO_OUTLET') {
                     // Immediately decrement warehouse inventory upon dispatch/creation
                     for (const item of createdRequest.items) {
-                        const sourceStocks = await tx.inventoryItem.findMany({
+                        const existingInventory = await tx.inventoryItem.findFirst({
                             where: {
                                 warehouseId: data.fromWarehouseId!,
                                 locationId: null,
                                 itemId: item.itemId,
                                 status: 'AVAILABLE',
-                                quantity: { gt: 0 }
                             },
-                            orderBy: { createdAt: 'asc' }
+                            orderBy: { createdAt: 'desc' }
                         });
 
-                        let remainingToDeduct = Number(item.quantity);
-
-                        for (const sourceStock of sourceStocks) {
-                            if (remainingToDeduct <= 0) break;
-                            const deductQty = Math.min(Number(sourceStock.quantity), remainingToDeduct);
+                        if (existingInventory) {
                             await tx.inventoryItem.update({
-                                where: { id: sourceStock.id },
-                                data: { quantity: { decrement: deductQty } },
+                                where: { id: existingInventory.id },
+                                data: { quantity: { decrement: Number(item.quantity) } },
                             });
-                            remainingToDeduct -= deductQty;
-                        }
-
-                        if (remainingToDeduct > 0) {
-                            throw new BadRequestException(`Insufficient stock for item ${item.itemId} in warehouse. Short by: ${remainingToDeduct}`);
+                        } else {
+                            await tx.inventoryItem.create({
+                                data: {
+                                    itemId: item.itemId,
+                                    locationId: null,
+                                    warehouseId: data.fromWarehouseId!,
+                                    quantity: -Number(item.quantity),
+                                    status: 'AVAILABLE'
+                                }
+                            });
                         }
 
                         const transferRate = await this.getCurrentItemRate(tx, item.itemId);
