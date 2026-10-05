@@ -2,12 +2,17 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { PosSessionService } from '../src/pos-session/pos-session.service';
 import { PrismaService } from '../src/database/prisma.service';
+import { PrismaMasterService } from '../src/database/prisma-master.service';
+import { EncryptionService } from '../src/common/utils/encryption.service';
 
 async function bootstrap() {
   console.log('Starting application context...');
   const app = await NestFactory.createApplicationContext(AppModule);
-  const prisma = app.get(PrismaService);
+  
+  const prismaMaster = app.get(PrismaMasterService);
+  const prismaService = app.get(PrismaService);
   const posSessionService = app.get(PosSessionService);
+  const encryptionService = app.get(EncryptionService);
 
   const dates = [
     '2026-10-01',
@@ -17,74 +22,107 @@ async function bootstrap() {
     '2026-10-05',
   ];
 
-  await PrismaService.asyncLocalStorage.run(
-    {
-      tenantId: 'default',
-      companyId: 'default',
-      dbUrl: process.env.DATABASE_URL as string,
+  const companies = await prismaMaster.company.findMany({
+    where: {
+      status: 'active',
     },
-    async () => {
-      console.log('Connected to DB...');
+    include: { tenant: true },
+  });
 
-      const existingRvQuery = {
-        type: 'rs_rv',
-        rvDate: {
-          gte: new Date('2026-10-01T00:00:00.000Z'),
-          lte: new Date('2026-10-05T23:59:59.999Z'),
-        },
-      };
+  if (companies.length === 0) {
+    console.log('No active companies found.');
+    await app.close();
+    return;
+  }
 
-      const existingRvs = await prisma.receiptVoucher.findMany({
-        where: existingRvQuery,
-      });
+  for (const company of companies) {
+    let dbUrl = company.dbUrl;
 
-      console.log(
-        `Found ${existingRvs.length} existing RSRVs between Oct 1 and Oct 5.`,
-      );
-
-      const rvIds = existingRvs.map((rv) => rv.id);
-
-      if (rvIds.length > 0) {
-        console.log('Deleting existing RSRV details...');
-        await prisma.receiptVoucherDetail.deleteMany({
-          where: { receiptVoucherId: { in: rvIds } },
-        });
-
-        console.log('Deleting existing RSRVs...');
-        await prisma.receiptVoucher.deleteMany({
-          where: { id: { in: rvIds } },
-        });
-        console.log('Deletion successful.');
+    if (company.dbPassword) {
+      try {
+        const plainPassword = encryptionService.decrypt(company.dbPassword);
+        const encodedPassword = encodeURIComponent(String(plainPassword));
+        if (company.dbUser && company.dbHost && company.dbName) {
+          const port = company.dbPort || 5432;
+          const encodedUser = encodeURIComponent(company.dbUser);
+          const encodedHost = company.dbHost;
+          const encodedDbName = encodeURIComponent(company.dbName);
+          dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public`;
+        }
+      } catch (decErr: any) {
+        console.error(`Failed to decrypt DB password for company ${company.name}`);
+        continue;
       }
+    }
 
-      const locations = await prisma.location.findMany({
-        where: { status: 'active', isDeleted: false },
-      });
+    if (!dbUrl) {
+      console.warn(`No database URL found for company ${company.name}`);
+      continue;
+    }
 
-      console.log(`Found ${locations.length} active locations.`);
+    const tenantId = company.tenantId || company.tenant?.id || company.id;
 
-      for (const dateStr of dates) {
-        console.log(`\n--- Generating RSRV for Date: ${dateStr} ---`);
-        for (const loc of locations) {
-          try {
-            await posSessionService.generateDaywiseReconciliationVoucherForDate(
-              loc.id,
-              dateStr,
-            );
-            console.log(`Success: RSRV for ${loc.name} on ${dateStr}`);
-          } catch (err: any) {
-            console.error(
-              `Failed: RSRV for ${loc.name} on ${dateStr}:`,
-              err?.message,
-            );
+    await PrismaService.asyncLocalStorage.run(
+      {
+        tenantId,
+        companyId: company.id,
+        dbUrl,
+      },
+      async () => {
+        console.log(`\n===========================================`);
+        console.log(`Processing company: ${company.name} (${company.code})`);
+        
+        // 1. Delete Existing
+        const existingRvs = await prismaService.receiptVoucher.findMany({
+          where: {
+            type: 'rs_rv',
+            rvDate: {
+              gte: new Date('2026-10-01T00:00:00.000Z'),
+              lte: new Date('2026-10-05T23:59:59.999Z'),
+            },
+          },
+        });
+
+        console.log(`Found ${existingRvs.length} existing RSRVs to delete.`);
+        const rvIds = existingRvs.map((rv) => rv.id);
+
+        if (rvIds.length > 0) {
+          await prismaService.receiptVoucherDetail.deleteMany({
+            where: { receiptVoucherId: { in: rvIds } },
+          });
+          await prismaService.receiptVoucher.deleteMany({
+            where: { id: { in: rvIds } },
+          });
+          console.log('Deleted existing RSRVs successfully.');
+        }
+
+        // 2. Generate New
+        const locations = await prismaService.location.findMany({
+          where: { status: 'active', isDeleted: false },
+        });
+
+        for (const dateStr of dates) {
+          console.log(`\n--- Generating RSRV for Date: ${dateStr} ---`);
+          for (const loc of locations) {
+            try {
+              await posSessionService.generateDaywiseReconciliationVoucherForDate(
+                loc.id,
+                dateStr,
+              );
+              console.log(`Success: RSRV generated for ${loc.name} on ${dateStr}`);
+            } catch (err: any) {
+              console.error(
+                `Failed: RSRV generation for ${loc.name} on ${dateStr}:`,
+                err?.message,
+              );
+            }
           }
         }
-      }
+      },
+    );
+  }
 
-      console.log('\nAll done! RSRV Regeneration Complete.');
-    },
-  );
-
+  console.log('\nAll done! RSRV Regeneration Complete for all companies.');
   await app.close();
 }
 
