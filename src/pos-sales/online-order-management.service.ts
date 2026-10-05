@@ -599,7 +599,10 @@ export class OnlineOrderManagementService {
     // Update the online order status to "posted" ONLY after successful POS order creation
     await this.prisma.onlineOrder.updateMany({
       where: { orderNumber },
-      data: { itemStatus: 'posted' },
+      data: { 
+        itemStatus: 'posted',
+        salesOrderId: createdOrder.data.id,
+      },
     });
 
     return {
