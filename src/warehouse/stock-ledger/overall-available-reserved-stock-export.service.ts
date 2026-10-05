@@ -1286,6 +1286,7 @@ export class OverallAvailableReservedStockExportService {
         value,
         unitCost,
         costingValue,
+        discountRate: Number(item.discountRate || 0),
         warehouseStocks,
         locationStocks,
       };

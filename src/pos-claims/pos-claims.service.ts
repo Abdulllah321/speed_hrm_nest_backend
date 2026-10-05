@@ -583,42 +583,44 @@ export class PosClaimsService {
             if (posLocation) {
               console.log('✅ POS location found, proceeding with transfer...');
 
-              // ⚡ CLAIM SPECIFIC: Always send to PLM Warehouse (C20001)
-              console.log('🎯 Claim Return: Finding PLM Warehouse...');
-              let plmWarehouse = await tx.warehouse.findFirst({
+              // ⚡ CLAIM SPECIFIC: Always send to PLM Location (C20001)
+              console.log('🎯 Claim Return: Finding PLM Location...');
+              let plmLocation = await tx.location.findFirst({
                 where: {
                   code: 'C20001',
-                  isActive: true,
+                  isDeleted: false,
                 },
-                select: { id: true, name: true, code: true },
+                select: { id: true, name: true, code: true, warehouseId: true },
               });
 
-              if (!plmWarehouse) {
-                // Fallback: search for any active warehouse with "PLM" in its code or name
-                plmWarehouse = await tx.warehouse.findFirst({
+              if (!plmLocation) {
+                // Fallback: search for any active location with "PLM" in its code or name
+                plmLocation = await tx.location.findFirst({
                   where: {
-                    isActive: true,
+                    isDeleted: false,
                     OR: [
                       { code: { contains: 'PLM', mode: 'insensitive' } },
                       { name: { contains: 'PLM', mode: 'insensitive' } },
                     ],
                   },
-                  select: { id: true, name: true, code: true },
+                  select: { id: true, name: true, code: true, warehouseId: true },
                 });
               }
 
-              if (!plmWarehouse) {
-                console.log('❌ PLM Warehouse (C20001) not found!');
+              if (!plmLocation) {
+                console.log('❌ PLM Location (C20001) not found!');
                 throw new BadRequestException(
-                  'PLM Warehouse not found for claim return. Please contact admin.',
+                  'PLM Location not found for claim return. Please contact admin.',
                 );
               }
 
-              const plmWarehouseId = plmWarehouse.id;
-              console.log('✅ Using PLM Warehouse:', {
-                name: plmWarehouse.name,
-                code: plmWarehouse.code,
-                id: plmWarehouseId,
+              const plmLocationId = plmLocation.id;
+              const plmWarehouseId = plmLocation.warehouseId || null;
+              console.log('✅ Using PLM Location:', {
+                name: plmLocation.name,
+                code: plmLocation.code,
+                id: plmLocationId,
+                warehouseId: plmWarehouseId,
               });
 
               // Get POS location's original warehouse (for stock validation)
@@ -667,7 +669,8 @@ export class PosClaimsService {
                   requestNo: transferRequestNo,
                   fromLocationId: posLocation.id,
                   fromWarehouseId: posWarehouseId, // POS location's warehouse
-                  toWarehouseId: plmWarehouseId, // PLM Warehouse
+                  toLocationId: plmLocationId, // PLM Location
+                  toWarehouseId: plmWarehouseId, // PLM Warehouse (if any)
                   transferType: 'CLAIM_TO_PLM', // Special type for claims
                   status: 'PENDING', // ⚡ Changed to PENDING (requires PLM acknowledgment)
                   notes: `Auto-generated from approved claim ${claim.claimNumber} for order ${salesOrder.orderNumber}. Awaiting PLM acknowledgment before inventory update.`,

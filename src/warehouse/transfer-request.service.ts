@@ -1872,9 +1872,6 @@ export class TransferRequestService {
                 {
                     OR: [
                         { requestNo: { contains: q, mode: 'insensitive' } },
-                        { inboundNo: { contains: q, mode: 'insensitive' } },
-                        { outboundNo: { contains: q, mode: 'insensitive' } },
-                        { formattedSerialNo: { contains: q, mode: 'insensitive' } },
                         { items: { some: { item: { barCode: { contains: q, mode: 'insensitive' } } } } },
                         { items: { some: { item: { sku: { contains: q, mode: 'insensitive' } } } } },
                         { items: { some: { item: { description: { contains: q, mode: 'insensitive' } } } } }
