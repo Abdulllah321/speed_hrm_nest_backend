@@ -30,6 +30,7 @@ export class TransferRequestService {
 
     async createRequest(data: {
         fromWarehouseId?: string; // Optional for outlet-to-warehouse
+        toWarehouseId?: string;   // Destination warehouse for returns
         fromLocationId?: string;  // Source outlet for returns and outlet-to-outlet
         toLocationId?: string;    // Destination outlet (null for warehouse)
         transferType?: 'WAREHOUSE_TO_OUTLET' | 'OUTLET_TO_WAREHOUSE' | 'OUTLET_TO_OUTLET';
@@ -66,8 +67,8 @@ export class TransferRequestService {
                     throw new BadRequestException('fromWarehouseId and toLocationId required for warehouse-to-outlet transfers');
                 }
             } else if (transferType === 'OUTLET_TO_WAREHOUSE') {
-                if (!data.fromLocationId || !data.fromWarehouseId) {
-                    throw new BadRequestException('fromLocationId and fromWarehouseId required for outlet-to-warehouse transfers');
+                if (!data.fromLocationId || !data.toWarehouseId) {
+                    throw new BadRequestException('fromLocationId and toWarehouseId required for return transfers');
                 }
             } else if (transferType === 'OUTLET_TO_OUTLET') {
                 if (!data.fromLocationId || !data.toLocationId) {
@@ -157,6 +158,7 @@ export class TransferRequestService {
                     data: {
                         requestNo,
                         fromWarehouseId: data.fromWarehouseId || null,
+                        toWarehouseId: data.toWarehouseId || null,
                         fromLocationId: data.fromLocationId || null,
                         toLocationId: data.toLocationId || null,
                         transferType,

@@ -59,13 +59,13 @@ async function main() {
     // Update TransferRequests
     await pool.query(`
       UPDATE "TransferRequest" 
-      SET "fromLocationId" = $1
+      SET "fromLocationId" = $1, "fromWarehouseId" = NULL
       WHERE "fromWarehouseId" = $2 AND "fromLocationId" IS NULL
     `, [locId, whId]);
 
     await pool.query(`
       UPDATE "TransferRequest" 
-      SET "toLocationId" = $1
+      SET "toLocationId" = $1, "toWarehouseId" = NULL
       WHERE "toWarehouseId" = $2 AND "toLocationId" IS NULL
     `, [locId, whId]);
     console.log('✅ TransferRequests updated.');
