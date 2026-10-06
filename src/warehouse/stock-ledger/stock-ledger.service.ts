@@ -789,7 +789,24 @@ export class StockLedgerService {
             },
           });
 
-          const totalStock = currentStock._sum.qty || new Prisma.Decimal(0);
+          let totalStock = currentStock._sum.qty || new Prisma.Decimal(0);
+
+          if (totalStock.equals(0)) {
+            // Fallback to inventoryItem if StockLedger has no record (for legacy data compatibility)
+            const inv = await transaction.inventoryItem.findFirst({
+              where: {
+                itemId,
+                ...(locationId
+                  ? { locationId }
+                  : { warehouseId, locationId: null }),
+                status: 'AVAILABLE',
+              },
+              select: { quantity: true },
+            });
+            if (inv) {
+              totalStock = new Prisma.Decimal(inv.quantity || 0);
+            }
+          }
 
           if (totalStock.plus(quantity).isNegative()) {
             throw new BadRequestException(
