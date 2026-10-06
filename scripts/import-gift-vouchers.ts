@@ -59,7 +59,13 @@ export function parseFlexibleDate(val: any): Date | null {
     const [datePart, timePart] = str.split(/\s+/);
     const parts = datePart.split('/').map(Number);
     if (parts.length === 3) {
-      const [d, m, y] = parts;
+      let [d, m, y] = parts;
+      if (d <= 12 && m > 12) {
+        // It's MM/DD/YY
+        const temp = d;
+        d = m;
+        m = temp;
+      }
       const [hh, mm, ss] = (timePart || '00:00:00').split(':').map(Number);
       const year = y < 100 ? 2000 + y : y;
       const parsed = new Date(Date.UTC(year, m - 1, d, hh || 0, mm || 0, ss || 0));
@@ -136,7 +142,7 @@ export function readAndParseGiftVouchers(filePath: string, limit?: number): Pars
 
   let headerIndex = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes('| CostCentre |') || lines[i].includes('| CostCentre|')) {
+    if (lines[i].replace(/\s+/g, '').includes('|CostCentre|')) {
       headerIndex = i;
       break;
     }
@@ -151,13 +157,15 @@ export function readAndParseGiftVouchers(filePath: string, limit?: number): Pars
   const colIdx = {
     costCentre: rawHeaders.findIndex((h) => h.toLowerCase().includes('costcentre')),
     locationCode: rawHeaders.findIndex((h) => h.toLowerCase().includes('location')),
-    voucherNumber: rawHeaders.findIndex((h) => h.toLowerCase().includes('vouchernumber') || h.toLowerCase().includes('giftvouchernumber')),
+    voucherNumber: rawHeaders.findIndex((h) => h.toLowerCase().includes('vouchernumber') || h.toLowerCase().includes('giftvouchernumber') || h.toLowerCase().includes('documentnumber')),
     documentDate: rawHeaders.findIndex((h) => h.toLowerCase().includes('documentdate')),
     traderDetail: rawHeaders.findIndex((h) => h.toLowerCase().includes('traderdetail') || h.toLowerCase().includes('trader')),
+    companyAddress: rawHeaders.findIndex((h) => h.toLowerCase().includes('companyaddress')),
+    companyPhone: rawHeaders.findIndex((h) => h.toLowerCase().includes('companyphone')),
     remarks: rawHeaders.findIndex((h) => h.toLowerCase().includes('remarks')),
     amount: rawHeaders.findIndex((h) => h.toLowerCase() === 'amount'),
     discountAmount: rawHeaders.findIndex((h) => h.toLowerCase().includes('discountamount') || h.toLowerCase().includes('discount')),
-    afterDiscAmount: rawHeaders.findIndex((h) => h.toLowerCase().includes('after disc') || h.toLowerCase().includes('afterdisc')),
+    afterDiscAmount: rawHeaders.findIndex((h) => h.toLowerCase().includes('after disc') || h.toLowerCase().includes('afterdisc') || h.toLowerCase() === 'amount'),
     cashSale: rawHeaders.findIndex((h) => h.toLowerCase().includes('cashsale') || h.toLowerCase().includes('cash')),
     cardSale: rawHeaders.findIndex((h) => h.toLowerCase().includes('cardsale') || h.toLowerCase().includes('card')),
     meezanBank: rawHeaders.findIndex((h) => h.toLowerCase().includes('meezan')),
@@ -193,7 +201,11 @@ export function readAndParseGiftVouchers(filePath: string, limit?: number): Pars
     const docDateStr = cols[colIdx.documentDate] || '';
     const docDate = parseFlexibleDate(docDateStr) || new Date('2026-07-01');
 
-    const traderDetail = cols[colIdx.traderDetail] || '';
+    let traderDetail = cols[colIdx.traderDetail] || '';
+    if (!traderDetail && colIdx.companyAddress !== -1) {
+      traderDetail = (cols[colIdx.companyAddress] || '') + ' ' + (cols[colIdx.companyPhone] || '');
+      traderDetail = traderDetail.trim();
+    }
     const customer = parseTraderCustomer(traderDetail);
 
     const remarks = cols[colIdx.remarks] || '';
@@ -506,7 +518,6 @@ export async function syncOrderTendersWithRedemptions(prisma: PrismaClient) {
           },
         }),
       ),
-      { timeout: 120000 },
     );
     updatedCount += chunk.length;
   }
