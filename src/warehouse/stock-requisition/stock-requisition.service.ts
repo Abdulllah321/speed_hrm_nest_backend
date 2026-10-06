@@ -1056,6 +1056,7 @@ export class StockRequisitionService {
         resolvedItems.push({
           itemId: dbItem.id,
           sku: dbItem.sku,
+          barcode: dbItem.barCode || null,
           description: dbItem.description,
           color: dbItem.color?.name || null,
           size: dbItem.size?.name || null,
