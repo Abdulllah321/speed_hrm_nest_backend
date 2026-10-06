@@ -480,8 +480,9 @@ export class OnlineOrderManagementService {
         currentItemStock = Number(initialStockSum._sum?.qty ?? 0);
       }
 
-      // 5. If STILL not found, let's do a smart substring search on the database for the long ecommerce SKU!
-      if (!item && row.sku) {
+      // 5. If STILL not found, OR it matched an item but that item has insufficient stock (e.g. it matched a junk item),
+      // let's do a smart substring search on the database for the long ecommerce SKU!
+      if ((!item || currentItemStock < (Number(row.qty) || 1)) && row.sku) {
         // E-commerce SKUs are often in the format BaseSKU_Color_Size
         // E.g. HJ7365-001_BLACK OR GREY_1Y
         const baseSku = row.sku.split('_')[0].trim();
