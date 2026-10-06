@@ -517,6 +517,8 @@ export class OnlineOrderManagementService {
             });
             fbAvailable = Number(fbStockSum._sum?.qty ?? 0);
 
+            console.log(`[FUZZY] Fallback item ${fallbackItem.sku} (${fallbackItem.id}) StockLedger:`, fbAvailable);
+
             if (fbAvailable === 0) {
               const inv = await this.prisma.inventoryItem.findFirst({
                 where: {
@@ -526,6 +528,7 @@ export class OnlineOrderManagementService {
                 },
               });
               fbAvailable = inv?.quantity || 0;
+              console.log(`[FUZZY] Fallback item ${fallbackItem.sku} InventoryItem:`, fbAvailable);
             }
 
             if (fbAvailable >= (Number(row.qty) || 1)) {
@@ -546,30 +549,9 @@ export class OnlineOrderManagementService {
       }
 
       const qty = Number(row.qty) || 1;
-      let availableQty = currentItemStock;
-
-      // If no ledger entries exist, fallback to InventoryItem
-      if (availableQty === -9999 || availableQty === 0) {
-        const inventory = await this.prisma.inventoryItem.findFirst({
-          where: {
-            itemId: item.id,
-            locationId: locationId,
-            status: 'AVAILABLE',
-          },
-        });
-        if (inventory) {
-          availableQty = inventory.quantity;
-        } else if (availableQty === -9999) {
-          availableQty = 0;
-        }
-      }
-
-      if (availableQty < qty) {
-        throw new BadRequestException(
-          `Insufficient stock for SKU ${row.sku}. Available: ${availableQty}, Required: ${qty}`,
-        );
-      }
-
+      // We bypass the pre-check here because StockLedgerService.createEntry
+      // already enforces a strict stock check (including InventoryItem fallback).
+      
       const price = Number(row.price) || 0;
 
       // In the Excel file, SKU discounted and SKU actual discount are PERCENTAGES!
