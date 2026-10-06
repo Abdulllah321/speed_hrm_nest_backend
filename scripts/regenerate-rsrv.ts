@@ -8,13 +8,14 @@ import { EncryptionService } from '../src/common/utils/encryption.service';
 async function bootstrap() {
   console.log('Starting application context...');
   const app = await NestFactory.createApplicationContext(AppModule);
-  
+
   const prismaMaster = app.get(PrismaMasterService);
   const prismaService = app.get(PrismaService);
   const posSessionService = app.get(PosSessionService);
   const encryptionService = app.get(EncryptionService);
 
   const dates = [
+    '2026-09-30',
     '2026-10-01',
     '2026-10-02',
     '2026-10-03',
@@ -50,7 +51,9 @@ async function bootstrap() {
           dbUrl = `postgresql://${encodedUser}:${encodedPassword}@${encodedHost}:${port}/${encodedDbName}?schema=public`;
         }
       } catch (decErr: any) {
-        console.error(`Failed to decrypt DB password for company ${company.name}`);
+        console.error(
+          `Failed to decrypt DB password for company ${company.name}`,
+        );
         continue;
       }
     }
@@ -71,7 +74,7 @@ async function bootstrap() {
       async () => {
         console.log(`\n===========================================`);
         console.log(`Processing company: ${company.name} (${company.code})`);
-        
+
         // 1. Delete Existing
         const existingRvs = await prismaService.receiptVoucher.findMany({
           where: {
@@ -109,7 +112,9 @@ async function bootstrap() {
                 loc.id,
                 dateStr,
               );
-              console.log(`Success: RSRV generated for ${loc.name} on ${dateStr}`);
+              console.log(
+                `Success: RSRV generated for ${loc.name} on ${dateStr}`,
+              );
             } catch (err: any) {
               console.error(
                 `Failed: RSRV generation for ${loc.name} on ${dateStr}:`,
