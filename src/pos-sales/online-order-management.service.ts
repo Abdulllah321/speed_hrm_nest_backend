@@ -430,7 +430,7 @@ export class OnlineOrderManagementService {
       })),
     );
 
-    const itemsPayload = [];
+    const itemsPayload: any[] = [];
     let grandTotal = 0;
 
     for (const row of orderRows) {
@@ -480,8 +480,9 @@ export class OnlineOrderManagementService {
         currentItemStock = Number(initialStockSum._sum?.qty ?? 0);
       }
 
-      // 5. If STILL not found, let's do a smart substring search on the database for the long ecommerce SKU!
-      if (!item && row.sku) {
+      // 5. If STILL not found, OR it matched an item but that item has insufficient stock (e.g. it matched a junk item),
+      // let's do a smart substring search on the database for the long ecommerce SKU!
+      if ((!item || currentItemStock < (Number(row.qty) || 1)) && row.sku) {
         // E-commerce SKUs are often in the format BaseSKU_Color_Size
         // E.g. HJ7365-001_BLACK OR GREY_1Y
         const baseSku = row.sku.split('_')[0].trim();
@@ -516,6 +517,8 @@ export class OnlineOrderManagementService {
             });
             fbAvailable = Number(fbStockSum._sum?.qty ?? 0);
 
+            console.log(`[FUZZY] Fallback item ${fallbackItem.sku} (${fallbackItem.id}) StockLedger:`, fbAvailable);
+
             if (fbAvailable === 0) {
               const inv = await this.prisma.inventoryItem.findFirst({
                 where: {
@@ -525,6 +528,7 @@ export class OnlineOrderManagementService {
                 },
               });
               fbAvailable = inv?.quantity || 0;
+              console.log(`[FUZZY] Fallback item ${fallbackItem.sku} InventoryItem:`, fbAvailable);
             }
 
             if (fbAvailable >= (Number(row.qty) || 1)) {
@@ -545,30 +549,9 @@ export class OnlineOrderManagementService {
       }
 
       const qty = Number(row.qty) || 1;
-      let availableQty = currentItemStock;
-
-      // If no ledger entries exist, fallback to InventoryItem
-      if (availableQty === -9999 || availableQty === 0) {
-        const inventory = await this.prisma.inventoryItem.findFirst({
-          where: {
-            itemId: item.id,
-            locationId: locationId,
-            status: 'AVAILABLE',
-          },
-        });
-        if (inventory) {
-          availableQty = inventory.quantity;
-        } else if (availableQty === -9999) {
-          availableQty = 0;
-        }
-      }
-
-      if (availableQty < qty) {
-        throw new BadRequestException(
-          `Insufficient stock for SKU ${row.sku}. Available: ${availableQty}, Required: ${qty}`,
-        );
-      }
-
+      // We bypass the pre-check here because StockLedgerService.createEntry
+      // already enforces a strict stock check (including InventoryItem fallback).
+      
       const price = Number(row.price) || 0;
 
       // In the Excel file, SKU discounted and SKU actual discount are PERCENTAGES!
