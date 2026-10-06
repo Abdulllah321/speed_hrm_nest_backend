@@ -8,6 +8,9 @@ import { PrismaService } from '../database/prisma.service';
 import * as xlsx from 'xlsx';
 import { ReplaySubject, Observable } from 'rxjs';
 import { PosSalesService } from './pos-sales.service';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 @Injectable()
 export class OnlineOrderManagementService {
@@ -29,17 +32,46 @@ export class OnlineOrderManagementService {
     private posSalesService: PosSalesService,
   ) {}
 
+  private saveSession(uploadId: string, session: any) {
+    try {
+      const TEMP_DIR = path.join(os.tmpdir(), 'speed-limit-online-orders');
+      if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
+      const filePath = path.join(TEMP_DIR, `${uploadId}.json`);
+      const { subject, ...state } = session;
+      fs.writeFileSync(filePath, JSON.stringify(state));
+    } catch (e) {}
+  }
+
+  private loadSession(uploadId: string) {
+    try {
+      const filePath = path.join(os.tmpdir(), 'speed-limit-online-orders', `${uploadId}.json`);
+      if (fs.existsSync(filePath)) {
+        const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        state.subject = new ReplaySubject<MessageEvent>(1);
+        this.uploads.set(uploadId, state);
+        return state;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  private getSession(uploadId: string) {
+    return this.uploads.get(uploadId) || this.loadSession(uploadId);
+  }
+
   async uploadFile(buffer: Buffer, filename: string) {
     const uploadId = 'upload-' + Date.now();
     // Use ReplaySubject(1) so late subscribers get the last status
     const subject = new ReplaySubject<MessageEvent>(1);
 
-    this.uploads.set(uploadId, {
+    const newSession = {
       status: 'validating',
       progress: 0,
       data: [],
       subject,
-    });
+    };
+    this.uploads.set(uploadId, newSession);
+    this.saveSession(uploadId, newSession);
 
     // Async validation
     setTimeout(() => this.validateFile(uploadId, buffer), 100);
@@ -48,7 +80,7 @@ export class OnlineOrderManagementService {
   }
 
   private async validateFile(uploadId: string, buffer: Buffer) {
-    const session = this.uploads.get(uploadId);
+    const session = this.getSession(uploadId);
     if (!session) return;
 
     try {
@@ -68,6 +100,7 @@ export class OnlineOrderManagementService {
       session.data = rawData;
       session.status = 'validated';
       session.progress = 100;
+      this.saveSession(uploadId, session);
 
       session.subject.next({
         data: {
@@ -84,6 +117,7 @@ export class OnlineOrderManagementService {
     } catch (error: any) {
       session.status = 'failed';
       session.message = error.message || 'Failed to parse file';
+      this.saveSession(uploadId, session);
       session.subject.next({
         data: {
           type: 'failed',
@@ -94,12 +128,13 @@ export class OnlineOrderManagementService {
   }
 
   async confirmUpload(uploadId: string, locationId: string) {
-    const session = this.uploads.get(uploadId);
+    const session = this.getSession(uploadId);
     if (!session || session.status !== 'validated') {
       throw new BadRequestException('Invalid or expired upload session');
     }
 
     session.status = 'processing';
+    this.saveSession(uploadId, session);
     session.subject.next({
       data: { type: 'status', data: { status: 'processing', progress: 0 } },
     });
@@ -111,7 +146,7 @@ export class OnlineOrderManagementService {
   }
 
   private async processUpload(uploadId: string, locationId: string) {
-    const session = this.uploads.get(uploadId);
+    const session = this.getSession(uploadId);
     if (!session) return;
 
     try {
@@ -207,6 +242,7 @@ export class OnlineOrderManagementService {
       }
 
       session.status = 'completed';
+      this.saveSession(uploadId, session);
       session.subject.next({
         data: {
           type: 'completed',
@@ -227,6 +263,7 @@ export class OnlineOrderManagementService {
       }, 10000); // Wait longer before deleting so polling can fetch final status
     } catch (error: any) {
       session.status = 'failed';
+      this.saveSession(uploadId, session);
       session.subject.next({
         data: {
           type: 'failed',
@@ -237,7 +274,7 @@ export class OnlineOrderManagementService {
   }
 
   subscribeToEvents(uploadId: string): Observable<MessageEvent> {
-    const session = this.uploads.get(uploadId);
+    const session = this.getSession(uploadId);
     if (!session) {
       const subject = new ReplaySubject<MessageEvent>(1);
       setTimeout(() => {
@@ -265,7 +302,7 @@ export class OnlineOrderManagementService {
   }
 
   getUploadStatus(uploadId: string) {
-    const session = this.uploads.get(uploadId);
+    const session = this.getSession(uploadId);
     if (!session) return { status: 'failed', message: 'Session not found' };
 
     return {
@@ -279,9 +316,10 @@ export class OnlineOrderManagementService {
   }
 
   cancelUpload(uploadId: string) {
-    const session = this.uploads.get(uploadId);
+    const session = this.getSession(uploadId);
     if (session) {
       session.status = 'cancelled';
+      this.saveSession(uploadId, session);
       session.subject.next({
         data: { type: 'cancelled', data: { status: 'cancelled' } },
       });
