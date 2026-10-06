@@ -2348,7 +2348,7 @@ export class PosSalesService implements OnModuleInit {
         }
       }
 
-      if (order.tenderType === 'split') {
+      if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
         if (cash > 0) tenders.push({ method: 'cash', amount: cash });
         if (card > 0) tenders.push({ method: 'card', amount: card });
       } else if (order.paymentMethod) {
@@ -2939,7 +2939,7 @@ export class PosSalesService implements OnModuleInit {
         });
       }
 
-      if (order.tenderType === 'split') {
+      if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
         if (Number(order.cashAmount) > 0)
           tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
         const isLegacy =
@@ -3655,7 +3655,7 @@ export class PosSalesService implements OnModuleInit {
       }
     }
 
-    if (order.tenderType === 'split') {
+    if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
       if (cash > 0) tenders.push({ method: 'cash', amount: cash });
       if (card > 0) tenders.push({ method: 'card', amount: card });
     } else if (order.paymentMethod) {
