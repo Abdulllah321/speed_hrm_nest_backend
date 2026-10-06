@@ -1441,7 +1441,7 @@ export class TransferRequestService {
                             await this.stockMovementService.executeMovement({
                                 itemId: item.itemId,
                                 fromLocationId: request.fromLocationId!,
-                                toWarehouseId: request.fromWarehouseId!,
+                                toWarehouseId: request.toWarehouseId!,
                                 quantity: Number(item.quantity),
                                 type: 'RETURN_TRANSFER',
                                 referenceType: 'CLAIM_RETURN_REQUEST',
@@ -1455,7 +1455,7 @@ export class TransferRequestService {
                             await this.stockMovementService.executeMovement({
                                 itemId: item.itemId,
                                 fromLocationId: request.fromLocationId!,
-                                toWarehouseId: request.fromWarehouseId!,
+                                toWarehouseId: request.toWarehouseId!,
                                 quantity: Number(item.quantity),
                                 type: 'RETURN_TRANSFER',
                                 referenceType: 'RETURN_REQUEST',
