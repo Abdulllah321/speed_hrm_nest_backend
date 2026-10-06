@@ -1397,15 +1397,19 @@ export class PosSessionService {
           .filter(Boolean)
       : [];
 
+    const dateParts = date.split(',');
+    const startDateStr = dateParts[0].trim();
+    const endDateStr = dateParts.length > 1 ? dateParts[1].trim() : startDateStr;
+
     const computeSingleReconciliation = async (
       targetLocWhere: any,
       displayName: string,
       targetLocId?: string,
     ) => {
-      const startOfDay = new Date(date + 'T00:00:00');
+      const startOfDay = new Date(startDateStr + 'T00:00:00');
       startOfDay.setHours(0, 0, 0, 0);
 
-      const endOfDay = new Date(date + 'T00:00:00');
+      const endOfDay = new Date(endDateStr + 'T00:00:00');
       endOfDay.setHours(23, 59, 59, 999);
 
       const timeFilter = {
@@ -1910,8 +1914,10 @@ export class PosSessionService {
         locationId: targetLocId || locationId,
         locationName: displayName,
         reportTitle: 'Sales Reconciliation',
-        dateRange: formatDate(date + 'T00:00:00'),
-        documentNumber: `REC-${date.replace(/-/g, '')}`,
+        dateRange: startDateStr === endDateStr 
+          ? formatDate(startDateStr + 'T00:00:00') 
+          : `${formatDate(startDateStr + 'T00:00:00')} TO ${formatDate(endDateStr + 'T00:00:00')}`,
+        documentNumber: `REC-${startDateStr.replace(/-/g, '')}`,
         selectedDate: date,
         session: null,
         metrics: {
@@ -1977,11 +1983,12 @@ export class PosSessionService {
     }
 
     const targetLocations = await this.prisma.location.findMany({
-      where: locIds.length > 0 ? { id: { in: locIds } } : { status: 'active' },
+      where: locIds.length > 0 ? { id: { in: locIds } } : { status: 'active', isStockLocation: true },
       select: { id: true, name: true, code: true },
+      orderBy: { name: 'asc' },
     });
 
-    const locationWhere = locIds.length > 1 ? { in: locIds } : undefined;
+    const locationWhere = locIds.length > 0 ? { in: locIds } : { in: targetLocations.map((l) => l.id) };
 
     const mergedReport = await computeSingleReconciliation(
       locationWhere,
