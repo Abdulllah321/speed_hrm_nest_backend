@@ -1,0 +1,289 @@
+[
+  {
+    "S. No.": "1",
+    "tagId": "N10001",
+    "Location": "NIKE-DOLMEN CLIFTON",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "2",
+    "tagId": "N10002",
+    "Location": "NIKE-XINHUA MALL",
+    "Bank ": "BANK AL-FALAH LIMITED ",
+    "GL Code": "31100004"
+  },
+  {
+    "S. No.": "3",
+    "tagId": "N10003",
+    "Location": "NIKE-PACKAGES MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "4",
+    "tagId": "N10004",
+    "Location": "NIKE-CENTAURUS MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "5",
+    "tagId": "N10005",
+    "Location": "NIKE-SAFA GOLD MALL",
+    "Bank ": "JS BANK LIMITED ",
+    "GL Code": "31100002"
+  },
+  {
+    "S. No.": "6",
+    "tagId": "SS1001 ",
+    "Location": "SPEED SPORTS-LUCKY ONE MALL",
+    "Bank ": "ALLIED BANK LIMITED ",
+    "GL Code": "31100007"
+  },
+  {
+    "S. No.": "7",
+    "tagId": "SS1002",
+    "Location": "SPEED SPORTS-DOLMEN CLIFTON",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "8",
+    "tagId": "SS1003",
+    "Location": "SPEED SPORTS-ZAMZAM TOWER",
+    "Bank ": "BANK AL-HABIB LIMITED ",
+    "GL Code": "31100006"
+  },
+  {
+    "S. No.": "9",
+    "tagId": "SS1004",
+    "Location": "SPEED SPORTS-FOUNTAIN AVENUE",
+    "Bank ": "BANK AL-FALAH LIMITED ",
+    "GL Code": "31100004"
+  },
+  {
+    "S. No.": "10",
+    "tagId": "SS1005",
+    "Location": "SPEED SPORTS-EMPORIUM MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "11",
+    "tagId": "SS1006",
+    "Location": "SPEED SPORTS-DOLMEN LAHORE",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "12",
+    "tagId": "SS1007",
+    "Location": "SPEED SPORTS-SAFA GOLD MALL",
+    "Bank ": "JS BANK LIMITED ",
+    "GL Code": "31100002"
+  },
+  {
+    "S. No.": "13",
+    "tagId": "SS1008",
+    "Location": "SPEED SPORTS-GIGA MALL",
+    "Bank ": "MEEZAN BANK LIMITED ",
+    "GL Code": "31100008"
+  },
+  {
+    "S. No.": "14",
+    "tagId": "SS1009",
+    "Location": "SPEED SPORTS-MALL OF MULTAN",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "15",
+    "tagId": "SS1010 ",
+    "Location": "SPEED SPORTS-LYALLPUR GALLERIA",
+    "Bank ": "ALLIED BANK LIMITED ",
+    "GL Code": "31100007"
+  },
+  {
+    "S. No.": "16",
+    "tagId": "SS1011",
+    "Location": "SPEED SPORTS-ONLINE",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "17",
+    "tagId": "SS1012",
+    "Location": "SPEED SPORTS-THE FORUM ",
+    "Bank ": "BANK AL-HABIB LIMITED ",
+    "GL Code": "31100006"
+  },
+  {
+    "S. No.": "18",
+    "tagId": "A10001",
+    "Location": "ADIDAS-LUCKY ONE MALL",
+    "Bank ": "ALLIED BANK LIMITED ",
+    "GL Code": "31100007"
+  },
+  {
+    "S. No.": "19",
+    "tagId": "A10002",
+    "Location": "ADIDAS-JINNAH ICON MALL",
+    "Bank ": "MEEZAN BANK LIMITED ",
+    "GL Code": "31100008"
+  },
+  {
+    "S. No.": "20",
+    "tagId": "A10003",
+    "Location": "ADIDAS-MADISON SQUARE MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "21",
+    "tagId": "PU1001",
+    "Location": "PUMA-DOLMEN LAHORE",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "22",
+    "tagId": "PU1002",
+    "Location": "PUMA-UNITED MALL MULTAN",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "23",
+    "tagId": "CK1001",
+    "Location": "C&K-DOLMEN CLIFTON",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "24",
+    "tagId": "CK1002",
+    "Location": "C&K-LUCKY ONE MALL",
+    "Bank ": "ALLIED BANK LIMITED ",
+    "GL Code": "31100007"
+  },
+  {
+    "S. No.": "25",
+    "tagId": "CK1004",
+    "Location": "C&K-PACKAGES MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "26",
+    "tagId": "CK1005",
+    "Location": "C&K-DOLMEN LAHORE",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "27",
+    "tagId": "CK1006",
+    "Location": "C&K-CENTAURUS MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "28",
+    "tagId": "P10001 ",
+    "Location": "PEDRO-DOLMEN CLIFTON",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "29",
+    "tagId": "P10002",
+    "Location": "PEDRO-PACKAGES MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "30",
+    "tagId": "P10003",
+    "Location": "PEDRO-DOLMEN LAHORE",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "31",
+    "tagId": "W10001 ",
+    "Location": "WATCH OUTLET-DOLMEN CLIFTON",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "32",
+    "tagId": "W10002",
+    "Location": "WATCH OUTLET-EMPORIUM MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "33",
+    "tagId": "W10003",
+    "Location": "WATCH OUTLET-PACKAGES MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "34",
+    "tagId": "W10004",
+    "Location": "WATCH OUTLET-SAFA GOLD MALL",
+    "Bank ": "JS BANK LIMITED ",
+    "GL Code": "31100002"
+  },
+  {
+    "S. No.": "35",
+    "tagId": "W10005",
+    "Location": "WATCH OUTLET-GIGA MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "36",
+    "tagId": "W10006",
+    "Location": "SPL POS-IWC LUCKY ONE",
+    "Bank ": "ALLIED BANK LIMITED ",
+    "GL Code": "31100007"
+  },
+  {
+    "S. No.": "37",
+    "tagId": "W10007",
+    "Location": "SPL POS-IWC DOLMEN TARIQ ROAD",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "38",
+    "tagId": "W10008",
+    "Location": "SPL POS-IWC KINGSONG MALL",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "39",
+    "tagId": "W10009",
+    "Location": "SPL POS-IWC DOLMEN LAHORE",
+    "Bank ": "HABIB BANK LIMITED ",
+    "GL Code": "31100005"
+  },
+  {
+    "S. No.": "40",
+    "tagId": "W10010",
+    "Location": "SPL POS-IWC RAWALPINDI",
+    "Bank ": "JS BANK LIMITED ",
+    "GL Code": "31100002"
+  },
+  {
+    "S. No.": "41",
+    "tagId": "W10011",
+    "Location": "SPL POS-IWC SIALKOT",
+    "Bank ": "JS BANK LIMITED ",
+    "GL Code": "31100002"
+  }
+]
