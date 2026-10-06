@@ -1618,6 +1618,9 @@ export class PosSessionService {
                 type = 'Exchange Vouchers';
               }
               amountToUse = Number(v.faceValue);
+            } else if (v.voucherType === 'CLAIM') {
+              type = 'Claim Vouchers';
+              amountToUse = Number(v.faceValue);
             } else if (v.voucherType === 'OUTLET_GIFT') {
               type = 'Outlet Gift Vouchers';
             }
@@ -1728,6 +1731,12 @@ export class PosSessionService {
               : 'Exchange Vouchers';
           exchangeAndClaims.push({
             type,
+            amount: faceValue,
+            from: v.code,
+          });
+        } else if (v.voucherType === 'CLAIM') {
+          exchangeAndClaims.push({
+            type: 'Claim Vouchers',
             amount: faceValue,
             from: v.code,
           });
