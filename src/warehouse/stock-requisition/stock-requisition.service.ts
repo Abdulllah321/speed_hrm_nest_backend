@@ -48,18 +48,32 @@ export class StockRequisitionService {
     }) : [];
     const locIds = locs.map(l => l.id);
 
-    const stockAgg = await tx.inventoryItem.aggregate({
+    const stockAgg = await tx.stockLedger.aggregate({
       where: {
         itemId,
-        status: 'AVAILABLE',
         OR: [
           { warehouseId },
           ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
         ]
       },
-      _sum: { quantity: true }
+      _sum: { qty: true }
     });
-    const physicalQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
+    
+    let physicalQty = stockAgg._sum.qty !== null ? Number(stockAgg._sum.qty) : null;
+    if (physicalQty === null) {
+      const fb = await tx.inventoryItem.aggregate({
+        where: {
+          itemId,
+          status: 'AVAILABLE',
+          OR: [
+            { warehouseId },
+            ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+          ]
+        },
+        _sum: { quantity: true }
+      });
+      physicalQty = fb._sum.quantity !== null ? Number(fb._sum.quantity) : 0;
+    }
 
     // 2. Get active reservations
     const reservations = await tx.stockReserve.aggregate({
@@ -714,18 +728,32 @@ export class StockRequisitionService {
         }) : [];
         const locIds = locs.map(l => l.id);
 
-        const stockAgg = await tx.inventoryItem.aggregate({
+        const stockAgg = await tx.stockLedger.aggregate({
           where: {
             itemId: stnItem.itemId,
-            status: 'AVAILABLE',
             OR: [
               { warehouseId: requisition.fromWarehouseId },
               ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
             ]
           },
-          _sum: { quantity: true }
+          _sum: { qty: true }
         });
-        const physicalQty = Number(stockAgg._sum.quantity || 0);
+        
+        let physicalQty = stockAgg._sum.qty !== null ? Number(stockAgg._sum.qty) : null;
+        if (physicalQty === null) {
+          const fb = await tx.inventoryItem.aggregate({
+            where: {
+              itemId: stnItem.itemId,
+              status: 'AVAILABLE',
+              OR: [
+                { warehouseId: requisition.fromWarehouseId },
+                ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+              ]
+            },
+            _sum: { quantity: true }
+          });
+          physicalQty = fb._sum.quantity !== null ? Number(fb._sum.quantity) : 0;
+        }
         if (physicalQty < stnItem.quantity) {
           const itemDetail = await tx.item.findUnique({
             where: { id: stnItem.itemId },
@@ -1109,21 +1137,39 @@ export class StockRequisitionService {
         locIds = locs.map(l => l.id);
       }
 
-      const stockItems = await this.prisma.inventoryItem.groupBy({
+      const stockItems = await this.prisma.stockLedger.groupBy({
         by: ['itemId'],
         where: {
           itemId: { in: resolvedItems.map((i) => i.itemId) },
-          status: 'AVAILABLE',
           OR: [
             { warehouseId },
             ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
           ]
         },
-        _sum: { quantity: true },
+        _sum: { qty: true },
       });
       const stockMap = new Map<string, number>();
       for (const s of stockItems) {
-        stockMap.set(s.itemId, Number(s._sum.quantity || 0));
+        stockMap.set(s.itemId, Number(s._sum.qty || 0));
+      }
+
+      const noLedgerItems = resolvedItems.filter(i => !stockMap.has(i.itemId));
+      if (noLedgerItems.length > 0) {
+        const fallbackItems = await this.prisma.inventoryItem.groupBy({
+          by: ['itemId'],
+          where: {
+            itemId: { in: noLedgerItems.map((i) => i.itemId) },
+            status: 'AVAILABLE',
+            OR: [
+              { warehouseId },
+              ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+            ]
+          },
+          _sum: { quantity: true },
+        });
+        for (const fb of fallbackItems) {
+          stockMap.set(fb.itemId, Number(fb._sum.quantity || 0));
+        }
       }
 
       const activeReservations = await this.prisma.stockReserve.groupBy({
@@ -1342,20 +1388,48 @@ export class StockRequisitionService {
     }) : [];
     const locIds = locs.map((l: any) => l.id);
 
-    const stockItems = await this.prisma.inventoryItem.findMany({
+    const stockItems = await this.prisma.stockLedger.groupBy({
+      by: ['itemId'],
       where: {
         itemId: { in: itemIds },
-        status: 'AVAILABLE',
         OR: [
           { warehouseId: fromWarehouseId },
           ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
         ]
       },
-      select: {
-        itemId: true,
-        quantity: true,
+      _sum: {
+        qty: true,
       },
     });
+    
+    const stockMap = new Map<string, number>();
+    for (const s of stockItems) {
+      stockMap.set(s.itemId, Number(s._sum.qty || 0));
+    }
+    
+    const noLedgerItemIds = itemIds.filter(id => !stockMap.has(id));
+    if (noLedgerItemIds.length > 0) {
+      const fallbackItems = await this.prisma.inventoryItem.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: noLedgerItemIds },
+          status: 'AVAILABLE',
+          OR: [
+            { warehouseId: fromWarehouseId },
+            ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+          ]
+        },
+        _sum: { quantity: true },
+      });
+      for (const fb of fallbackItems) {
+        stockMap.set(fb.itemId, Number(fb._sum.quantity || 0));
+      }
+    }
+
+    const mappedStockItems = Array.from(stockMap.entries()).map(([itemId, quantity]) => ({
+      itemId,
+      quantity
+    }));
 
     // 4. Fetch active reservations in warehouse
     const reservations = await this.prisma.stockReserve.groupBy({
@@ -1372,7 +1446,7 @@ export class StockRequisitionService {
 
     // Map stocks and reservations
     const physicalStockMap = new Map<string, number>();
-    for (const stock of stockItems) {
+    for (const stock of mappedStockItems) {
       physicalStockMap.set(
         stock.itemId,
         (physicalStockMap.get(stock.itemId) || 0) + Number(stock.quantity),

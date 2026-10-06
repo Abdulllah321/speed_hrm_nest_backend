@@ -435,18 +435,32 @@ export class SrnUploadProcessor {
         }) : [];
         const locIds = locs.map((l: any) => l.id);
 
-        const stockAgg = await tx.inventoryItem.aggregate({
+        const stockAgg = await tx.stockLedger.aggregate({
           where: {
             itemId: reqItem.itemId,
-            status: 'AVAILABLE',
             OR: [
               { warehouseId: fromWarehouseId },
               ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
             ]
           },
-          _sum: { quantity: true }
+          _sum: { qty: true }
         });
-        const physicalQty = Number(stockAgg._sum.quantity || 0);
+        
+        let physicalQty = stockAgg._sum.qty !== null ? Number(stockAgg._sum.qty) : null;
+        if (physicalQty === null) {
+          const fb = await tx.inventoryItem.aggregate({
+            where: {
+              itemId: reqItem.itemId,
+              status: 'AVAILABLE',
+              OR: [
+                { warehouseId: fromWarehouseId },
+                ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+              ]
+            },
+            _sum: { quantity: true }
+          });
+          physicalQty = fb._sum.quantity !== null ? Number(fb._sum.quantity) : 0;
+        }
 
         const reservations = await tx.stockReserve.aggregate({
           where: {
