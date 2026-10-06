@@ -3113,7 +3113,10 @@ export class PosSessionService {
     for (const card of reconData.cardPayments || []) {
       // Find bank GL code
       const merchant = await this.prisma.merchantConfig.findFirst({
-        where: { bankName: card.bank },
+        where: {
+          bankName: card.bank,
+          tagId: locCode,
+        },
         orderBy: { createdAt: 'desc' },
       });
       if (merchant?.bankGlCode) {
@@ -3131,7 +3134,10 @@ export class PosSessionService {
     }
     for (const card of reconData.cardGiftVouchers || []) {
       const merchant = await this.prisma.merchantConfig.findFirst({
-        where: { bankName: card.bank },
+        where: {
+          bankName: card.bank,
+          tagId: locCode,
+        },
         orderBy: { createdAt: 'desc' },
       });
       if (merchant?.bankGlCode) {
