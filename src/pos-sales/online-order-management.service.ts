@@ -430,7 +430,7 @@ export class OnlineOrderManagementService {
       })),
     );
 
-    const itemsPayload = [];
+    const itemsPayload: any[] = [];
     let grandTotal = 0;
 
     for (const row of orderRows) {
