@@ -438,10 +438,8 @@ export class SrnUploadProcessor {
         const stockAgg = await tx.stockLedger.aggregate({
           where: {
             itemId: reqItem.itemId,
-            OR: [
-              { warehouseId: fromWarehouseId },
-              ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-            ]
+            warehouseId: fromWarehouseId,
+            locationId: null,
           },
           _sum: { qty: true }
         });
@@ -452,10 +450,8 @@ export class SrnUploadProcessor {
             where: {
               itemId: reqItem.itemId,
               status: 'AVAILABLE',
-              OR: [
-                { warehouseId: fromWarehouseId },
-                ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-              ]
+              warehouseId: fromWarehouseId,
+              locationId: null,
             },
             _sum: { quantity: true }
           });

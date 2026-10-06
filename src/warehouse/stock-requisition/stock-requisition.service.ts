@@ -51,10 +51,8 @@ export class StockRequisitionService {
     const stockAgg = await tx.stockLedger.aggregate({
       where: {
         itemId,
-        OR: [
-          { warehouseId },
-          ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-        ]
+        warehouseId,
+        locationId: null,
       },
       _sum: { qty: true }
     });
@@ -65,10 +63,8 @@ export class StockRequisitionService {
         where: {
           itemId,
           status: 'AVAILABLE',
-          OR: [
-            { warehouseId },
-            ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-          ]
+          warehouseId,
+          locationId: null,
         },
         _sum: { quantity: true }
       });
@@ -757,10 +753,8 @@ export class StockRequisitionService {
         const stockAgg = await tx.stockLedger.aggregate({
           where: {
             itemId: stnItem.itemId,
-            OR: [
-              { warehouseId: requisition.fromWarehouseId },
-              ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-            ]
+            warehouseId: requisition.fromWarehouseId,
+            locationId: null,
           },
           _sum: { qty: true }
         });
@@ -771,10 +765,8 @@ export class StockRequisitionService {
             where: {
               itemId: stnItem.itemId,
               status: 'AVAILABLE',
-              OR: [
-                { warehouseId: requisition.fromWarehouseId },
-                ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-              ]
+              warehouseId: requisition.fromWarehouseId,
+              locationId: null,
             },
             _sum: { quantity: true }
           });
@@ -1167,10 +1159,8 @@ export class StockRequisitionService {
         by: ['itemId'],
         where: {
           itemId: { in: resolvedItems.map((i) => i.itemId) },
-          OR: [
-            { warehouseId },
-            ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-          ]
+          warehouseId,
+          locationId: null,
         },
         _sum: { qty: true },
       });
@@ -1186,10 +1176,8 @@ export class StockRequisitionService {
           where: {
             itemId: { in: noLedgerItems.map((i) => i.itemId) },
             status: 'AVAILABLE',
-            OR: [
-              { warehouseId },
-              ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-            ]
+            warehouseId,
+            locationId: null,
           },
           _sum: { quantity: true },
         });
@@ -1418,10 +1406,8 @@ export class StockRequisitionService {
       by: ['itemId'],
       where: {
         itemId: { in: itemIds },
-        OR: [
-          { warehouseId: fromWarehouseId },
-          ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-        ]
+        warehouseId: fromWarehouseId,
+        locationId: null,
       },
       _sum: {
         qty: true,
@@ -1440,10 +1426,8 @@ export class StockRequisitionService {
         where: {
           itemId: { in: noLedgerItemIds },
           status: 'AVAILABLE',
-          OR: [
-            { warehouseId: fromWarehouseId },
-            ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-          ]
+          warehouseId: fromWarehouseId,
+          locationId: null,
         },
         _sum: { quantity: true },
       });
