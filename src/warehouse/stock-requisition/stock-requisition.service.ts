@@ -42,15 +42,24 @@ export class StockRequisitionService {
     warehouseId: string,
   ): Promise<number> {
     // 1. Get physical AVAILABLE stock
-    const stockItem = await tx.inventoryItem.findFirst({
+    const wh = await tx.warehouse.findUnique({ where: { id: warehouseId } });
+    const locs = wh ? await tx.location.findMany({
+      where: { OR: [{ warehouseId }, { id: warehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
+    }) : [];
+    const locIds = locs.map(l => l.id);
+
+    const stockAgg = await tx.inventoryItem.aggregate({
       where: {
-        warehouseId,
-        locationId: null,
         itemId,
         status: 'AVAILABLE',
+        OR: [
+          { warehouseId },
+          ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+        ]
       },
+      _sum: { quantity: true }
     });
-    const physicalQty = stockItem ? Number(stockItem.quantity) : 0;
+    const physicalQty = stockAgg._sum.quantity ? Number(stockAgg._sum.quantity) : 0;
 
     // 2. Get active reservations
     const reservations = await tx.stockReserve.aggregate({
@@ -699,15 +708,24 @@ export class StockRequisitionService {
       for (const stnItem of data.items) {
         if (stnItem.quantity <= 0) continue; // Skip item if quantity reduced to 0
 
-        const stock = await tx.inventoryItem.findFirst({
+        const wh = await tx.warehouse.findUnique({ where: { id: requisition.fromWarehouseId } });
+        const locs = wh ? await tx.location.findMany({
+          where: { OR: [{ warehouseId: requisition.fromWarehouseId }, { id: requisition.fromWarehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
+        }) : [];
+        const locIds = locs.map(l => l.id);
+
+        const stockAgg = await tx.inventoryItem.aggregate({
           where: {
-            warehouseId: requisition.fromWarehouseId,
-            locationId: null,
             itemId: stnItem.itemId,
             status: 'AVAILABLE',
+            OR: [
+              { warehouseId: requisition.fromWarehouseId },
+              ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+            ]
           },
+          _sum: { quantity: true }
         });
-        const physicalQty = stock ? Number(stock.quantity) : 0;
+        const physicalQty = Number(stockAgg._sum.quantity || 0);
         if (physicalQty < stnItem.quantity) {
           const itemDetail = await tx.item.findUnique({
             where: { id: stnItem.itemId },
@@ -752,20 +770,34 @@ export class StockRequisitionService {
       for (const stnItem of data.items) {
         if (stnItem.quantity <= 0) continue;
 
-        const stock = await tx.inventoryItem.findFirst({
+        const wh = await tx.warehouse.findUnique({ where: { id: requisition.fromWarehouseId } });
+        const locs = wh ? await tx.location.findMany({
+          where: { OR: [{ warehouseId: requisition.fromWarehouseId }, { id: requisition.fromWarehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
+        }) : [];
+        const locIds = locs.map(l => l.id);
+
+        let remainingToDeduct = stnItem.quantity;
+        const stocks = await tx.inventoryItem.findMany({
           where: {
-            warehouseId: requisition.fromWarehouseId,
-            locationId: null,
             itemId: stnItem.itemId,
             status: 'AVAILABLE',
+            quantity: { gt: 0 },
+            OR: [
+              { warehouseId: requisition.fromWarehouseId },
+              ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+            ]
           },
+          orderBy: { quantity: 'desc' }
         });
 
-        if (stock) {
+        for (const stock of stocks) {
+          if (remainingToDeduct <= 0) break;
+          const deduct = Math.min(Number(stock.quantity), remainingToDeduct);
           await tx.inventoryItem.update({
             where: { id: stock.id },
-            data: { quantity: { decrement: stnItem.quantity } },
+            data: { quantity: { decrement: deduct } },
           });
+          remainingToDeduct -= deduct;
         }
 
         const itemRate = await this.getCurrentItemRate(tx, stnItem.itemId);
@@ -1063,23 +1095,34 @@ export class StockRequisitionService {
 
     // Validate warehouse stock if warehouseId is provided
     if (warehouseId && resolvedItems.length > 0) {
+      let locIds: string[] = [];
       const wh = await this.prisma.warehouse.findUnique({
         where: { id: warehouseId },
-        select: { name: true },
+        select: { name: true, code: true, id: true },
       });
       whName = wh?.name || 'selected warehouse';
+      if (wh) {
+        const locs = await this.prisma.location.findMany({
+           where: { OR: [{ warehouseId: wh.id }, { id: wh.id }, { code: wh.code }, { code: `WH-${wh.code}` }] }
+        });
+        locIds = locs.map(l => l.id);
+      }
 
-      const stockItems = await this.prisma.inventoryItem.findMany({
+      const stockItems = await this.prisma.inventoryItem.groupBy({
+        by: ['itemId'],
         where: {
-          warehouseId,
-          locationId: null,
           itemId: { in: resolvedItems.map((i) => i.itemId) },
           status: 'AVAILABLE',
+          OR: [
+            { warehouseId },
+            ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+          ]
         },
+        _sum: { quantity: true },
       });
       const stockMap = new Map<string, number>();
       for (const s of stockItems) {
-        stockMap.set(s.itemId, Number(s.quantity));
+        stockMap.set(s.itemId, Number(s._sum.quantity || 0));
       }
 
       const activeReservations = await this.prisma.stockReserve.groupBy({
@@ -1292,12 +1335,20 @@ export class StockRequisitionService {
     });
 
     // 3. Fetch physical available stock in warehouse
+    const wh = await this.prisma.warehouse.findUnique({ where: { id: fromWarehouseId } });
+    const locs = wh ? await this.prisma.location.findMany({
+      where: { OR: [{ warehouseId: fromWarehouseId }, { id: fromWarehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
+    }) : [];
+    const locIds = locs.map((l: any) => l.id);
+
     const stockItems = await this.prisma.inventoryItem.findMany({
       where: {
-        warehouseId: fromWarehouseId,
-        locationId: null,
         itemId: { in: itemIds },
         status: 'AVAILABLE',
+        OR: [
+          { warehouseId: fromWarehouseId },
+          ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+        ]
       },
       select: {
         itemId: true,

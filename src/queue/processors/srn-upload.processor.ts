@@ -429,15 +429,24 @@ export class SrnUploadProcessor {
     await (prisma as any).$transaction(async (tx: any) => {
       // 1. Validate stock availability
       for (const reqItem of itemsData) {
-        const stockItem = await tx.inventoryItem.findFirst({
+        const wh = await tx.warehouse.findUnique({ where: { id: fromWarehouseId } });
+        const locs = wh ? await tx.location.findMany({
+          where: { OR: [{ warehouseId: fromWarehouseId }, { id: fromWarehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
+        }) : [];
+        const locIds = locs.map((l: any) => l.id);
+
+        const stockAgg = await tx.inventoryItem.aggregate({
           where: {
-            warehouseId: fromWarehouseId,
-            locationId: null,
             itemId: reqItem.itemId,
             status: 'AVAILABLE',
+            OR: [
+              { warehouseId: fromWarehouseId },
+              ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
+            ]
           },
+          _sum: { quantity: true }
         });
-        const physicalQty = stockItem ? Number(stockItem.quantity) : 0;
+        const physicalQty = Number(stockAgg._sum.quantity || 0);
 
         const reservations = await tx.stockReserve.aggregate({
           where: {
