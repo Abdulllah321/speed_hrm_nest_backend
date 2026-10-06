@@ -1600,7 +1600,17 @@ export class TransferRequestService {
             });
 
              return this.prisma.$transaction(async (tx) => {
-                const plmWarehouseId = request.toWarehouseId!;
+                let plmWarehouseId = request.toWarehouseId;
+                if (!plmWarehouseId) {
+                    const defaultWarehouse = await tx.warehouse.findFirst({
+                        where: { isActive: true },
+                        select: { id: true }
+                    });
+                    if (!defaultWarehouse) {
+                        throw new BadRequestException('No active warehouse found to acknowledge claim');
+                    }
+                    plmWarehouseId = defaultWarehouse.id;
+                }
  
                 // Fetch claim to link it
                 const claim = await tx.posClaim.findFirst({
@@ -1832,13 +1842,17 @@ export class TransferRequestService {
         const prismaClient = tx || this.prisma;
         const now = new Date();
         const currentMonth = now.getMonth();
-        const fiscalYear = currentMonth >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+        const startYear = currentMonth >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+        const endYear = startYear + 1;
+        const startYearShort = startYear.toString().slice(-2);
+        const endYearShort = endYear.toString().slice(-2);
+        const fiscalYearStr = `${startYearShort}-${endYearShort}`;
         const prefix = 'STN';
 
         const lastRequest = await prismaClient.transferRequest.findFirst({
             where: {
                 requestNo: {
-                    startsWith: `${prefix}-${fiscalYear}`,
+                    startsWith: `${prefix}-${fiscalYearStr}`,
                 },
             },
             orderBy: {
@@ -1849,13 +1863,13 @@ export class TransferRequestService {
         let nextNumber = 1;
         if (lastRequest) {
             const parts = lastRequest.requestNo.split('-');
-            const lastNumber = parseInt(parts[parts.length - 1] || '0');
+            const lastNumber = parseInt(parts[parts.length - 1] || '0', 10);
             if (!isNaN(lastNumber)) {
                 nextNumber = lastNumber + 1;
             }
         }
 
-        const nextTransferNumber = `${prefix}-${fiscalYear}-${nextNumber.toString().padStart(4, '0')}`;
+        const nextTransferNumber = `${prefix}-${fiscalYearStr}-${nextNumber.toString().padStart(4, '0')}`;
         return { nextTransferNumber };
     }
 
