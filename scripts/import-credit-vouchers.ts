@@ -74,12 +74,46 @@ function getFiscalYearSuffix(d: Date): string {
 interface ParsedRow {
   storeName: string;
   locCode: string;
-  serialDate: number;
   crNo: string;
   creditAmt: number;
-  rawNarration: string;
   date: Date;
   fySuffix: string;
+}
+
+function parseFlexibleDate(val: any): Date | null {
+  if (val === undefined || val === null || val === '') return null;
+
+  if (typeof val === 'number') {
+    let num = val;
+    if (num < 100000) {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      return new Date(excelEpoch.getTime() + num * 86400000);
+    }
+  }
+
+  const str = String(val).trim();
+  if (!str || str === 'null' || str === '-' || str === '0') return null;
+
+  if (str.includes('/')) {
+    const [datePart, timePart] = str.split(/\s+/);
+    const parts = datePart.split('/').map(Number);
+    if (parts.length === 3) {
+      let [d, m, y] = parts;
+      if (d <= 12 && m > 12) {
+        // It's MM/DD/YY
+        const temp = d;
+        d = m;
+        m = temp;
+      }
+      const [hh, mm, ss] = (timePart || '00:00:00').split(':').map(Number);
+      const year = y < 100 ? 2000 + y : y;
+      const parsed = new Date(Date.UTC(year, m - 1, d, hh || 0, mm || 0, ss || 0));
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+  }
+
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export function readAndParseCreditVouchers(filePath: string): ParsedRow[] {
@@ -94,35 +128,29 @@ export function readAndParseCreditVouchers(filePath: string): ParsedRow[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (!line.startsWith('|') || line.includes('---') || line.includes('__EMPTY') || line.includes('Store')) {
+    if (!line.startsWith('|') || line.includes('---') || line.includes('__EMPTY') || line.includes('CostCentre')) {
       continue;
     }
-    const cols = line.split('|').map((c) => c.trim()).filter(Boolean);
-    if (cols.length >= 5) {
+    const cols = line.split('|').map((c) => c.trim());
+    if (cols.length > 1 && cols[0] === '') cols.shift();
+    if (cols.length > 0 && cols[cols.length - 1] === '') cols.pop();
+    
+    if (cols.length >= 8) {
       let storeName = cols[0];
       let locCode = cols[1];
 
-      // Smart detect swapped columns: locCode is typically short (e.g., N10001) while storeName is long
-      if (storeName.length <= 10 && /\d/.test(storeName) && locCode.length > 10) {
-        storeName = cols[1];
-        locCode = cols[0];
-      }
+      const crNo = String(cols[4]).trim();
+      const docDateStr = cols[5];
+      const creditAmt = parseFloat(cols[7]);
 
-      const serialDate = parseFloat(cols[2]);
-      const crNo = String(cols[3]).trim();
-      const creditAmt = parseFloat(cols[4]);
-      const rawNarration = cols.length >= 6 ? cols[5].replace(/\\/g, '').trim() : '';
-
-      if (!isNaN(serialDate) && !isNaN(creditAmt) && creditAmt > 0) {
-        const date = parseDateFromNarrationOrSerial(serialDate, rawNarration);
+      if (!isNaN(creditAmt) && creditAmt > 0) {
+        const date = parseFlexibleDate(docDateStr) || new Date('2026-07-01');
         const fySuffix = getFiscalYearSuffix(date);
         rows.push({
           storeName,
           locCode,
-          serialDate,
           crNo,
           creditAmt,
-          rawNarration,
           date,
           fySuffix,
         });
@@ -317,9 +345,7 @@ async function processTenantCreditVouchers(
     const isRedeemed = Boolean(matchedOrder);
     const voucherId = crypto.randomUUID();
 
-    let description = r.rawNarration
-      ? r.rawNarration
-      : `Credit Voucher Issued | CrV#: ${r.crNo} | ${formatDate(r.date)}`;
+    let description = `Credit Voucher Issued | CrV#: ${r.crNo} | ${formatDate(r.date)}`;
 
     if (matchedOrder) {
       matchedOrderIds.add(matchedOrder.id);

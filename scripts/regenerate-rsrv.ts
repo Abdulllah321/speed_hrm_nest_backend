@@ -102,6 +102,7 @@ async function bootstrap() {
         // 2. Generate New
         const locations = await prismaService.location.findMany({
           where: { status: 'active', isDeleted: false },
+          orderBy: { name: 'asc' },
         });
 
         for (const dateStr of dates) {

@@ -166,12 +166,24 @@ export class StockRequisitionService {
         }
       }
 
-      // 2. Create StockRequisition
+      // 2. Resolve toLocationId (if user selected a Warehouse, map it to its Location)
+      let finalToLocationId = data.toLocationId;
+      const isWarehouse = await tx.warehouse.findUnique({ where: { id: finalToLocationId } });
+      if (isWarehouse) {
+        const whLoc = await tx.location.findFirst({
+          where: { OR: [{ warehouseId: finalToLocationId }, { code: isWarehouse.code }] }
+        });
+        if (whLoc) {
+          finalToLocationId = whLoc.id;
+        }
+      }
+
+      // 3. Create StockRequisition
       const requisition = await tx.stockRequisition.create({
         data: {
           requisitionNo,
           fromWarehouseId,
-          toLocationId: data.toLocationId,
+          toLocationId: finalToLocationId,
           brandId: data.brandId || null,
           documentType: data.documentType || 'New Arrival',
           remarks: data.remarks || null,
@@ -334,12 +346,26 @@ export class StockRequisitionService {
         }
       }
 
-      // 3. Update requisition metadata
+      // 3. Resolve toLocationId (if user selected a Warehouse, map it to its Location)
+      let finalToLocationId = data.toLocationId ?? existing.toLocationId;
+      if (data.toLocationId) {
+        const isWarehouse = await tx.warehouse.findUnique({ where: { id: finalToLocationId } });
+        if (isWarehouse) {
+          const whLoc = await tx.location.findFirst({
+            where: { OR: [{ warehouseId: finalToLocationId }, { code: isWarehouse.code }] }
+          });
+          if (whLoc) {
+            finalToLocationId = whLoc.id;
+          }
+        }
+      }
+
+      // 4. Update requisition metadata
       const updated = await tx.stockRequisition.update({
         where: { id },
         data: {
           fromWarehouseId: data.fromWarehouseId ?? existing.fromWarehouseId,
-          toLocationId: data.toLocationId ?? existing.toLocationId,
+          toLocationId: finalToLocationId,
           brandId:
             data.brandId !== undefined
               ? data.brandId === 'none'

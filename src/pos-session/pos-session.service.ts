@@ -1397,15 +1397,19 @@ export class PosSessionService {
           .filter(Boolean)
       : [];
 
+    const dateParts = date.split(',');
+    const startDateStr = dateParts[0].trim();
+    const endDateStr = dateParts.length > 1 ? dateParts[1].trim() : startDateStr;
+
     const computeSingleReconciliation = async (
       targetLocWhere: any,
       displayName: string,
       targetLocId?: string,
     ) => {
-      const startOfDay = new Date(date + 'T00:00:00');
+      const startOfDay = new Date(startDateStr + 'T00:00:00');
       startOfDay.setHours(0, 0, 0, 0);
 
-      const endOfDay = new Date(date + 'T00:00:00');
+      const endOfDay = new Date(endDateStr + 'T00:00:00');
       endOfDay.setHours(23, 59, 59, 999);
 
       const timeFilter = {
@@ -1471,6 +1475,7 @@ export class PosSessionService {
 
       let totalCreditAmount = 0;
       let totalRewardVoucherRecv = 0;
+      const rewardVouchersDetails: { orderNumber: string; amount: number }[] = [];
 
       for (const order of orders) {
         const subtotal = Number(order.subtotal ?? 0);
@@ -1613,6 +1618,9 @@ export class PosSessionService {
                 type = 'Exchange Vouchers';
               }
               amountToUse = Number(v.faceValue);
+            } else if (v.voucherType === 'CLAIM') {
+              type = 'Claim Vouchers';
+              amountToUse = Number(v.faceValue);
             } else if (v.voucherType === 'OUTLET_GIFT') {
               type = 'Outlet Gift Vouchers';
             }
@@ -1647,6 +1655,7 @@ export class PosSessionService {
           const rvAmt = Number(order.rewardVoucherAmount ?? 0);
           if (rvAmt > 0) {
             totalRewardVoucherRecv += rvAmt;
+            rewardVouchersDetails.push({ orderNumber: order.orderNumber, amount: rvAmt });
           } else {
             const change = Number(order.changeAmount ?? 0);
             const netCash = Math.max(0, cash - change);
@@ -1654,14 +1663,20 @@ export class PosSessionService {
               0,
               Number((grandTotal - netCash - card - voucher).toFixed(2)),
             );
-            if (remainder > 0) totalRewardVoucherRecv += remainder;
+            if (remainder > 0) {
+              totalRewardVoucherRecv += remainder;
+              rewardVouchersDetails.push({ orderNumber: order.orderNumber, amount: remainder });
+            }
           }
         }
 
         const isSplitTender = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
         if (isSplitTender) {
           const rvAmt = Number(order.rewardVoucherAmount ?? 0);
-          if (rvAmt > 0) totalRewardVoucherRecv += rvAmt;
+          if (rvAmt > 0) {
+            totalRewardVoucherRecv += rvAmt;
+            rewardVouchersDetails.push({ orderNumber: order.orderNumber, amount: rvAmt });
+          }
           else {
             const change = Number(order.changeAmount ?? 0);
             const netCash = Math.max(0, cash - change);
@@ -1716,6 +1731,12 @@ export class PosSessionService {
               : 'Exchange Vouchers';
           exchangeAndClaims.push({
             type,
+            amount: faceValue,
+            from: v.code,
+          });
+        } else if (v.voucherType === 'CLAIM') {
+          exchangeAndClaims.push({
+            type: 'Claim Vouchers',
             amount: faceValue,
             from: v.code,
           });
@@ -1858,9 +1879,11 @@ export class PosSessionService {
 
       const receivables = [
         { description: 'On Credit', amount: totalCreditAmount },
-        ...(totalRewardVoucherRecv > 0
-          ? [{ description: 'Reward Voucher', amount: totalRewardVoucherRecv }]
-          : []),
+        ...rewardVouchersDetails.map(rv => ({
+          description: 'Reward Voucher',
+          amount: rv.amount,
+          orderNumber: rv.orderNumber,
+        })),
       ];
 
       const totalCards = totalCardReceived;
@@ -1910,8 +1933,10 @@ export class PosSessionService {
         locationId: targetLocId || locationId,
         locationName: displayName,
         reportTitle: 'Sales Reconciliation',
-        dateRange: formatDate(date + 'T00:00:00'),
-        documentNumber: `REC-${date.replace(/-/g, '')}`,
+        dateRange: startDateStr === endDateStr 
+          ? formatDate(startDateStr + 'T00:00:00') 
+          : `${formatDate(startDateStr + 'T00:00:00')} TO ${formatDate(endDateStr + 'T00:00:00')}`,
+        documentNumber: `REC-${startDateStr.replace(/-/g, '')}`,
         selectedDate: date,
         session: null,
         metrics: {
@@ -1977,11 +2002,12 @@ export class PosSessionService {
     }
 
     const targetLocations = await this.prisma.location.findMany({
-      where: locIds.length > 0 ? { id: { in: locIds } } : { status: 'active' },
+      where: locIds.length > 0 ? { id: { in: locIds } } : { status: 'active', isStockLocation: true },
       select: { id: true, name: true, code: true },
+      orderBy: { name: 'asc' },
     });
 
-    const locationWhere = locIds.length > 1 ? { in: locIds } : undefined;
+    const locationWhere = locIds.length > 0 ? { in: locIds } : { in: targetLocations.map((l) => l.id) };
 
     const mergedReport = await computeSingleReconciliation(
       locationWhere,
@@ -3113,7 +3139,10 @@ export class PosSessionService {
     for (const card of reconData.cardPayments || []) {
       // Find bank GL code
       const merchant = await this.prisma.merchantConfig.findFirst({
-        where: { bankName: card.bank },
+        where: {
+          bankName: card.bank,
+          tagId: locCode,
+        },
         orderBy: { createdAt: 'desc' },
       });
       if (merchant?.bankGlCode) {
@@ -3131,7 +3160,10 @@ export class PosSessionService {
     }
     for (const card of reconData.cardGiftVouchers || []) {
       const merchant = await this.prisma.merchantConfig.findFirst({
-        where: { bankName: card.bank },
+        where: {
+          bankName: card.bank,
+          tagId: locCode,
+        },
         orderBy: { createdAt: 'desc' },
       });
       if (merchant?.bankGlCode) {
@@ -3250,13 +3282,24 @@ export class PosSessionService {
 
     // 9. On Credit (Receivables)
     for (const rec of reconData.receivables || []) {
-      await addLine(
-        '31030001',
-        locCode,
-        rec.amount,
-        0,
-        `Ded from staff salary ag.CM#123 NDC | ${jvDateStr}`,
-      );
+      if (rec.description === 'Reward Voucher') {
+        const orderNumber = (rec as any).orderNumber || 'UNKNOWN';
+        await addLine(
+          '12070008',
+          '310020',
+          rec.amount,
+          0,
+          `Reward Voucher Collected | CM#${orderNumber} | ${jvDateStr}`,
+        );
+      } else {
+        await addLine(
+          '31030001',
+          locCode,
+          rec.amount,
+          0,
+          `Ded from staff salary ag.CM#123 NDC | ${jvDateStr}`,
+        );
+      }
     }
 
     // Issued Vouchers
