@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -15,7 +15,22 @@ async function main() {
   const startDate = new Date('2026-10-01T00:00:00Z');
   const endDate = new Date('2026-10-07T23:59:59Z');
 
-  const whereClause: any = {
+  let locationIds: string[] = [];
+  if (targetLocation) {
+    const locations = await prisma.location.findMany({
+      where: {
+        name: { contains: targetLocation, mode: 'insensitive' }
+      },
+      select: { id: true }
+    });
+    locationIds = locations.map(l => l.id);
+    if (locationIds.length === 0) {
+      console.log(`No locations found matching: ${targetLocation}`);
+      return;
+    }
+  }
+
+  const whereClause: Prisma.SalesOrderWhereInput = {
     createdAt: { 
       gte: startDate,
       lte: endDate
@@ -27,13 +42,8 @@ async function main() {
     ]
   };
 
-  if (targetLocation) {
-    whereClause.location = {
-      name: {
-        contains: targetLocation,
-        mode: 'insensitive'
-      }
-    };
+  if (locationIds.length > 0) {
+    whereClause.locationId = { in: locationIds };
   }
 
   const orders = await prisma.salesOrder.findMany({
@@ -44,26 +54,28 @@ async function main() {
           item: true
         }
       },
-      alliance: true,
-      location: true
+      alliance: true
     }
   });
 
   console.log(`Found ${orders.length} orders to potentially fix.`);
 
+  // Pre-fetch locations to get FBR settings
+  const allLocationIds = [...new Set(orders.map(o => o.locationId).filter(id => id !== null))] as string[];
+  const locationsData = await prisma.location.findMany({
+    where: { id: { in: allLocationIds } }
+  });
+  const locationMap = new Map(locationsData.map(l => [l.id, l]));
+
   let updatedCount = 0;
 
   for (const order of orders) {
     try {
-      let needsUpdate = false;
-      
       const subtotal = Number(order.subtotal);
-      let grandTotalBeforeManual = 0;
       
       let recalculatedTotalTax = 0;
       let lineItemDiscountTotal = 0;
 
-      // Re-calculate the grand total before any global discounts to use as scaling base
       for (const oi of order.items) {
         const qty = Number(oi.quantity);
         const taxPercent = Number(oi.taxPercent ?? 0);
@@ -83,13 +95,14 @@ async function main() {
         recalculatedTotalTax += itemTax;
       }
       
-      const fbrPosFee = Number(order.fbrPosFee ?? 0);
-      grandTotalBeforeManual = Math.round((subtotal - lineItemDiscountTotal + recalculatedTotalTax) * 100) / 100;
+      const loc = order.locationId ? locationMap.get(order.locationId) : null;
+      const fbrPosFee = (loc?.fbrEnabled && loc?.fbrNtn) ? 1 : 0;
+      
+      const grandTotalBeforeManual = Math.round((subtotal - lineItemDiscountTotal + recalculatedTotalTax + fbrPosFee) * 100) / 100;
 
       let manualDiscount = 0;
       let allianceDiscount = 0;
       let globalDiscAmt = 0;
-      let appliedDiscountType = 'item';
 
       // 1. Manual Discount Logic
       const rawGlobalDiscountAmount = Number(order.globalDiscountAmount ?? 0);
@@ -99,7 +112,6 @@ async function main() {
         manualDiscount = Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
       } else if (rawGlobalDiscountAmount > 0 && order.manualDiscountNote) {
         // Flat amount manual discount (SCALING NEEDED)
-        // Note: we check manualDiscountNote to distinguish true manual discount vs populated amount
         const maxFlatDiscount = Math.round(grandTotalBeforeManual * 1.0 * 100) / 100;
         const targetDiscountOnGrandTotal = Math.min(rawGlobalDiscountAmount, maxFlatDiscount);
         if (grandTotalBeforeManual > 0) {
@@ -124,26 +136,20 @@ async function main() {
       if (manualDiscount > 0) {
         globalDiscAmt = manualDiscount;
         finalLineItemDiscount = 0;
-        appliedDiscountType = 'manual';
       } else if (lineItemDiscountTotal > 0 && allianceDiscount > 0) {
         if (allianceDiscount >= lineItemDiscountTotal) {
           globalDiscAmt = allianceDiscount;
           finalLineItemDiscount = 0;
-          appliedDiscountType = 'alliance';
         } else {
           globalDiscAmt = 0;
           finalLineItemDiscount = lineItemDiscountTotal;
-          appliedDiscountType = 'item';
         }
       } else if (allianceDiscount > 0) {
         globalDiscAmt = allianceDiscount;
-        appliedDiscountType = 'alliance';
       }
 
-      // Check if the newly calculated global discount amount matches the one in DB
       const currentDbGlobalDiscountAmount = Number(order.globalDiscountAmount ?? 0);
       
-      // Calculate what the tax and grand total SHOULD be with the new global discount
       let newTotalTax = 0;
       
       if (globalDiscAmt > 0) {
@@ -181,13 +187,11 @@ async function main() {
         newTotalTax = recalculatedTotalTax; // Just the item level taxes
       }
       
-      // Also account for coupon/promo if they exist (we assume they didn't change logic, keeping it simple)
       const currentTax = Number(order.taxAmount);
       const currentGrandTotal = Number(order.grandTotal);
       
-      const newGrandTotal = Math.round(Math.max(0, subtotal - globalDiscAmt - finalLineItemDiscount + newTotalTax) + fbrPosFee);
+      const newGrandTotal = Math.round(Math.max(0, subtotal - globalDiscAmt - finalLineItemDiscount + newTotalTax + fbrPosFee));
       
-      // If there's a difference in Grand Total or Tax or Discount
       if (Math.abs(currentGrandTotal - newGrandTotal) > 0.01 || Math.abs(currentTax - newTotalTax) > 0.01 || Math.abs(currentDbGlobalDiscountAmount - globalDiscAmt) > 0.01) {
         console.log(`Fixing Order ${order.orderNumber}:`);
         console.log(`  Discount: ${currentDbGlobalDiscountAmount} -> ${globalDiscAmt}`);
