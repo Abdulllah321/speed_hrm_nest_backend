@@ -414,6 +414,7 @@ export class TransferRequestService {
         dispatchType?: string,
         page?: number,
         limit?: number,
+        userContext?: any,
     ) {
         const andClauses: any[] = [];
         
@@ -421,7 +422,33 @@ export class TransferRequestService {
             andClauses.push({ id });
         }
         if (warehouseId && warehouseId !== 'all') {
-            andClauses.push({ fromWarehouseId: warehouseId });
+            andClauses.push({
+                OR: [
+                    { fromWarehouseId: warehouseId },
+                    { toWarehouseId: warehouseId }
+                ]
+            });
+        }
+        
+        if (userContext?.roleName === 'Warehouse') {
+            const logisticWh = await this.prisma.warehouse.findFirst({
+                where: {
+                    isDeleted: false,
+                    OR: [
+                        { code: 'C40001' },
+                        { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
+                        { code: { contains: 'LOGISTIC', mode: 'insensitive' } },
+                    ],
+                },
+            });
+            if (logisticWh) {
+                andClauses.push({
+                    OR: [
+                        { fromWarehouseId: logisticWh.id },
+                        { toWarehouseId: logisticWh.id }
+                    ]
+                });
+            }
         }
         if (status && status !== 'all') {
             andClauses.push({ status });
@@ -994,18 +1021,42 @@ export class TransferRequestService {
             req.outboundNo = `TR-OUT-${countOutbound.toString().padStart(4, '0')}`;
         }
 
-        if (req.fromWarehouseId && !req.fromWarehouse) {
-            const sourceWH = await this.prisma.warehouse.findUnique({
-                where: { id: req.fromWarehouseId }
-            });
-            if (sourceWH) req.fromWarehouse = sourceWH;
+        if (req.fromWarehouseId) {
+            if (!req.fromWarehouse) {
+                const sourceWH = await this.prisma.warehouse.findUnique({
+                    where: { id: req.fromWarehouseId }
+                });
+                if (sourceWH) req.fromWarehouse = sourceWH;
+            }
+            // Generate outbound number for warehouse
+            if (!req.outboundNo) {
+                const countOutboundWH = await this.prisma.transferRequest.count({
+                    where: {
+                        fromWarehouseId: req.fromWarehouseId,
+                        createdAt: { lte: req.createdAt },
+                    },
+                });
+                req.outboundNo = `TR-OUT-${countOutboundWH.toString().padStart(4, '0')}`;
+            }
         }
 
-        if (req.toWarehouseId && !req.toWarehouse) {
-            const destWH = await this.prisma.warehouse.findUnique({
-                where: { id: req.toWarehouseId }
-            });
-            if (destWH) req.toWarehouse = destWH;
+        if (req.toWarehouseId) {
+            if (!req.toWarehouse) {
+                const destWH = await this.prisma.warehouse.findUnique({
+                    where: { id: req.toWarehouseId }
+                });
+                if (destWH) req.toWarehouse = destWH;
+            }
+            // Generate inbound number for warehouse
+            if (!req.inboundNo) {
+                const countInboundWH = await this.prisma.transferRequest.count({
+                    where: {
+                        toWarehouseId: req.toWarehouseId,
+                        createdAt: { lte: req.createdAt },
+                    },
+                });
+                req.inboundNo = `TR-IN-${countInboundWH.toString().padStart(4, '0')}`;
+            }
         }
 
         // Fetch claim data if this is a claim transfer
