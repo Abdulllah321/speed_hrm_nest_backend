@@ -226,9 +226,7 @@ export class PosSalesService implements OnModuleInit {
     const item = await this.prisma.item.findFirst({
       where: {
         isActive: true,
-        OR: [
-          { barCode: { equals: barcode.trim(), mode: 'insensitive' } },
-        ],
+        OR: [{ barCode: { equals: barcode.trim(), mode: 'insensitive' } }],
       },
       include: {
         brand: true,
@@ -403,7 +401,9 @@ export class PosSalesService implements OnModuleInit {
           );
           const tenderMethods = [...new Set(tenders.map((t) => t.method))];
           const paymentMethod =
-            tenderMethods.length === 1 ? tenderMethods[0] : tenderMethods.join('+');
+            tenderMethods.length === 1
+              ? tenderMethods[0]
+              : tenderMethods.join('+');
           const cashAmount = tenders
             .filter((t) => t.method === 'cash')
             .reduce((a, t) => a + Number(t.amount), 0);
@@ -543,16 +543,31 @@ export class PosSalesService implements OnModuleInit {
           if (dto.globalDiscountPercent) {
             const cappedPercent = Math.min(dto.globalDiscountPercent, 100);
             // Calculate what X% of WOST is (e.g. 10% of 26400 = 2640)
-            const targetDiscountOnGrandTotal = Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
+            const targetDiscountOnGrandTotal =
+              Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
             // To reduce the Grand Total by 2640, we must apply a proportionally smaller discount to WOST
             if (grandTotalBeforeManual > 0) {
-              manualDiscount = Math.round(targetDiscountOnGrandTotal * (subtotal / grandTotalBeforeManual) * 100) / 100;
+              manualDiscount =
+                Math.round(
+                  targetDiscountOnGrandTotal *
+                    (subtotal / grandTotalBeforeManual) *
+                    100,
+                ) / 100;
             }
           } else if (dto.globalDiscountAmount) {
-            const maxFlatDiscount = Math.round(grandTotalBeforeManual * 1.0 * 100) / 100;
-            const targetDiscountOnGrandTotal = Math.min(dto.globalDiscountAmount, maxFlatDiscount);
+            const maxFlatDiscount =
+              Math.round(grandTotalBeforeManual * 1.0 * 100) / 100;
+            const targetDiscountOnGrandTotal = Math.min(
+              dto.globalDiscountAmount,
+              maxFlatDiscount,
+            );
             if (grandTotalBeforeManual > 0) {
-              manualDiscount = Math.round(targetDiscountOnGrandTotal * (subtotal / grandTotalBeforeManual) * 100) / 100;
+              manualDiscount =
+                Math.round(
+                  targetDiscountOnGrandTotal *
+                    (subtotal / grandTotalBeforeManual) *
+                    100,
+                ) / 100;
             }
           }
           // 2. Alliance discount (calculated on subtotal AFTER item discounts)
@@ -748,7 +763,7 @@ export class PosSalesService implements OnModuleInit {
 
           if (totalPaidRounded > grandTotalRounded) {
             throw new Error(
-              `Total payment (${totalPaidRounded}) cannot exceed the grand total (${grandTotalRounded}). Overpayments are not allowed.`
+              `Total payment (${totalPaidRounded}) cannot exceed the grand total (${grandTotalRounded}). Overpayments are not allowed.`,
             );
           }
 
@@ -1130,7 +1145,11 @@ export class PosSalesService implements OnModuleInit {
           status: 'failure',
         }),
       );
-      console.error('[createOrder FAILED]', error?.message, error?.stack?.split('\n').slice(0,5).join(' | '));
+      console.error(
+        '[createOrder FAILED]',
+        error?.message,
+        error?.stack?.split('\n').slice(0, 5).join(' | '),
+      );
       return { status: false, message: error.message };
     }
   }
@@ -2068,7 +2087,10 @@ export class PosSalesService implements OnModuleInit {
       }
     }
     if (locationId) where.locationId = locationId;
-    console.log('[listOrders] filter:', JSON.stringify({ posId, locationId, status }));
+    console.log(
+      '[listOrders] filter:',
+      JSON.stringify({ posId, locationId, status }),
+    );
     if (status) {
       where.status = status;
     } else {
@@ -2357,7 +2379,11 @@ export class PosSalesService implements OnModuleInit {
         }
       }
 
-      if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
+      if (
+        order.tenderType === 'split' ||
+        order.tenderType?.includes('+') ||
+        order.paymentMethod?.includes('+')
+      ) {
         if (cash > 0) tenders.push({ method: 'cash', amount: cash });
         if (card > 0) tenders.push({ method: 'card', amount: card });
       } else if (order.paymentMethod) {
@@ -2964,7 +2990,11 @@ export class PosSalesService implements OnModuleInit {
         });
       }
 
-      if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
+      if (
+        order.tenderType === 'split' ||
+        order.tenderType?.includes('+') ||
+        order.paymentMethod?.includes('+')
+      ) {
         if (Number(order.cashAmount) > 0)
           tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
         const isLegacy =
@@ -3401,20 +3431,32 @@ export class PosSalesService implements OnModuleInit {
         if (act.customer?.name?.toLowerCase().includes(st)) return true;
         if (act.customer?.contactNo?.toLowerCase().includes(st)) return true;
         if (String(act.amount).includes(st)) return true;
-        if (act.items?.some((i: any) => 
-          i.sku?.toLowerCase().includes(st) || 
-          i.barCode?.toLowerCase().includes(st) || 
-          i.description?.toLowerCase().includes(st)
-        )) return true;
-        if (act.issuedVouchers?.some((v: any) => 
-          v.code?.toLowerCase().includes(st) || 
-          String(v.faceValue).includes(st)
-        )) return true;
-        if (act.tenders?.some((t: any) => 
-          t.slipNo?.toLowerCase().includes(st) || 
-          String(t.amount).includes(st)
-        )) return true;
-        
+        if (
+          act.items?.some(
+            (i: any) =>
+              i.sku?.toLowerCase().includes(st) ||
+              i.barCode?.toLowerCase().includes(st) ||
+              i.description?.toLowerCase().includes(st),
+          )
+        )
+          return true;
+        if (
+          act.issuedVouchers?.some(
+            (v: any) =>
+              v.code?.toLowerCase().includes(st) ||
+              String(v.faceValue).includes(st),
+          )
+        )
+          return true;
+        if (
+          act.tenders?.some(
+            (t: any) =>
+              t.slipNo?.toLowerCase().includes(st) ||
+              String(t.amount).includes(st),
+          )
+        )
+          return true;
+
         return false;
       });
     }
@@ -3707,7 +3749,11 @@ export class PosSalesService implements OnModuleInit {
       }
     }
 
-    if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
+    if (
+      order.tenderType === 'split' ||
+      order.tenderType?.includes('+') ||
+      order.paymentMethod?.includes('+')
+    ) {
       if (cash > 0) tenders.push({ method: 'cash', amount: cash });
       if (card > 0) tenders.push({ method: 'card', amount: card });
     } else if (order.paymentMethod) {
@@ -9202,7 +9248,9 @@ export class PosSalesService implements OnModuleInit {
         const itemHsCode = it.hsCodeStr || it.hsCode?.hsCode || '-';
         const itemBarcode = it.barCode || '-';
 
-        const locationName = order.locationId ? (locationMap.get(order.locationId) || 'Main Outlet') : 'Main Outlet';
+        const locationName = order.locationId
+          ? locationMap.get(order.locationId) || 'Main Outlet'
+          : 'Main Outlet';
         const monthName = order.createdAt.toLocaleString('en-US', {
           month: 'long',
           year: 'numeric',
