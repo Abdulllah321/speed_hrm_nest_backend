@@ -331,7 +331,7 @@ export class OnlineOrderManagementService {
   async getGroupedOrders(locationId?: string) {
     // Fetch all online orders
     const allRows = await this.prisma.onlineOrder.findMany({
-      where: locationId ? { locationId } : undefined,
+      where: locationId ? ({ locationId } as any) : undefined,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -435,9 +435,9 @@ export class OnlineOrderManagementService {
 
     for (const row of orderRows) {
       // 1. Try matching System SKU from Excel to DB (sku, barCode, itemId)
-      let item = null;
+      let item: any = null;
 
-      const matchStr = (val: string, dbVal: string) => {
+      const matchStr = (val: string | null | undefined, dbVal: string | null | undefined) => {
         if (!val || !dbVal) return false;
         return val.trim().toLowerCase() === dbVal.trim().toLowerCase();
       };
@@ -527,7 +527,7 @@ export class OnlineOrderManagementService {
                   status: 'AVAILABLE',
                 },
               });
-              fbAvailable = inv?.quantity || 0;
+              fbAvailable = Number(inv?.quantity || 0);
               console.log(`[FUZZY] Fallback item ${fallbackItem.sku} InventoryItem:`, fbAvailable);
             }
 
@@ -602,7 +602,7 @@ export class OnlineOrderManagementService {
     };
 
     // Create the sales order
-    const createdOrder = await this.posSalesService.createOrder(
+    const createdOrder: any = await this.posSalesService.createOrder(
       dto,
       cashierUserId,
       ctx,

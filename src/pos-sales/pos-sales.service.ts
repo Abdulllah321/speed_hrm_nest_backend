@@ -2615,6 +2615,8 @@ export class PosSalesService implements OnModuleInit {
     // ── Search Filters ──
     if (filters?.search) {
       const searchTerm = filters.search.trim();
+      const searchNum = Number(searchTerm);
+      const isNumeric = !isNaN(searchNum);
 
       const searchWhere: any = {
         OR: [
@@ -2653,6 +2655,10 @@ export class PosSalesService implements OnModuleInit {
         ],
       };
 
+      if (isNumeric) {
+        searchWhere.OR.push({ grandTotal: { equals: searchNum } });
+      }
+
       const matchedOrders = await this.prisma.salesOrder.findMany({
         where: {
           ...where,
@@ -2662,34 +2668,37 @@ export class PosSalesService implements OnModuleInit {
       });
       const searchOrderIds = new Set(matchedOrders.map((o) => o.id));
 
-      // Search by Claim Number or Claim Item Barcode/SKU/Description
-      const matchedClaims = await this.prisma.posClaim.findMany({
-        where: {
-          OR: [
-            { claimNumber: { contains: searchTerm, mode: 'insensitive' } },
-            {
-              items: {
-                some: {
-                  item: {
-                    OR: [
-                      {
-                        barCode: { contains: searchTerm, mode: 'insensitive' },
-                      },
-                      { sku: { contains: searchTerm, mode: 'insensitive' } },
-                      { itemId: { contains: searchTerm, mode: 'insensitive' } },
-                      {
-                        description: {
-                          contains: searchTerm,
-                          mode: 'insensitive',
-                        },
-                      },
-                    ],
+      const claimOR: any[] = [
+        { claimNumber: { contains: searchTerm, mode: 'insensitive' } },
+        {
+          items: {
+            some: {
+              item: {
+                OR: [
+                  { barCode: { contains: searchTerm, mode: 'insensitive' } },
+                  { sku: { contains: searchTerm, mode: 'insensitive' } },
+                  { itemId: { contains: searchTerm, mode: 'insensitive' } },
+                  {
+                    description: {
+                      contains: searchTerm,
+                      mode: 'insensitive',
+                    },
                   },
-                },
+                ],
               },
             },
-          ],
+          },
         },
+      ];
+
+      if (isNumeric) {
+        claimOR.push({ claimedAmount: { equals: searchNum } });
+        claimOR.push({ approvedAmount: { equals: searchNum } });
+      }
+
+      // Search by Claim Number or Claim Item Barcode/SKU/Description
+      const matchedClaims = await this.prisma.posClaim.findMany({
+        where: { OR: claimOR },
         select: { salesOrderId: true },
       });
       matchedClaims.forEach((c) => searchOrderIds.add(c.salesOrderId));
@@ -2711,10 +2720,17 @@ export class PosSalesService implements OnModuleInit {
       });
       matchedLedgers.forEach((l) => searchOrderIds.add(l.referenceId));
 
+      const voucherOR: any[] = [
+        { code: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+      if (isNumeric) {
+        voucherOR.push({ faceValue: { equals: searchNum } });
+      }
+
       // Search by Voucher Code (Issued or Redeemed)
       const matchedIssuedVouchers = await this.prisma.voucher.findMany({
         where: {
-          code: { contains: searchTerm, mode: 'insensitive' },
+          OR: voucherOR,
           sourceOrderId: { not: null },
         },
         select: { sourceOrderId: true },
@@ -3365,6 +3381,33 @@ export class PosSalesService implements OnModuleInit {
           (act) => act.type === actType,
         );
       }
+    }
+
+    // Apply strict in-memory search across flattened activities to refine DB results
+    if (filters?.search) {
+      const st = filters.search.trim().toLowerCase();
+      filteredActivities = filteredActivities.filter((act) => {
+        if (act.number?.toLowerCase().includes(st)) return true;
+        if (act.orderNumber?.toLowerCase().includes(st)) return true;
+        if (act.customer?.name?.toLowerCase().includes(st)) return true;
+        if (act.customer?.contactNo?.toLowerCase().includes(st)) return true;
+        if (String(act.amount).includes(st)) return true;
+        if (act.items?.some((i: any) => 
+          i.sku?.toLowerCase().includes(st) || 
+          i.barCode?.toLowerCase().includes(st) || 
+          i.description?.toLowerCase().includes(st)
+        )) return true;
+        if (act.issuedVouchers?.some((v: any) => 
+          v.code?.toLowerCase().includes(st) || 
+          String(v.faceValue).includes(st)
+        )) return true;
+        if (act.tenders?.some((t: any) => 
+          t.slipNo?.toLowerCase().includes(st) || 
+          String(t.amount).includes(st)
+        )) return true;
+        
+        return false;
+      });
     }
 
     // Sort chronologically by date DESC (newest activities first)
