@@ -542,15 +542,18 @@ export class PosSalesService implements OnModuleInit {
             ) / 100;
           if (dto.globalDiscountPercent) {
             const cappedPercent = Math.min(dto.globalDiscountPercent, 100);
-            manualDiscount =
-              Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
+            // Calculate what X% of WOST is (e.g. 10% of 26400 = 2640)
+            const targetDiscountOnGrandTotal = Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
+            // To reduce the Grand Total by 2640, we must apply a proportionally smaller discount to WOST
+            if (grandTotalBeforeManual > 0) {
+              manualDiscount = Math.round(targetDiscountOnGrandTotal * (subtotal / grandTotalBeforeManual) * 100) / 100;
+            }
           } else if (dto.globalDiscountAmount) {
-            const maxFlatDiscount =
-              Math.round(grandTotalBeforeManual * 1.0 * 100) / 100;
-            manualDiscount = Math.min(
-              dto.globalDiscountAmount,
-              maxFlatDiscount,
-            );
+            const maxFlatDiscount = Math.round(grandTotalBeforeManual * 1.0 * 100) / 100;
+            const targetDiscountOnGrandTotal = Math.min(dto.globalDiscountAmount, maxFlatDiscount);
+            if (grandTotalBeforeManual > 0) {
+              manualDiscount = Math.round(targetDiscountOnGrandTotal * (subtotal / grandTotalBeforeManual) * 100) / 100;
+            }
           }
           // 2. Alliance discount (calculated on subtotal AFTER item discounts)
           if (dto.allianceId) {
@@ -742,6 +745,12 @@ export class PosSalesService implements OnModuleInit {
           // Determine payment status - round both values to 2 decimals for comparison
           const totalPaidRounded = Math.round(totalPaid * 100) / 100;
           const grandTotalRounded = Math.round(grandTotal * 100) / 100;
+
+          if (totalPaidRounded > grandTotalRounded) {
+            throw new Error(
+              `Total payment (${totalPaidRounded}) cannot exceed the grand total (${grandTotalRounded}). Overpayments are not allowed.`
+            );
+          }
 
           let paymentStatus: string;
 
