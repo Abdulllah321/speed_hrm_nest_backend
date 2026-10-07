@@ -44,7 +44,11 @@ export class OnlineOrderManagementService {
 
   private loadSession(uploadId: string) {
     try {
-      const filePath = path.join(os.tmpdir(), 'speed-limit-online-orders', `${uploadId}.json`);
+      const filePath = path.join(
+        os.tmpdir(),
+        'speed-limit-online-orders',
+        `${uploadId}.json`,
+      );
       if (fs.existsSync(filePath)) {
         const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         state.subject = new ReplaySubject<MessageEvent>(1);
@@ -517,7 +521,10 @@ export class OnlineOrderManagementService {
             });
             fbAvailable = Number(fbStockSum._sum?.qty ?? 0);
 
-            console.log(`[FUZZY] Fallback item ${fallbackItem.sku} (${fallbackItem.id}) StockLedger:`, fbAvailable);
+            console.log(
+              `[FUZZY] Fallback item ${fallbackItem.sku} (${fallbackItem.id}) StockLedger:`,
+              fbAvailable,
+            );
 
             if (fbAvailable === 0) {
               const inv = await this.prisma.inventoryItem.findFirst({
@@ -551,7 +558,7 @@ export class OnlineOrderManagementService {
       const qty = Number(row.qty) || 1;
       // We bypass the pre-check here because StockLedgerService.createEntry
       // already enforces a strict stock check (including InventoryItem fallback).
-      
+
       const price = Number(row.price) || 0;
 
       // In the Excel file, SKU discounted and SKU actual discount are PERCENTAGES!
@@ -612,14 +619,14 @@ export class OnlineOrderManagementService {
     // createOrder returns { status: false, message } on error instead of throwing
     if (!createdOrder.status || !createdOrder.data) {
       throw new BadRequestException(
-        createdOrder.message || 'Failed to create sales order in POS'
+        createdOrder.message || 'Failed to create sales order in POS',
       );
     }
 
     // Update the online order status to "posted" ONLY after successful POS order creation
     await this.prisma.onlineOrder.updateMany({
       where: { orderNumber },
-      data: { 
+      data: {
         itemStatus: 'posted',
         salesOrderId: createdOrder.data.id,
       },

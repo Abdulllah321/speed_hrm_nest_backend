@@ -43,30 +43,38 @@ export class StockRequisitionService {
   ): Promise<number> {
     // 1. Get physical AVAILABLE stock
     const wh = await tx.warehouse.findUnique({ where: { id: warehouseId } });
-    const locs = wh ? await tx.location.findMany({
-      where: { OR: [{ warehouseId }, { id: warehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
-    }) : [];
-    const locIds = locs.map(l => l.id);
+    const locs = wh
+      ? await tx.location.findMany({
+          where: {
+            OR: [
+              { warehouseId },
+              { id: warehouseId },
+              { code: wh.code },
+              { code: `WH-${wh.code}` },
+            ],
+          },
+        })
+      : [];
+    const locIds = locs.map((l) => l.id);
 
     const stockAgg = await tx.stockLedger.aggregate({
       where: {
         itemId,
         warehouseId,
-        locationId: null,
       },
-      _sum: { qty: true }
+      _sum: { qty: true },
     });
-    
-    let physicalQty = stockAgg._sum.qty !== null ? Number(stockAgg._sum.qty) : null;
+
+    let physicalQty =
+      stockAgg._sum.qty !== null ? Number(stockAgg._sum.qty) : null;
     if (physicalQty === null) {
       const fb = await tx.inventoryItem.aggregate({
         where: {
           itemId,
           status: 'AVAILABLE',
           warehouseId,
-          locationId: null,
         },
-        _sum: { quantity: true }
+        _sum: { quantity: true },
       });
       physicalQty = fb._sum.quantity !== null ? Number(fb._sum.quantity) : 0;
     }
@@ -138,133 +146,147 @@ export class StockRequisitionService {
     while (retries > 0) {
       try {
         requisitionResult = await this.prisma.$transaction(async (tx) => {
-          const { nextRequisitionNumber } = await this.getNextRequisitionNumber(tx);
+          const { nextRequisitionNumber } =
+            await this.getNextRequisitionNumber(tx);
           const requisitionNo = nextRequisitionNumber;
 
           // 1. Verify stock and block/reserve
-      for (const reqItem of data.items) {
-        if (reqItem.quantity <= 0) {
-          throw new BadRequestException(
-            `Quantity for item ${reqItem.itemId} must be greater than zero`,
-          );
-        }
+          for (const reqItem of data.items) {
+            if (reqItem.quantity <= 0) {
+              throw new BadRequestException(
+                `Quantity for item ${reqItem.itemId} must be greater than zero`,
+              );
+            }
 
-        const netAvailable = await this.getNetAvailableStock(
-          tx,
-          reqItem.itemId,
-          fromWarehouseId,
-        );
-        if (netAvailable < reqItem.quantity) {
-          const itemDetail = await tx.item.findUnique({
-            where: { id: reqItem.itemId },
-            select: { sku: true, description: true },
+            const netAvailable = await this.getNetAvailableStock(
+              tx,
+              reqItem.itemId,
+              fromWarehouseId,
+            );
+            if (netAvailable < reqItem.quantity) {
+              const itemDetail = await tx.item.findUnique({
+                where: { id: reqItem.itemId },
+                select: { sku: true, description: true },
+              });
+              throw new BadRequestException(
+                `Insufficient stock for item ${itemDetail?.sku || reqItem.itemId} (${itemDetail?.description || ''}). ` +
+                  `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
+              );
+            }
+          }
+
+          // 2. Resolve toLocationId (if user selected a Warehouse, map it to its Location)
+          let finalToLocationId = data.toLocationId;
+          const isWarehouse = await tx.warehouse.findUnique({
+            where: { id: finalToLocationId },
           });
-          throw new BadRequestException(
-            `Insufficient stock for item ${itemDetail?.sku || reqItem.itemId} (${itemDetail?.description || ''}). ` +
-              `Available (unreserved): ${netAvailable}, Requested: ${reqItem.quantity}`,
-          );
-        }
-      }
+          if (isWarehouse) {
+            const whLoc = await tx.location.findFirst({
+              where: {
+                OR: [
+                  { warehouseId: finalToLocationId },
+                  { code: isWarehouse.code },
+                ],
+              },
+            });
+            if (whLoc) {
+              finalToLocationId = whLoc.id;
+            }
+          }
 
-      // 2. Resolve toLocationId (if user selected a Warehouse, map it to its Location)
-      let finalToLocationId = data.toLocationId;
-      const isWarehouse = await tx.warehouse.findUnique({ where: { id: finalToLocationId } });
-      if (isWarehouse) {
-        const whLoc = await tx.location.findFirst({
-          where: { OR: [{ warehouseId: finalToLocationId }, { code: isWarehouse.code }] }
-        });
-        if (whLoc) {
-          finalToLocationId = whLoc.id;
-        }
-      }
-
-      // 3. Create StockRequisition
-      const requisition = await tx.stockRequisition.create({
-        data: {
-          requisitionNo,
-          fromWarehouseId,
-          toLocationId: finalToLocationId,
-          brandId: data.brandId || null,
-          documentType: data.documentType || 'New Arrival',
-          remarks: data.remarks || null,
-          notes: data.notes || null,
-          financialYear: data.financialYear || '26-27',
-          status,
-          createdById: userId,
-          items: {
-            create: data.items.map((item) => ({
-              itemId: item.itemId,
-              quantity: new Prisma.Decimal(item.quantity),
-            })),
-          },
-        },
-        include: {
-          items: {
+          // 3. Create StockRequisition
+          const requisition = await tx.stockRequisition.create({
+            data: {
+              requisitionNo,
+              fromWarehouseId,
+              toLocationId: finalToLocationId,
+              brandId: data.brandId || null,
+              documentType: data.documentType || 'New Arrival',
+              remarks: data.remarks || null,
+              notes: data.notes || null,
+              financialYear: data.financialYear || '26-27',
+              status,
+              createdById: userId,
+              items: {
+                create: data.items.map((item) => ({
+                  itemId: item.itemId,
+                  quantity: new Prisma.Decimal(item.quantity),
+                })),
+              },
+            },
             include: {
-              item: true,
+              items: {
+                include: {
+                  item: true,
+                },
+              },
+              fromWarehouse: true,
+              toLocation: true,
+              brand: true,
             },
-          },
-          fromWarehouse: true,
-          toLocation: true,
-          brand: true,
-        },
-      });
+          });
 
-      // 3. Create StockReserve records to block the stock immediately (for Draft & Pending)
-      for (const reqItem of data.items) {
-        await tx.stockReserve.create({
-          data: {
-            itemId: reqItem.itemId,
-            warehouseId: data.fromWarehouseId,
-            quantity: new Prisma.Decimal(reqItem.quantity),
-            referenceType: 'STOCK_REQUISITION',
-            referenceId: requisition.id,
-            notes: `Reserved for SRN ${requisitionNo} (${isDraft ? 'Draft' : 'Pending'})`,
-            createdById: userId,
-          },
+          // 3. Create StockReserve records to block the stock immediately (for Draft & Pending)
+          for (const reqItem of data.items) {
+            await tx.stockReserve.create({
+              data: {
+                itemId: reqItem.itemId,
+                warehouseId: data.fromWarehouseId,
+                quantity: new Prisma.Decimal(reqItem.quantity),
+                referenceType: 'STOCK_REQUISITION',
+                referenceId: requisition.id,
+                notes: `Reserved for SRN ${requisitionNo} (${isDraft ? 'Draft' : 'Pending'})`,
+                createdById: userId,
+              },
+            });
+          }
+
+          if (!isDraft) {
+            runInBackground(
+              'Send Warehouse Notification on SRN Creation',
+              this.notifications.sendWarehouseRoleNotification({
+                title: `New Stock Requisition: ${requisitionNo}`,
+                message: `Requisition ${requisitionNo} for ${requisition.toLocation?.name || 'Outlet'} (${data.items.length} items) is pending stock transfer.`,
+                category: 'warehouse',
+                priority: 'high',
+                actionType: 'NAVIGATE',
+                actionPayload: {
+                  url: '/erp/inventory/transactions/stock-requisition/pending',
+                },
+                entityType: 'StockRequisition',
+                entityId: requisition.id,
+                warehouseId: requisition.fromWarehouseId,
+              }),
+            );
+          }
+
+          runInBackground(
+            'Log SRN Creation',
+            this.activityLogs.log({
+              userId,
+              action: 'create',
+              module: 'stock-requisition',
+              entity: 'StockRequisition',
+              entityId: requisition.id,
+              description: `Created Stock Requisition Note ${requisitionNo} (Status: ${status}) and reserved stock`,
+              newValues: JSON.stringify(requisition),
+              status: 'success',
+            }),
+          );
+
+          return requisition;
         });
-      }
-
-      if (!isDraft) {
-        runInBackground(
-          'Send Warehouse Notification on SRN Creation',
-          this.notifications.sendWarehouseRoleNotification({
-            title: `New Stock Requisition: ${requisitionNo}`,
-            message: `Requisition ${requisitionNo} for ${requisition.toLocation?.name || 'Outlet'} (${data.items.length} items) is pending stock transfer.`,
-            category: 'warehouse',
-            priority: 'high',
-            actionType: 'NAVIGATE',
-            actionPayload: {
-              url: '/erp/inventory/transactions/stock-requisition/pending',
-            },
-            entityType: 'StockRequisition',
-            entityId: requisition.id,
-            warehouseId: requisition.fromWarehouseId,
-          }),
-        );
-      }
-
-      runInBackground(
-        'Log SRN Creation',
-        this.activityLogs.log({
-          userId,
-          action: 'create',
-          module: 'stock-requisition',
-          entity: 'StockRequisition',
-          entityId: requisition.id,
-          description: `Created Stock Requisition Note ${requisitionNo} (Status: ${status}) and reserved stock`,
-          newValues: JSON.stringify(requisition),
-          status: 'success',
-        }),
-      );
-
-      return requisition;
-    });
         break;
       } catch (error: any) {
-        if (error.code === 'P2002' && error.meta?.target?.includes('requisitionNo') && retries > 1) {
+        if (
+          error.code === 'P2002' &&
+          error.meta?.target?.includes('requisitionNo') &&
+          retries > 1
+        ) {
           retries--;
-          await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 200));
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.random() * 500 + 200),
+          );
           continue;
         }
         throw error;
@@ -349,10 +371,17 @@ export class StockRequisitionService {
       // 3. Resolve toLocationId (if user selected a Warehouse, map it to its Location)
       let finalToLocationId = data.toLocationId ?? existing.toLocationId;
       if (data.toLocationId) {
-        const isWarehouse = await tx.warehouse.findUnique({ where: { id: finalToLocationId } });
+        const isWarehouse = await tx.warehouse.findUnique({
+          where: { id: finalToLocationId },
+        });
         if (isWarehouse) {
           const whLoc = await tx.location.findFirst({
-            where: { OR: [{ warehouseId: finalToLocationId }, { code: isWarehouse.code }] }
+            where: {
+              OR: [
+                { warehouseId: finalToLocationId },
+                { code: isWarehouse.code },
+              ],
+            },
           });
           if (whLoc) {
             finalToLocationId = whLoc.id;
@@ -741,24 +770,36 @@ export class StockRequisitionService {
       });
 
       // Pre-fetch warehouse and locations once
-      const wh = await tx.warehouse.findUnique({ where: { id: requisition.fromWarehouseId! } });
-      const locs = wh ? await tx.location.findMany({
-        where: { OR: [{ warehouseId: requisition.fromWarehouseId }, { id: requisition.fromWarehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
-      }) : [];
-      const locIds = locs.map(l => l.id);
+      const wh = await tx.warehouse.findUnique({
+        where: { id: requisition.fromWarehouseId! },
+      });
+      const locs = wh
+        ? await tx.location.findMany({
+            where: {
+              OR: [
+                { warehouseId: requisition.fromWarehouseId },
+                { id: requisition.fromWarehouseId },
+                { code: wh.code },
+                { code: `WH-${wh.code}` },
+              ],
+            },
+          })
+        : [];
+      const locIds = locs.map((l) => l.id);
 
       // 2. Validate physical stock availability for final quantities using bulk aggregation
-      const itemIds = data.items.map(i => i.itemId);
+      const itemIds = data.items.map((i) => i.itemId);
       const stockAggs = await tx.stockLedger.groupBy({
         by: ['itemId'],
         where: {
           itemId: { in: itemIds },
           warehouseId: requisition.fromWarehouseId,
-          locationId: null,
         },
-        _sum: { qty: true }
+        _sum: { qty: true },
       });
-      const stockMap = new Map(stockAggs.map(s => [s.itemId, Number(s._sum.qty || 0)]));
+      const stockMap = new Map(
+        stockAggs.map((s) => [s.itemId, Number(s._sum.qty || 0)]),
+      );
 
       const fbAggs = await tx.inventoryItem.groupBy({
         by: ['itemId'],
@@ -766,16 +807,19 @@ export class StockRequisitionService {
           itemId: { in: itemIds },
           status: 'AVAILABLE',
           warehouseId: requisition.fromWarehouseId,
-          locationId: null,
         },
-        _sum: { quantity: true }
+        _sum: { quantity: true },
       });
-      const fbMap = new Map(fbAggs.map(f => [f.itemId, Number(f._sum.quantity || 0)]));
+      const fbMap = new Map(
+        fbAggs.map((f) => [f.itemId, Number(f._sum.quantity || 0)]),
+      );
 
       for (const stnItem of data.items) {
         if (stnItem.quantity <= 0) continue; // Skip item if quantity reduced to 0
 
-        let physicalQty = stockMap.has(stnItem.itemId) ? stockMap.get(stnItem.itemId) : null;
+        let physicalQty = stockMap.has(stnItem.itemId)
+          ? stockMap.get(stnItem.itemId)
+          : null;
         if (physicalQty === null) {
           physicalQty = fbMap.get(stnItem.itemId) || 0;
         }
@@ -819,23 +863,22 @@ export class StockRequisitionService {
       // 4. Immediately decrement warehouse physical stock & create outbound ledger entries
       const itemsData = await tx.item.findMany({
         where: { id: { in: itemIds } },
-        select: { id: true, unitCost: true, sku: true }
+        select: { id: true, unitCost: true, sku: true },
       });
-      const rateMap = new Map(itemsData.map(i => [i.id, Number(i.unitCost || 0)]));
+      const rateMap = new Map(
+        itemsData.map((i) => [i.id, Number(i.unitCost || 0)]),
+      );
 
       const allStocks = await tx.inventoryItem.findMany({
         where: {
           itemId: { in: itemIds },
           status: 'AVAILABLE',
           quantity: { gt: 0 },
-          OR: [
-            { warehouseId: requisition.fromWarehouseId },
-            ...(locIds.length > 0 ? [{ locationId: { in: locIds } }] : [])
-          ]
+          warehouseId: requisition.fromWarehouseId,
         },
-        orderBy: { quantity: 'desc' }
+        orderBy: { quantity: 'desc' },
       });
-      
+
       const stockByItem = new Map<string, any[]>();
       for (const st of allStocks) {
         if (!stockByItem.has(st.itemId)) stockByItem.set(st.itemId, []);
@@ -858,10 +901,12 @@ export class StockRequisitionService {
         for (const stock of itemStocks) {
           if (remainingToDeduct <= 0) break;
           const deduct = Math.min(Number(stock.quantity), remainingToDeduct);
-          inventoryOps.push(tx.inventoryItem.update({
-            where: { id: stock.id },
-            data: { quantity: { decrement: deduct } },
-          }));
+          inventoryOps.push(
+            tx.inventoryItem.update({
+              where: { id: stock.id },
+              data: { quantity: { decrement: deduct } },
+            }),
+          );
           remainingToDeduct -= deduct;
         }
 
@@ -896,24 +941,26 @@ export class StockRequisitionService {
       if (ledgerEntries.length > 0) {
         ops.push(tx.stockLedger.createMany({ data: ledgerEntries }));
       }
-      
+
       if (movementEntries.length > 0) {
         ops.push(tx.stockMovement.createMany({ data: movementEntries }));
       }
 
       // 5. Update the fulfilled quantities and status in the Stock Requisition
       for (const stnItem of data.items) {
-        ops.push(tx.stockRequisitionItem.update({
-          where: {
-            stockRequisitionId_itemId: {
-              stockRequisitionId: requisitionId,
-              itemId: stnItem.itemId,
+        ops.push(
+          tx.stockRequisitionItem.update({
+            where: {
+              stockRequisitionId_itemId: {
+                stockRequisitionId: requisitionId,
+                itemId: stnItem.itemId,
+              },
             },
-          },
-          data: {
-            fulfilledQty: new Prisma.Decimal(stnItem.quantity),
-          },
-        }));
+            data: {
+              fulfilledQty: new Prisma.Decimal(stnItem.quantity),
+            },
+          }),
+        );
       }
 
       const chunkSize = 50;
@@ -1179,9 +1226,16 @@ export class StockRequisitionService {
       whName = wh?.name || 'selected warehouse';
       if (wh) {
         const locs = await this.prisma.location.findMany({
-           where: { OR: [{ warehouseId: wh.id }, { id: wh.id }, { code: wh.code }, { code: `WH-${wh.code}` }] }
+          where: {
+            OR: [
+              { warehouseId: wh.id },
+              { id: wh.id },
+              { code: wh.code },
+              { code: `WH-${wh.code}` },
+            ],
+          },
         });
-        locIds = locs.map(l => l.id);
+        locIds = locs.map((l) => l.id);
       }
 
       const stockItems = await this.prisma.stockLedger.groupBy({
@@ -1189,7 +1243,6 @@ export class StockRequisitionService {
         where: {
           itemId: { in: resolvedItems.map((i) => i.itemId) },
           warehouseId,
-          locationId: null,
         },
         _sum: { qty: true },
       });
@@ -1198,7 +1251,9 @@ export class StockRequisitionService {
         stockMap.set(s.itemId, Number(s._sum.qty || 0));
       }
 
-      const noLedgerItems = resolvedItems.filter(i => !stockMap.has(i.itemId));
+      const noLedgerItems = resolvedItems.filter(
+        (i) => !stockMap.has(i.itemId),
+      );
       if (noLedgerItems.length > 0) {
         const fallbackItems = await this.prisma.inventoryItem.groupBy({
           by: ['itemId'],
@@ -1206,7 +1261,6 @@ export class StockRequisitionService {
             itemId: { in: noLedgerItems.map((i) => i.itemId) },
             status: 'AVAILABLE',
             warehouseId,
-            locationId: null,
           },
           _sum: { quantity: true },
         });
@@ -1425,10 +1479,21 @@ export class StockRequisitionService {
     });
 
     // 3. Fetch physical available stock in warehouse
-    const wh = await this.prisma.warehouse.findUnique({ where: { id: fromWarehouseId } });
-    const locs = wh ? await this.prisma.location.findMany({
-      where: { OR: [{ warehouseId: fromWarehouseId }, { id: fromWarehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
-    }) : [];
+    const wh = await this.prisma.warehouse.findUnique({
+      where: { id: fromWarehouseId },
+    });
+    const locs = wh
+      ? await this.prisma.location.findMany({
+          where: {
+            OR: [
+              { warehouseId: fromWarehouseId },
+              { id: fromWarehouseId },
+              { code: wh.code },
+              { code: `WH-${wh.code}` },
+            ],
+          },
+        })
+      : [];
     const locIds = locs.map((l: any) => l.id);
 
     const stockItems = await this.prisma.stockLedger.groupBy({
@@ -1436,19 +1501,18 @@ export class StockRequisitionService {
       where: {
         itemId: { in: itemIds },
         warehouseId: fromWarehouseId,
-        locationId: null,
       },
       _sum: {
         qty: true,
       },
     });
-    
+
     const stockMap = new Map<string, number>();
     for (const s of stockItems) {
       stockMap.set(s.itemId, Number(s._sum.qty || 0));
     }
-    
-    const noLedgerItemIds = itemIds.filter(id => !stockMap.has(id));
+
+    const noLedgerItemIds = itemIds.filter((id) => !stockMap.has(id));
     if (noLedgerItemIds.length > 0) {
       const fallbackItems = await this.prisma.inventoryItem.groupBy({
         by: ['itemId'],
@@ -1456,7 +1520,6 @@ export class StockRequisitionService {
           itemId: { in: noLedgerItemIds },
           status: 'AVAILABLE',
           warehouseId: fromWarehouseId,
-          locationId: null,
         },
         _sum: { quantity: true },
       });
@@ -1465,10 +1528,12 @@ export class StockRequisitionService {
       }
     }
 
-    const mappedStockItems = Array.from(stockMap.entries()).map(([itemId, quantity]) => ({
-      itemId,
-      quantity
-    }));
+    const mappedStockItems = Array.from(stockMap.entries()).map(
+      ([itemId, quantity]) => ({
+        itemId,
+        quantity,
+      }),
+    );
 
     // 4. Fetch active reservations in warehouse
     const reservations = await this.prisma.stockReserve.groupBy({
@@ -1580,11 +1645,14 @@ export class StockRequisitionService {
     return { items: candidates, totalNetSales };
   }
 
-  async getNextRequisitionNumber(tx?: Prisma.TransactionClient): Promise<{ nextRequisitionNumber: string }> {
+  async getNextRequisitionNumber(
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ nextRequisitionNumber: string }> {
     const prismaClient = tx || this.prisma;
     const now = new Date();
     const currentMonth = now.getMonth();
-    const fiscalYear = currentMonth >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+    const fiscalYear =
+      currentMonth >= 6 ? now.getFullYear() + 1 : now.getFullYear();
     const prefix = 'SRN';
 
     const lastRequisition = await prismaClient.stockRequisition.findFirst({

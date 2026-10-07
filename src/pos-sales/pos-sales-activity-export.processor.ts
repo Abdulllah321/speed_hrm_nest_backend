@@ -700,7 +700,11 @@ export class PosSalesActivityExportProcessor {
             });
           }
 
-          if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
+          if (
+            order.tenderType === 'split' ||
+            order.tenderType?.includes('+') ||
+            order.paymentMethod?.includes('+')
+          ) {
             if (Number(order.cashAmount) > 0)
               tenders.push({
                 method: 'cash',

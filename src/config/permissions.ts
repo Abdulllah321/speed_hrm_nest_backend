@@ -1883,6 +1883,14 @@ export const PERMISSIONS = [
     name: 'erp.inventory.transfer.create',
     description: 'Create Stock Transfer',
   },
+  {
+    name: 'erp.inventory.transfer.check',
+    description: 'Check Stock Transfer',
+  },
+  {
+    name: 'erp.inventory.transfer.authorize',
+    description: 'Authorize Stock Transfer',
+  },
 
   // ── ERP Inventory — Transactions ───────────────────────────────────────────
   {
@@ -2182,6 +2190,14 @@ export const PERMISSIONS = [
     description: 'Create Transfer Request from POS',
   },
   {
+    name: 'pos.inventory.transfer.check',
+    description: 'Check Transfer Request from POS',
+  },
+  {
+    name: 'pos.inventory.transfer.authorize',
+    description: 'Authorize Transfer Request from POS',
+  },
+  {
     name: 'pos.stock.move',
     description: 'Execute Direct Stock Movement (Inbound/Outbound/Transfer)',
   },
@@ -2275,31 +2291,112 @@ export const PERMISSIONS = [
   { name: 'profile.update', description: 'Update Own Profile Information' },
 
   // ── ERP — Reports ───────────────────────────────────────────────────────────
-  { name: 'erp.report.inventory.available-stock.view', description: 'View Available Stock + Reserved Stock Report' },
-  { name: 'erp.report.inventory.overall-stock.view', description: 'View Overall Available Stock Report' },
-  { name: 'erp.report.inventory.pos-overall-stock.view', description: 'View POS Overall Available Stock Report' },
-  { name: 'erp.report.inventory.aging.view', description: 'View Inventory Aging Report' },
-  { name: 'erp.report.inventory.pos-stock-activity.view', description: 'View POS Stock Activity Report' },
-  { name: 'erp.report.inventory.warehouse-stock-activity.view', description: 'View Warehouse Stock Activity Report' },
-  { name: 'erp.report.inventory.pos-available-stock.view', description: 'View POS Available Stock Summary' },
-  { name: 'erp.report.inventory.pos-aging.view', description: 'View POS Inventory Aging Report' },
-  { name: 'erp.report.inventory.transaction-details.view', description: 'View Stock Transaction Details' },
-  { name: 'erp.report.sales.gross-summary.view', description: 'View Gross Sales Summary' },
-  { name: 'erp.report.sales.gross-return.view', description: 'View Gross Sales Return' },
-  { name: 'erp.report.sales.net-summary.view', description: 'View Net Sales Summary' },
-  { name: 'erp.report.sales.sales-list.view', description: 'View Sales List Report' },
-  { name: 'erp.report.sales.return-list.view', description: 'View Sales Return List' },
-  { name: 'erp.report.sales.net-sales-list.view', description: 'View Net Sales List Report' },
-  { name: 'erp.report.sales.sales-register.view', description: 'View Sales Register' },
-  { name: 'erp.report.sales.reconciliation.view', description: 'View Sales Reconciliation' },
-  { name: 'erp.report.sales.alliance-register.view', description: 'View Alliance Register' },
-  { name: 'erp.report.sales.wholesale-invoice.view', description: 'View Wholesale Invoice Register' },
-  { name: 'erp.report.sales.wholesale-return.view', description: 'View Wholesale Return Register' },
-  { name: 'erp.report.purchase.po-register.view', description: 'View PO Register' },
-  { name: 'erp.report.purchase.invoice-register.view', description: 'View Purchase Invoice Register' },
-  { name: 'erp.report.purchase.return-register.view', description: 'View Purchase Return Register' },
-  { name: 'erp.report.finance.stock-valuation.view', description: 'View Stock Valuation Report' },
-  { name: 'erp.report.finance.cost-of-sales.view', description: 'View Cost of Sales Report' },
-  { name: 'erp.report.finance.voucher-register.view', description: 'View Voucher Register' },
-  { name: 'erp.report.finance.claim-register.view', description: 'View Claim Register' },
+  {
+    name: 'erp.report.inventory.available-stock.view',
+    description: 'View Available Stock + Reserved Stock Report',
+  },
+  {
+    name: 'erp.report.inventory.overall-stock.view',
+    description: 'View Overall Available Stock Report',
+  },
+  {
+    name: 'erp.report.inventory.pos-overall-stock.view',
+    description: 'View POS Overall Available Stock Report',
+  },
+  {
+    name: 'erp.report.inventory.aging.view',
+    description: 'View Inventory Aging Report',
+  },
+  {
+    name: 'erp.report.inventory.pos-stock-activity.view',
+    description: 'View POS Stock Activity Report',
+  },
+  {
+    name: 'erp.report.inventory.warehouse-stock-activity.view',
+    description: 'View Warehouse Stock Activity Report',
+  },
+  {
+    name: 'erp.report.inventory.pos-available-stock.view',
+    description: 'View POS Available Stock Summary',
+  },
+  {
+    name: 'erp.report.inventory.pos-aging.view',
+    description: 'View POS Inventory Aging Report',
+  },
+  {
+    name: 'erp.report.inventory.transaction-details.view',
+    description: 'View Stock Transaction Details',
+  },
+  {
+    name: 'erp.report.sales.gross-summary.view',
+    description: 'View Gross Sales Summary',
+  },
+  {
+    name: 'erp.report.sales.gross-return.view',
+    description: 'View Gross Sales Return',
+  },
+  {
+    name: 'erp.report.sales.net-summary.view',
+    description: 'View Net Sales Summary',
+  },
+  {
+    name: 'erp.report.sales.sales-list.view',
+    description: 'View Sales List Report',
+  },
+  {
+    name: 'erp.report.sales.return-list.view',
+    description: 'View Sales Return List',
+  },
+  {
+    name: 'erp.report.sales.net-sales-list.view',
+    description: 'View Net Sales List Report',
+  },
+  {
+    name: 'erp.report.sales.sales-register.view',
+    description: 'View Sales Register',
+  },
+  {
+    name: 'erp.report.sales.reconciliation.view',
+    description: 'View Sales Reconciliation',
+  },
+  {
+    name: 'erp.report.sales.alliance-register.view',
+    description: 'View Alliance Register',
+  },
+  {
+    name: 'erp.report.sales.wholesale-invoice.view',
+    description: 'View Wholesale Invoice Register',
+  },
+  {
+    name: 'erp.report.sales.wholesale-return.view',
+    description: 'View Wholesale Return Register',
+  },
+  {
+    name: 'erp.report.purchase.po-register.view',
+    description: 'View PO Register',
+  },
+  {
+    name: 'erp.report.purchase.invoice-register.view',
+    description: 'View Purchase Invoice Register',
+  },
+  {
+    name: 'erp.report.purchase.return-register.view',
+    description: 'View Purchase Return Register',
+  },
+  {
+    name: 'erp.report.finance.stock-valuation.view',
+    description: 'View Stock Valuation Report',
+  },
+  {
+    name: 'erp.report.finance.cost-of-sales.view',
+    description: 'View Cost of Sales Report',
+  },
+  {
+    name: 'erp.report.finance.voucher-register.view',
+    description: 'View Voucher Register',
+  },
+  {
+    name: 'erp.report.finance.claim-register.view',
+    description: 'View Claim Register',
+  },
 ];

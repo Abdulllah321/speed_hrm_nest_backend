@@ -1,0 +1,292 @@
+ EMP_ID |       Employee_Name        |             Current_Salary             |  Status
+--------+----------------------------+----------------------------------------+----------
+ EMP001 | Adil Matcheswala           | 1875000.000000000000000000000000000000 | active
+ EMP002 | FAHEEM AKHTER              |  555000.000000000000000000000000000000 | active
+ EMP003 | Junaid Rasheed             |  350000.000000000000000000000000000000 | active
+ EMP004 | Muhammad Numair Arshad     |  223000.000000000000000000000000000000 | active
+ EMP005 | Muhammad AnwarUllah Ansari |  238000.000000000000000000000000000000 | active
+ EMP006 | Muhammad Rehan             |  174000.000000000000000000000000000000 | active
+ EMP007 | Irfan Arif                 |  193000.000000000000000000000000000000 | active
+ EMP008 | Saqib Aziz Khan            |  168000.000000000000000000000000000000 | active
+ EMP009 | Waqas Khan                 |  120000.000000000000000000000000000000 | active
+ EMP010 | Muhammad Sadiq Ahmed       |  121500.000000000000000000000000000000 | active
+ EMP011 | Farooq Pervaiz             |  101000.000000000000000000000000000000 | active
+ EMP012 | Arif Uddin                 |   91000.000000000000000000000000000000 | active
+ EMP013 | Syed Muhammad Junaid       |   86500.000000000000000000000000000000 | active
+ EMP014 | Ahtisham Shahid            |   70000.000000000000000000000000000000 | active
+ EMP015 | Ebad Naeem                 |   53000.000000000000000000000000000000 | active
+ EMP016 | Nasir Hussain Shahid       |   96500.000000000000000000000000000000 | active
+ EMP017 | Rashid Khan Meo            |   79500.000000000000000000000000000000 | active
+ EMP018 | Kamal Ud Din               |   80500.000000000000000000000000000000 | active
+ EMP019 | Imran Rasheed              |   60500.000000000000000000000000000000 | active
+ EMP020 | Sauban Javaid              |   55500.000000000000000000000000000000 | active
+ EMP021 | Kamran Haider              |  462500.000000000000000000000000000000 | active
+ EMP022 | Syed Qaisar Ali Pasha      |  170000.000000000000000000000000000000 | active
+ EMP023 | Arsalan                    |  137000.000000000000000000000000000000 | active
+ EMP024 | Syed Arif Hussain          |   96000.000000000000000000000000000000 | active
+ EMP025 | Suzan Alvis                |   70000.000000000000000000000000000000 | active
+ EMP026 | Shahid Khan                |  111000.000000000000000000000000000000 | active
+ EMP027 | Jahanzaib                  |   62500.000000000000000000000000000000 | active
+ EMP028 | Shakeel Ahmed Awan         |   42000.000000000000000000000000000000 | active
+ EMP029 | Muhammad Nazim Mughal      |   71000.000000000000000000000000000000 | active
+ EMP030 | Shayan ul Haq Siddiqui     |  940000.000000000000000000000000000000 | active
+ EMP031 | Khola Bint E Sultan        |   80000.000000000000000000000000000000 | active
+ EMP032 | Nasir Jamal                |  350000.000000000000000000000000000000 | active
+ EMP033 | Asim Khurshid              |  310000.000000000000000000000000000000 | active
+ EMP034 | Hasan Tanveer              |  188000.000000000000000000000000000000 | active
+ EMP035 | Sheheryar Ahmed            |  158000.000000000000000000000000000000 | active
+ EMP036 | Zeeshan Butt               |  545000.000000000000000000000000000000 | active
+ EMP037 | Sheeraz Muhammad Khan      |  423000.000000000000000000000000000000 | active
+ EMP038 | Mohsin Mukhtar             |  181500.000000000000000000000000000000 | active
+ EMP039 | Atta ur Rehman             |  242500.000000000000000000000000000000 | active
+ EMP040 | Arsalan Sharfuddin         |   95000.000000000000000000000000000000 | active
+ EMP041 | Syed Noman Ali             |   93000.000000000000000000000000000000 | active
+ EMP042 | Murtaza Ahmed              |   65000.000000000000000000000000000000 | active
+ EMP043 | Mustufa Yousuf             |  555000.000000000000000000000000000000 | active
+ EMP044 | Imran Khalid               |  290000.000000000000000000000000000000 | active
+ EMP045 | Muhammad Farhan            |  175000.000000000000000000000000000000 | active
+ EMP046 | Syed Sarmad Sajid          |  114000.000000000000000000000000000000 | active
+ EMP047 | Yasir Wakil                |  108000.000000000000000000000000000000 | active
+ EMP048 | Muhammad Yaser Azam        |  618500.000000000000000000000000000000 | active
+ EMP049 | Fayyaz Ahmed               |  222000.000000000000000000000000000000 | active
+ EMP050 | Muhammad Haris Shafiq      |  172000.000000000000000000000000000000 | active
+ EMP051 | Muhammad Khurram Iqbal     |  194500.000000000000000000000000000000 | active
+ EMP052 | Shahrukh Khan              |   70000.000000000000000000000000000000 | active
+ EMP053 | Rafia Sajjad Toor          |  247000.000000000000000000000000000000 | active
+ EMP054 | Nazir Dost Khan            |   86000.000000000000000000000000000000 | active
+ EMP055 | Asif Abbas Vazir           |  350000.000000000000000000000000000000 | active
+ EMP056 | Syed Haider Raza Burney    |  127000.000000000000000000000000000000 | active
+ EMP057 | Ali Roz Khan               |   67500.000000000000000000000000000000 | active
+ EMP058 | Muhammad Asif              |   51000.000000000000000000000000000000 | active
+ EMP059 | Atif Rafiq                 |   51000.000000000000000000000000000000 | active
+ EMP060 | Shahzad Hussain            |   49500.000000000000000000000000000000 | active
+ EMP061 | Shoaib Hassan              |   50500.000000000000000000000000000000 | active
+ EMP062 | Ejaz Hussain Rana          |   47000.000000000000000000000000000000 | active
+ EMP063 | Mohibullah                 |   46000.000000000000000000000000000000 | active
+ EMP064 | Syed Fida Hussain          |   46500.000000000000000000000000000000 | active
+ EMP065 | Zubair Anwar               |   49000.000000000000000000000000000000 | active
+ EMP066 | Syed Daniyal Abbas Naqvi   |   52500.000000000000000000000000000000 | active
+ EMP067 | Syed Wajid Hussain         |   48000.000000000000000000000000000000 | active
+ EMP068 | Muhammad Faisal            |   55000.000000000000000000000000000000 | active
+ EMP069 | Zeeshan Shirazi            |   55500.000000000000000000000000000000 | active
+ EMP070 | Muhammad Ahsan Khan Lodhi  |   36000.000000000000000000000000000000 | active
+ EMP071 | Talha Mumtaz               |   37000.000000000000000000000000000000 | active
+ EMP072 | Noman                      |   39000.000000000000000000000000000000 | active
+ EMP073 | Muhammad Zubair Hussain    |   33000.000000000000000000000000000000 | active
+ EMP074 | Anees Khan                 |   37000.000000000000000000000000000000 | active
+ EMP075 | Altaf Hussain Korai        |   40000.000000000000000000000000000000 | active
+ EMP076 | Muhammad Farhan            |   32000.000000000000000000000000000000 | active
+ EMP077 | Muhammad Ahmed             |   33000.000000000000000000000000000000 | active
+ EMP078 | Subhan Shahid              |   34000.000000000000000000000000000000 | active
+ EMP079 | Ahmed Sikander Javed       |  123000.000000000000000000000000000000 | active
+ EMP080 | Muhammad Nabeel            |   68000.000000000000000000000000000000 | active
+ EMP081 | Muhamamd Danish            |   68000.000000000000000000000000000000 | active
+ EMP082 | Khawaja Zeeshan Fakhar     |   73000.000000000000000000000000000000 | active
+ EMP083 | Uzma                       |   55000.000000000000000000000000000000 | active
+ EMP084 | Muhammad Zeeshan           |   54000.000000000000000000000000000000 | active
+ EMP085 | Muhammad Usama Ghouri      |   48000.000000000000000000000000000000 | active
+ EMP086 | Hamza Tariq                |   44000.000000000000000000000000000000 | active
+ EMP087 | Syed Maaz Shah             |   45000.000000000000000000000000000000 | active
+ EMP088 | Saifullah Khan             |   45000.000000000000000000000000000000 | active
+ EMP089 | Muhammad Ahsan Naeem       |  131000.000000000000000000000000000000 | active
+ EMP090 | Muhammad Sadiq Khan        |   60000.000000000000000000000000000000 | active
+ EMP091 | Muhammad Shayan            |   49000.000000000000000000000000000000 | active
+ EMP092 | Muhammad Sheraz            |   49000.000000000000000000000000000000 | active
+ EMP093 | Anum                       |   44000.000000000000000000000000000000 | active
+ EMP094 | Faraz Ali                  |   44000.000000000000000000000000000000 | active
+ EMP095 | Muhammad Shayan            |  109000.000000000000000000000000000000 | active
+ EMP096 | Imran Hussain Khan         |   57000.000000000000000000000000000000 | active
+ EMP097 | Bilal Ali                  |   54000.000000000000000000000000000000 | active
+ EMP098 | Rukhsar Ali                |   46000.000000000000000000000000000000 | active
+ EMP099 | Anas Ishtiaq               |   46000.000000000000000000000000000000 | active
+ EMP100 | Muhammad Athar             |   45000.000000000000000000000000000000 | active
+ EMP101 | Syed Zaid Qutbi            |   42000.000000000000000000000000000000 | active
+ EMP102 | Muhammad Usama Abbas       |   90000.000000000000000000000000000000 | active
+ EMP103 | Abdullah Kamran            |   44000.000000000000000000000000000000 | active
+ EMP104 | Arsalan Ali                |   46000.000000000000000000000000000000 | active
+ EMP105 | Taram Javed                |   47000.000000000000000000000000000000 | active
+ EMP106 | Areeba Munir               |   44000.000000000000000000000000000000 | active
+ EMP107 | Muhammad Sameer Ajmal      |   42000.000000000000000000000000000000 | active
+ EMP108 | Muhammad Affan             |   42000.000000000000000000000000000000 | active
+ EMP109 | Hakim Shahid               |   42000.000000000000000000000000000000 | active
+ EMP110 | Zabi Ullah                 |   42000.000000000000000000000000000000 | active
+ EMP111 | Usman Akhter               |  128000.000000000000000000000000000000 | active
+ EMP112 | Khawaja Zahid Bilal        |   52000.000000000000000000000000000000 | active
+ EMP113 | Saqlain Abbas              |   45000.000000000000000000000000000000 | active
+ EMP114 | Rubab                      |   44000.000000000000000000000000000000 | active
+ EMP115 | Saim Saddiq                |   43000.000000000000000000000000000000 | active
+ EMP116 | Zain Ali                   |   43000.000000000000000000000000000000 | active
+ EMP117 | Esha Akhtar                |   44000.000000000000000000000000000000 | active
+ EMP118 | Umair Aslam                |   45000.000000000000000000000000000000 | active
+ EMP119 | Muhammad Ahsan             |   43000.000000000000000000000000000000 | active
+ EMP120 | Muhammad Junaid            |   42000.000000000000000000000000000000 | active
+ EMP121 | Alishba                    |   42000.000000000000000000000000000000 | active
+ EMP122 | Farooq Khan                |   95000.000000000000000000000000000000 | active
+ EMP123 | Muhammad Muzamil Khan      |   72000.000000000000000000000000000000 | active
+ EMP124 | Waqas Ali                  |   45000.000000000000000000000000000000 | active
+ EMP125 | Haroon Ali                 |   45000.000000000000000000000000000000 | active
+ EMP126 | Faheem Iqbal               |   45000.000000000000000000000000000000 | active
+ EMP127 | Faiqa Sehar                |   45000.000000000000000000000000000000 | active
+ EMP128 | Saleem Ahmed               |   42000.000000000000000000000000000000 | active
+ EMP129 | Shahzaib                   |   42000.000000000000000000000000000000 | active
+ EMP130 | Azhar Ali                  |   62000.000000000000000000000000000000 | active
+ EMP131 | Syed Muhammad Mohsin Shah  |   62000.000000000000000000000000000000 | active
+ EMP132 | Nadia Irshad               |   62000.000000000000000000000000000000 | active
+ EMP133 | Rabbiya                    |   62000.000000000000000000000000000000 | active
+ EMP134 | Muhammad Faheem            |  117000.000000000000000000000000000000 | active
+ EMP135 | Amisha Ghouri              |   68000.000000000000000000000000000000 | active
+ EMP136 | Raheel Ahmed               |   68000.000000000000000000000000000000 | active
+ EMP137 | Nouman Khan                |   69000.000000000000000000000000000000 | active
+ EMP138 | Waleed Masood              |  104000.000000000000000000000000000000 | active
+ EMP139 | Shahid Farooq              |   66000.000000000000000000000000000000 | active
+ EMP140 | Husnain Akram              |   69000.000000000000000000000000000000 | active
+ EMP141 | Samam Wahid                |   88000.000000000000000000000000000000 | active
+ EMP142 | Bilal Butt                 |  143500.000000000000000000000000000000 | active
+ EMP143 | Syed Muhammad Arif Gillani |   82000.000000000000000000000000000000 | active
+ EMP144 | Abdul Wahab                |   66000.000000000000000000000000000000 | active
+ EMP145 | Muhammad Salman            |   67000.000000000000000000000000000000 | active
+ EMP146 | Rida Afzal                 |   62000.000000000000000000000000000000 | active
+ EMP147 | Abdul Muqeet               |   58000.000000000000000000000000000000 | active
+ EMP148 | Ali Hassan                 |   98000.000000000000000000000000000000 | active
+ EMP149 | Muhammad Jahan Zaib        |   75000.000000000000000000000000000000 | active
+ EMP150 | Muhammad Shaban Attari     |   67000.000000000000000000000000000000 | active
+ EMP151 | Muhammad Bilal             |   62000.000000000000000000000000000000 | active
+ EMP152 | Mohsin Atta                |   62000.000000000000000000000000000000 | active
+ EMP153 | Muskan Shahid              |   62000.000000000000000000000000000000 | active
+ EMP154 | Muhammad Shakeel           |  175000.000000000000000000000000000000 | active
+ EMP155 | Shahzad Ahmed              |  126000.000000000000000000000000000000 | active
+ EMP156 | Syed Muhammed Ahsan        |   84000.000000000000000000000000000000 | active
+ EMP157 | Muhammad Umar              |   77000.000000000000000000000000000000 | active
+ EMP158 | Hafiz Khizar Ahmed Khan    |   71000.000000000000000000000000000000 | active
+ EMP159 | Muhammad Farooq            |   73000.000000000000000000000000000000 | active
+ EMP160 | Muhammad Hunain Khan       |   64000.000000000000000000000000000000 | active
+ EMP161 | Taha Tanveer Ahmed         |   64000.000000000000000000000000000000 | active
+ EMP162 | Mubeen Ahmed               |  116000.000000000000000000000000000000 | active
+ EMP163 | Muhammad Hammad            |   77000.000000000000000000000000000000 | active
+ EMP164 | Farkhanda Aslam            |   72000.000000000000000000000000000000 | active
+ EMP165 | Arbab Khan                 |   65000.000000000000000000000000000000 | active
+ EMP166 | Abdullah s/o Faisal Ali    |   68000.000000000000000000000000000000 | active
+ EMP167 | Muhammad Mubashir Javed    |  116000.000000000000000000000000000000 | active
+ EMP168 | Naeem Ahmad                |   74000.000000000000000000000000000000 | active
+ EMP169 | Mohsin Ali                 |   70000.000000000000000000000000000000 | active
+ EMP170 | Muhammad Zohaib Iqbal      |   66000.000000000000000000000000000000 | active
+ EMP171 | Muhammad Imran             |   66000.000000000000000000000000000000 | active
+ EMP172 | Hammad Haroon              |   68000.000000000000000000000000000000 | active
+ EMP173 | Ahmad Ali Niazi            |   68000.000000000000000000000000000000 | active
+ EMP174 | Abid Khan                  |  134000.000000000000000000000000000000 | active
+ EMP175 | Dildar Shah                |   76000.000000000000000000000000000000 | active
+ EMP176 | Zohaib Ahmed               |   67000.000000000000000000000000000000 | active
+ EMP177 | Muhammad Mobeen Anjum      |   67000.000000000000000000000000000000 | active
+ EMP178 | Mujeeb Ur Rehman           |   62000.000000000000000000000000000000 | active
+ EMP179 | Zain Masih                 |   62000.000000000000000000000000000000 | active
+ EMP180 | Kamran                     |  101000.000000000000000000000000000000 | active
+ EMP181 | Rahul Ilyas                |   68000.000000000000000000000000000000 | active
+ EMP182 | Muhammad Ibrahim           |   62000.000000000000000000000000000000 | active
+ EMP183 | Muhammad Nabeel            |   94000.000000000000000000000000000000 | active
+ EMP184 | Tanveer Abid               |   74000.000000000000000000000000000000 | active
+ EMP185 | Muhammad Hasnain           |   66000.000000000000000000000000000000 | active
+ EMP186 | Anam Zahoor                |   61000.000000000000000000000000000000 | active
+ EMP187 | Muhammad Moid Ul Haq       |  171000.000000000000000000000000000000 | active
+ EMP188 | Subhan Ahmed               |   71000.000000000000000000000000000000 | active
+ EMP189 | Daniyal Asim Abbasi        |   62000.000000000000000000000000000000 | active
+ EMP190 | Fayaz Akhtar               |   72000.000000000000000000000000000000 | active
+ EMP191 | Noshaba Ehsan              |   43000.000000000000000000000000000000 | inactive
+ EMP192 | Numair Hassan              |  121000.000000000000000000000000000000 | active
+ EMP193 | Muhammad Ahmad             |   74000.000000000000000000000000000000 | active
+ EMP194 | Andleeb Sehar              |   75000.000000000000000000000000000000 | active
+ EMP195 | Abdul Wahid                |   62000.000000000000000000000000000000 | active
+ EMP196 | Maryam Bibi                |   62000.000000000000000000000000000000 | active
+ EMP197 | Khawaja Arsalan Fakhar     |  181000.000000000000000000000000000000 | active
+ EMP198 | Muhammad Affan Mirza       |   99000.000000000000000000000000000000 | active
+ EMP199 | Usama                      |   86000.000000000000000000000000000000 | active
+ EMP200 | Warda Fateh                |   70000.000000000000000000000000000000 | active
+ EMP201 | Murtaza                    |   68000.000000000000000000000000000000 | active
+ EMP202 | Ammad Khan                 |   68000.000000000000000000000000000000 | active
+ EMP203 | Muhammad Hassan Shah       |   68000.000000000000000000000000000000 | active
+ EMP204 | Zohaib Ali                 |   62000.000000000000000000000000000000 | active
+ EMP205 | Amna                       |   62000.000000000000000000000000000000 | active
+ EMP206 | Syeda Midhat Fatima        |   62000.000000000000000000000000000000 | active
+ EMP207 | Aliza Ibrahim              |   42000.000000000000000000000000000000 | active
+ EMP208 | Rafay Mansoor              |  152000.000000000000000000000000000000 | active
+ EMP209 | Syed Muhammad Kashif       |   77000.000000000000000000000000000000 | active
+ EMP210 | Syed Ahad Hussain          |   88000.000000000000000000000000000000 | active
+ EMP211 | Muhammad Waleed Sohail     |   71000.000000000000000000000000000000 | active
+ EMP212 | Umais Sultan               |   65000.000000000000000000000000000000 | active
+ EMP213 | Kiran Parveen              |   62000.000000000000000000000000000000 | active
+ EMP214 | Fatima Perveez             |   62000.000000000000000000000000000000 | active
+ EMP215 | Uzair Safdar               |  149000.000000000000000000000000000000 | active
+ EMP216 | Waqas Munir                |  114000.000000000000000000000000000000 | active
+ EMP217 | Asma Razzaq                |   72000.000000000000000000000000000000 | active
+ EMP218 | Haseeb Manzoor             |   69000.000000000000000000000000000000 | active
+ EMP219 | Atika Shahzadi             |   69000.000000000000000000000000000000 | active
+ EMP220 | Azadar Hassan              |   62000.000000000000000000000000000000 | active
+ EMP221 | Zain Imran                 |   62000.000000000000000000000000000000 | active
+ EMP222 | Ahsan Riaz                 |   62000.000000000000000000000000000000 | active
+ EMP223 | Qasim Aslam                |  156000.000000000000000000000000000000 | active
+ EMP224 | Muhammad Inzmam            |   66000.000000000000000000000000000000 | active
+ EMP225 | Amna Hameed                |   43000.000000000000000000000000000000 | active
+ EMP226 | Waqar Ul Hassan            |   42000.000000000000000000000000000000 | active
+ EMP227 | Muhammad Ahmad Butt        |   82000.000000000000000000000000000000 | active
+ EMP228 | Haseeb Ellahi              |   50000.000000000000000000000000000000 | active
+ EMP229 | Sana                       |   51000.000000000000000000000000000000 | active
+ EMP230 | Sakhawat Ali               |   49000.000000000000000000000000000000 | active
+ EMP231 | Muhammad Husnain           |   43000.000000000000000000000000000000 | active
+ EMP232 | Ammra Munir                |   43000.000000000000000000000000000000 | active
+ EMP233 | Ali Aun                    |   43000.000000000000000000000000000000 | active
+ EMP234 | Rehman Ali                 |   43000.000000000000000000000000000000 | active
+ EMP235 | Abdul Wajid Khan           |  103500.000000000000000000000000000000 | active
+ EMP236 | Muhammad Shumail Qureshi   |   56000.000000000000000000000000000000 | active
+ EMP237 | Sana                       |   55000.000000000000000000000000000000 | active
+ EMP238 | Zeeshan Khan               |   50000.000000000000000000000000000000 | active
+ EMP239 | Nabras                     |   46000.000000000000000000000000000000 | active
+ EMP240 | Tuba Usman                 |   44000.000000000000000000000000000000 | active
+ EMP241 | Samman Khalid              |   62000.000000000000000000000000000000 | active
+ EMP242 | Mehroz Maryam              |   42000.000000000000000000000000000000 | active
+ EMP243 | Muhammad Shahzad Bhatti    |   42000.000000000000000000000000000000 | active
+ EMP244 | Muhammad Ahmad             |   42000.000000000000000000000000000000 | active
+ EMP245 | Muhammad Haris             |   43000.000000000000000000000000000000 | active
+ EMP246 | Muhammad Shafaqat Ali      |   84000.000000000000000000000000000000 | active
+ EMP247 | Noman Ahmed                |   51000.000000000000000000000000000000 | active
+ EMP248 | Rizwan Akram               |   47000.000000000000000000000000000000 | active
+ EMP249 | Fatima Bibi                |   47000.000000000000000000000000000000 | active
+ EMP250 | Muhammad Sahil             |   44000.000000000000000000000000000000 | active
+ EMP251 | Asher Kamran Bhatti        |  128000.000000000000000000000000000000 | active
+ EMP252 | Muhammad Owais Hassan      |   97500.000000000000000000000000000000 | active
+ EMP253 | Syed Muhammad Usman Ali    |   51500.000000000000000000000000000000 | active
+ EMP254 | Zain Zulfiqar Ali          |   68000.000000000000000000000000000000 | active
+ EMP255 | Abdul Waheed               |   55500.000000000000000000000000000000 | active
+ EMP256 | Mudassir Sana Khilji       |   57000.000000000000000000000000000000 | active
+ EMP257 | Osama Ansari               |   40000.000000000000000000000000000000 | active
+ EMP258 | Zulkarnain Kamran          |   75000.000000000000000000000000000000 | active
+ EMP259 | Muhammad Tayyab            |   40000.000000000000000000000000000000 | active
+ EMP260 | Saad Ali                   |   45000.000000000000000000000000000000 | active
+ EMP261 | Rehman Zahid               |   91000.000000000000000000000000000000 | inactive
+ EMP262 | Muhammad Abuzar Ghaffari   |   88000.000000000000000000000000000000 | active
+ EMP263 | Omer Ishaq                 |   58000.000000000000000000000000000000 | active
+ EMP264 | Muhammad Usama Ismail      |   40000.000000000000000000000000000000 | active
+ EMP265 | Muhammad Imran Khan        |   91000.000000000000000000000000000000 | active
+ EMP266 | Zeeshan Khan               |   61000.000000000000000000000000000000 | active
+ EMP267 | Junaid Ahmed               |   44000.000000000000000000000000000000 | active
+ EMP268 | Saleem Raza                |   76500.000000000000000000000000000000 | active
+ EMP269 | Aftab Ashraf Bhutta        |   97000.000000000000000000000000000000 | active
+ EMP270 | Rana Waqas Ahmed           |   64500.000000000000000000000000000000 | active
+ EMP271 | Manan Mushtaq              |   48000.000000000000000000000000000000 | active
+ EMP272 | Abrar Haider               |   92000.000000000000000000000000000000 | active
+ EMP273 | Arsalan Abbas Rathore      |   63000.000000000000000000000000000000 | active
+ EMP274 | Zohaib Hassan              |   65000.000000000000000000000000000000 | active
+ EMP275 | Muhammad Rashid Balouch    |  245000.000000000000000000000000000000 | active
+ EMP276 | Abdul Rahim                |  140000.000000000000000000000000000000 | active
+ EMP277 | Muhammad Anas              |   80000.000000000000000000000000000000 | active
+ EMP278 | Zohaib Ali Malik           |   48000.000000000000000000000000000000 | active
+ EMP279 | Muhammad Mubashir          |   42000.000000000000000000000000000000 | active
+ EMP280 | Muhammad Danyal Ishaq      |   62000.000000000000000000000000000000 | active
+ EMP281 | Zainab Eman                |   68000.000000000000000000000000000000 | active
+ EMP282 | Muhammad Ali Awan          |   58000.000000000000000000000000000000 | active
+ EMP283 | Maryam Jawed               |   62000.000000000000000000000000000000 | active
+ EMP284 | Esha Bibi                  |   62000.000000000000000000000000000000 | active
+ EMP285 | Hasnain Arshad             |   62000.000000000000000000000000000000 | active
+ EMP286 | Arham Arshad               |   42000.000000000000000000000000000000 | active
+ EMP287 | Muhammad Sabir             |   32000.000000000000000000000000000000 | active
+ EMP288 | Zohaib Uddin               |   35000.000000000000000000000000000000 | active
+ EMP289 | Muhammad Rizwan            |   42000.000000000000000000000000000000 | active
+ EMP290 | Ahmad Raza                 |   62000.000000000000000000000000000000 | active

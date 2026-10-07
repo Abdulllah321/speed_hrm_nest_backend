@@ -1,0 +1,155 @@
+﻿
+>   private async syncWithFbr(
+      order: any,
+      itemsData: Array<{
+        itemId: string;
+        quantity: number;
+        unitPrice: number;
+        discountAmount: number;
+        taxPercent: number;
+        taxAmount: number;
+        lineTotal: number;
+      }>,
+      tx?: any,
+    ): Promise<{
+      success: boolean;
+      fbrInvoiceNumber?: string;
+      fbrQrCode?: string;
+      fbrStatus: 'SYNCED' | 'SKIPPED' | 'FAILED';
+      error?: string;
+      responsePayload?: any;
+    }> {
+      this.logger.log(
+        `[FBR Sync] ðŸš€ Starting FBR sync for order: ${order.orderNumber || order.id}`,
+      );
+      const db = tx || this.prisma;
+      try {
+        // â”€â”€ Load location FBR config 
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        if (!order.locationId) {
+          this.logger.warn(
+            `[FBR Sync] [WARN] Order ${order.orderNumber} has no locationId â€” skipping FBR sync`,
+          );
+          return {
+            success: false,
+            fbrStatus: 'SKIPPED',
+            error: 'Order has no locationId',
+          };
+        }
+  
+        const location = await db.location.findUnique({
+          where: { id: order.locationId },
+          select: {
+            fbrEnabled: true,
+            fbrBposId: true,
+            fbrBearerToken: true,
+            fbrNtn: true,
+            fbrSellerName: true,
+            address: true,
+          },
+        });
+  
+        this.logger.log(
+          `[FBR Sync] [CONFIG] Location ID: ${order.locationId}, FBR Enabled: ${location?.fbrEnabled}`,
+        );
+  
+        if (!location?.fbrEnabled) {
+          this.logger.log(
+            `[FBR Sync] [INFO] FBR not configured or enabled for location ${order.locationId} â€” skipping`,
+          );
+          return {
+            success: false,
+            fbrStatus: 'SKIPPED',
+            error: 'FBR disabled or not configured',
+          };
+        }
+  
+        if (!location.fbrBposId || !location.fbrBearerToken) {
+          const missingMsg =
+            'Location is FBR-enabled but missing FBR BPOS ID or Bearer Token credentials.';
+          this.logger.error(`[FBR Sync] [FAIL] ${missingMsg}`);
+          return {
+            success: false,
+            fbrStatus: 'FAILED',
+            error: missingMsg,
+          };
+        }
+  
+        // â”€â”€ Fetch item details (sku, description, hsCode) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        const itemIds = itemsData.map((i) => i.itemId);
+        const itemRecords = await db.item.findMany({
+          where: { id: { in: itemIds } },
+          select: {
+            id: true,
+            sku: true,
+            description: true,
+            hsCodeStr: true,
+            hsCode: { select: { hsCode: true } },
+          },
+        });
+        const itemMap = new Map<
+          string,
+          {
+            id: string;
+            sku: string;
+            description: string | null;
+            hsCodeStr: string | null;
+            hsCode?: { hsCode: string } | null;
+          }
+        >(itemRecords.map((r: any) => [r.id, r]));
+  
+        // Customer details if available
+        const buyerName = order.customerName || order.customer?.name || 'Guest';
+        const buyerNtn = order.customerNtn || order.customer?.ntn || null;
+        const buyerCnic = order.customerCnic || order.customer?.cnic || null;
+        const buyerPhone = order.customerPhone || order.customer?.contactNo || order.customer?.phone || null;
+  
+        // Map payment mode (1: Cash, 2: Card, 3: Voucher, 4: Loyalty, 5: Mixed, 6: Cheque)
+        let paymentMode = 1;
+        const rawMethod = String(
+          order.paymentMethod || order.paymentMode || '',
+        ).toLowerCase();
+        if (rawMethod.includes('card')) paymentMode = 2;
+        else if (rawMethod.includes('voucher')) paymentMode = 3;
+        else if (rawMethod.includes('loyalty')) paymentMode = 4;
+        else if (rawMethod.includes('mix') || rawMethod.includes('split'))
+          paymentMode = 5;
+        else if (rawMethod.includes('cheque') || rawMethod.includes('check'))
+          paymentMode = 6;
+  
+        const fbrItems = itemsData.map((line) => {
+          const rec = itemMap.get(line.itemId);
+          const validHsCode: string | null = (
+            this.isNonZeroHsCode(rec?.hsCode?.hsCode)
+              ? rec?.hsCode?.hsCode
+              : this.isNonZeroHsCode(rec?.hsCodeStr)
+                ? rec?.hsCodeStr
+                : rec?.hsCode?.hsCode || rec?.hsCodeStr || null
+          ) ?? null;
+  
+          return {
+            itemId: line.itemId,
+            sku: rec?.sku ?? line.itemId,
+            description: rec?.description ?? null,
+            hsCode: validHsCode,
+            pctCode: validHsCode,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            taxPercent: line.taxPercent,
+            discountAmount: line.discountAmount,
+            taxAmount: line.taxAmount,
+            lineTotal: line.lineTotal,
+          };
+        });
+  
+        const payload = this.fbrService.buildPayload({
+          posId: location.fbrBposId,
+          usin: order.orderNumber || order.id,
+          orderDate: new Date(order.createdAt || Date.now()),
+          buyerNtn,
+          buyerCnic,
+          buyerName,
+          buyerPhone,
+          paymentMode,
+
+

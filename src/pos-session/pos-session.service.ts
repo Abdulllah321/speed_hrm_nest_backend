@@ -766,7 +766,11 @@ export class PosSessionService {
       let card = rawCard;
 
       // Enforce single tender method if non-split, preventing double-counting from stale DB columns
-      const isSplit = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
+      const isSplit =
+        order.tenderType === 'split' ||
+        order.tenderType?.includes('+') ||
+        order.paymentMethod === 'split' ||
+        order.paymentMethod?.includes('+');
       if (!isSplit && order.paymentMethod) {
         if (order.paymentMethod === 'cash') {
           card = 0;
@@ -929,7 +933,11 @@ export class PosSessionService {
       }
 
       // Split orders: extract reward_voucher portion
-      const isSplitTender = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
+      const isSplitTender =
+        order.tenderType === 'split' ||
+        order.tenderType?.includes('+') ||
+        order.paymentMethod === 'split' ||
+        order.paymentMethod?.includes('+');
       if (isSplitTender) {
         const rvAmt = Number(order.rewardVoucherAmount ?? 0);
         if (rvAmt > 0) totalRewardVoucherRecv += rvAmt;
@@ -1399,7 +1407,8 @@ export class PosSessionService {
 
     const dateParts = date.split(',');
     const startDateStr = dateParts[0].trim();
-    const endDateStr = dateParts.length > 1 ? dateParts[1].trim() : startDateStr;
+    const endDateStr =
+      dateParts.length > 1 ? dateParts[1].trim() : startDateStr;
 
     const computeSingleReconciliation = async (
       targetLocWhere: any,
@@ -1475,7 +1484,8 @@ export class PosSessionService {
 
       let totalCreditAmount = 0;
       let totalRewardVoucherRecv = 0;
-      const rewardVouchersDetails: { orderNumber: string; amount: number }[] = [];
+      const rewardVouchersDetails: { orderNumber: string; amount: number }[] =
+        [];
 
       for (const order of orders) {
         const subtotal = Number(order.subtotal ?? 0);
@@ -1507,7 +1517,11 @@ export class PosSessionService {
         let card = rawCard;
 
         // Enforce single tender method if non-split, preventing double-counting from stale DB columns
-        const isSplit = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
+        const isSplit =
+          order.tenderType === 'split' ||
+          order.tenderType?.includes('+') ||
+          order.paymentMethod === 'split' ||
+          order.paymentMethod?.includes('+');
         if (!isSplit && order.paymentMethod) {
           if (order.paymentMethod === 'cash') {
             card = 0;
@@ -1655,7 +1669,10 @@ export class PosSessionService {
           const rvAmt = Number(order.rewardVoucherAmount ?? 0);
           if (rvAmt > 0) {
             totalRewardVoucherRecv += rvAmt;
-            rewardVouchersDetails.push({ orderNumber: order.orderNumber, amount: rvAmt });
+            rewardVouchersDetails.push({
+              orderNumber: order.orderNumber,
+              amount: rvAmt,
+            });
           } else {
             const change = Number(order.changeAmount ?? 0);
             const netCash = Math.max(0, cash - change);
@@ -1665,19 +1682,28 @@ export class PosSessionService {
             );
             if (remainder > 0) {
               totalRewardVoucherRecv += remainder;
-              rewardVouchersDetails.push({ orderNumber: order.orderNumber, amount: remainder });
+              rewardVouchersDetails.push({
+                orderNumber: order.orderNumber,
+                amount: remainder,
+              });
             }
           }
         }
 
-        const isSplitTender = order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod === 'split' || order.paymentMethod?.includes('+');
+        const isSplitTender =
+          order.tenderType === 'split' ||
+          order.tenderType?.includes('+') ||
+          order.paymentMethod === 'split' ||
+          order.paymentMethod?.includes('+');
         if (isSplitTender) {
           const rvAmt = Number(order.rewardVoucherAmount ?? 0);
           if (rvAmt > 0) {
             totalRewardVoucherRecv += rvAmt;
-            rewardVouchersDetails.push({ orderNumber: order.orderNumber, amount: rvAmt });
-          }
-          else {
+            rewardVouchersDetails.push({
+              orderNumber: order.orderNumber,
+              amount: rvAmt,
+            });
+          } else {
             const change = Number(order.changeAmount ?? 0);
             const netCash = Math.max(0, cash - change);
             const creditAmt = Math.max(
@@ -1879,7 +1905,7 @@ export class PosSessionService {
 
       const receivables = [
         { description: 'On Credit', amount: totalCreditAmount },
-        ...rewardVouchersDetails.map(rv => ({
+        ...rewardVouchersDetails.map((rv) => ({
           description: 'Reward Voucher',
           amount: rv.amount,
           orderNumber: rv.orderNumber,
@@ -1933,9 +1959,10 @@ export class PosSessionService {
         locationId: targetLocId || locationId,
         locationName: displayName,
         reportTitle: 'Sales Reconciliation',
-        dateRange: startDateStr === endDateStr 
-          ? formatDate(startDateStr + 'T00:00:00') 
-          : `${formatDate(startDateStr + 'T00:00:00')} TO ${formatDate(endDateStr + 'T00:00:00')}`,
+        dateRange:
+          startDateStr === endDateStr
+            ? formatDate(startDateStr + 'T00:00:00')
+            : `${formatDate(startDateStr + 'T00:00:00')} TO ${formatDate(endDateStr + 'T00:00:00')}`,
         documentNumber: `REC-${startDateStr.replace(/-/g, '')}`,
         selectedDate: date,
         session: null,
@@ -2002,12 +2029,18 @@ export class PosSessionService {
     }
 
     const targetLocations = await this.prisma.location.findMany({
-      where: locIds.length > 0 ? { id: { in: locIds } } : { status: 'active', isStockLocation: true },
+      where:
+        locIds.length > 0
+          ? { id: { in: locIds } }
+          : { status: 'active', isStockLocation: true },
       select: { id: true, name: true, code: true },
       orderBy: { name: 'asc' },
     });
 
-    const locationWhere = locIds.length > 0 ? { in: locIds } : { in: targetLocations.map((l) => l.id) };
+    const locationWhere =
+      locIds.length > 0
+        ? { in: locIds }
+        : { in: targetLocations.map((l) => l.id) };
 
     const mergedReport = await computeSingleReconciliation(
       locationWhere,
@@ -3194,7 +3227,8 @@ export class PosSessionService {
     if (cashGl) {
       // Cash Sales entry
       const netCashSale =
-        (reconData.cashBreakdown?.sale ?? 0) - (reconData.cashBreakdown?.refundVouchers ?? 0);
+        (reconData.cashBreakdown?.sale ?? 0) -
+        (reconData.cashBreakdown?.refundVouchers ?? 0);
       await addLine(
         cashGl,
         locCode,
@@ -3219,9 +3253,7 @@ export class PosSessionService {
         const voucher = await this.prisma.voucher.findFirst({
           where: { code: v.from },
         });
-        const tagId = voucher?.companyGlCode
-          ? voucher.companyGlCode
-          : locCode;
+        const tagId = voucher?.companyGlCode ? voucher.companyGlCode : locCode;
         await addLine(
           '12070008',
           tagId,
@@ -3266,9 +3298,7 @@ export class PosSessionService {
           where: { code: v.from },
         });
         if (voucher && voucher.voucherType === 'REFUND') {
-          const refundCode = v.from.startsWith('RF#')
-            ? v.from
-            : `RF#${v.from}`;
+          const refundCode = v.from.startsWith('RF#') ? v.from : `RF#${v.from}`;
           await addLine(
             '12070015',
             locCode,
@@ -3362,9 +3392,7 @@ export class PosSessionService {
       `Gift Voucher Discount | ${jvDateStr}`,
     );
     for (const rv of reconData.issuedVouchers?.refundVouchers || []) {
-      const refundCode = rv.from.startsWith('RF#')
-        ? rv.from
-        : `RF#${rv.from}`;
+      const refundCode = rv.from.startsWith('RF#') ? rv.from : `RF#${rv.from}`;
       await addLine(
         '12070015',
         locCode,
@@ -3405,7 +3433,8 @@ export class PosSessionService {
 
     // Final Calculations
     const totalReceived =
-      (reconData.cashBreakdown?.total ?? 0) + (reconData.paymentBreakdown?.voucher?.amount ?? 0);
+      (reconData.cashBreakdown?.total ?? 0) +
+      (reconData.paymentBreakdown?.voucher?.amount ?? 0);
     const netReceivedCard = reconData.cardBreakdown?.total ?? 0;
 
     const unusedBalanceVouchersAmt =
