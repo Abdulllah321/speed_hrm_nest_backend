@@ -2647,7 +2647,6 @@ export class PosSalesService implements OnModuleInit {
           { returnNumber: { contains: searchTerm, mode: 'insensitive' } },
           { refundNumber: { contains: searchTerm, mode: 'insensitive' } },
           { fbrInvoiceNumber: { contains: searchTerm, mode: 'insensitive' } },
-          { referenceNumber: { contains: searchTerm, mode: 'insensitive' } },
           {
             customer: {
               OR: [
