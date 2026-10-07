@@ -35,7 +35,6 @@ async function main() {
       gte: startDate,
       lte: endDate
     },
-    isDeleted: false,
     OR: [
       { globalDiscountAmount: { gt: 0 } },
       { allianceId: { not: null } }
