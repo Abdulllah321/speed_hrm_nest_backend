@@ -1997,9 +1997,7 @@ export class PosSalesController {
 
     // POS terminal users are restricted to their own outlet — enforce server-side
     // so the query only scans that one store's data (faster + secure).
-    const userLocationId =
-      req.user?.terminalLocationId ||
-      req.user?.locationId;
+    const userLocationId = req.user?.terminalLocationId || req.user?.locationId;
     if (
       (req.user?.isPosUser || req.user?.isTerminal || userLocationId) &&
       userLocationId

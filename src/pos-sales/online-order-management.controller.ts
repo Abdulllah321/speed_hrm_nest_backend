@@ -38,7 +38,7 @@ export class OnlineOrderManagementController {
     if (!locationId) {
       locationId = req.user?.locationId;
     }
-    
+
     return this.service.getGroupedOrders(locationId);
   }
 
@@ -80,7 +80,9 @@ export class OnlineOrderManagementController {
       locationId = req.user?.locationId;
     }
     if (!locationId) {
-      throw new BadRequestException('Location context is required to upload orders');
+      throw new BadRequestException(
+        'Location context is required to upload orders',
+      );
     }
 
     return this.service.confirmUpload(uploadId, locationId);

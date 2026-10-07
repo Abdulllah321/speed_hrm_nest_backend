@@ -1,0 +1,158 @@
+﻿
+>   private async syncWithFbr(
+      order: any,
+      itemsData: Array<{
+        itemId: string;
+        quantity: number;
+        unitPrice: number;
+        discountAmount: number;
+        taxPercent: number;
+        taxAmount: number;
+        lineTotal: number;
+      }>,
+    ): Promise<{
+      success: boolean;
+      fbrInvoiceNumber?: string;
+      fbrQrCode?: string;
+      fbrStatus: 'SYNCED' | 'PENDING' | 'SKIPPED';
+      error?: string;
+      responsePayload?: any;
+    }> {
+      this.logger.log(
+        `[FBR Sync] ðŸš€ Starting FBR sync for order: ${order.orderNumber || order.id}`,
+      );
+      try {
+        // â”€â”€ Load location FBR config 
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        if (!order.locationId) {
+          this.logger.warn(
+            `[FBR Sync] [WARN] Order ${order.orderNumber} has no locationId â€” skipping FBR sync`,
+          );
+          return {
+            success: false,
+            fbrStatus: 'SKIPPED',
+            error: 'Order has no locationId',
+          };
+        }
+  
+        const location = await this.prisma.location.findUnique({
+          where: { id: order.locationId },
+          select: {
+            fbrEnabled: true,
+            fbrBposId: true,
+            fbrNtn: true,
+            fbrSellerName: true,
+            address: true,
+          },
+        });
+  
+        this.logger.log(
+          `[FBR Sync] [CONFIG] Location ID: ${order.locationId}, FBR Enabled: ${location?.fbrEnabled}`,
+        );
+  
+        if (!location?.fbrEnabled) {
+          this.logger.log(
+            `[FBR Sync] [INFO] FBR not configured or enabled for location ${order.locationId} â€” skipping`,
+          );
+          return {
+            success: false,
+            fbrStatus: 'SKIPPED',
+            error: 'FBR disabled or not configured',
+          };
+        }
+  
+        if (!location.fbrBposId) {
+          this.logger.warn(
+            `[FBR Sync] [WARN] Location ${order.locationId} is FBR-enabled but missing bposId or token â€” setting 
+status to PENDING`,
+          );
+          await this.prisma.salesOrder.update({
+            where: { id: order.id },
+            data: { fbrStatus: 'PENDING' },
+          });
+          order.fbrStatus = 'PENDING';
+          return {
+            success: false,
+            fbrStatus: 'PENDING',
+            error: 'Missing FBR BPOS ID or Bearer Token',
+          };
+        }
+  
+        // â”€â”€ Fetch item details (sku, description, hsCode) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        const itemIds = itemsData.map((i) => i.itemId);
+        const itemRecords = await this.prisma.item.findMany({
+          where: { id: { in: itemIds } },
+          select: { id: true, sku: true, description: true, hsCodeStr: true },
+        });
+        const itemMap = new Map(itemRecords.map((r) => [r.id, r]));
+  
+        // Walk-in buyer defaults when no customer is attached
+        const buyerNtn = '9999999-9';
+        const buyerName = 'Guest';
+        const buyerAddress = location.address || '';
+  
+        const fbrItems = itemsData.map((line) => {
+          const rec = itemMap.get(line.itemId);
+          return {
+            itemId: line.itemId,
+            sku: rec?.sku ?? line.itemId,
+            description: rec?.description ?? null,
+            hsCode: rec?.hsCodeStr ?? null,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            taxPercent: line.taxPercent,
+            discountAmount: line.discountAmount,
+            taxAmount: line.taxAmount,
+            lineTotal: line.lineTotal,
+          };
+        });
+  
+        const payload = this.fbrService.buildPayload({
+          bposId: location.fbrBposId,
+          usin: order.orderNumber || order.id,
+          orderDate: new Date(order.createdAt),
+          buyerNtn,
+          buyerName,
+          buyerAddress,
+          sellerNtn: location.fbrNtn || '6386420',
+          sellerName: location.fbrSellerName || 'Hydra Foods',
+          items: fbrItems,
+        });
+  
+        this.logger.debug(
+          `[FBR Sync] [PAYLOAD] Generated FBR payload for order ${order.orderNumber}:\n${JSON.stringify(payload, null, 
+2)}`,
+        );
+  
+        // Override the bearer token with the per-location token
+        this.logger.log(`[FBR Sync] [HTTP] Sending request to FBR gateway...`);
+        const fbrResponse = await this.fbrService.postInvoice(payload);
+        this.logger.log(
+          `[FBR Sync] [RESPONSE] Received response from FBR gateway. Code: ${fbrResponse.Code}`,
+        );
+  
+        if (fbrResponse.Code === 100) {
+          this.logger.log(
+            `[FBR Sync] [SUCCESS] Order ${order.orderNumber} successfully synced with FBR. Invoice Number: 
+${fbrResponse.InvoiceNumber}`,
+          );
+          await this.prisma.salesOrder.update({
+            where: { id: order.id },
+            data: {
+              fbrInvoiceNumber: fbrResponse.InvoiceNumber,
+              fbrQrCode: fbrResponse.QRCode,
+              fbrStatus: 'SYNCED',
+            },
+          });
+          order.fbrInvoiceNumber = fbrResponse.InvoiceNumber;
+          order.fbrQrCode = fbrResponse.QRCode;
+          order.fbrStatus = 'SYNCED';
+  
+          return {
+            success: true,
+            fbrInvoiceNumber: fbrResponse.InvoiceNumber,
+            fbrQrCode: fbrResponse.QRCode,
+            fbrStatus: 'SYNCED',
+            responsePayload: fbrResponse,
+
+

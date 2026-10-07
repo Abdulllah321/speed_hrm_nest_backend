@@ -1137,7 +1137,8 @@ export class AuthController {
   @Post('pos/admin-switch-outlet')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
-    summary: 'Switch outlet for admin/manager without de-registering the terminal',
+    summary:
+      'Switch outlet for admin/manager without de-registering the terminal',
   })
   async adminSwitchOutlet(
     @Body() body: { locationId: string },
@@ -1145,18 +1146,22 @@ export class AuthController {
     @Res() res: any,
   ) {
     if (!req.user || !req.user.id) {
-       return res.status(401).send({ status: false, message: 'Unauthorized' });
+      return res.status(401).send({ status: false, message: 'Unauthorized' });
     }
 
     const posTerminalToken = req.cookies?.['posTerminalToken'];
     let decoded: any = null;
     if (posTerminalToken) {
-       decoded = jwt.decode(posTerminalToken);
+      decoded = jwt.decode(posTerminalToken);
     }
 
-    const result = await this.service.adminSwitchOutlet(req.user.id, body.locationId, decoded);
+    const result = await this.service.adminSwitchOutlet(
+      req.user.id,
+      body.locationId,
+      decoded,
+    );
     if (!result.status) {
-       return res.status(403).send(result);
+      return res.status(403).send(result);
     }
 
     const cookieOptions = this.getCookieOptions(req);
@@ -1165,7 +1170,7 @@ export class AuthController {
       ...cookieOptions,
       maxAge: 365 * 24 * 60 * 60,
     });
-    
+
     // Also overwrite pos_location_id just in case
     res.setCookie('pos_location_id', body.locationId, {
       ...cookieOptions,
@@ -1174,5 +1179,4 @@ export class AuthController {
 
     return res.send(result);
   }
-
 }

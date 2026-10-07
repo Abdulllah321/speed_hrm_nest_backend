@@ -429,10 +429,21 @@ export class SrnUploadProcessor {
     await (prisma as any).$transaction(async (tx: any) => {
       // 1. Validate stock availability
       for (const reqItem of itemsData) {
-        const wh = await tx.warehouse.findUnique({ where: { id: fromWarehouseId } });
-        const locs = wh ? await tx.location.findMany({
-          where: { OR: [{ warehouseId: fromWarehouseId }, { id: fromWarehouseId }, { code: wh.code }, { code: `WH-${wh.code}` }] }
-        }) : [];
+        const wh = await tx.warehouse.findUnique({
+          where: { id: fromWarehouseId },
+        });
+        const locs = wh
+          ? await tx.location.findMany({
+              where: {
+                OR: [
+                  { warehouseId: fromWarehouseId },
+                  { id: fromWarehouseId },
+                  { code: wh.code },
+                  { code: `WH-${wh.code}` },
+                ],
+              },
+            })
+          : [];
         const locIds = locs.map((l: any) => l.id);
 
         const stockAgg = await tx.stockLedger.aggregate({
@@ -441,10 +452,11 @@ export class SrnUploadProcessor {
             warehouseId: fromWarehouseId,
             locationId: null,
           },
-          _sum: { qty: true }
+          _sum: { qty: true },
         });
-        
-        let physicalQty = stockAgg._sum.qty !== null ? Number(stockAgg._sum.qty) : null;
+
+        let physicalQty =
+          stockAgg._sum.qty !== null ? Number(stockAgg._sum.qty) : null;
         if (physicalQty === null) {
           const fb = await tx.inventoryItem.aggregate({
             where: {
@@ -453,9 +465,10 @@ export class SrnUploadProcessor {
               warehouseId: fromWarehouseId,
               locationId: null,
             },
-            _sum: { quantity: true }
+            _sum: { quantity: true },
           });
-          physicalQty = fb._sum.quantity !== null ? Number(fb._sum.quantity) : 0;
+          physicalQty =
+            fb._sum.quantity !== null ? Number(fb._sum.quantity) : 0;
         }
 
         const reservations = await tx.stockReserve.aggregate({

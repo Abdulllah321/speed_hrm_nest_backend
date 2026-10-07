@@ -664,30 +664,38 @@ export class OverallAvailableReservedStockExportService {
       });
       allowedBrandIds = userBrands.map((ub) => ub.brandId);
     }
-    const brandInClauseDb = (allowedBrandIds?.length ?? 0) > 0
-      ? `AND b."id" IN (${allowedBrandIds!.map(id => `'${id}'`).join(',')})`
-      : (allowedBrandIds !== null ? `AND 1=0` : ``);
+    const brandInClauseDb =
+      (allowedBrandIds?.length ?? 0) > 0
+        ? `AND b."id" IN (${allowedBrandIds!.map((id) => `'${id}'`).join(',')})`
+        : allowedBrandIds !== null
+          ? `AND 1=0`
+          : ``;
 
     // 1. Get the latest Monthly Snapshot (instead of Fiscal Year Opening)
     const latestSnapshot = await prisma.monthlyStockSnapshot.findFirst({
       where: { date: { lte: endDate } },
       orderBy: { date: 'desc' },
-      select: { date: true }
+      select: { date: true },
     });
 
     const snapshotDate = latestSnapshot?.date;
-    const startDate = snapshotDate && snapshotDate < endDate ? snapshotDate : getDefaultFiscalYearStart(endDate);
+    const startDate =
+      snapshotDate && snapshotDate < endDate
+        ? snapshotDate
+        : getDefaultFiscalYearStart(endDate);
     const queryStartDate = snapshotDate; // Prevent scanning full history for distinct items!
 
     await onProgress?.(20, 'Querying stock ledgers & inventory items...');
 
     // Bypass Prisma engine overhead for massive queries
-    const locationInClauseDb = uniqueTargetLocationIds.length > 0
-      ? `AND location_id IN (${uniqueTargetLocationIds.map(id => `'${id}'`).join(',')})`
-      : '';
-    const locationInClausePrisma = uniqueTargetLocationIds.length > 0
-      ? `AND "locationId" IN (${uniqueTargetLocationIds.map(id => `'${id}'`).join(',')})`
-      : '';
+    const locationInClauseDb =
+      uniqueTargetLocationIds.length > 0
+        ? `AND location_id IN (${uniqueTargetLocationIds.map((id) => `'${id}'`).join(',')})`
+        : '';
+    const locationInClausePrisma =
+      uniqueTargetLocationIds.length > 0
+        ? `AND "locationId" IN (${uniqueTargetLocationIds.map((id) => `'${id}'`).join(',')})`
+        : '';
 
     const [inventoryItems, ledgerItems, snapshotResults] = await Promise.all([
       prisma.$queryRawUnsafe<any[]>(`
@@ -702,14 +710,14 @@ export class OverallAvailableReservedStockExportService {
         ${queryStartDate ? `AND created_at >= '${queryStartDate.toISOString()}'` : ''}
         ${locationInClauseDb}
       `),
-      snapshotDate 
+      snapshotDate
         ? prisma.$queryRawUnsafe<any[]>(`
             SELECT item_id as "itemId", location_id as "locationId", warehouse_id as "warehouseId", closing_qty as "closingQty" 
             FROM monthly_stock_snapshots 
             WHERE date = '${snapshotDate.toISOString()}'
             ${locationInClauseDb}
           `)
-        : Promise.resolve([])
+        : Promise.resolve([]),
     ]);
 
     const activeStockLocIds = [
@@ -794,14 +802,16 @@ export class OverallAvailableReservedStockExportService {
       reserveGroupResults,
       tenantSettingsResults,
     ] = await Promise.all([
-      snapshotDate ? Promise.resolve([]) : prisma.stockLedger.groupBy({
-        by: groupByCols,
-        where: {
-          ...locationOrWarehouseWhere,
-          createdAt: { lt: startDate },
-        },
-        _sum: { qty: true },
-      }),
+      snapshotDate
+        ? Promise.resolve([])
+        : prisma.stockLedger.groupBy({
+            by: groupByCols,
+            where: {
+              ...locationOrWarehouseWhere,
+              createdAt: { lt: startDate },
+            },
+            _sum: { qty: true },
+          }),
       prisma.stockLedger.groupBy({
         by: groupByCols,
         where: {
@@ -1123,13 +1133,21 @@ export class OverallAvailableReservedStockExportService {
       for (const row of itemsDb) {
         itemsMap.set(row.id, {
           ...row,
-          category: row.categoryId ? { id: row.categoryId, name: row.categoryName } : null,
+          category: row.categoryId
+            ? { id: row.categoryId, name: row.categoryName }
+            : null,
           brand: row.brandId ? { id: row.brandId, name: row.brandName } : null,
           color: row.colorId ? { id: row.colorId, name: row.colorName } : null,
           size: row.sizeId ? { id: row.sizeId, name: row.sizeName } : null,
-          gender: row.genderId ? { id: row.genderId, name: row.genderName } : null,
-          division: row.divisionId ? { id: row.divisionId, name: row.divisionName } : null,
-          silhouette: row.silhouetteId ? { id: row.silhouetteId, name: row.silhouetteName } : null,
+          gender: row.genderId
+            ? { id: row.genderId, name: row.genderName }
+            : null,
+          division: row.divisionId
+            ? { id: row.divisionId, name: row.divisionName }
+            : null,
+          silhouette: row.silhouetteId
+            ? { id: row.silhouetteId, name: row.silhouetteName }
+            : null,
         });
       }
     }

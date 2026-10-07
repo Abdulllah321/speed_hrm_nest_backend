@@ -10,7 +10,7 @@ export class MonthlyStockSnapshotService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Automatically run on the 1st day of every month at midnight (00:00) to take a snapshot 
+   * Automatically run on the 1st day of every month at midnight (00:00) to take a snapshot
    * of the closing balance of the month that just ended.
    */
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
@@ -20,7 +20,9 @@ export class MonthlyStockSnapshotService {
       // The 1st day of the previous month
       const targetDate = startOfMonth(subMonths(new Date(), 1));
       await this.backfillSnapshotForMonth(targetDate);
-      this.logger.log(`Successfully generated monthly stock snapshot for ${targetDate.toISOString().split('T')[0]}`);
+      this.logger.log(
+        `Successfully generated monthly stock snapshot for ${targetDate.toISOString().split('T')[0]}`,
+      );
     } catch (error) {
       this.logger.error('Failed to generate monthly stock snapshot', error);
     }
@@ -33,12 +35,12 @@ export class MonthlyStockSnapshotService {
   async backfillSnapshotForMonth(targetMonth: Date) {
     const startOfTargetMonth = startOfMonth(targetMonth);
     const endOfTargetMonth = endOfMonth(targetMonth);
-    
+
     // Clean up any existing snapshot for this month just in case
     await this.prisma.monthlyStockSnapshot.deleteMany({
       where: {
-        date: startOfTargetMonth
-      }
+        date: startOfTargetMonth,
+      },
     });
 
     const targetDateStr = startOfTargetMonth.toISOString();
@@ -68,34 +70,38 @@ export class MonthlyStockSnapshotService {
       HAVING SUM(s.qty) != 0
     `);
   }
-  
+
   /**
    * Backfills all snapshots by doing it incrementally from the earliest ledger entry.
    * Warning: Only run this manually when initializing the feature for the first time.
    */
   async initializeHistoricalSnapshots() {
     this.logger.log('Initializing historical monthly stock snapshots...');
-    
+
     // Find earliest entry
     const earliestEntry = await this.prisma.stockLedger.findFirst({
-        orderBy: { createdAt: 'asc' },
-        select: { createdAt: true }
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
     });
-    
+
     if (!earliestEntry) {
-        this.logger.log('No stock ledger entries found.');
-        return;
+      this.logger.log('No stock ledger entries found.');
+      return;
     }
-    
+
     let currentMonth = startOfMonth(earliestEntry.createdAt);
     const thisMonth = startOfMonth(new Date());
-    
+
     while (currentMonth < thisMonth) {
-        this.logger.log(`Generating snapshot for ${currentMonth.toISOString().split('T')[0]}...`);
-        await this.backfillSnapshotForMonth(currentMonth);
-        currentMonth = startOfMonth(new Date(currentMonth.getTime() + 32 * 24 * 60 * 60 * 1000)); // Advance securely to next month
+      this.logger.log(
+        `Generating snapshot for ${currentMonth.toISOString().split('T')[0]}...`,
+      );
+      await this.backfillSnapshotForMonth(currentMonth);
+      currentMonth = startOfMonth(
+        new Date(currentMonth.getTime() + 32 * 24 * 60 * 60 * 1000),
+      ); // Advance securely to next month
     }
-    
+
     this.logger.log('Finished initializing historical snapshots.');
   }
 }

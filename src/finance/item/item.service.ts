@@ -558,13 +558,13 @@ export class ItemService {
             FROM "discount_campaign_items" ci
             WHERE i.id = ci.item_id AND ci.campaign_id = ${dto.campaignId}
           `;
-          
+
           await tx.discountCampaign.delete({ where: { id: dto.campaignId } });
         },
         {
           maxWait: 15000,
           timeout: 90000,
-        }
+        },
       );
 
       return {

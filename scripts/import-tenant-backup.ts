@@ -97,13 +97,25 @@ Example:
   console.log(`🏢 Target Tenant DB : ${targetCompany.dbName} (${targetCompany.name})`);
   console.log(`📄 Backup File      : ${resolvedPath}`);
 
+  let defaultDbPassword = 'root';
+  try {
+    const parsedMgmt = new URL(managementUrl);
+    if (parsedMgmt.password) {
+      defaultDbPassword = decodeURIComponent(parsedMgmt.password);
+    }
+  } catch {}
+
   let dbPassword = targetCompany.dbPassword;
   if (dbPassword && masterKey) {
     try {
       dbPassword = decrypt(dbPassword, masterKey);
     } catch (e) {
       console.warn('  ⚠️ Password decryption failed, using default pass');
+      dbPassword = defaultDbPassword;
     }
+  }
+  if (!dbPassword) {
+    dbPassword = defaultDbPassword;
   }
 
   const dbUser = targetCompany.dbUser || 'postgres';
@@ -111,22 +123,32 @@ Example:
   const dbPort = targetCompany.dbPort || 5432;
   const dbName = targetCompany.dbName;
 
+  const actualPassword = dbPassword || defaultDbPassword || 'speedlimit123';
+
   const env = {
     ...process.env,
-    PGPASSWORD: dbPassword || 'root',
+    PGPASSWORD: actualPassword,
   };
 
   const isSql = resolvedPath.endsWith('.sql');
   let cmd = '';
 
   if (isSql) {
-    cmd = `psql -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${resolvedPath}"`;
+    if (process.platform === 'win32') {
+      cmd = `$env:PGPASSWORD='${actualPassword}'; psql -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${resolvedPath}"`;
+    } else {
+      cmd = `PGPASSWORD='${actualPassword}' psql -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${resolvedPath}"`;
+    }
   } else {
-    cmd = `pg_restore -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -v --clean --if-exists "${resolvedPath}"`;
+    if (process.platform === 'win32') {
+      cmd = `$env:PGPASSWORD='${actualPassword}'; pg_restore -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -v --clean --if-exists "${resolvedPath}"`;
+    } else {
+      cmd = `PGPASSWORD='${actualPassword}' pg_restore -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -v --clean --if-exists "${resolvedPath}"`;
+    }
   }
 
   console.log(`\n⏳ Executing restore command...`);
-  console.log(`> ${cmd}\n`);
+  console.log(`> psql -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${resolvedPath}"\n`);
 
   try {
     execSync(cmd, {

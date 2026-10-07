@@ -63,7 +63,9 @@ export class VoucherService {
       if (statusFilter === 'ACTIVE') {
         baseWhere.isDeleted = false;
         baseWhere.isRedeemed = false;
-        baseWhere.AND.push({ OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] });
+        baseWhere.AND.push({
+          OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
+        });
       } else if (statusFilter === 'REDEEMED') {
         baseWhere.isRedeemed = true;
       } else if (statusFilter === 'VOIDED') {
@@ -85,7 +87,7 @@ export class VoucherService {
           OR: [
             { issuedByLocationId: filters.locationId },
             { locations: { some: { locationId: filters.locationId } } },
-          ]
+          ],
         });
       }
 
@@ -115,8 +117,10 @@ export class VoucherService {
             { companyGlCode: { contains: term, mode: 'insensitive' } },
             { customer: { name: { contains: term, mode: 'insensitive' } } },
             { customer: { traderId: { contains: term, mode: 'insensitive' } } },
-            { customer: { contactNo: { contains: term, mode: 'insensitive' } } },
-          ]
+            {
+              customer: { contactNo: { contains: term, mode: 'insensitive' } },
+            },
+          ],
         });
       }
 
@@ -135,14 +139,21 @@ export class VoucherService {
           where.AND.push({
             OR: [
               { claims: { some: {} } },
-              { description: { contains: 'approved claim', mode: 'insensitive' } },
-            ]
+              {
+                description: {
+                  contains: 'approved claim',
+                  mode: 'insensitive',
+                },
+              },
+            ],
           });
         } else if (vType === 'EXCHANGE') {
           where.voucherType = 'EXCHANGE';
           where.NOT = [
             { claims: { some: {} } },
-            { description: { contains: 'approved claim', mode: 'insensitive' } },
+            {
+              description: { contains: 'approved claim', mode: 'insensitive' },
+            },
           ];
         } else {
           where.voucherType = vType;
@@ -155,24 +166,58 @@ export class VoucherService {
       const skip = (page - 1) * limit;
 
       // Execute Count & FindMany concurrently for 50k+ dataset performance
-      
+
       const buildTypeCondition = (vType: string) => {
         if (vType === 'ALL') return {};
-        if (vType === 'CLAIM') return { OR: [{ claims: { some: {} } }, { description: { contains: 'approved claim', mode: 'insensitive' } }] };
-        if (vType === 'EXCHANGE') return { voucherType: 'EXCHANGE', NOT: [{ claims: { some: {} } }, { description: { contains: 'approved claim', mode: 'insensitive' } }] };
+        if (vType === 'CLAIM')
+          return {
+            OR: [
+              { claims: { some: {} } },
+              {
+                description: {
+                  contains: 'approved claim',
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          };
+        if (vType === 'EXCHANGE')
+          return {
+            voucherType: 'EXCHANGE',
+            NOT: [
+              { claims: { some: {} } },
+              {
+                description: {
+                  contains: 'approved claim',
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          };
         return { voucherType: vType };
       };
 
-      const tabTypes = ['ALL', 'GIFT', 'EXCHANGE', 'CREDIT', 'CORPORATE', 'OUTLET_GIFT', 'REFUND', 'CLAIM'];
+      const tabTypes = [
+        'ALL',
+        'GIFT',
+        'EXCHANGE',
+        'CREDIT',
+        'CORPORATE',
+        'OUTLET_GIFT',
+        'REFUND',
+        'CLAIM',
+      ];
       const countPromises = tabTypes.map((vType) => {
         const countWhere = { ...baseWhere };
         const typeCond = buildTypeCondition(vType);
-        
+
         if (Object.keys(typeCond).length > 0) {
           if (typeCond.OR) {
-             countWhere.AND = countWhere.AND ? [...countWhere.AND, typeCond] : [typeCond];
+            countWhere.AND = countWhere.AND
+              ? [...countWhere.AND, typeCond]
+              : [typeCond];
           } else {
-             Object.assign(countWhere, typeCond);
+            Object.assign(countWhere, typeCond);
           }
         }
         return this.prisma.voucher.count({ where: countWhere });

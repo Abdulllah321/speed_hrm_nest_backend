@@ -179,7 +179,11 @@ export class ItemBulkUploadController {
       const result = await this.bulkUploadService.prepareErrorReport(uploadId);
       if (!result.ready) {
         const status = await this.bulkUploadService.getUploadStatus(uploadId);
-        if (status.status !== 'validating' && status.status !== 'processing' && status.status !== 'pending') {
+        if (
+          status.status !== 'validating' &&
+          status.status !== 'processing' &&
+          status.status !== 'pending'
+        ) {
           await this.bulkUploadService
             .regenerateErrorReport(uploadId)
             .catch(() => {});

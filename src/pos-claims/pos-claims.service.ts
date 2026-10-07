@@ -65,7 +65,7 @@ export class PosClaimsService {
     const fiscalYearStartYear = month >= 6 ? year : year - 1;
     const fiscalYearEndYear = fiscalYearStartYear + 1;
     const fiscalYearStr = fiscalYearEndYear.toString().slice(-2); // e.g. '27'
-    
+
     const fiscalYearStartDate = new Date(
       Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0),
     );
@@ -608,7 +608,12 @@ export class PosClaimsService {
                       { name: { contains: 'PLM', mode: 'insensitive' } },
                     ],
                   },
-                  select: { id: true, name: true, code: true, warehouseId: true },
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                    warehouseId: true,
+                  },
                 });
               }
 
@@ -621,9 +626,11 @@ export class PosClaimsService {
 
               const plmLocationId = plmLocation.id;
               let plmWarehouseId = plmLocation.warehouseId;
-              
+
               if (!plmWarehouseId) {
-                console.log('⚠️ PLM location has no warehouse, using first active warehouse...');
+                console.log(
+                  '⚠️ PLM location has no warehouse, using first active warehouse...',
+                );
                 const defaultWarehouse = await tx.warehouse.findFirst({
                   where: { isActive: true },
                   select: { id: true, name: true },
@@ -631,10 +638,12 @@ export class PosClaimsService {
                 if (defaultWarehouse) {
                   plmWarehouseId = defaultWarehouse.id;
                 } else {
-                  throw new BadRequestException('No warehouse found for PLM location');
+                  throw new BadRequestException(
+                    'No warehouse found for PLM location',
+                  );
                 }
               }
-              
+
               console.log('✅ Using PLM Location:', {
                 name: plmLocation.name,
                 code: plmLocation.code,
@@ -673,13 +682,16 @@ export class PosClaimsService {
               // Create automatic transfer request from POS location to PLM Warehouse
               const today = new Date();
               const currentMonth = today.getMonth();
-              const startYear = currentMonth >= 6 ? today.getFullYear() : today.getFullYear() - 1;
+              const startYear =
+                currentMonth >= 6
+                  ? today.getFullYear()
+                  : today.getFullYear() - 1;
               const endYear = startYear + 1;
               const startYearShort = startYear.toString().slice(-2);
               const endYearShort = endYear.toString().slice(-2);
               const fiscalYearStr = `${startYearShort}-${endYearShort}`;
               const prefix = `STN-${fiscalYearStr}`;
-              
+
               const lastTR = await tx.transferRequest.findFirst({
                 where: { requestNo: { startsWith: prefix } },
                 orderBy: { createdAt: 'desc' },

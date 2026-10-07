@@ -169,8 +169,11 @@ export class PosDashboardService {
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
-    
-    const reconData = await this.posSessionService.getDaywiseReconciliation(locationId, dateStr);
+
+    const reconData = await this.posSessionService.getDaywiseReconciliation(
+      locationId,
+      dateStr,
+    );
     const mergedRecon = reconData.merged || reconData;
 
     const todaySales = mergedRecon.financials?.netSales ?? 0;

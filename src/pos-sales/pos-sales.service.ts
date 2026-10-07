@@ -226,9 +226,7 @@ export class PosSalesService implements OnModuleInit {
     const item = await this.prisma.item.findFirst({
       where: {
         isActive: true,
-        OR: [
-          { barCode: { equals: barcode.trim(), mode: 'insensitive' } },
-        ],
+        OR: [{ barCode: { equals: barcode.trim(), mode: 'insensitive' } }],
       },
       include: {
         brand: true,
@@ -403,7 +401,9 @@ export class PosSalesService implements OnModuleInit {
           );
           const tenderMethods = [...new Set(tenders.map((t) => t.method))];
           const paymentMethod =
-            tenderMethods.length === 1 ? tenderMethods[0] : tenderMethods.join('+');
+            tenderMethods.length === 1
+              ? tenderMethods[0]
+              : tenderMethods.join('+');
           const cashAmount = tenders
             .filter((t) => t.method === 'cash')
             .reduce((a, t) => a + Number(t.amount), 0);
@@ -1121,7 +1121,11 @@ export class PosSalesService implements OnModuleInit {
           status: 'failure',
         }),
       );
-      console.error('[createOrder FAILED]', error?.message, error?.stack?.split('\n').slice(0,5).join(' | '));
+      console.error(
+        '[createOrder FAILED]',
+        error?.message,
+        error?.stack?.split('\n').slice(0, 5).join(' | '),
+      );
       return { status: false, message: error.message };
     }
   }
@@ -2059,7 +2063,10 @@ export class PosSalesService implements OnModuleInit {
       }
     }
     if (locationId) where.locationId = locationId;
-    console.log('[listOrders] filter:', JSON.stringify({ posId, locationId, status }));
+    console.log(
+      '[listOrders] filter:',
+      JSON.stringify({ posId, locationId, status }),
+    );
     if (status) {
       where.status = status;
     } else {
@@ -2348,7 +2355,11 @@ export class PosSalesService implements OnModuleInit {
         }
       }
 
-      if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
+      if (
+        order.tenderType === 'split' ||
+        order.tenderType?.includes('+') ||
+        order.paymentMethod?.includes('+')
+      ) {
         if (cash > 0) tenders.push({ method: 'cash', amount: cash });
         if (card > 0) tenders.push({ method: 'card', amount: card });
       } else if (order.paymentMethod) {
@@ -2939,7 +2950,11 @@ export class PosSalesService implements OnModuleInit {
         });
       }
 
-      if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
+      if (
+        order.tenderType === 'split' ||
+        order.tenderType?.includes('+') ||
+        order.paymentMethod?.includes('+')
+      ) {
         if (Number(order.cashAmount) > 0)
           tenders.push({ method: 'cash', amount: Number(order.cashAmount) });
         const isLegacy =
@@ -3655,7 +3670,11 @@ export class PosSalesService implements OnModuleInit {
       }
     }
 
-    if (order.tenderType === 'split' || order.tenderType?.includes('+') || order.paymentMethod?.includes('+')) {
+    if (
+      order.tenderType === 'split' ||
+      order.tenderType?.includes('+') ||
+      order.paymentMethod?.includes('+')
+    ) {
       if (cash > 0) tenders.push({ method: 'cash', amount: cash });
       if (card > 0) tenders.push({ method: 'card', amount: card });
     } else if (order.paymentMethod) {
@@ -9150,7 +9169,9 @@ export class PosSalesService implements OnModuleInit {
         const itemHsCode = it.hsCodeStr || it.hsCode?.hsCode || '-';
         const itemBarcode = it.barCode || '-';
 
-        const locationName = order.locationId ? (locationMap.get(order.locationId) || 'Main Outlet') : 'Main Outlet';
+        const locationName = order.locationId
+          ? locationMap.get(order.locationId) || 'Main Outlet'
+          : 'Main Outlet';
         const monthName = order.createdAt.toLocaleString('en-US', {
           month: 'long',
           year: 'numeric',
