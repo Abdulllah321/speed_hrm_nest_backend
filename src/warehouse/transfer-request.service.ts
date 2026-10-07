@@ -77,6 +77,13 @@ export class TransferRequestService {
                 if (data.fromLocationId === data.toLocationId) {
                     throw new BadRequestException('Source and destination outlets cannot be the same');
                 }
+            } else if (transferType === 'WAREHOUSE_TO_WAREHOUSE') {
+                if (!data.fromWarehouseId || !data.toWarehouseId) {
+                    throw new BadRequestException('fromWarehouseId and toWarehouseId required for warehouse-to-warehouse transfers');
+                }
+                if (data.fromWarehouseId === data.toWarehouseId) {
+                    throw new BadRequestException('Source and destination warehouses cannot be the same');
+                }
             }
 
             // Validate that locations exist
@@ -107,47 +114,61 @@ export class TransferRequestService {
                 const requestNo = nextTransferNumber;
 
                 // Validate stock availability based on transfer type
-                for (const item of data.items) {
-                    let availableQty = 0;
-                    if (transferType === 'WAREHOUSE_TO_OUTLET') {
-                        const stock = await tx.inventoryItem.aggregate({
+                const itemIds = data.items.map(i => i.itemId);
+                const stockMap = new Map<string, number>();
+
+                if (transferType === 'WAREHOUSE_TO_OUTLET') {
+                    const [stocks, reservations] = await Promise.all([
+                        tx.inventoryItem.groupBy({
+                            by: ['itemId'],
                             where: {
                                 warehouseId: data.fromWarehouseId,
                                 locationId: null, // Ensure we check warehouse main stock
-                                itemId: item.itemId,
+                                itemId: { in: itemIds },
                                 status: 'AVAILABLE'
                             },
                             _sum: { quantity: true }
-                        });
-                        const physicalQty = stock._sum.quantity ? Number(stock._sum.quantity) : 0;
-
-                        // Deduct active reservations
-                        const reservations = await tx.stockReserve.aggregate({
+                        }),
+                        tx.stockReserve.groupBy({
+                            by: ['itemId'],
                             where: {
-                                itemId: item.itemId,
+                                itemId: { in: itemIds },
                                 warehouseId: data.fromWarehouseId,
                                 OR: [
                                     { expiresAt: null },
                                     { expiresAt: { gte: new Date() } }
                                 ]
                             },
-                            _sum: {
-                                quantity: true
-                            }
-                        });
-                        const reservedQty = reservations._sum.quantity ? Number(reservations._sum.quantity) : 0;
-                        availableQty = Math.max(0, physicalQty - reservedQty);
-                    } else {
-                        const ledger = await tx.stockLedger.aggregate({
-                            where: {
-                                locationId: data.fromLocationId,
-                                itemId: item.itemId
-                            },
-                            _sum: { qty: true }
-                        });
-                        availableQty = ledger._sum.qty ? Number(ledger._sum.qty) : 0;
-                    }
+                            _sum: { quantity: true }
+                        })
+                    ]);
 
+                    const physMap = new Map(stocks.map(s => [s.itemId, Number(s._sum.quantity || 0)]));
+                    const resMap = new Map(reservations.map(r => [r.itemId, Number(r._sum.quantity || 0)]));
+
+                    for (const item of data.items) {
+                        const physicalQty = physMap.get(item.itemId) || 0;
+                        const reservedQty = resMap.get(item.itemId) || 0;
+                        stockMap.set(item.itemId, Math.max(0, physicalQty - reservedQty));
+                    }
+                } else {
+                    const ledgers = await tx.stockLedger.groupBy({
+                        by: ['itemId'],
+                        where: {
+                            locationId: data.fromLocationId,
+                            itemId: { in: itemIds }
+                        },
+                        _sum: { qty: true }
+                    });
+                    
+                    const physMap = new Map(ledgers.map(l => [l.itemId, Number(l._sum.qty || 0)]));
+                    for (const item of data.items) {
+                        stockMap.set(item.itemId, physMap.get(item.itemId) || 0);
+                    }
+                }
+
+                for (const item of data.items) {
+                    const availableQty = stockMap.get(item.itemId) || 0;
                     if (availableQty < item.quantity) {
                         throw new BadRequestException(`Insufficient stock for item ID: ${item.itemId}. Available (unreserved): ${availableQty}, Requested: ${item.quantity}`);
                     }
@@ -191,32 +212,51 @@ export class TransferRequestService {
                     },
                 });
 
+                // Batch fetch current rates
+                const itemsData = await tx.item.findMany({
+                    where: { id: { in: itemIds } },
+                    select: { id: true, unitCost: true }
+                });
+                const rateMap = new Map(itemsData.map(i => [i.id, Number(i.unitCost || 0)]));
+
                 // If isDirect is true, decrement stock and create the ledger entry immediately
                 if (isDirect) {
-                    for (const item of createdRequest.items) {
-                        const existingInventory = await tx.inventoryItem.findFirst({
-                            where: {
-                                locationId: data.fromLocationId!,
-                                itemId: item.itemId,
-                                status: 'AVAILABLE',
-                            },
-                            orderBy: { createdAt: 'desc' }
-                        });
+                    const existingInventories = await tx.inventoryItem.findMany({
+                        where: {
+                            locationId: data.fromLocationId!,
+                            itemId: { in: itemIds },
+                            status: 'AVAILABLE',
+                        },
+                        orderBy: { createdAt: 'desc' }
+                    });
 
-                        let actualWarehouseId = existingInventory?.warehouseId || null;
-
-                        if (!actualWarehouseId) {
-                            const loc = await tx.location.findUnique({ where: { id: data.fromLocationId! } });
-                            actualWarehouseId = loc?.warehouseId || '';
+                    const invMap = new Map<string, any>();
+                    for (const inv of existingInventories) {
+                        if (!invMap.has(inv.itemId)) {
+                            invMap.set(inv.itemId, inv);
                         }
+                    }
 
-                        if (existingInventory) {
-                            await tx.inventoryItem.update({
-                                where: { id: existingInventory.id },
+                    let fallbackWarehouseId = '';
+                    if (!Array.from(invMap.values()).some(v => v.warehouseId)) {
+                        const loc = await tx.location.findUnique({ where: { id: data.fromLocationId! } });
+                        fallbackWarehouseId = loc?.warehouseId || '';
+                    }
+
+                    const ledgerEntries: any[] = [];
+                    const ops = [];
+
+                    for (const item of createdRequest.items) {
+                        const existing = invMap.get(item.itemId);
+                        const actualWarehouseId = existing?.warehouseId || fallbackWarehouseId;
+
+                        if (existing) {
+                            ops.push(tx.inventoryItem.update({
+                                where: { id: existing.id },
                                 data: { quantity: { decrement: Number(item.quantity) } },
-                            });
+                            }));
                         } else {
-                            await tx.inventoryItem.create({
+                            ops.push(tx.inventoryItem.create({
                                 data: {
                                     itemId: item.itemId,
                                     locationId: data.fromLocationId!,
@@ -224,13 +264,11 @@ export class TransferRequestService {
                                     quantity: -Number(item.quantity),
                                     status: 'AVAILABLE'
                                 }
-                            });
+                            }));
                         }
 
-                        const transferRate = await this.getCurrentItemRate(tx, item.itemId);
-
-                        // Create outbound ledger entry
-                        await this.stockLedgerService.createEntry({
+                        const transferRate = rateMap.get(item.itemId) || 0;
+                        ledgerEntries.push({
                             itemId: item.itemId,
                             warehouseId: actualWarehouseId,
                             locationId: data.fromLocationId!,
@@ -239,28 +277,49 @@ export class TransferRequestService {
                             referenceType: 'OUTLET_TRANSFER_OUT',
                             referenceId: createdRequest.id,
                             rate: transferRate,
-                        }, tx);
+                        });
+                    }
+
+                    if (ledgerEntries.length > 0) {
+                        ops.push(tx.stockLedger.createMany({ data: ledgerEntries }));
+                    }
+                    
+                    const chunkSize = 50;
+                    for (let i = 0; i < ops.length; i += chunkSize) {
+                        await Promise.all(ops.slice(i, i + chunkSize));
                     }
                 } else if (transferType === 'WAREHOUSE_TO_OUTLET') {
                     // Immediately decrement warehouse inventory upon dispatch/creation
-                    for (const item of createdRequest.items) {
-                        const existingInventory = await tx.inventoryItem.findFirst({
-                            where: {
-                                warehouseId: data.fromWarehouseId!,
-                                locationId: null,
-                                itemId: item.itemId,
-                                status: 'AVAILABLE',
-                            },
-                            orderBy: { createdAt: 'desc' }
-                        });
+                    const existingInventories = await tx.inventoryItem.findMany({
+                        where: {
+                            warehouseId: data.fromWarehouseId!,
+                            locationId: null,
+                            itemId: { in: itemIds },
+                            status: 'AVAILABLE',
+                        },
+                        orderBy: { createdAt: 'desc' }
+                    });
 
-                        if (existingInventory) {
-                            await tx.inventoryItem.update({
-                                where: { id: existingInventory.id },
+                    const invMap = new Map<string, any>();
+                    for (const inv of existingInventories) {
+                        if (!invMap.has(inv.itemId)) {
+                            invMap.set(inv.itemId, inv);
+                        }
+                    }
+
+                    const ledgerEntries: any[] = [];
+                    const ops = [];
+
+                    for (const item of createdRequest.items) {
+                        const existing = invMap.get(item.itemId);
+
+                        if (existing) {
+                            ops.push(tx.inventoryItem.update({
+                                where: { id: existing.id },
                                 data: { quantity: { decrement: Number(item.quantity) } },
-                            });
+                            }));
                         } else {
-                            await tx.inventoryItem.create({
+                            ops.push(tx.inventoryItem.create({
                                 data: {
                                     itemId: item.itemId,
                                     locationId: null,
@@ -268,13 +327,11 @@ export class TransferRequestService {
                                     quantity: -Number(item.quantity),
                                     status: 'AVAILABLE'
                                 }
-                            });
+                            }));
                         }
 
-                        const transferRate = await this.getCurrentItemRate(tx, item.itemId);
-
-                        // Create outbound ledger entry for warehouse
-                        await this.stockLedgerService.createEntry({
+                        const transferRate = rateMap.get(item.itemId) || 0;
+                        ledgerEntries.push({
                             itemId: item.itemId,
                             warehouseId: data.fromWarehouseId!,
                             qty: -Number(item.quantity),
@@ -282,7 +339,16 @@ export class TransferRequestService {
                             referenceType: 'TRANSFER_REQUEST',
                             referenceId: createdRequest.id,
                             rate: transferRate,
-                        }, tx);
+                        });
+                    }
+
+                    if (ledgerEntries.length > 0) {
+                        ops.push(tx.stockLedger.createMany({ data: ledgerEntries }));
+                    }
+
+                    const chunkSize = 50;
+                    for (let i = 0; i < ops.length; i += chunkSize) {
+                        await Promise.all(ops.slice(i, i + chunkSize));
                     }
                 }
 
