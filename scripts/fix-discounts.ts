@@ -1,17 +1,36 @@
 import 'dotenv/config';
 import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient as ManagementClient } from '@prisma/management-client';
+import * as crypto from 'crypto';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const prisma = new PrismaClient();
-
-async function main() {
-  const targetLocation = process.argv[2]; // Passed as an argument (e.g. "WATCH OUTLET-SAFA GOLD MALL")
-  
-  if (!targetLocation) {
-    console.log('Starting historical discount fix script for ALL locations...');
-  } else {
-    console.log(`Starting historical discount fix script for location: ${targetLocation}`);
+function decrypt(encryptedText: string, masterKeyString: string): string {
+  if (!masterKeyString || masterKeyString.length < 32) {
+    throw new Error('MASTER_ENCRYPTION_KEY must be at least 32 characters');
   }
-  
+  const masterKey = Buffer.from(masterKeyString.slice(0, 32), 'utf-8');
+  const algorithm = 'aes-256-gcm';
+
+  const parts = encryptedText.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted text format');
+  }
+
+  const iv = Buffer.from(parts[0], 'hex');
+  const authTag = Buffer.from(parts[1], 'hex');
+  const encrypted = parts[2];
+
+  const decipher = crypto.createDecipheriv(algorithm, masterKey, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
+}
+
+async function processTenant(prisma: PrismaClient, targetLocation: string | undefined) {
   // Find orders created between 01-10-2026 and 07-10-2026 (inclusive)
   const startDate = new Date('2026-10-01T00:00:00Z');
   const endDate = new Date('2026-10-07T23:59:59Z');
@@ -26,7 +45,7 @@ async function main() {
     });
     locationIds = locations.map(l => l.id);
     if (locationIds.length === 0) {
-      console.log(`No locations found matching: ${targetLocation}`);
+      console.log(`  🔍 No locations found matching: ${targetLocation}`);
       return;
     }
   }
@@ -58,7 +77,7 @@ async function main() {
     }
   });
 
-  console.log(`Found ${orders.length} orders to potentially fix.`);
+  console.log(`  Found ${orders.length} orders to potentially fix.`);
 
   // Pre-fetch locations to get FBR settings
   const allLocationIds = [...new Set(orders.map(o => o.locationId).filter(id => id !== null))] as string[];
@@ -193,10 +212,10 @@ async function main() {
       const newGrandTotal = Math.round(Math.max(0, subtotal - globalDiscAmt - finalLineItemDiscount + newTotalTax + fbrPosFee));
       
       if (Math.abs(currentGrandTotal - newGrandTotal) > 0.01 || Math.abs(currentTax - newTotalTax) > 0.01 || Math.abs(currentDbGlobalDiscountAmount - globalDiscAmt) > 0.01) {
-        console.log(`Fixing Order ${order.orderNumber}:`);
-        console.log(`  Discount: ${currentDbGlobalDiscountAmount} -> ${globalDiscAmt}`);
-        console.log(`  Tax: ${currentTax} -> ${newTotalTax}`);
-        console.log(`  GrandTotal: ${currentGrandTotal} -> ${newGrandTotal}`);
+        console.log(`  🔧 Fixing Order ${order.orderNumber}:`);
+        console.log(`     Discount: ${currentDbGlobalDiscountAmount} -> ${globalDiscAmt}`);
+        console.log(`     Tax: ${currentTax} -> ${newTotalTax}`);
+        console.log(`     GrandTotal: ${currentGrandTotal} -> ${newGrandTotal}`);
         
         await prisma.salesOrder.update({
           where: { id: order.id },
@@ -210,18 +229,90 @@ async function main() {
         updatedCount++;
       }
     } catch (err) {
-      console.error(`Error fixing order ${order.orderNumber}:`, err);
+      console.error(`  ❌ Error fixing order ${order.orderNumber}:`, err);
     }
   }
 
-  console.log(`Finished. Successfully updated ${updatedCount} orders.`);
+  console.log(`  ✅ Finished. Successfully updated ${updatedCount} orders.`);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+async function main() {
+  const targetLocation = process.argv[2]; // Passed as an argument (e.g. "WATCH OUTLET-SAFA GOLD MALL")
+  
+  if (!targetLocation) {
+    console.log('🚀 Starting historical discount fix script for ALL locations...');
+  } else {
+    console.log(`🚀 Starting historical discount fix script for location: ${targetLocation}`);
+  }
+  
+  const managementUrl = process.env.DATABASE_URL_MANAGEMENT;
+  const masterKey = process.env.MASTER_ENCRYPTION_KEY;
+
+  if (managementUrl && masterKey) {
+    const pool = new Pool({ connectionString: managementUrl });
+    const adapter = new PrismaPg(pool);
+    const management = new ManagementClient({ adapter } as any);
+
+    try {
+      const companies = await management.company.findMany({
+        where: { status: 'active' },
+      });
+
+      if (companies.length === 0) {
+        console.log('ℹ️ No active tenant companies found.');
+        return;
+      }
+
+      for (const company of companies) {
+        console.log(`\n👉 Processing Tenant Company: ${company.name} (${company.code})`);
+        let connectionString = company.dbUrl;
+        if (company.dbPassword) {
+          try {
+            const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
+            connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+          } catch {
+            console.warn(`  ⚠️ Decryption failed, using stored dbUrl`);
+          }
+        }
+
+        if (!connectionString) {
+          console.error(`  ❌ No database connection details available for company: ${company.code}`);
+          continue;
+        }
+
+        const tenantPool = new Pool({ connectionString });
+        const tenantAdapter = new PrismaPg(tenantPool);
+        const tenantPrisma = new PrismaClient({ adapter: tenantAdapter });
+
+        try {
+          await tenantPrisma.$connect();
+          await processTenant(tenantPrisma, targetLocation);
+        } catch (err: any) {
+          console.error(`  ❌ Failed processing tenant ${company.code}: ${err.message}`);
+        } finally {
+          await tenantPrisma.$disconnect();
+          await tenantPool.end();
+        }
+      }
+    } finally {
+      await management.$disconnect();
+      await pool.end();
+    }
+  } else {
+    console.log(`ℹ️ Connecting via default DATABASE_URL...`);
+    const prisma = new PrismaClient();
+    try {
+      await prisma.$connect();
+      await processTenant(prisma, targetLocation);
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  console.log('\n✨ All done.');
+}
+
+main().catch((e) => {
+  console.error('❌ Script failed with error:', e);
+  process.exit(1);
+});
