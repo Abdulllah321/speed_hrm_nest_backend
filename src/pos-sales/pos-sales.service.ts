@@ -542,18 +542,9 @@ export class PosSalesService implements OnModuleInit {
             ) / 100;
           if (dto.globalDiscountPercent) {
             const cappedPercent = Math.min(dto.globalDiscountPercent, 100);
-            // Calculate what X% of WOST is (e.g. 10% of 26400 = 2640)
-            const targetDiscountOnGrandTotal =
+            // For percentage, just apply directly to WOST. A 10% discount on WOST naturally results in a 10% reduction in Grand Total.
+            manualDiscount =
               Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
-            // To reduce the Grand Total by 2640, we must apply a proportionally smaller discount to WOST
-            if (grandTotalBeforeManual > 0) {
-              manualDiscount =
-                Math.round(
-                  targetDiscountOnGrandTotal *
-                    (subtotal / grandTotalBeforeManual) *
-                    100,
-                ) / 100;
-            }
           } else if (dto.globalDiscountAmount) {
             const maxFlatDiscount =
               Math.round(grandTotalBeforeManual * 1.0 * 100) / 100;
@@ -576,19 +567,18 @@ export class PosSalesService implements OnModuleInit {
               where: { id: dto.allianceId, isDeleted: false },
             });
             if (alliance) {
-              const calculatedDiscount =
-                Math.round(
-                  subtotal * (Number(alliance.discountPercent) / 100) * 100,
-                ) / 100;
+              const targetDiscountOnWST = Math.round(
+                grandTotalBeforeManual * (Number(alliance.discountPercent) / 100) * 100,
+              ) / 100;
+              
+              let cappedTarget = targetDiscountOnWST;
               if (alliance.maxDiscount) {
-                allianceDiscount = Math.min(
-                  calculatedDiscount,
-                  Number(alliance.maxDiscount),
-                );
-              } else {
-                allianceDiscount = calculatedDiscount;
+                cappedTarget = Math.min(targetDiscountOnWST, Number(alliance.maxDiscount));
               }
-              allianceDiscount = Math.round(allianceDiscount * 100) / 100;
+
+              if (grandTotalBeforeManual > 0) {
+                allianceDiscount = Math.round(cappedTarget * (subtotal / grandTotalBeforeManual) * 100) / 100;
+              }
             }
           }
 
@@ -622,15 +612,18 @@ export class PosSalesService implements OnModuleInit {
           // - If equal, apply alliance discount
           // - The one not applied should be removed from calculation
 
-          if (lineItemDiscount > 0 && allianceDiscount > 0) {
+          if (manualDiscount > 0) {
+            // Manual discount — replaces item-level discounts and overrides alliance/coupon
+            globalDiscAmt = manualDiscount;
+            finalLineItemDiscount = 0;
+            appliedDiscountType = 'manual';
+          } else if (lineItemDiscount > 0 && allianceDiscount > 0) {
             // Both item and alliance discounts exist - choose the greater one
             if (allianceDiscount >= lineItemDiscount) {
-              // Alliance discount is greater or equal - use alliance, remove item discount
               globalDiscAmt = allianceDiscount;
               finalLineItemDiscount = 0; // Remove item discount
               appliedDiscountType = 'alliance';
             } else {
-              // Item discount is greater - keep item discount, no alliance
               globalDiscAmt = 0;
               finalLineItemDiscount = lineItemDiscount;
               appliedDiscountType = 'item';
@@ -643,11 +636,6 @@ export class PosSalesService implements OnModuleInit {
             // Coupon discount
             globalDiscAmt = couponDiscount;
             appliedDiscountType = 'coupon';
-          } else if (manualDiscount > 0) {
-            // Manual discount — replaces item-level discounts
-            globalDiscAmt = manualDiscount;
-            finalLineItemDiscount = 0; // Remove item discounts when manual discount is applied
-            appliedDiscountType = 'manual';
           }
 
           // If any global/order-level discount (Alliance, Coupon, Manual) is applied,
