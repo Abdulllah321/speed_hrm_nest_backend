@@ -847,7 +847,9 @@ export class StockRequisitionService {
       const inventoryOps: any[] = [];
       const timeNow = Date.now();
 
+      let itemIndex = 0;
       for (const stnItem of data.items) {
+        itemIndex++;
         if (stnItem.quantity <= 0) continue;
 
         let remainingToDeduct = stnItem.quantity;
@@ -876,7 +878,7 @@ export class StockRequisitionService {
         });
 
         movementEntries.push({
-          movementNo: `MV-${timeNow}-${stnItem.itemId.slice(-4)}`,
+          movementNo: `MV-${timeNow}-${itemIndex}-${stnItem.itemId.slice(-4)}`,
           itemId: stnItem.itemId,
           fromLocationId: null,
           toLocationId: requisition.toLocationId!,
