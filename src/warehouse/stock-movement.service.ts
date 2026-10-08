@@ -189,7 +189,6 @@ export class StockMovementService {
       where: {
         itemId: dto.itemId,
         warehouseId: dto.fromWarehouseId,
-        locationId: null,
         status: 'AVAILABLE',
       },
     });
@@ -412,7 +411,6 @@ export class StockMovementService {
       where: {
         itemId: dto.itemId,
         warehouseId: dto.toWarehouseId,
-        locationId: null, // Warehouse-level stock (no specific location)
         status: 'AVAILABLE',
       },
     });
@@ -435,7 +433,6 @@ export class StockMovementService {
         data: {
           itemId: dto.itemId,
           warehouseId: dto.toWarehouseId,
-          locationId: null, // Warehouse-level stock
           quantity: dto.quantity,
           status: 'AVAILABLE',
         },

@@ -159,7 +159,7 @@ export class TransferRequestService {
                   by: ['itemId'],
                   where: {
                     warehouseId: data.fromWarehouseId,
-                    locationId: null, // Ensure we check warehouse main stock
+                    // locationId: null, // Removed to include stock from any location in the warehouse
                     itemId: { in: itemIds },
                     status: 'AVAILABLE',
                   },
@@ -310,7 +310,7 @@ export class TransferRequestService {
               }
 
               const ledgerEntries: any[] = [];
-              const ops = [];
+              const ops: any[] = [];
 
               for (const item of createdRequest.items) {
                 const existing = invMap.get(item.itemId);
@@ -364,7 +364,6 @@ export class TransferRequestService {
               const existingInventories = await tx.inventoryItem.findMany({
                 where: {
                   warehouseId: data.fromWarehouseId!,
-                  locationId: null,
                   itemId: { in: itemIds },
                   status: 'AVAILABLE',
                 },
@@ -379,7 +378,7 @@ export class TransferRequestService {
               }
 
               const ledgerEntries: any[] = [];
-              const ops = [];
+              const ops: any[] = [];
 
               for (const item of createdRequest.items) {
                 const existing = invMap.get(item.itemId);
@@ -396,7 +395,6 @@ export class TransferRequestService {
                     tx.inventoryItem.create({
                       data: {
                         itemId: item.itemId,
-                        locationId: null,
                         warehouseId: data.fromWarehouseId!,
                         quantity: -Number(item.quantity),
                         status: 'AVAILABLE',
