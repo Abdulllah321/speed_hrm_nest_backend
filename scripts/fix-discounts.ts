@@ -92,6 +92,7 @@ async function processTenant(prisma: PrismaClient, targetLocation: string | unde
     try {
       const subtotal = Number(order.subtotal);
       
+      let totalWost = 0;
       let recalculatedTotalTax = 0;
       let lineItemDiscountTotal = 0;
 
@@ -103,12 +104,13 @@ async function processTenant(prisma: PrismaClient, targetLocation: string | unde
         
         const taxDivisor = 1 + (taxPercent / 100);
         const wostPerUnit = unitPrice / taxDivisor;
-        const totalWost = wostPerUnit * qty;
+        const itemWost = wostPerUnit * qty;
+        totalWost += itemWost;
         
-        const itemDiscount = totalWost * (discountPercent / 100);
+        const itemDiscount = itemWost * (discountPercent / 100);
         lineItemDiscountTotal += itemDiscount;
         
-        const afterItemDiscount = totalWost - itemDiscount;
+        const afterItemDiscount = itemWost - itemDiscount;
         const itemTax = afterItemDiscount * (taxPercent / 100);
         
         recalculatedTotalTax += itemTax;
@@ -117,8 +119,6 @@ async function processTenant(prisma: PrismaClient, targetLocation: string | unde
       const loc = order.locationId ? locationMap.get(order.locationId) : null;
       const fbrPosFee = (loc?.fbrEnabled && loc?.fbrNtn) ? 1 : 0;
       
-      const grandTotalBeforeManual = Math.round((subtotal - lineItemDiscountTotal + recalculatedTotalTax + fbrPosFee) * 100) / 100;
-
       let manualDiscount = 0;
       let allianceDiscount = 0;
       let globalDiscAmt = 0;
@@ -126,28 +126,23 @@ async function processTenant(prisma: PrismaClient, targetLocation: string | unde
       // 1. Manual Discount Logic
       const rawGlobalDiscountAmount = Number(order.globalDiscountAmount ?? 0);
       if (order.globalDiscountPercent && Number(order.globalDiscountPercent) > 0) {
-        // Percentage manual discount (NO SCALING)
         const cappedPercent = Math.min(Number(order.globalDiscountPercent), 100);
-        manualDiscount = Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
+        // Manual discount applied directly to WOST
+        manualDiscount = Math.round(totalWost * (cappedPercent / 100) * 100) / 100;
       } else if (rawGlobalDiscountAmount > 0 && order.manualDiscountNote) {
-        // Flat amount manual discount (SCALING NEEDED)
-        const maxFlatDiscount = Math.round(grandTotalBeforeManual * 1.0 * 100) / 100;
-        const targetDiscountOnGrandTotal = Math.min(rawGlobalDiscountAmount, maxFlatDiscount);
-        if (grandTotalBeforeManual > 0) {
-          manualDiscount = Math.round(targetDiscountOnGrandTotal * (subtotal / grandTotalBeforeManual) * 100) / 100;
-        }
+        // Assume the flat amount stored in DB was intended to be WOST discount
+        manualDiscount = rawGlobalDiscountAmount;
       }
 
       // 2. Alliance Discount Logic
       if (order.alliance) {
-        const targetDiscountOnWST = Math.round(grandTotalBeforeManual * (Number(order.alliance.discountPercent) / 100) * 100) / 100;
+        const targetDiscountOnWST = Math.round(totalWost * (Number(order.alliance.discountPercent) / 100) * 100) / 100;
         let cappedTarget = targetDiscountOnWST;
         if (order.alliance.maxDiscount) {
+          // If the maxDiscount in DB is stored as WOST max, keep this. If it was stored as retail max, we'd need to adjust. Assuming it's WOST max.
           cappedTarget = Math.min(targetDiscountOnWST, Number(order.alliance.maxDiscount));
         }
-        if (grandTotalBeforeManual > 0) {
-          allianceDiscount = Math.round(cappedTarget * (subtotal / grandTotalBeforeManual) * 100) / 100;
-        }
+        allianceDiscount = cappedTarget;
       }
 
       // Priority Resolution
@@ -170,9 +165,10 @@ async function processTenant(prisma: PrismaClient, targetLocation: string | unde
       const currentDbGlobalDiscountAmount = Number(order.globalDiscountAmount ?? 0);
       
       let newTotalTax = 0;
+      let wostAfterDiscountTotal = 0;
       
       if (globalDiscAmt > 0) {
-        const baseSubtotal = subtotal > 0 ? subtotal : 1;
+        const baseWost = totalWost > 0 ? totalWost : 1;
         let distributedDisc = 0;
         
         const itemWosts = order.items.map(item => {
@@ -181,7 +177,7 @@ async function processTenant(prisma: PrismaClient, targetLocation: string | unde
         });
 
         const rawShares = itemWosts.map(itemWost => {
-          const share = Math.floor((globalDiscAmt * itemWost) / baseSubtotal);
+          const share = Math.floor((globalDiscAmt * itemWost) / baseWost);
           distributedDisc += share;
           return share;
         });
@@ -200,16 +196,18 @@ async function processTenant(prisma: PrismaClient, targetLocation: string | unde
           const itemWost = itemWosts[idx];
           const share = rawShares[idx];
           const afterDiscount = itemWost - share;
+          wostAfterDiscountTotal += afterDiscount;
           newTotalTax += Math.round(afterDiscount * (Number(item.taxPercent ?? 0) / 100) * 100) / 100;
         });
       } else {
-        newTotalTax = recalculatedTotalTax; // Just the item level taxes
+        newTotalTax = recalculatedTotalTax; 
+        wostAfterDiscountTotal = totalWost - finalLineItemDiscount;
       }
       
       const currentTax = Number(order.taxAmount);
       const currentGrandTotal = Number(order.grandTotal);
       
-      const newGrandTotal = Math.round(Math.max(0, subtotal - globalDiscAmt - finalLineItemDiscount + newTotalTax + fbrPosFee));
+      const newGrandTotal = Math.round(Math.max(0, wostAfterDiscountTotal + newTotalTax + fbrPosFee));
       
       if (Math.abs(currentGrandTotal - newGrandTotal) > 0.01 || Math.abs(currentTax - newTotalTax) > 0.01 || Math.abs(currentDbGlobalDiscountAmount - globalDiscAmt) > 0.01) {
         console.log(`  🔧 Fixing Order ${order.orderNumber}:`);

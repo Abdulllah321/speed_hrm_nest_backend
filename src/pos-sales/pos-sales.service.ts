@@ -534,51 +534,37 @@ export class PosSalesService implements OnModuleInit {
           let allianceDiscount = 0;
           let couponDiscount = 0;
 
-          // 1. Manual discount (from UI) — calculated on full subtotal (replaces item discounts)
-          //    Max 100% allowed; flat amount capped at 100% of Grand Total before manual discount
-          const grandTotalBeforeManual =
-            Math.round(
-              (subtotal - lineItemDiscount + recalculatedTotalTax + 1) * 100,
-            ) / 100;
+          // 1. Manual discount (from UI) — calculated on full WOST (replaces item discounts)
+          //    Flat amount arrives from frontend already as WOST. Cap at total WOST so it can't exceed the sale.
           if (dto.globalDiscountPercent) {
             const cappedPercent = Math.min(dto.globalDiscountPercent, 100);
-            // For percentage, just apply directly to WOST. A 10% discount on WOST naturally results in a 10% reduction in Grand Total.
+            // Percentage applied directly to WOST
             manualDiscount =
               Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
           } else if (dto.globalDiscountAmount) {
-            const maxFlatDiscount =
-              Math.round(grandTotalBeforeManual * 1.0 * 100) / 100;
-            const targetDiscountOnGrandTotal = Math.min(
-              dto.globalDiscountAmount,
-              maxFlatDiscount,
+            // Flat amount from UI is already in WOST terms — just cap at subtotal
+            manualDiscount = Math.min(
+              Math.round(dto.globalDiscountAmount * 100) / 100,
+              subtotal,
             );
-            if (grandTotalBeforeManual > 0) {
-              manualDiscount =
-                Math.round(
-                  targetDiscountOnGrandTotal *
-                    (subtotal / grandTotalBeforeManual) *
-                    100,
-                ) / 100;
-            }
           }
-          // 2. Alliance discount (calculated on subtotal AFTER item discounts)
+          // 2. Alliance discount — calculated directly on total WOST
           if (dto.allianceId) {
             const alliance = await tx.allianceDiscount.findFirst({
               where: { id: dto.allianceId, isDeleted: false },
             });
             if (alliance) {
+              // Apply % directly on WOST (no scaling needed — discount is a WOST reduction)
               const targetDiscountOnWST = Math.round(
-                grandTotalBeforeManual * (Number(alliance.discountPercent) / 100) * 100,
+                subtotal * (Number(alliance.discountPercent) / 100) * 100,
               ) / 100;
-              
+
               let cappedTarget = targetDiscountOnWST;
               if (alliance.maxDiscount) {
                 cappedTarget = Math.min(targetDiscountOnWST, Number(alliance.maxDiscount));
               }
 
-              if (grandTotalBeforeManual > 0) {
-                allianceDiscount = Math.round(cappedTarget * (subtotal / grandTotalBeforeManual) * 100) / 100;
-              }
+              allianceDiscount = cappedTarget;
             }
           }
 
@@ -697,16 +683,17 @@ export class PosSalesService implements OnModuleInit {
             0,
           );
 
-          // Recalculate total with the chosen discount
+          // Grand Total = WOST after all discounts + final tax + FBR fee
           const totalDiscount = finalLineItemDiscount + globalDiscAmt;
           const location = await tx.location.findUnique({
             where: { id: locationId },
             select: { fbrEnabled: true, fbrNtn: true, name: true },
           });
           const fbrPosFee = location?.fbrEnabled && location?.fbrNtn ? 1 : 0;
+          const wostAfterDiscount = subtotal - totalDiscount;
           const grandTotal = Math.max(
             0,
-            Math.round(subtotal - totalDiscount + finalTotalTax + fbrPosFee),
+            Math.round(wostAfterDiscount + finalTotalTax + fbrPosFee),
           );
           const changeAmount = Math.max(0, totalPaid - grandTotal);
 
