@@ -535,18 +535,27 @@ export class PosSalesService implements OnModuleInit {
           let couponDiscount = 0;
 
           // 1. Manual discount (from UI) — calculated on full WOST (replaces item discounts)
-          //    Flat amount arrives from frontend already as WOST. Cap at total WOST so it can't exceed the sale.
           if (dto.globalDiscountPercent) {
             const cappedPercent = Math.min(dto.globalDiscountPercent, 100);
             // Percentage applied directly to WOST
             manualDiscount =
               Math.round(subtotal * (cappedPercent / 100) * 100) / 100;
           } else if (dto.globalDiscountAmount) {
-            // Flat amount from UI is already in WOST terms — just cap at subtotal
-            manualDiscount = Math.min(
-              Math.round(dto.globalDiscountAmount * 100) / 100,
-              subtotal,
-            );
+            // Frontend sends the RETAIL (tax-inclusive) flat amount the user typed.
+            // Convert it to WOST using the cart's actual WOST/Retail ratio.
+            // e.g. user enters 8,250 at 25% tax → WOST discount = 8,250 × (WOST / Retail)
+            const wostAfterItemDisc = subtotal - lineItemDiscount;
+            const retailBeforeManual = wostAfterItemDisc + recalculatedTotalTax + 1; // +1 for FBR fee (Rs.1)
+            if (retailBeforeManual > 0) {
+              const cappedRetail = Math.min(
+                dto.globalDiscountAmount,
+                retailBeforeManual,
+              );
+              manualDiscount =
+                Math.round(
+                  cappedRetail * (wostAfterItemDisc / retailBeforeManual) * 100,
+                ) / 100;
+            }
           }
           // 2. Alliance discount — calculated directly on total WOST
           if (dto.allianceId) {
@@ -736,7 +745,7 @@ export class PosSalesService implements OnModuleInit {
           const totalPaidRounded = Math.round(totalPaid * 100) / 100;
           const grandTotalRounded = Math.round(grandTotal * 100) / 100;
 
-          if (totalPaidRounded > grandTotalRounded) {
+          if (totalPaidRounded > grandTotalRounded + 2) {
             throw new Error(
               `Total payment (${totalPaidRounded}) cannot exceed the grand total (${grandTotalRounded}). Overpayments are not allowed.`,
             );
@@ -7052,7 +7061,7 @@ export class PosSalesService implements OnModuleInit {
         const totalPaidRounded = Math.round(totalPaid * 100) / 100;
         const grandTotalRounded = Math.round(grandTotal * 100) / 100;
 
-        if (totalPaidRounded > grandTotalRounded + 0.01) {
+        if (totalPaidRounded > grandTotalRounded + 2) {
           throw new Error(
             'Total tender amount cannot exceed the order bill total',
           );
