@@ -308,6 +308,23 @@ export class PosSalesService implements OnModuleInit {
           if (!locationId) {
             throw new Error('Location ID is required to create a sales order.');
           }
+
+          // Prevent duplicate/spam orders within 15 seconds from the same terminal
+          if (dto.terminalId) {
+            const recentOrder = await tx.salesOrder.findFirst({
+              where: {
+                terminalId: dto.terminalId,
+                status: 'COMPLETED',
+                createdAt: {
+                  gte: new Date(Date.now() - 15 * 1000), // last 15 seconds
+                },
+              },
+            });
+            if (recentOrder) {
+              throw new Error('Please wait 15 seconds before creating another order to prevent duplicates.');
+            }
+          }
+
           const orderNumber = await this.generateOrderNumber(locationId, tx);
 
           // If resuming from hold, reverse the stock deduction and delete old items first
