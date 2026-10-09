@@ -213,8 +213,53 @@ export class InventoryService {
     let reservedMap: Map<string, number> = new Map();
 
     if (locationId) {
-      // Outlet stock: use InventoryItem directly
-      const inventoryItems = await this.prisma.inventoryItem.findMany({
+      // Outlet / Location stock calculation:
+      // 1. Check for latest monthly stock snapshot
+      const latestSnapshot = await this.prisma.monthlyStockSnapshot.findFirst({
+        where: {
+          locationId,
+          date: { lte: new Date() },
+        },
+        orderBy: { date: 'desc' },
+        select: { date: true },
+      });
+
+      const snapshotMap = new Map<string, number>();
+      let queryStartDate: Date | undefined = undefined;
+
+      if (latestSnapshot?.date) {
+        queryStartDate = latestSnapshot.date;
+        const snapshotEntries = await this.prisma.monthlyStockSnapshot.findMany({
+          where: {
+            date: latestSnapshot.date,
+            locationId,
+            itemId: { in: itemIds },
+          },
+          select: { itemId: true, closingQty: true },
+        });
+        for (const entry of snapshotEntries) {
+          snapshotMap.set(entry.itemId, Number(entry.closingQty || 0));
+        }
+      }
+
+      // 2. Aggregate StockLedger entries for this location
+      const stockEntries = await this.prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: itemIds },
+          locationId,
+          ...(queryStartDate ? { createdAt: { gte: queryStartDate } } : {}),
+        },
+        _sum: { qty: true },
+      });
+
+      const ledgerMap = new Map<string, number>();
+      for (const entry of stockEntries) {
+        ledgerMap.set(entry.itemId, Number(entry._sum.qty || 0));
+      }
+
+      // 3. Fallback to InventoryItem for any items that haven't had ledger movements yet
+      const fallbackItems = await this.prisma.inventoryItem.findMany({
         where: {
           itemId: { in: itemIds },
           locationId,
@@ -222,9 +267,24 @@ export class InventoryService {
         },
         select: { itemId: true, quantity: true },
       });
-      stockMap = new Map(
-        inventoryItems.map((inv) => [inv.itemId, Number(inv.quantity)]),
-      );
+      const fallbackMap = new Map<string, number>();
+      for (const inv of fallbackItems) {
+        fallbackMap.set(inv.itemId, Number(inv.quantity || 0));
+      }
+
+      stockMap = new Map();
+      for (const id of itemIds) {
+        const snapQty = snapshotMap.get(id);
+        const ledgQty = ledgerMap.get(id);
+        if (snapQty !== undefined || ledgQty !== undefined) {
+          const total = (snapQty || 0) + (ledgQty || 0);
+          stockMap.set(id, total);
+        } else {
+          // Fallback to InventoryItem table if neither snapshot nor ledger entry exists
+          const invQty = fallbackMap.get(id) || 0;
+          stockMap.set(id, invQty);
+        }
+      }
       physicalMap = stockMap;
     } else if (warehouseId) {
       // Warehouse stock: use StockLedger minus active reservations
@@ -325,6 +385,8 @@ export class InventoryService {
 
       return {
         ...item,
+        barcode: item.barCode || (item as any).barcode,
+        barCode: item.barCode || (item as any).barcode,
         totalQuantity: avail,
         availableQuantity: avail,
         physicalQuantity: physical,
