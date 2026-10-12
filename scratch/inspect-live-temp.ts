@@ -48,7 +48,7 @@ async function main() {
 
   console.log(`🏢 Local Active Tenant: ${company.name} (${company.dbName})`);
 
-  const localPool = new Pool({ connectionString: localTenantConn });
+  const localPool = new Pool({ connectionString: localTenantConn || undefined });
   const tempPool = new Pool({ connectionString: 'postgresql://postgres:root@localhost:5432/spl_live_temp' });
 
   try {
