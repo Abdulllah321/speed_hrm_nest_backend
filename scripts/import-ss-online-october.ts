@@ -595,10 +595,9 @@ async function processSsOnlineOctober(prisma: PrismaClient, isDryRun: boolean, c
 
     // Resolve or find linked original SalesOrder in DB
     let targetOrderId: string | null = null;
-    let originalOrder = null;
 
     if (group.originalSaleDoc && !isDryRun) {
-      originalOrder = await prisma.salesOrder.findFirst({
+      const originalOrder = await prisma.salesOrder.findFirst({
         where: {
           OR: [
             { orderNumber: group.originalSaleDoc },
