@@ -424,7 +424,7 @@ export class InventoryAgingExportService {
           (l as any).warehouseId === wh.id ||
           l.id === wh.id ||
           l.code === `WH-${wh.code}` ||
-          l.code === wh.code,
+          (l.code === wh.code && wh.code !== 'C20001'),
       );
       for (const ml of matchingLocs) {
         whLocIdToWhIdMap.set(ml.id, wh.id);
