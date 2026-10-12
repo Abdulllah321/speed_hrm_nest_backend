@@ -4,6 +4,7 @@ import {
   Get,
   Delete,
   Param,
+  Body,
   UseGuards,
   HttpStatus,
   BadRequestException,
@@ -25,20 +26,30 @@ import { OnlineOrderManagementService } from './online-order-management.service'
 export class OnlineOrderManagementController {
   constructor(private readonly service: OnlineOrderManagementService) {}
 
-  @Get()
-  @ApiOperation({ summary: 'Get list of online orders grouped by order ID' })
-  async getOrders(@Req() req: any) {
+  private extractLocationContext(req: any) {
     let locationId = undefined;
+    let posId = undefined;
+    let terminalId = undefined;
+
     if (req.cookies?.posTerminalToken) {
       try {
         const decoded: any = jwt.decode(req.cookies.posTerminalToken);
         locationId = decoded?.locationId;
+        posId = decoded?.posId;
+        terminalId = decoded?.terminalId;
       } catch (e) {}
     }
     if (!locationId) {
       locationId = req.user?.locationId;
     }
 
+    return { locationId, posId, terminalId };
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get list of online orders grouped by order ID' })
+  async getOrders(@Req() req: any) {
+    const { locationId } = this.extractLocationContext(req);
     return this.service.getGroupedOrders(locationId);
   }
 
@@ -56,8 +67,9 @@ export class OnlineOrderManagementController {
       );
     }
 
+    const { locationId } = this.extractLocationContext(req);
     const buffer = await file.toBuffer();
-    const result = await this.service.uploadFile(buffer, file.filename);
+    const result = await this.service.uploadFile(buffer, file.filename, locationId);
 
     return {
       status: true,
@@ -69,16 +81,7 @@ export class OnlineOrderManagementController {
   @Post(':uploadId/confirm')
   @ApiOperation({ summary: 'Confirm and start import of valid orders' })
   async confirmUpload(@Param('uploadId') uploadId: string, @Req() req: any) {
-    let locationId = undefined;
-    if (req.cookies?.posTerminalToken) {
-      try {
-        const decoded: any = jwt.decode(req.cookies.posTerminalToken);
-        locationId = decoded?.locationId;
-      } catch (e) {}
-    }
-    if (!locationId) {
-      locationId = req.user?.locationId;
-    }
+    const { locationId } = this.extractLocationContext(req);
     if (!locationId) {
       throw new BadRequestException(
         'Location context is required to upload orders',
@@ -88,31 +91,46 @@ export class OnlineOrderManagementController {
     return this.service.confirmUpload(uploadId, locationId);
   }
 
+  @Post('bulk-post')
+  @ApiOperation({ summary: 'Bulk post selected online orders to POS Sales' })
+  async bulkPostOrders(
+    @Body() body: { orderNumbers: string[] },
+    @Req() req: any,
+  ) {
+    if (!body?.orderNumbers || !Array.isArray(body.orderNumbers) || body.orderNumbers.length === 0) {
+      throw new BadRequestException('Please provide a list of order numbers to post.');
+    }
+
+    const { locationId, posId, terminalId } = this.extractLocationContext(req);
+    if (!locationId) {
+      throw new BadRequestException('Location context is required to post orders.');
+    }
+
+    const cashierUserId = req.user?.id;
+    if (!cashierUserId) {
+      throw new BadRequestException('Cashier context is required.');
+    }
+
+    return this.service.bulkPostOrders(
+      body.orderNumbers,
+      cashierUserId,
+      locationId,
+      req.user,
+      posId,
+      terminalId,
+    );
+  }
+
   @Post(':orderNumber/post')
   @ApiOperation({ summary: 'Post an online order to POS Sales' })
   async postOrder(@Param('orderNumber') orderNumber: string, @Req() req: any) {
-    let locationId = undefined;
-    let posId = undefined;
-    let terminalId = undefined;
-
-    if (req.cookies?.posTerminalToken) {
-      try {
-        const decoded: any = jwt.decode(req.cookies.posTerminalToken);
-        locationId = decoded?.locationId;
-        posId = decoded?.posId;
-        terminalId = decoded?.terminalId;
-      } catch (e) {}
-    }
-    if (!locationId) {
-      locationId = req.user?.locationId;
-    }
+    const { locationId, posId, terminalId } = this.extractLocationContext(req);
     if (!locationId) {
       throw new BadRequestException(
         'Location context is required to post order',
       );
     }
 
-    // POS Sales requires a cashier user. We use the current user or terminal operator.
     const cashierUserId = req.user?.id;
     if (!cashierUserId) {
       throw new BadRequestException('Cashier context is required');
@@ -128,12 +146,18 @@ export class OnlineOrderManagementController {
     );
   }
 
+  @Delete('order/:orderNumber')
+  @ApiOperation({ summary: 'Delete an unposted online order' })
+  async deleteOrder(@Param('orderNumber') orderNumber: string) {
+    return this.service.deleteOrder(orderNumber);
+  }
+
   @Get('template/download')
   @ApiOperation({ summary: 'Download online orders CSV template' })
   async downloadTemplate(@Res() res: any) {
     const template = [
       'Order Number,Order Id,SKU,Barcode,System Sku,Size,Name,Brand,Qty,Price,Paid Price,Sub Total (Paid Price),Sub Total (Price),SKU discounted,SKU actual discount,Shipping Charges,Order Total,Item Status,Real Market Status,Coupon Code,Payment Method,Tracking Number,Marketplace,Channel,Ordered At,Order Month,Order Year,Customer Type,Customer Name,Email,City,Phone,Address,Note,Fulfilled By Warehouse,Shipping',
-      'ORD-001,1001,SKU-A,123456789,SYS-SKU-A,M,Test Product,TestBrand,1,100,90,90,100,10,10,5,95,Shipped,Completed,DISC10,CC,TRK123,Amazon,Online,2025-01-01,1,2025,New,John Doe,john@example.com,NY,1234567890,123 Main St,Test Note,WH-1,Standard',
+      'ORD-001,1001,SKU-A,123456789,SYS-SKU-A,M,Test Product,TestBrand,1,100,90,90,100,10,10,5,95,Shipped,Completed,GFT-001,COD,TRK123,Shopify,Online,2025-01-01,1,2025,New,John Doe,john@example.com,Lahore,03001234567,123 Main St,Handle with care,WH-1,Standard',
     ].join('\n');
     res.header('Content-Type', 'text/csv');
     res.header(
@@ -157,6 +181,8 @@ export class OnlineOrderManagementController {
         message: result.message,
         successRecords: result.successRecords,
         failedRecords: result.failedRecords,
+        errors: result.errors,
+        summary: result.summary,
       },
     };
   }

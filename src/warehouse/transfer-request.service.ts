@@ -568,15 +568,41 @@ export class TransferRequestService {
     page?: number,
     limit?: number,
     userContext?: any,
+    fromLocationId?: string,
+    toLocationId?: string,
   ) {
     const andClauses: any[] = [];
 
     if (id) {
       andClauses.push({ id });
     }
-    if (warehouseId && warehouseId !== 'all') {
+
+    if (fromLocationId && fromLocationId !== 'all') {
       andClauses.push({
-        OR: [{ fromWarehouseId: warehouseId }, { toWarehouseId: warehouseId }],
+        OR: [
+          { fromWarehouseId: fromLocationId },
+          { fromLocationId: fromLocationId },
+        ],
+      });
+    }
+
+    if (toLocationId && toLocationId !== 'all') {
+      andClauses.push({
+        OR: [
+          { toWarehouseId: toLocationId },
+          { toLocationId: toLocationId },
+        ],
+      });
+    }
+
+    if (warehouseId && warehouseId !== 'all' && !fromLocationId && !toLocationId) {
+      andClauses.push({
+        OR: [
+          { fromWarehouseId: warehouseId },
+          { toWarehouseId: warehouseId },
+          { fromLocationId: warehouseId },
+          { toLocationId: warehouseId },
+        ],
       });
     }
 

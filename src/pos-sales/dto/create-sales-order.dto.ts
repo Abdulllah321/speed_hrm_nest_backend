@@ -10,6 +10,7 @@ import {
   IsInt,
   IsIn,
   IsObject,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -329,6 +330,11 @@ export class CreateSalesOrderDto {
   @ApiPropertyOptional({ description: 'Gift receipt - print without prices' })
   @IsOptional()
   isGiftReceipt?: boolean;
+
+  @ApiPropertyOptional({ description: 'Flag to bypass cashier spam check for automated online orders' })
+  @IsOptional()
+  @IsBoolean()
+  isOnlineOrder?: boolean;
 
   @ApiPropertyOptional({
     description: 'Vouchers to redeem against this order',

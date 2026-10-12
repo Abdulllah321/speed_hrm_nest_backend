@@ -11,6 +11,8 @@ export interface QueueDeliveryNoteExportOptions {
   userId: string;
   reportType?: 'summary' | 'detailed';
   warehouseId?: string;
+  fromLocationId?: string;
+  toLocationId?: string;
   status?: string;
   transferType?: string;
   search?: string;
@@ -62,6 +64,8 @@ export class DeliveryNoteExportService {
         tenantDbUrl,
         reportType,
         warehouseId: opts.warehouseId,
+        fromLocationId: opts.fromLocationId,
+        toLocationId: opts.toLocationId,
         status: opts.status,
         transferType: opts.transferType,
         search: opts.search,
