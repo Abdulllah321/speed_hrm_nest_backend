@@ -2054,7 +2054,25 @@ export class TransferRequestService {
           select: { id: true },
         });
 
-        // Process each item: Add to PLM warehouse inventory
+        // Determine PLM location (fallback to PLM location if toLocationId is null)
+        let plmLocationId = request.toLocationId;
+        if (!plmLocationId) {
+          const plmLoc = await tx.location.findFirst({
+            where: {
+              OR: [
+                { name: { contains: 'PLM', mode: 'insensitive' } },
+                { name: { contains: 'PRODUCT LINE MANAGEMENT', mode: 'insensitive' } },
+                { code: 'C20001' },
+              ],
+            },
+            select: { id: true },
+          });
+          if (plmLoc) {
+            plmLocationId = plmLoc.id;
+          }
+        }
+
+        // Process each item: Add to PLM warehouse and location inventory
         for (const item of request.items) {
           console.log('📦 [PLM Acknowledgment] Processing item:', {
             itemId: item.itemId,
@@ -2139,12 +2157,12 @@ export class TransferRequestService {
             }
           }
 
-          // 2. Create stock ledger entry: Customer → PLM (direct transfer)
+          // 2. Create stock ledger entry: Inbound to PLM (location + warehouse)
           await this.stockLedgerService.createEntry(
             {
               itemId: item.itemId,
               warehouseId: plmWarehouseId,
-              locationId: null, // Warehouse-level
+              locationId: plmLocationId || null,
               qty: Number(item.quantity),
               movementType: 'INBOUND' as any,
               referenceType: 'CLAIM_ACKNOWLEDGED',
@@ -2156,12 +2174,12 @@ export class TransferRequestService {
 
           console.log('✅ [PLM Acknowledgment] Stock ledger entries created');
 
-          // 2. Add item to PLM warehouse inventory
+          // 3. Add item to PLM inventory (with locationId and warehouseId)
           const plmStock = await tx.inventoryItem.findFirst({
             where: {
               itemId: item.itemId,
               warehouseId: plmWarehouseId,
-              locationId: null, // Warehouse-level
+              locationId: plmLocationId || null,
               status: 'AVAILABLE',
             },
           });
@@ -2179,7 +2197,7 @@ export class TransferRequestService {
               data: {
                 itemId: item.itemId,
                 warehouseId: plmWarehouseId,
-                locationId: null, // Warehouse-level
+                locationId: plmLocationId || null,
                 quantity: Number(item.quantity),
                 status: 'AVAILABLE',
               },
@@ -2190,13 +2208,20 @@ export class TransferRequestService {
           }
         }
 
-        // 3. Update transfer request status to COMPLETED
+        // 4. Update transfer request status to COMPLETED (direct approved & completed, bypassing maker/checker)
+        const now = new Date();
         const updated = await tx.transferRequest.update({
           where: { id },
           data: {
             status: 'COMPLETED',
             approvedById: userId,
-            notes: `${request.notes || ''}\n\nPLM acknowledged receipt and inventory updated on ${new Date().toISOString()}`,
+            checkedById: userId || request.createdById,
+            checkedAt: now,
+            authorizedById: userId || request.createdById,
+            authorizedAt: now,
+            sourceApprovedById: userId || request.createdById,
+            sourceApprovedAt: now,
+            notes: `${request.notes || ''}\n\nPLM acknowledged receipt and inventory updated on ${now.toISOString()}`,
           },
         });
 

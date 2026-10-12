@@ -718,6 +718,24 @@ export class AvailableStockSummaryExportService {
     for (const w of allWarehouses)
       locationNameMap.set(`wh:${w.id}`, `${w.name} (Warehouse)`);
 
+    // Map each warehouse-linked Location ID to its corresponding warehouse ID
+    const whLocIdToWhIdMap = new Map<string, string>();
+    for (const loc of allLocations) {
+      if (loc.warehouseId) {
+        whLocIdToWhIdMap.set(loc.id, loc.warehouseId);
+      } else {
+        const matchedWh = allWarehouses.find(
+          (w) =>
+            w.id === loc.id ||
+            loc.code === `WH-${w.code}` ||
+            loc.code === w.code,
+        );
+        if (matchedWh) {
+          whLocIdToWhIdMap.set(loc.id, matchedWh.id);
+        }
+      }
+    }
+
     // Resolve nearest Fiscal Opening Snapshot date
     const snapshotDate =
       await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(
@@ -1268,7 +1286,11 @@ export class AvailableStockSummaryExportService {
           m.exchg += qty;
         } else if (['POS_REFUND', 'POS_VOID'].includes(ref)) {
           m.refund += qty;
-        } else if (ref === 'POS_CLAIM_APPROVED') {
+        } else if (
+          ref === 'POS_CLAIM_APPROVED' ||
+          ref === 'CLAIM_ACKNOWLEDGED' ||
+          ref === 'CLAIM_TO_PLM'
+        ) {
           m.claim += qty;
         } else {
           m.adj += qty;
@@ -1460,7 +1482,9 @@ export class AvailableStockSummaryExportService {
             : null,
           warehouseId: locKey.startsWith('wh:')
             ? locKey.replace('wh:', '')
-            : null,
+            : locKey.startsWith('loc:')
+              ? whLocIdToWhIdMap.get(locKey.replace('loc:', '')) || null
+              : null,
           locationName,
           locationType: locKey.startsWith('loc:') ? 'OUTLET' : 'WAREHOUSE',
           itemId: item.id,
