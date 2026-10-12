@@ -64,12 +64,20 @@ async function main() {
                     '2026-10-01 00:00:00'::timestamp,
                     s.item_id, 
                     s.warehouse_id, 
-                    s.location_id, 
+                    loc.id as location_id, 
                     SUM(s.qty),
-                    MAX(s.unit_cost)
+                    COALESCE(
+                        (SELECT COALESCE(unit_cost, rate) FROM stock_ledgers l2 
+                         WHERE l2.item_id = s.item_id 
+                         AND l2.created_at <= '2026-10-01 00:00:00'::timestamp 
+                         AND (l2.unit_cost > 0 OR l2.rate > 0)
+                         ORDER BY l2.created_at DESC LIMIT 1), 
+                         0
+                    ) as unit_cost
                   FROM stock_ledgers s
+                  LEFT JOIN "Location" loc ON loc.id = s.location_id
                   WHERE s.created_at <= '2026-10-01 00:00:00'::timestamp
-                  GROUP BY s.item_id, s.warehouse_id, s.location_id
+                  GROUP BY s.item_id, s.warehouse_id, loc.id
                   HAVING SUM(s.qty) != 0
               `);
               console.log(`   ✅ Success! Snapshots inserted for 1st October.`);
