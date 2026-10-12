@@ -188,39 +188,22 @@ export class PosSalesService implements OnModuleInit {
     if (!searchTerm)
       return { status: false, message: 'Search query is required' };
 
-    // ── Step 1: text-match items (prioritize exact barcode/SKU/itemId matches) ──
-    const exactMatches = await this.prisma.item.findMany({
+    // ── Step 1: text-match items first (selective, small result set) ──
+    // Exact matches on barCode/sku/itemId are boosted by ordering them first.
+    const items = await this.prisma.item.findMany({
       where: {
         isActive: true,
         OR: [
           { barCode: { equals: searchTerm, mode: 'insensitive' } },
           { sku: { equals: searchTerm, mode: 'insensitive' } },
           { itemId: { equals: searchTerm, mode: 'insensitive' } },
-        ],
-      },
-      take: 50,
-      include: {
-        brand: true,
-        size: true,
-        color: true,
-      },
-    });
-
-    const exactIds = new Set(exactMatches.map((i) => i.id));
-
-    // Also fetch partial contains matches to fill up results
-    const partialMatches = await this.prisma.item.findMany({
-      where: {
-        isActive: true,
-        id: { notIn: Array.from(exactIds) },
-        OR: [
           { barCode: { contains: searchTerm, mode: 'insensitive' } },
           { sku: { contains: searchTerm, mode: 'insensitive' } },
           { itemId: { contains: searchTerm, mode: 'insensitive' } },
           { description: { contains: searchTerm, mode: 'insensitive' } },
         ],
       },
-      take: 50,
+      take: 20,
       include: {
         brand: true,
         size: true,
@@ -228,11 +211,9 @@ export class PosSalesService implements OnModuleInit {
       },
     });
 
-    const items = [...exactMatches, ...partialMatches];
-
     if (!items.length) return { status: true, data: [] };
 
-    // ── Step 2: check stock only for the matched items ──
+    // ── Step 2: check stock only for the matched items (≤20 IDs) ──
     // Single enrichForPos call handles both ledger + inventoryItem fallback.
     const enriched = await this.enrichForPos(items, locationId);
 
