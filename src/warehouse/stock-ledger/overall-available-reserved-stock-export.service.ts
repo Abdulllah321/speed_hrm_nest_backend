@@ -576,7 +576,7 @@ export class OverallAvailableReservedStockExportService {
         orderBy: { name: 'asc' },
       }),
       (prisma as any).warehouse.findMany({
-        where: { isDeleted: false },
+        where: { isDeleted: false, isActive: true },
         select: { id: true, name: true, code: true },
         orderBy: { name: 'asc' },
       }),

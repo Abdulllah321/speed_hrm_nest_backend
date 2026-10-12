@@ -655,6 +655,7 @@ export class AvailableStockSummaryExportService {
         select: { id: true, name: true, code: true, warehouseId: true },
       }),
       (prisma as any).warehouse.findMany({
+        where: { isDeleted: false, isActive: true },
         select: { id: true, name: true, code: true },
       }),
     ]);

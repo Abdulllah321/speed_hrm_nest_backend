@@ -287,6 +287,15 @@ async function migrateTenant(pool: Pool, tenantLabel: string) {
   `);
   console.log(`✅ monthly_stock_snapshots rebuilt: ${snapInsertRes.rowCount} records for 2026-10-01.`);
 
+  // Step 9: Deactivate Migrated Warehouses (C20001 & C30001)
+  console.log(`\n🛑 Step 9: Deactivating migrated warehouses (C20001 & C30001)...`);
+  const deactRes = await pool.query(`
+    UPDATE "Warehouse"
+    SET "isActive" = false, "isDeleted" = true, "deletedAt" = NOW()
+    WHERE code IN ('C20001', 'C30001') OR name IN ('PLM', 'Corporate In-Hand')
+  `);
+  console.log(`✅ Deactivated ${deactRes.rowCount} warehouses (set isActive = false, isDeleted = true).`);
+
   // Final Audit
   const finalSnapAudit = await pool.query(`
     SELECT 
@@ -300,6 +309,14 @@ async function migrateTenant(pool: Pool, tenantLabel: string) {
   console.log(`\n🎉 Final Snapshot Audit for PLM:`);
   for (const row of finalSnapAudit.rows) {
     console.log(`   - ${row.category}: ${row.count} items, Total Qty: ${row.total_qty}`);
+  }
+
+  const activeWhAudit = await pool.query(`
+    SELECT code, name FROM "Warehouse" WHERE "isActive" = true AND "isDeleted" = false ORDER BY code
+  `);
+  console.log(`\n🏢 Active Warehouses Remaining (${activeWhAudit.rows.length}):`);
+  for (const w of activeWhAudit.rows) {
+    console.log(`   - [${w.code}] ${w.name}`);
   }
 
   console.log(`\n✨ Migration completed successfully for ${tenantLabel}!\n`);

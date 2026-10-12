@@ -57,12 +57,13 @@ export class WarehouseService {
 
   async findAllWarehouses(): Promise<Warehouse[]> {
     return this.prisma.warehouse.findMany({
-      where: { isDeleted: false },
+      where: { isDeleted: false, isActive: true },
       include: {
         _count: {
           select: { inventoryItems: true },
         },
       },
+      orderBy: { name: 'asc' },
     });
   }
 
@@ -70,6 +71,7 @@ export class WarehouseService {
     return this.prisma.warehouse.findFirst({
       where: {
         isDeleted: false,
+        isActive: true,
         OR: [
           { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
           { code: 'C40001' },
