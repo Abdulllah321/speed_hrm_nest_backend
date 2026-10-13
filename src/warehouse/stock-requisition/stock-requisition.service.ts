@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -739,6 +740,40 @@ export class StockRequisitionService {
       throw new BadRequestException(
         `Requisition status is '${requisition.status}'. Only PENDING requisitions can be converted.`,
       );
+    }
+
+    if ((requisition.documentType || '').toLowerCase() === 'outlet request') {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          role: {
+            include: {
+              permissions: {
+                include: { permission: true },
+              },
+            },
+          },
+        },
+      });
+
+      const roleName = (user?.role?.name || '').toLowerCase();
+      const isAdmin =
+        roleName === 'admin' ||
+        roleName === 'super_admin' ||
+        roleName === 'superadmin';
+
+      if (!isAdmin) {
+        const isWarehouseRole = roleName.includes('warehouse');
+        const hasWarehousePermission = user?.role?.permissions?.some((p) =>
+          p.permission.name.startsWith('erp.inventory.warehouse.'),
+        );
+
+        if (isWarehouseRole || hasWarehousePermission) {
+          throw new ForbiddenException(
+            'Warehouse users are not permitted to transfer Outlet Request requisitions to STN.',
+          );
+        }
+      }
     }
 
     // Map requisition items for easy check
