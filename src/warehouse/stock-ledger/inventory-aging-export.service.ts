@@ -409,7 +409,7 @@ export class InventoryAgingExportService {
         orderBy: { name: 'asc' },
       }),
       prisma.warehouse.findMany({
-        where: { isDeleted: false },
+        where: { isDeleted: false, isActive: true },
         select: { id: true, name: true, code: true },
         orderBy: { name: 'asc' },
       }),
@@ -424,7 +424,7 @@ export class InventoryAgingExportService {
           (l as any).warehouseId === wh.id ||
           l.id === wh.id ||
           l.code === `WH-${wh.code}` ||
-          l.code === wh.code,
+          (l.code === wh.code && wh.code !== 'C20001'),
       );
       for (const ml of matchingLocs) {
         whLocIdToWhIdMap.set(ml.id, wh.id);

@@ -568,15 +568,41 @@ export class TransferRequestService {
     page?: number,
     limit?: number,
     userContext?: any,
+    fromLocationId?: string,
+    toLocationId?: string,
   ) {
     const andClauses: any[] = [];
 
     if (id) {
       andClauses.push({ id });
     }
-    if (warehouseId && warehouseId !== 'all') {
+
+    if (fromLocationId && fromLocationId !== 'all') {
       andClauses.push({
-        OR: [{ fromWarehouseId: warehouseId }, { toWarehouseId: warehouseId }],
+        OR: [
+          { fromWarehouseId: fromLocationId },
+          { fromLocationId: fromLocationId },
+        ],
+      });
+    }
+
+    if (toLocationId && toLocationId !== 'all') {
+      andClauses.push({
+        OR: [
+          { toWarehouseId: toLocationId },
+          { toLocationId: toLocationId },
+        ],
+      });
+    }
+
+    if (warehouseId && warehouseId !== 'all' && !fromLocationId && !toLocationId) {
+      andClauses.push({
+        OR: [
+          { fromWarehouseId: warehouseId },
+          { toWarehouseId: warehouseId },
+          { fromLocationId: warehouseId },
+          { toLocationId: warehouseId },
+        ],
       });
     }
 
@@ -1604,6 +1630,22 @@ export class TransferRequestService {
           }
         }
 
+        // Resolve fallback warehouse in case inventory item or request has no warehouseId
+        let fallbackWarehouseId: string =
+          request.fromWarehouseId || request.toWarehouseId || '';
+        if (!fallbackWarehouseId) {
+          const defaultWh = await tx.warehouse.findFirst({
+            where: { isActive: true, isDeleted: false },
+            select: { id: true },
+          });
+          if (!defaultWh) {
+            throw new BadRequestException(
+              'No active warehouse found for stock ledger recording',
+            );
+          }
+          fallbackWarehouseId = defaultWh.id;
+        }
+
         // 1. Check and reserve stock at source outlet
         for (const item of request.items) {
           const sourceStock = await tx.inventoryItem.findFirst({
@@ -1629,8 +1671,9 @@ export class TransferRequestService {
             data: { quantity: { decrement: Number(item.quantity) } },
           });
 
-          // Use actual warehouseId from the inventoryItem record
-          const actualWarehouseId = sourceStock.warehouseId;
+          // Use actual warehouseId from the inventoryItem record or fallback
+          const actualWarehouseId: string =
+            sourceStock.warehouseId || fallbackWarehouseId;
           const transferRate = await this.getCurrentItemRate(tx, item.itemId);
 
           // Create outbound ledger entry
@@ -1820,8 +1863,17 @@ export class TransferRequestService {
                 },
               });
 
-              const actualWarehouseId =
-                posStock?.warehouseId || request.fromWarehouseId!;
+              let fallbackWh: string =
+                request.fromWarehouseId || request.toWarehouseId || '';
+              if (!fallbackWh) {
+                const defaultWh = await tx.warehouse.findFirst({
+                  where: { isActive: true, isDeleted: false },
+                  select: { id: true },
+                });
+                fallbackWh = defaultWh?.id || '';
+              }
+              const actualWarehouseId: string =
+                posStock?.warehouseId || fallbackWh || '';
               const itemRate = await this.getCurrentItemRate(tx, item.itemId);
 
               // 1. Add items to POS inventory (claim approved items)
@@ -1909,8 +1961,17 @@ export class TransferRequestService {
                 itemId: item.itemId,
               },
             });
-            const actualWarehouseId =
-              sourceStock?.warehouseId || request.fromWarehouseId!;
+            let fallbackWhId: string =
+              request.fromWarehouseId || request.toWarehouseId || '';
+            if (!fallbackWhId) {
+              const defaultWh = await tx.warehouse.findFirst({
+                where: { isActive: true, isDeleted: false },
+                select: { id: true },
+              });
+              fallbackWhId = defaultWh?.id || '';
+            }
+            const actualWarehouseId: string =
+              sourceStock?.warehouseId || fallbackWhId || '';
             const transferRate = await this.getCurrentItemRate(tx, item.itemId);
 
             if (destItem) {
@@ -2034,7 +2095,7 @@ export class TransferRequestService {
       });
 
       return this.prisma.$transaction(async (tx) => {
-        let plmWarehouseId = request.toWarehouseId;
+        let plmWarehouseId: string = request.toWarehouseId || '';
         if (!plmWarehouseId) {
           const defaultWarehouse = await tx.warehouse.findFirst({
             where: { isActive: true },

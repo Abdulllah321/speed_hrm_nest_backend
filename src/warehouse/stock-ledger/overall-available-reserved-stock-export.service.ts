@@ -564,7 +564,7 @@ export class OverallAvailableReservedStockExportService {
       Array<{ id: string; name: string; code: string }>,
     ] = await Promise.all([
       (prisma as any).location.findMany({
-        where: { isDeleted: false },
+        where: { isDeleted: false, isStockLocation: true },
         select: {
           id: true,
           name: true,
@@ -576,7 +576,7 @@ export class OverallAvailableReservedStockExportService {
         orderBy: { name: 'asc' },
       }),
       (prisma as any).warehouse.findMany({
-        where: { isDeleted: false },
+        where: { isDeleted: false, isActive: true },
         select: { id: true, name: true, code: true },
         orderBy: { name: 'asc' },
       }),
@@ -592,7 +592,7 @@ export class OverallAvailableReservedStockExportService {
           (l as any).warehouseId === wh.id ||
           l.id === wh.id ||
           l.code === `WH-${wh.code}` ||
-          l.code === wh.code,
+          (l.code === wh.code && wh.code !== 'C20001'),
       );
       for (const ml of matchingLocs) {
         whLocIdToWhIdMap.set(ml.id, wh.id);
@@ -735,7 +735,7 @@ export class OverallAvailableReservedStockExportService {
       if (warehouseLocIdsSet.has(l.id)) return false;
       if (locIds.length > 0) return locIds.includes(l.id);
       if (whIds.length > 0 && locIds.length === 0) return false;
-      return l.isStockLocation || activeStockLocIds.includes(l.id);
+      return l.isStockLocation === true;
     });
 
     let uniqueItemIds = [

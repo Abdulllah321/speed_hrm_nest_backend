@@ -309,19 +309,43 @@ export class PosSalesService implements OnModuleInit {
             throw new Error('Location ID is required to create a sales order.');
           }
 
-          // Prevent duplicate/spam orders within 15 seconds from the same terminal
-          if (dto.terminalId) {
+          // Prevent duplicate/spam orders within 15 seconds from the same terminal or cashier
+          // (Bypassed for automated online orders & batch posting)
+          const isOnlineOrder = dto.isOnlineOrder || dto.notes?.startsWith('Online Order:');
+          const duplicateConditions: any[] = [];
+          if (!isOnlineOrder) {
+            if (dto.terminalId) {
+              duplicateConditions.push({ terminalId: dto.terminalId });
+            }
+            if (cashierUserId) {
+              duplicateConditions.push({ cashierUserId });
+            }
+            if (ctx?.userId) {
+              duplicateConditions.push({ createdById: ctx.userId });
+            }
+          }
+
+          if (duplicateConditions.length > 0) {
             const recentOrder = await tx.salesOrder.findFirst({
               where: {
-                terminalId: dto.terminalId,
-                status: 'COMPLETED',
+                OR: duplicateConditions,
+                status: { in: ['completed', 'COMPLETED'] },
                 createdAt: {
-                  gte: new Date(Date.now() - 15 * 1000), // last 15 seconds
+                  gte: new Date(Date.now() - 15 * 1000),
                 },
               },
+              orderBy: { createdAt: 'desc' },
             });
             if (recentOrder) {
-              throw new Error('Please wait 15 seconds before creating another order to prevent duplicates.');
+              const secondsAgo = Math.max(
+                1,
+                Math.round(
+                  (Date.now() - new Date(recentOrder.createdAt).getTime()) / 1000,
+                ),
+              );
+              throw new Error(
+                `An order (${recentOrder.orderNumber}) was already processed ${secondsAgo}s ago. Please wait 15 seconds before creating another order to prevent duplicates.`,
+              );
             }
           }
 

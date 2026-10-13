@@ -481,7 +481,9 @@ export class StockActivityExportProcessor {
           select: { id: true, name: true, code: true },
         }),
         prisma.warehouse.findMany({
+          where: { isDeleted: false, isActive: true },
           select: { id: true, name: true, code: true },
+          orderBy: { name: 'asc' },
         }),
       ]);
 

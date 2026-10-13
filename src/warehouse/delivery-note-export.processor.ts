@@ -15,6 +15,8 @@ export interface DeliveryNoteExportJobData {
   tenantDbUrl: string;
   reportType?: 'summary' | 'detailed';
   warehouseId?: string;
+  fromLocationId?: string;
+  toLocationId?: string;
   status?: string;
   transferType?: string;
   search?: string;
@@ -326,6 +328,8 @@ export class DeliveryNoteExportProcessor {
       tenantDbUrl,
       reportType = 'detailed',
       warehouseId,
+      fromLocationId,
+      toLocationId,
       status,
       transferType,
       search,
@@ -356,8 +360,31 @@ export class DeliveryNoteExportProcessor {
           requestNo: { contains: t, mode: 'insensitive' },
         });
       }
-      if (warehouseId && warehouseId !== 'all') {
-        andClauses.push({ fromWarehouseId: warehouseId });
+      if (fromLocationId && fromLocationId !== 'all') {
+        andClauses.push({
+          OR: [
+            { fromWarehouseId: fromLocationId },
+            { fromLocationId: fromLocationId },
+          ],
+        });
+      }
+      if (toLocationId && toLocationId !== 'all') {
+        andClauses.push({
+          OR: [
+            { toWarehouseId: toLocationId },
+            { toLocationId: toLocationId },
+          ],
+        });
+      }
+      if (warehouseId && warehouseId !== 'all' && !fromLocationId && !toLocationId) {
+        andClauses.push({
+          OR: [
+            { fromWarehouseId: warehouseId },
+            { toWarehouseId: warehouseId },
+            { fromLocationId: warehouseId },
+            { toLocationId: warehouseId },
+          ],
+        });
       }
       if (status && status !== 'all') {
         andClauses.push({ status });

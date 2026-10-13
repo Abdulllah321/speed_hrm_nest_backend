@@ -89,10 +89,12 @@ export class InventoryService {
 
     const enriched = await Promise.all(
       eligibleItems.map(async (item) => {
-        const warehouse = await this.prisma.warehouse.findUnique({
-          where: { id: item.warehouseId },
-          select: { id: true, name: true },
-        });
+        const warehouse = item.warehouseId
+          ? await this.prisma.warehouse.findUnique({
+              where: { id: item.warehouseId },
+              select: { id: true, name: true },
+            })
+          : null;
 
         let locationData: any = {};
         if (item.locationId) {
@@ -110,7 +112,7 @@ export class InventoryService {
           const reservations = await this.prisma.stockReserve.aggregate({
             where: {
               itemId: item.itemId,
-              warehouseId: item.warehouseId,
+              warehouseId: item.warehouseId || undefined,
               OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
             },
             _sum: {

@@ -1210,43 +1210,136 @@ export class AuthService {
 
     user.permissions = await this.getUserPermissions(userId);
 
-    // Resolve employee details if prisma is available
-    if (this.prisma) {
-      try {
-        const employee = await this.prisma.employee.findUnique({
-          where: { userId },
+    // Resolve employee details and ensure proper user-employee linkage
+    await this.resolveAndSyncEmployee(user, userId);
+
+    return { status: true, data: user };
+  }
+
+  private async resolveAndSyncEmployee(user: any, userId: string): Promise<void> {
+    if (!this.prisma) return;
+
+    try {
+      let employee: any = null;
+
+      // 1. Try to find actual employee by user's employeeId (primary link between Master User & Tenant Employee)
+      if (user.employeeId) {
+        employee = await this.prisma.employee.findUnique({
+          where: { employeeId: user.employeeId },
           select: {
             id: true,
+            userId: true,
             employeeId: true,
             departmentId: true,
             designationId: true,
             employeeName: true,
+            locationId: true,
           },
         });
-
-        if (employee) {
-          // Fetch Master data for department and designation
-          const [dept, desg] = await Promise.all([
-            this.prisma.department.findUnique({
-              where: { id: employee.departmentId || '' },
-            }),
-            this.prisma.designation.findUnique({
-              where: { id: employee.designationId || '' },
-            }),
-          ]);
-
-          user.employee = {
-            ...employee,
-            department: dept,
-            designation: desg,
-          };
-        }
-      } catch (err) {
-        // Silently fail if tenant context not available or connection fails
       }
-    }
 
-    return { status: true, data: user };
+      // 2. Try to find by email if not found by employeeId
+      if (!employee && user.email) {
+        employee = await this.prisma.employee.findFirst({
+          where: {
+            OR: [
+              { officialEmail: { equals: user.email, mode: 'insensitive' } },
+              { personalEmail: { equals: user.email, mode: 'insensitive' } },
+            ],
+          },
+          select: {
+            id: true,
+            userId: true,
+            employeeId: true,
+            departmentId: true,
+            designationId: true,
+            employeeName: true,
+            locationId: true,
+          },
+        });
+      }
+
+      // 3. Fallback: try by userId
+      if (!employee) {
+        employee = await this.prisma.employee.findUnique({
+          where: { userId },
+          select: {
+            id: true,
+            userId: true,
+            employeeId: true,
+            departmentId: true,
+            designationId: true,
+            employeeName: true,
+            locationId: true,
+          },
+        });
+      }
+
+      if (employee) {
+        // Ensure proper user is joined with the actual employee
+        if (employee.userId !== userId) {
+          try {
+            // Unlink any other employee that might wrongly hold this userId to satisfy @unique
+            await this.prisma.employee.updateMany({
+              where: { userId, id: { not: employee.id } },
+              data: { userId: null },
+            });
+
+            // Link the actual employee to this user
+            await this.prisma.employee.update({
+              where: { id: employee.id },
+              data: { userId },
+            });
+            employee.userId = userId;
+          } catch (linkErr: any) {
+            this.logger.warn(
+              `Failed to link employee ${employee.id} to userId ${userId}: ${linkErr.message}`,
+            );
+          }
+        }
+
+        // Sync employeeId to master user if missing
+        if (!user.employeeId && employee.employeeId) {
+          try {
+            await this.prismaMaster.user.update({
+              where: { id: userId },
+              data: { employeeId: employee.employeeId },
+            });
+            user.employeeId = employee.employeeId;
+          } catch {
+            // Ignore conflict if another user has this employeeId in master DB
+          }
+        }
+
+        // Fetch department, designation and assigned location
+        const [dept, desg, loc] = await Promise.all([
+          this.prisma.department.findUnique({
+            where: { id: employee.departmentId || '' },
+          }),
+          this.prisma.designation.findUnique({
+            where: { id: employee.designationId || '' },
+          }),
+          employee.locationId
+            ? this.prisma.location.findUnique({
+                where: { id: employee.locationId },
+                select: { id: true, name: true, code: true },
+              })
+            : null,
+        ]);
+
+        user.employee = {
+          ...employee,
+          department: dept,
+          designation: desg,
+          location: loc,
+        };
+        if (employee.locationId) {
+          user.locationId = employee.locationId;
+        }
+      }
+    } catch (err) {
+      // Silently fail if tenant context not available or connection fails
+    }
   }
 
   async verifyPosSession(userId: string) {
@@ -1302,6 +1395,28 @@ export class AuthService {
     // Simply return success since there is no server-side token state to clear.
     // Cookies are cleared in the controller.
     return { status: true, message: 'Logged out' };
+  }
+
+  async posTerminalLogout(terminalId?: string, userId?: string) {
+    try {
+      if (this.prisma) {
+        if (terminalId) {
+          await this.prisma.posSession.updateMany({
+            where: { posId: terminalId, status: 'open' },
+            data: { status: 'closed', closedAt: new Date() },
+          });
+        }
+        if (userId) {
+          await this.prisma.posSession.updateMany({
+            where: { userId, status: 'open' },
+            data: { status: 'closed', closedAt: new Date() },
+          });
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`POS session close on terminal logout: ${e?.message}`);
+    }
+    return { status: true, message: 'POS terminal logged out successfully' };
   }
 
   async checkSession(userId: string, accessToken?: string) {
@@ -1393,40 +1508,8 @@ export class AuthService {
       },
     })) as any;
 
-    // Resolve employee details if prisma is available
-    if (this.prisma) {
-      try {
-        const employee = await this.prisma.employee.findUnique({
-          where: { userId },
-          select: {
-            id: true,
-            employeeId: true,
-            departmentId: true,
-            designationId: true,
-            employeeName: true,
-          },
-        });
-
-        if (employee) {
-          const [dept, desg] = await Promise.all([
-            this.prisma.department.findUnique({
-              where: { id: employee.departmentId || '' },
-            }),
-            this.prisma.designation.findUnique({
-              where: { id: employee.designationId || '' },
-            }),
-          ]);
-
-          user.employee = {
-            ...employee,
-            department: dept,
-            designation: desg,
-          };
-        }
-      } catch (err) {
-        // Silently fail
-      }
-    }
+    // Resolve employee details and ensure proper user-employee linkage
+    await this.resolveAndSyncEmployee(user, userId);
 
     return { status: true, data: user, message: 'Profile updated' };
   }

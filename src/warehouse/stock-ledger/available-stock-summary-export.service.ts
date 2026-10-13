@@ -655,6 +655,7 @@ export class AvailableStockSummaryExportService {
         select: { id: true, name: true, code: true, warehouseId: true },
       }),
       (prisma as any).warehouse.findMany({
+        where: { isDeleted: false, isActive: true },
         select: { id: true, name: true, code: true },
       }),
     ]);
@@ -707,7 +708,7 @@ export class AvailableStockSummaryExportService {
         l.code?.startsWith('WH-') ||
         l.code?.startsWith('C4') ||
         l.code?.startsWith('C3') ||
-        l.code?.startsWith('C2') ||
+        (l.code?.startsWith('C2') && l.code !== 'C20001') ||
         l.code?.includes('TSDMC')
       ) {
         locationNameMap.set(`loc:${l.id}`, `${l.name} (Warehouse)`);
@@ -728,7 +729,7 @@ export class AvailableStockSummaryExportService {
           (w) =>
             w.id === loc.id ||
             loc.code === `WH-${w.code}` ||
-            loc.code === w.code,
+            (loc.code === w.code && loc.code !== 'C20001'),
         );
         if (matchedWh) {
           whLocIdToWhIdMap.set(loc.id, matchedWh.id);

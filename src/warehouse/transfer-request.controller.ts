@@ -79,6 +79,8 @@ export class TransferRequestController {
   @ApiOperation({ summary: 'Get transfer requests' })
   async getRequests(
     @Query('warehouseId') warehouseId?: string,
+    @Query('fromLocationId') fromLocationId?: string,
+    @Query('toLocationId') toLocationId?: string,
     @Query('status') status?: string,
     @Query('id') id?: string,
     @Query('transferType') transferType?: string,
@@ -103,6 +105,8 @@ export class TransferRequestController {
       page ? parseInt(page, 10) : undefined,
       limit ? parseInt(limit, 10) : undefined,
       req?.user,
+      fromLocationId,
+      toLocationId,
     );
     return { status: true, data: result.data, meta: result.meta };
   }

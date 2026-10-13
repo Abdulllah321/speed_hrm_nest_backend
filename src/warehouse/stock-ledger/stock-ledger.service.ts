@@ -291,7 +291,10 @@ export class StockLedgerService {
         (this.prisma as any).location.findMany({
           select: { id: true, code: true, warehouseId: true },
         }),
-        this.prisma.warehouse.findMany({ select: { id: true, code: true } }),
+        this.prisma.warehouse.findMany({
+          where: { isDeleted: false, isActive: true },
+          select: { id: true, code: true },
+        }),
       ]);
       for (const whId of whIds) {
         const whObj = allWarehouses.find(
@@ -600,7 +603,10 @@ export class StockLedgerService {
         (this.prisma as any).location.findMany({
           select: { id: true, code: true, warehouseId: true },
         }),
-        this.prisma.warehouse.findMany({ select: { id: true, code: true } }),
+        this.prisma.warehouse.findMany({
+          where: { isDeleted: false, isActive: true },
+          select: { id: true, code: true },
+        }),
       ]);
       for (const whId of whIds) {
         const whObj = allWarehouses.find(
@@ -657,7 +663,7 @@ export class StockLedgerService {
     const warehouses =
       warehouseIds.length > 0
         ? await this.prisma.warehouse.findMany({
-            where: { id: { in: warehouseIds }, isDeleted: false },
+            where: { id: { in: warehouseIds }, isDeleted: false, isActive: true },
             select: { id: true, name: true, code: true },
           })
         : [];
@@ -1046,6 +1052,7 @@ export class StockLedgerService {
         select: { id: true, name: true, code: true, warehouseId: true },
       }),
       this.prisma.warehouse.findMany({
+        where: { isDeleted: false, isActive: true },
         select: { id: true, name: true, code: true },
       }),
     ]);
@@ -1598,6 +1605,7 @@ export class StockLedgerService {
         select: { id: true, name: true, code: true, warehouseId: true },
       }),
       prisma.warehouse.findMany({
+        where: { isDeleted: false, isActive: true },
         select: { id: true, name: true, code: true },
       }),
     ]);

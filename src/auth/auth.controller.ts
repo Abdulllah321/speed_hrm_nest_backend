@@ -712,7 +712,9 @@ export class AuthController {
       if (isPosUser && terminalId) {
         (result.data as any).isPosUser = true;
         (result.data as any).terminalId = terminalId;
-        (result.data as any).locationId = locationId;
+        if (!(result.data as any).locationId) {
+          (result.data as any).locationId = locationId;
+        }
 
         if (this.prisma) {
           try {
@@ -812,16 +814,33 @@ export class AuthController {
     return res.send({ status: true, message: 'Logged out successfully' });
   }
 
-  @Post('pos/logout-terminal')
+  @Post(['pos/logout-terminal', 'pos/logout'])
   @OptionalJwtAuth()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary:
-      'Fully deregister this POS terminal device — clears posTerminalToken',
+      'Fully deregister this POS terminal device — clears posTerminalToken and closes open session',
   })
   async logoutTerminal(@Req() req: any, @Res() res: any) {
     const clearCookieOptions = this.getCookieOptions(req);
+
+    let terminalId = req.cookies?.['terminalId'] || req.user?.terminalId;
+    const posTerminalToken = req.cookies?.['posTerminalToken'];
+    if (!terminalId && posTerminalToken) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.decode(posTerminalToken);
+        if (decoded && decoded.terminalId) {
+          terminalId = decoded.terminalId;
+        }
+      } catch {}
+    }
+    const userId = req.user?.userId || req.user?.id;
+
+    if (this.service.posTerminalLogout) {
+      await this.service.posTerminalLogout(terminalId, userId);
+    }
 
     // Clear everything including the terminal device token
     res.clearCookie('accessToken', clearCookieOptions);
@@ -836,6 +855,7 @@ export class AuthController {
     res.clearCookie('companyCode', clearCookieOptions);
     res.clearCookie('companyId', clearCookieOptions);
     res.clearCookie('posTerminalToken', clearCookieOptions); // ← deregisters the device
+    res.clearCookie('pos_remembered_terminal', clearCookieOptions);
     res.clearCookie('bid', clearCookieOptions);
     res.clearCookie('tenantCode', clearCookieOptions);
     res.clearCookie('tenantId', clearCookieOptions);
