@@ -661,6 +661,7 @@ export class StockRequisitionService {
           include: {
             item: {
               include: {
+                brand: true,
                 color: true,
                 size: true,
                 category: true,
@@ -691,6 +692,7 @@ export class StockRequisitionService {
           include: {
             item: {
               include: {
+                brand: true,
                 color: true,
                 size: true,
                 category: true,
@@ -1180,6 +1182,7 @@ export class StockRequisitionService {
         isActive: true,
       },
       include: {
+        brand: true,
         color: true,
         size: true,
         category: true,
@@ -1505,6 +1508,7 @@ export class StockRequisitionService {
     const items = await this.prisma.item.findMany({
       where: { id: { in: itemIds } },
       include: {
+        brand: true,
         color: true,
         size: true,
         category: true,

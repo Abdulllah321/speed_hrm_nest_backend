@@ -524,7 +524,11 @@ export class PurchaseOrderExportProcessor {
       const qty = Number(item.quantity || 0);
       const recQty = Number(item.receivedQty || 0);
       const unitPrice = Number(item.unitPrice || 0);
-      const taxPercent = Number(item.taxPercent || 0);
+      const taxPercent = Number(
+        item.item?.taxRate1 != null
+          ? item.item.taxRate1
+          : item.taxPercent || 0,
+      );
       const discPercent = Number(item.discountPercent || 0);
       const lineTotal = Number(item.lineTotal || qty * unitPrice);
 
