@@ -2,8 +2,10 @@ import {
   Controller,
   Post,
   Get,
+  Put,
   Delete,
   Param,
+  Query,
   Body,
   UseGuards,
   HttpStatus,
@@ -51,6 +53,20 @@ export class OnlineOrderManagementController {
   async getOrders(@Req() req: any) {
     const { locationId } = this.extractLocationContext(req);
     return this.service.getGroupedOrders(locationId);
+  }
+
+  @Get('validate-voucher')
+  @ApiOperation({ summary: 'Validate voucher or coupon code in real-time' })
+  async validateVoucher(@Query('code') code: string, @Req() req: any) {
+    if (!code || !code.trim()) {
+      throw new BadRequestException('Voucher or coupon code is required.');
+    }
+    const { locationId } = this.extractLocationContext(req);
+    const result = await this.service.resolveVoucherOrCoupon(code, locationId);
+    return {
+      status: true,
+      data: result,
+    };
   }
 
   @Post()
@@ -111,7 +127,7 @@ export class OnlineOrderManagementController {
       throw new BadRequestException('Cashier context is required.');
     }
 
-    return this.service.bulkPostOrders(
+    const result = await this.service.bulkPostOrders(
       body.orderNumbers,
       cashierUserId,
       locationId,
@@ -119,6 +135,17 @@ export class OnlineOrderManagementController {
       posId,
       terminalId,
     );
+
+    return {
+      status: true,
+      message: `Processed ${result.total} orders (${result.successCount} posted, ${result.failedCount} failed)`,
+      data: result.data || result,
+      summary: result.summary,
+      total: result.total,
+      successCount: result.successCount,
+      failedCount: result.failedCount,
+      results: result.results,
+    };
   }
 
   @Post(':orderNumber/post')
@@ -144,6 +171,29 @@ export class OnlineOrderManagementController {
       posId,
       terminalId,
     );
+  }
+
+  @Get('order/:orderNumber')
+  @ApiOperation({ summary: 'Get details of a single online order' })
+  async getOrderDetails(
+    @Param('orderNumber') orderNumber: string,
+    @Req() req: any,
+  ) {
+    const { locationId } = this.extractLocationContext(req);
+    return this.service.getOrderDetails(orderNumber, locationId);
+  }
+
+  @Put('order/:orderNumber')
+  @ApiOperation({
+    summary: 'Update an unposted online order (voucher, customer info, items, pricing, shipping)',
+  })
+  async updateOrder(
+    @Param('orderNumber') orderNumber: string,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
+    const { locationId } = this.extractLocationContext(req);
+    return this.service.updateOrder(orderNumber, body, locationId);
   }
 
   @Delete('order/:orderNumber')

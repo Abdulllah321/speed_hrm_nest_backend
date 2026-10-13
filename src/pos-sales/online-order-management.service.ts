@@ -39,6 +39,7 @@ export class OnlineOrderManagementService {
 
   private saveSession(uploadId: string, session: any) {
     try {
+      if (!uploadId || !/^[a-zA-Z0-9_-]+$/.test(uploadId)) return;
       const TEMP_DIR = path.join(os.tmpdir(), 'speed-limit-online-orders');
       if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
       const filePath = path.join(TEMP_DIR, `${uploadId}.json`);
@@ -49,6 +50,7 @@ export class OnlineOrderManagementService {
 
   private loadSession(uploadId: string) {
     try {
+      if (!uploadId || !/^[a-zA-Z0-9_-]+$/.test(uploadId)) return null;
       const filePath = path.join(
         os.tmpdir(),
         'speed-limit-online-orders',
@@ -719,9 +721,13 @@ export class OnlineOrderManagementService {
   /**
    * Fetch all online orders, grouped with step-by-step calculations and enriched stock/voucher data
    */
-  async getGroupedOrders(locationId?: string) {
+  async getGroupedOrders(locationId?: string, targetOrderNumber?: string) {
+    const where: any = {};
+    if (locationId) where.locationId = locationId;
+    if (targetOrderNumber) where.orderNumber = targetOrderNumber;
+
     const allRows = await this.prisma.onlineOrder.findMany({
-      where: locationId ? ({ locationId } as any) : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         salesOrder: {
           select: { id: true, orderNumber: true, status: true, grandTotal: true },
@@ -741,11 +747,72 @@ export class OnlineOrderManagementService {
       if (v) voucherStatusMap.set(code.toLowerCase(), v);
     }
 
+    // ── BATCH QUERY INVENTORY STOCK ──
+    const uniqueSkus = Array.from(
+      new Set(
+        allRows
+          .flatMap((r) => [r.sku?.trim(), r.systemSku?.trim(), r.barcode?.trim()])
+          .filter(Boolean),
+      ),
+    ) as string[];
+
+    const dbItems = uniqueSkus.length > 0
+      ? await this.prisma.item.findMany({
+          where: {
+            OR: [
+              { sku: { in: uniqueSkus } },
+              { barCode: { in: uniqueSkus } },
+              { itemId: { in: uniqueSkus } },
+            ],
+          },
+          select: { id: true, sku: true, barCode: true, itemId: true },
+        })
+      : [];
+
+    const dbItemMap = new Map<string, string>(); // identifier (lowercase) -> item.id
+    const matchedItemIds = new Set<string>();
+    for (const it of dbItems) {
+      if (it.sku) dbItemMap.set(it.sku.trim().toLowerCase(), it.id);
+      if (it.barCode) dbItemMap.set(it.barCode.trim().toLowerCase(), it.id);
+      if (it.itemId) dbItemMap.set(it.itemId.trim().toLowerCase(), it.id);
+      matchedItemIds.add(it.id);
+    }
+
+    // Also support prefix/split SKU matching for variants
+    for (const row of allRows) {
+      if (row.sku && !dbItemMap.has(row.sku.trim().toLowerCase())) {
+        const baseSku = row.sku.split('_')[0].trim().toLowerCase();
+        const baseId = dbItemMap.get(baseSku);
+        if (baseId) {
+          dbItemMap.set(row.sku.trim().toLowerCase(), baseId);
+        }
+      }
+    }
+
+    // Real-time actual available stock verification via posSalesService
+    const stockMap =
+      matchedItemIds.size > 0
+        ? await this.posSalesService.calculateActualAvailableStock(
+            Array.from(matchedItemIds),
+            locationId,
+          )
+        : new Map<string, number>();
+
     // Group rows by orderNumber
     const grouped = new Map<string, any>();
 
     for (const row of allRows) {
       const key = row.orderNumber || row.orderId || row.id;
+
+      // Attach real-time stock verification to line item
+      const targetIdentifier = (row.systemSku || row.barcode || row.sku || '').trim().toLowerCase();
+      const matchedItemId = dbItemMap.get(targetIdentifier) || (row.sku ? dbItemMap.get(row.sku.split('_')[0].trim().toLowerCase()) : undefined);
+      const availableQty = matchedItemId ? (stockMap.get(matchedItemId) ?? 0) : 0;
+      const requiredQty = Number(row.qty || 1);
+      (row as any).stock = {
+        available: availableQty,
+        isAvailable: availableQty >= requiredQty,
+      };
 
       if (!grouped.has(key)) {
         grouped.set(key, {
@@ -781,6 +848,7 @@ export class OnlineOrderManagementService {
           totalDiscount: 0,
           voucherRedeemed: 0,
           orderTotal: 0,
+          allStockAvailable: true,
         });
       }
 
@@ -802,12 +870,17 @@ export class OnlineOrderManagementService {
       }
     }
 
-    // Step-by-step final financial calculations for each order
+    // Step-by-step final financial calculations & stock evaluation for each order
     const result = Array.from(grouped.values()).map((order) => {
-      // 1. Items after discount
+      // 1. Evaluate total stock availability for order
+      order.allStockAvailable = order.items.every(
+        (i: any) => i.stock?.isAvailable !== false,
+      );
+
+      // 2. Items after discount
       const itemsNet = Math.max(0, order.grossSubtotal - order.totalDiscount);
 
-      // 2. Voucher deduction
+      // 3. Voucher deduction
       let voucherDeduction = 0;
       if (order.voucherInfo && order.voucherInfo.isValid) {
         if (order.voucherInfo.type === 'VOUCHER') {
@@ -828,7 +901,7 @@ export class OnlineOrderManagementService {
       }
       order.voucherRedeemed = Math.round(voucherDeduction * 100) / 100;
 
-      // 3. Final payable grand total
+      // 4. Final payable grand total
       const calculatedGrandTotal = Math.max(
         0,
         Math.round(itemsNet + order.shippingCharges - order.voucherRedeemed),
@@ -840,7 +913,7 @@ export class OnlineOrderManagementService {
       );
       order.orderTotal = rawOrderTotal > 0 ? rawOrderTotal : calculatedGrandTotal;
 
-      // 4. Remaining tender amount to pay (Cash/Card)
+      // 5. Remaining tender amount to pay (Cash/Card)
       order.payableAfterVoucher = Math.max(0, order.orderTotal - order.voucherRedeemed);
 
       return order;
@@ -849,6 +922,258 @@ export class OnlineOrderManagementService {
     return {
       status: true,
       data: result,
+    };
+  }
+
+  /**
+   * Get single grouped order by orderNumber with full enriched stock & voucher calculations
+   */
+  async getOrderDetails(orderNumber: string, locationId?: string) {
+    const res = await this.getGroupedOrders(locationId, orderNumber);
+    const order = res.data?.[0];
+    if (!order) {
+      throw new NotFoundException(`Order with number "${orderNumber}" not found.`);
+    }
+    return {
+      status: true,
+      data: order,
+    };
+  }
+
+  /**
+   * Update an unposted online order (voucher, customer info, items, pricing, shipping)
+   */
+  async updateOrder(
+    orderNumber: string,
+    dto: {
+      customerName?: string;
+      phone?: string;
+      email?: string;
+      city?: string;
+      address?: string;
+      note?: string;
+      paymentMethod?: string;
+      trackingNumber?: string;
+      shippingCharges?: number;
+      couponCode?: string | null;
+      items?: Array<{
+        id?: string;
+        sku: string;
+        barcode?: string;
+        systemSku?: string;
+        name?: string;
+        brand?: string;
+        size?: string;
+        qty: number;
+        price: number;
+        paidPrice?: number;
+        skuDiscounted?: number;
+        skuActualDiscount?: number;
+      }>;
+    },
+    locationId?: string,
+  ) {
+    const existingRows = await this.prisma.onlineOrder.findMany({
+      where: { orderNumber },
+    });
+
+    if (!existingRows || existingRows.length === 0) {
+      throw new NotFoundException(`Order with number "${orderNumber}" not found.`);
+    }
+
+    const isPosted = existingRows.some(
+      (r) => r.itemStatus === 'posted' || r.salesOrderId,
+    );
+    if (isPosted) {
+      throw new BadRequestException(
+        `Cannot edit order "${orderNumber}" because it is already posted to POS Sales.`,
+      );
+    }
+
+    // Customer and order attributes
+    const customerName = dto.customerName !== undefined ? dto.customerName?.trim() : existingRows[0].customerName;
+    const phone = dto.phone !== undefined ? dto.phone?.trim() : existingRows[0].phone;
+    const email = dto.email !== undefined ? dto.email?.trim() : existingRows[0].email;
+    const city = dto.city !== undefined ? dto.city?.trim() : existingRows[0].city;
+    const address = dto.address !== undefined ? dto.address?.trim() : existingRows[0].address;
+    const note = dto.note !== undefined ? dto.note?.trim() : existingRows[0].note;
+    const paymentMethod = dto.paymentMethod !== undefined ? dto.paymentMethod?.trim() : existingRows[0].paymentMethod;
+    const trackingNumber = dto.trackingNumber !== undefined ? dto.trackingNumber?.trim() : existingRows[0].trackingNumber;
+    const shippingCharges = dto.shippingCharges !== undefined
+      ? Math.max(0, Number(dto.shippingCharges) || 0)
+      : Number(existingRows[0].shippingCharges || 0);
+
+    // Coupon / Voucher resolution
+    let couponCode: string | null = existingRows[0].couponCode;
+    if (dto.couponCode !== undefined) {
+      couponCode = dto.couponCode && dto.couponCode.trim() ? dto.couponCode.trim() : null;
+    }
+
+    // Items list validation
+    const items = dto.items;
+    if (items && items.length === 0) {
+      throw new BadRequestException('Order must contain at least one item.');
+    }
+
+    // Calculate projected financial totals
+    const targetItems = items && items.length > 0 ? items : existingRows;
+    let projectedGross = 0;
+    let projectedDiscounts = 0;
+    for (const item of targetItems) {
+      const p = Math.max(0, Number(item.price || 0));
+      const q = Math.max(1, Number(item.qty || 1));
+      const d = Math.min(100, Math.max(0, Number(item.skuActualDiscount ?? item.skuDiscounted ?? 0)));
+      const lineGross = p * q;
+      projectedGross += lineGross;
+      projectedDiscounts += lineGross * (d / 100);
+    }
+    const itemsNet = Math.max(0, projectedGross - projectedDiscounts);
+
+    let voucherDeduction = 0;
+    if (couponCode) {
+      const vRes = await this.resolveVoucherOrCoupon(
+        couponCode,
+        locationId || existingRows[0].locationId || undefined,
+      );
+      if (vRes && vRes.isValid) {
+        if (vRes.type === 'VOUCHER') {
+          voucherDeduction = Math.min(Number(vRes.faceValue || 0), itemsNet + shippingCharges);
+        } else if (vRes.type === 'COUPON') {
+          if (vRes.discountType === 'PERCENT') {
+            voucherDeduction = itemsNet * (Number(vRes.discountValue || 0) / 100);
+          } else {
+            voucherDeduction = Math.min(Number(vRes.discountValue || 0), itemsNet);
+          }
+        }
+      }
+    }
+    voucherDeduction = Math.round(voucherDeduction * 100) / 100;
+    const calculatedOrderTotal = Math.max(
+      0,
+      Math.round(itemsNet + shippingCharges - voucherDeduction),
+    );
+
+    // Transactional DB sync
+    await this.prisma.$transaction(async (tx) => {
+      if (items && items.length > 0) {
+        const existingIds = new Set(existingRows.map((r) => r.id));
+        const incomingIds = new Set(items.map((i) => i.id).filter(Boolean) as string[]);
+
+        // Delete items removed by the user
+        const toDelete = Array.from(existingIds).filter((id) => !incomingIds.has(id));
+        if (toDelete.length > 0) {
+          await tx.onlineOrder.deleteMany({
+            where: { id: { in: toDelete } },
+          });
+        }
+
+        // Update or create items
+        for (const item of items) {
+          const qty = Math.max(1, Number(item.qty) || 1);
+          const price = Math.max(0, Number(item.price) || 0);
+          const disc = Math.min(100, Math.max(0, Number(item.skuActualDiscount ?? item.skuDiscounted ?? 0)));
+          const paidPrice = item.paidPrice !== undefined
+            ? Math.max(0, Number(item.paidPrice) || 0)
+            : Math.max(0, price * (1 - disc / 100));
+          const subTotalPrice = price * qty;
+          const subTotalPaidPrice = paidPrice * qty;
+
+          if (item.id && existingIds.has(item.id)) {
+            await tx.onlineOrder.update({
+              where: { id: item.id },
+              data: {
+                sku: item.sku?.trim(),
+                barcode: item.barcode?.trim() || null,
+                systemSku: item.systemSku?.trim() || null,
+                name: item.name?.trim() || null,
+                brand: item.brand?.trim() || null,
+                size: item.size?.trim() || null,
+                qty,
+                price,
+                paidPrice,
+                subTotalPrice,
+                subTotalPaidPrice,
+                skuDiscounted: disc,
+                skuActualDiscount: disc,
+                shippingCharges,
+                couponCode,
+                orderTotal: calculatedOrderTotal,
+                customerName,
+                phone,
+                email,
+                city,
+                address,
+                note,
+                paymentMethod,
+                trackingNumber,
+              },
+            });
+          } else {
+            await tx.onlineOrder.create({
+              data: {
+                orderNumber,
+                orderId: existingRows[0].orderId || orderNumber,
+                locationId: existingRows[0].locationId || locationId,
+                marketplace: existingRows[0].marketplace,
+                channel: existingRows[0].channel,
+                orderedAt: existingRows[0].orderedAt,
+                orderMonth: existingRows[0].orderMonth,
+                orderYear: existingRows[0].orderYear,
+                customerType: existingRows[0].customerType,
+                customerName,
+                phone,
+                email,
+                city,
+                address,
+                note,
+                paymentMethod,
+                trackingNumber,
+                shippingCharges,
+                couponCode,
+                orderTotal: calculatedOrderTotal,
+                itemStatus: 'pending',
+                sku: item.sku?.trim(),
+                barcode: item.barcode?.trim() || null,
+                systemSku: item.systemSku?.trim() || null,
+                name: item.name?.trim() || null,
+                brand: item.brand?.trim() || null,
+                size: item.size?.trim() || null,
+                qty,
+                price,
+                paidPrice,
+                subTotalPrice,
+                subTotalPaidPrice,
+                skuDiscounted: disc,
+                skuActualDiscount: disc,
+              },
+            });
+          }
+        }
+      } else {
+        await tx.onlineOrder.updateMany({
+          where: { orderNumber },
+          data: {
+            customerName,
+            phone,
+            email,
+            city,
+            address,
+            note,
+            paymentMethod,
+            trackingNumber,
+            shippingCharges,
+            couponCode,
+            orderTotal: calculatedOrderTotal,
+          },
+        });
+      }
+    });
+
+    const updated = await this.getOrderDetails(orderNumber, locationId);
+    return {
+      status: true,
+      message: `Order #${orderNumber} updated successfully.`,
+      data: updated.data,
     };
   }
 
@@ -1129,7 +1454,11 @@ export class OnlineOrderManagementService {
         results.push({
           orderNumber: orderNum,
           status: 'success',
+          success: true,
           message: res.message,
+          salesOrderId: res.data?.id,
+          salesOrderNumber: res.data?.orderNumber,
+          salesOrder: res.data,
           data: res.data,
         });
       } catch (err: any) {
@@ -1137,13 +1466,26 @@ export class OnlineOrderManagementService {
         results.push({
           orderNumber: orderNum,
           status: 'failed',
+          success: false,
+          error: err.message || 'Unknown error during order posting',
           message: err.message || 'Unknown error during order posting',
         });
       }
     }
 
+    const summary = {
+      total: orderNumbers.length,
+      posted: successCount,
+      failed: failedCount,
+    };
+
     return {
       status: true,
+      data: {
+        summary,
+        results,
+      },
+      summary,
       total: orderNumbers.length,
       successCount,
       failedCount,

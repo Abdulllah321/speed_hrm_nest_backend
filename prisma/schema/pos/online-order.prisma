@@ -47,5 +47,8 @@ model OnlineOrder {
   @@index([orderId])
   @@index([sku])
   @@index([customerName])
+  @@index([locationId])
+  @@index([itemStatus])
+  @@index([locationId, itemStatus])
   @@map("pos_online_orders")
 }

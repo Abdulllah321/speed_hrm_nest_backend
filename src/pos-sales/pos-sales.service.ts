@@ -182,7 +182,7 @@ export class PosSalesService implements OnModuleInit {
     return this.generateSequentialNumber('RF', 'refundNumber', locationId, tx);
   }
 
-  // ─── Lookup items by barcode / SKU (for POS scanner) ──────────────
+  // ─── Lookup items by barcode / SKU (for POS scanner & Online Orders) ──────────────
   async lookupItem(query: string, locationId: string) {
     const searchTerm = query.trim();
     if (!searchTerm)
@@ -190,7 +190,7 @@ export class PosSalesService implements OnModuleInit {
 
     // ── Step 1: text-match items first (selective, small result set) ──
     // Exact matches on barCode/sku/itemId are boosted by ordering them first.
-    const items = await this.prisma.item.findMany({
+    let items = await this.prisma.item.findMany({
       where: {
         isActive: true,
         OR: [
@@ -211,22 +211,65 @@ export class PosSalesService implements OnModuleInit {
       },
     });
 
+    // Variant / Delimited SKU fallback (e.g. online orders often use SKU_SIZE, SKU-SIZE, or barcode with variant suffix)
+    if (
+      !items.length &&
+      (searchTerm.includes('_') ||
+        searchTerm.includes('-') ||
+        searchTerm.includes(' '))
+    ) {
+      const parts = searchTerm
+        .split(/[-_ ]+/)
+        .map((p) => p.trim())
+        .filter((p) => p.length >= 2);
+      if (parts.length > 0) {
+        items = await this.prisma.item.findMany({
+          where: {
+            isActive: true,
+            OR: [
+              { barCode: { equals: parts[0], mode: 'insensitive' } },
+              { sku: { equals: parts[0], mode: 'insensitive' } },
+              { itemId: { equals: parts[0], mode: 'insensitive' } },
+              { barCode: { contains: parts[0], mode: 'insensitive' } },
+              { sku: { contains: parts[0], mode: 'insensitive' } },
+            ],
+          },
+          take: 20,
+          include: {
+            brand: true,
+            size: true,
+            color: true,
+          },
+        });
+      }
+    }
+
     if (!items.length) return { status: true, data: [] };
 
     // ── Step 2: check stock only for the matched items (≤20 IDs) ──
-    // Single enrichForPos call handles both ledger + inventoryItem fallback.
+    // Uses actual available stock calculation (InventoryItem [AVAILABLE] + StockLedger - StockReserve)
     const enriched = await this.enrichForPos(items, locationId);
 
-    // Return only items that are actually in stock at this location
-    return { status: true, data: enriched.filter((i) => i.stockQty > 0) };
+    // Prioritize in-stock items first
+    const inStock = enriched.filter((i) => i.stockQty > 0);
+    // If inStock items exist, return them. Otherwise return enriched matches so online orders and POS can verify availability
+    return {
+      status: true,
+      data: inStock.length > 0 ? inStock : enriched,
+    };
   }
 
   // ─── Quick barcode scan (exact match only, returns single item) ───
   async scanBarcode(barcode: string, locationId: string) {
-    const item = await this.prisma.item.findFirst({
+    const rawBarcode = barcode.trim();
+    let item = await this.prisma.item.findFirst({
       where: {
         isActive: true,
-        OR: [{ barCode: { equals: barcode.trim(), mode: 'insensitive' } }],
+        OR: [
+          { barCode: { equals: rawBarcode, mode: 'insensitive' } },
+          { sku: { equals: rawBarcode, mode: 'insensitive' } },
+          { itemId: { equals: rawBarcode, mode: 'insensitive' } },
+        ],
       },
       include: {
         brand: true,
@@ -234,6 +277,33 @@ export class PosSalesService implements OnModuleInit {
         color: true,
       },
     });
+
+    // Fallback for variant SKU barcodes (e.g. BARCODE_M or SKU-32)
+    if (
+      !item &&
+      (rawBarcode.includes('_') ||
+        rawBarcode.includes('-') ||
+        rawBarcode.includes(' '))
+    ) {
+      const basePart = rawBarcode.split(/[-_ ]+/)[0].trim();
+      if (basePart.length >= 2) {
+        item = await this.prisma.item.findFirst({
+          where: {
+            isActive: true,
+            OR: [
+              { barCode: { equals: basePart, mode: 'insensitive' } },
+              { sku: { equals: basePart, mode: 'insensitive' } },
+              { itemId: { equals: basePart, mode: 'insensitive' } },
+            ],
+          },
+          include: {
+            brand: true,
+            size: true,
+            color: true,
+          },
+        });
+      }
+    }
 
     if (!item)
       return { status: false, message: 'Item not found for this barcode/SKU' };
@@ -6382,44 +6452,147 @@ export class PosSalesService implements OnModuleInit {
     return discountMap;
   }
 
+  /**
+   * Calculates true net available stock for items at a given location / warehouse.
+   * Net available = Physical on-hand (InventoryItem [AVAILABLE] + StockLedger fallback) - Active reservations (StockReserve)
+   */
+  async calculateActualAvailableStock(
+    itemIds: string[],
+    locationId?: string | null,
+  ): Promise<Map<string, number>> {
+    const stockMap = new Map<string, number>();
+    if (!itemIds || itemIds.length === 0) return stockMap;
+
+    // 1. Resolve Location and its linked Warehouse
+    let targetLocationId: string | null = locationId || null;
+    let targetWarehouseId: string | null = null;
+
+    if (locationId) {
+      const loc = await this.prisma.location.findUnique({
+        where: { id: locationId },
+        select: { id: true, warehouseId: true, code: true, name: true },
+      });
+
+      if (loc) {
+        targetWarehouseId = loc.warehouseId || null;
+        if (!targetWarehouseId && loc.code) {
+          const matchingWh = await this.prisma.warehouse.findFirst({
+            where: {
+              isActive: true,
+              isDeleted: false,
+              OR: [
+                { code: loc.code },
+                { code: `WH-${loc.code}` },
+                { name: { equals: loc.name, mode: 'insensitive' } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (matchingWh) targetWarehouseId = matchingWh.id;
+        }
+      } else {
+        // Check if locationId is directly a Warehouse ID
+        const wh = await this.prisma.warehouse.findUnique({
+          where: { id: locationId },
+          select: { id: true },
+        });
+        if (wh) {
+          targetWarehouseId = wh.id;
+          targetLocationId = null;
+        }
+      }
+    }
+
+    // Build scoped filter criteria for location / warehouse
+    const scopeConditions: any[] = [];
+    if (targetLocationId) {
+      scopeConditions.push({ locationId: targetLocationId });
+    }
+    if (targetWarehouseId) {
+      scopeConditions.push({ warehouseId: targetWarehouseId });
+    }
+    const scopeWhere =
+      scopeConditions.length > 1
+        ? { OR: scopeConditions }
+        : scopeConditions.length === 1
+          ? scopeConditions[0]
+          : locationId
+            ? { locationId } // fallback to provided ID
+            : {};
+
+    // 2. Query physical inventory items with status 'AVAILABLE'
+    const invRecords = await this.prisma.inventoryItem.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: itemIds },
+        status: 'AVAILABLE',
+        ...scopeWhere,
+      },
+      _sum: { quantity: true },
+    });
+    const invMap = new Map<string, number>();
+    for (const rec of invRecords) {
+      invMap.set(rec.itemId, Number(rec._sum.quantity || 0));
+    }
+
+    // 3. Query stock ledger entries for movement net balance
+    const ledgerRecords = await this.prisma.stockLedger.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: itemIds },
+        ...scopeWhere,
+      },
+      _sum: { qty: true },
+    });
+    const ledgerMap = new Map<string, number>();
+    for (const rec of ledgerRecords) {
+      ledgerMap.set(rec.itemId, Number(rec._sum.qty || 0));
+    }
+
+    // 4. Query active reservations from StockReserve
+    const reserveRecords = await this.prisma.stockReserve.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: itemIds },
+        ...(targetWarehouseId ? { warehouseId: targetWarehouseId } : {}),
+        OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+      },
+      _sum: { quantity: true },
+    });
+    const reserveMap = new Map<string, number>();
+    for (const rec of reserveRecords) {
+      reserveMap.set(rec.itemId, Number(rec._sum.quantity || 0));
+    }
+
+    // 5. Combine: Physical on-hand minus active reservations
+    for (const itemId of itemIds) {
+      const invQty = invMap.get(itemId) ?? 0;
+      const ledgerQty = ledgerMap.get(itemId) ?? 0;
+      const reservedQty = reserveMap.get(itemId) ?? 0;
+
+      // In SpeedLimit, InventoryItem (AVAILABLE) is maintained as the primary on-hand balance.
+      // If InventoryItem is tracked (invQty > 0), use invQty; otherwise fallback to ledger balance.
+      // If both are present, Math.max handles transfers pending full ledger/inventory item synchronization.
+      const physicalStock = Math.max(0, Math.max(invQty, ledgerQty));
+      const actualAvailable = Math.max(0, physicalStock - reservedQty);
+
+      stockMap.set(itemId, actualAvailable);
+    }
+
+    return stockMap;
+  }
+
   // ─── Enrich items with master data + stock for POS display ────────
   private async enrichForPos(items: any[], locationId: string) {
     if (!items.length) return [];
 
     const itemIds = items.map((i) => i.id);
 
-    // Primary: sum ledger entries scoped to this outlet location
-    const stockEntries = await this.prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        itemId: { in: itemIds },
-        locationId: locationId,
-      },
-      _sum: { qty: true },
-    });
-
-    const stockMap = new Map<string, number>();
-    for (const entry of stockEntries) {
-      stockMap.set(entry.itemId, Number(entry._sum.qty || 0));
-    }
-
-    // Fallback: for items with no ledger entry at this outlet, read inventoryItem directly.
-    // This covers transfers completed before the outlet ledger entry was written.
-    const missingIds = itemIds.filter((id) => !stockMap.has(id));
-    if (missingIds.length > 0) {
-      const inventoryItems = await this.prisma.inventoryItem.findMany({
-        where: {
-          itemId: { in: missingIds },
-          locationId: locationId,
-          status: 'AVAILABLE',
-        },
-        select: { itemId: true, quantity: true },
-      });
-      for (const inv of inventoryItems) {
-        const existing = stockMap.get(inv.itemId) || 0;
-        stockMap.set(inv.itemId, existing + Number(inv.quantity));
-      }
-    }
+    // Calculate true actual available stock across location & linked warehouse
+    const stockMap = await this.calculateActualAvailableStock(
+      itemIds,
+      locationId,
+    );
 
     // ── Fetch active campaign discounts scoped to this location ───────
     const campaignDiscounts = await this.getActiveCampaignDiscounts(
