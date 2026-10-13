@@ -617,6 +617,21 @@ async function main() {
     console.log(`⚠️ DRY RUN MODE: No changes will be written.`);
   }
 
+  const directDbArg = process.argv.find((arg) => arg.startsWith('--db='))?.split('=')[1];
+  if (directDbArg) {
+    console.log(`🔌 Connecting directly to target database URL...`);
+    const pool = new Pool({ connectionString: directDbArg });
+    const adapter = new PrismaPg(pool);
+    const prisma = new PrismaClient({ adapter } as any);
+    try {
+      await processTenant(prisma, 'Custom DB Target', isDryRun);
+    } finally {
+      await prisma.$disconnect();
+      await pool.end();
+    }
+    return;
+  }
+
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL;
   const masterKey = process.env.MASTER_ENCRYPTION_KEY;
 
