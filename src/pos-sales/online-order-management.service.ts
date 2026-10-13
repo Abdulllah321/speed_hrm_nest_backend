@@ -1016,11 +1016,20 @@ export class OnlineOrderManagementService {
     }
 
     // ── TENDER BALANCING ──
-    // In POS Sales: totalPaid = sum(tenders) + sum(voucherRedemptions)
-    // Overpayment throws an error, so tender amount MUST match the remaining amount after voucher
-    const rawGrandTotal = Math.max(...orderRows.map((r) => Number(r.orderTotal || 0)));
-    const targetGrandTotal = rawGrandTotal > 0 ? rawGrandTotal : Math.round(itemsNet + shippingFee);
-    const remainingPayable = Math.max(0, targetGrandTotal - voucherDeduction);
+    // Include shipping charges in POS tender so Grand Total and Cash Memo match full customer payable amount
+    const paidTotal = orderRows.reduce(
+      (sum, r) => sum + (Number(r.paidPrice) || 0) * (Number(r.qty) || 1),
+      0,
+    );
+    const rawOrderTotal = Math.max(
+      ...orderRows.map((r) => Number(r.orderTotal || 0)),
+    );
+    const effectiveOrderTotal =
+      rawOrderTotal > 0 ? rawOrderTotal : paidTotal + shippingFee;
+    const remainingPayable = Math.max(
+      0,
+      Math.round(effectiveOrderTotal) - voucherDeduction,
+    );
 
     // Map payment method
     const paymentStr = orderRows[0].paymentMethod?.toLowerCase() || 'cash';
@@ -1045,8 +1054,9 @@ export class OnlineOrderManagementService {
       posId: posId || ctxUser?.posId,
       terminalId: terminalId || ctxUser?.terminalId,
       cashierUserId,
-      notes: `Online Order: ${orderNumber}`,
+      notes: `Online Order: ${orderNumber}${shippingFee > 0 ? ` | Shipping: Rs ${shippingFee}` : ''}`,
       isOnlineOrder: true, // Bypasses 15-second cashier spam check
+      shippingCharges: shippingFee,
       items: itemsPayload,
       tenders,
       voucherRedemptions: voucherRedemptions.length > 0 ? voucherRedemptions : undefined,

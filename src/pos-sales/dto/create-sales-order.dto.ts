@@ -336,6 +336,11 @@ export class CreateSalesOrderDto {
   @IsBoolean()
   isOnlineOrder?: boolean;
 
+  @ApiPropertyOptional({ description: 'Shipping or delivery charges for online orders' })
+  @IsOptional()
+  @IsNumber()
+  shippingCharges?: number;
+
   @ApiPropertyOptional({
     description: 'Vouchers to redeem against this order',
     type: [VoucherRedemptionDto],

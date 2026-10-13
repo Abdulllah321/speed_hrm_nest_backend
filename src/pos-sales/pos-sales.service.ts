@@ -436,7 +436,7 @@ export class PosSalesService implements OnModuleInit {
                   ]
                 : [{ method: 'cash', amount: 0 }];
 
-          const totalPaid = tenders.reduce(
+          let totalPaid = tenders.reduce(
             (acc, t) => acc + Number(t.amount),
             0,
           );
@@ -445,7 +445,7 @@ export class PosSalesService implements OnModuleInit {
             tenderMethods.length === 1
               ? tenderMethods[0]
               : tenderMethods.join('+');
-          const cashAmount = tenders
+          let cashAmount = tenders
             .filter((t) => t.method === 'cash')
             .reduce((a, t) => a + Number(t.amount), 0);
           const voucherAmount = tenders
@@ -741,9 +741,10 @@ export class PosSalesService implements OnModuleInit {
           });
           const fbrPosFee = location?.fbrEnabled && location?.fbrNtn ? 1 : 0;
           const wostAfterDiscount = subtotal - totalDiscount;
+          const shippingCharges = Number(dto.shippingCharges || 0);
           const grandTotal = Math.max(
             0,
-            Math.round(wostAfterDiscount + finalTotalTax + fbrPosFee),
+            Math.round(wostAfterDiscount + finalTotalTax + fbrPosFee + shippingCharges),
           );
           const changeAmount = Math.max(0, totalPaid - grandTotal);
 
@@ -753,9 +754,10 @@ export class PosSalesService implements OnModuleInit {
           console.log('Total Discount:', totalDiscount);
           console.log('Total Tax (Final):', finalTotalTax);
           console.log('FBR POS Fee:', fbrPosFee);
+          console.log('Shipping Charges:', shippingCharges);
           console.log('Grand Total:', grandTotal);
           console.log(
-            'Formula: subtotal - totalDiscount + finalTotalTax + fbrPosFee =',
+            'Formula: subtotal - totalDiscount + finalTotalTax + fbrPosFee + shippingCharges =',
             subtotal,
             '-',
             totalDiscount,
@@ -763,6 +765,8 @@ export class PosSalesService implements OnModuleInit {
             finalTotalTax,
             '+',
             fbrPosFee,
+            '+',
+            shippingCharges,
             '=',
             grandTotal,
           );
@@ -787,9 +791,19 @@ export class PosSalesService implements OnModuleInit {
           const grandTotalRounded = Math.round(grandTotal * 100) / 100;
 
           if (totalPaidRounded > grandTotalRounded + 2) {
-            throw new Error(
-              `Total payment (${totalPaidRounded}) cannot exceed the grand total (${grandTotalRounded}). Overpayments are not allowed.`,
-            );
+            if (isOnlineOrder) {
+              // For online orders (COD/Excel upload), the Excel orderTotal may differ
+              // from POS-computed grand total due to tax calculations.
+              // Cap the effective payment to grand total rather than throwing.
+              totalPaid = grandTotal;
+              if (paymentMethod === 'cash') {
+                cashAmount = totalPaid;
+              }
+            } else {
+              throw new Error(
+                `Total payment (${totalPaidRounded}) cannot exceed the grand total (${grandTotalRounded}). Overpayments are not allowed.`,
+              );
+            }
           }
 
           let paymentStatus: string;
