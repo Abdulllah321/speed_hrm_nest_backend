@@ -39,22 +39,17 @@ export class PosClaimsService {
   ): Promise<string> {
     const prismaClient = tx || this.prisma;
 
-    let shortCode = 'LOC';
+    let cleanCode = 'LOC';
     if (locationId) {
       const location = await prismaClient.location.findUnique({
         where: { id: locationId },
-        select: { name: true, shortCode: true },
+        select: { name: true, shortCode: true, code: true },
       });
       if (location) {
-        shortCode =
-          location.shortCode?.trim() ||
-          location.name
-            .split(/[\s\-_]+/)
-            .map((word) => word.replace(/[^a-zA-Z0-9]/g, ''))
-            .filter((word) => word.length > 0)
-            .map((word) => word[0].toUpperCase())
-            .join('') ||
-          'LOC';
+        const rawCode =
+          location.shortCode?.trim() || location.code?.trim() || location.name;
+        cleanCode =
+          rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'LOC';
       }
     }
 
@@ -66,33 +61,33 @@ export class PosClaimsService {
     const fiscalYearEndYear = fiscalYearStartYear + 1;
     const fiscalYearStr = fiscalYearEndYear.toString().slice(-2); // e.g. '27'
 
-    const fiscalYearStartDate = new Date(
-      Date.UTC(fiscalYearStartYear, 6, 1, 0, 0, 0, 0),
-    );
+    const matchPrefix = `CLM-${cleanCode}${fiscalYearStr}-`;
+    const altPrefix = `CLM-${cleanCode}-${fiscalYearStr}-`;
 
-    const prefix = `CLM-${shortCode}-${fiscalYearStr}`;
-
-    // Find the latest claim for this location created during the current fiscal year, ordered by claimNumber desc to get the highest suffix directly
-    const lastClaim = await prismaClient.posClaim.findFirst({
+    // Find all claims for this location / fiscal year prefix to get maximum sequence
+    const allClaims = await prismaClient.posClaim.findMany({
       where: {
-        salesOrder: { locationId },
-        createdAt: { gte: fiscalYearStartDate },
-        claimNumber: { startsWith: `${prefix}-` },
+        OR: [
+          { claimNumber: { startsWith: matchPrefix } },
+          { claimNumber: { startsWith: altPrefix } },
+        ],
       },
-      orderBy: { claimNumber: 'desc' },
       select: { claimNumber: true },
     });
 
     let seq = 1;
-    if (lastClaim && lastClaim.claimNumber) {
-      const parts = lastClaim.claimNumber.split('-');
-      const lastPart = parts[parts.length - 1];
-      if (/^\d+$/.test(lastPart)) {
-        seq = parseInt(lastPart, 10) + 1;
+    for (const c of allClaims) {
+      if (c.claimNumber) {
+        const parts = c.claimNumber.split('-');
+        const lastPart = parts[parts.length - 1];
+        if (/^\d+$/.test(lastPart)) {
+          const parsed = parseInt(lastPart, 10);
+          if (parsed >= seq) seq = parsed + 1;
+        }
       }
     }
 
-    let nextClaimNumber = `${prefix}-${String(seq).padStart(5, '0')}`;
+    let nextClaimNumber = `${matchPrefix}${String(seq).padStart(5, '0')}`;
     let exists = await prismaClient.posClaim.findUnique({
       where: { claimNumber: nextClaimNumber },
       select: { id: true },
@@ -100,7 +95,7 @@ export class PosClaimsService {
 
     while (exists) {
       seq++;
-      nextClaimNumber = `${prefix}-${String(seq).padStart(5, '0')}`;
+      nextClaimNumber = `${matchPrefix}${String(seq).padStart(5, '0')}`;
       exists = await prismaClient.posClaim.findUnique({
         where: { claimNumber: nextClaimNumber },
         select: { id: true },
@@ -301,6 +296,30 @@ export class PosClaimsService {
       },
     });
     if (!claim) throw new NotFoundException('Claim not found');
+
+    if (!claim.voucher) {
+      const fallbackVoucher = await this.prisma.voucher.findFirst({
+        where: {
+          OR: [
+            { description: { contains: claim.claimNumber } },
+            { code: { startsWith: 'CLM-' }, sourceOrderId: claim.salesOrderId },
+          ],
+        },
+        select: {
+          id: true,
+          code: true,
+          voucherType: true,
+          faceValue: true,
+          expiresAt: true,
+          isActive: true,
+          isRedeemed: true,
+        },
+      });
+      if (fallbackVoucher) {
+        (claim as any).voucher = fallbackVoucher;
+      }
+    }
+
     return { status: true, data: claim };
   }
 
@@ -442,7 +461,7 @@ export class PosClaimsService {
               anyPending = true;
               allApproved = false;
               approvedQty = 0;
-            } else if (itemStatus === 'REJECTED') {
+            } else if (itemStatus === 'REJECTED' || itemStatus === 'MENDED') {
               approvedQty = 0;
             } else {
               // APPROVED or PARTIALLY_APPROVED
@@ -539,10 +558,16 @@ export class PosClaimsService {
             }
           }
 
+          const allMended = dto.items.every(
+            (i: any) => (i.status || i.itemStatus) === 'MENDED',
+          );
+
           const claimStatus = anyPending
             ? 'UNDER_REVIEW'
             : !anyApproved
-              ? 'REJECTED'
+              ? allMended
+                ? 'MENDED'
+                : 'REJECTED'
               : allApproved
                 ? 'APPROVED'
                 : 'PARTIALLY_APPROVED';
@@ -557,275 +582,10 @@ export class PosClaimsService {
               reviewedBy: reviewedBy || null,
             },
           });
-
-          // ── If approved, create transfer request (inventory will be updated when transfer is processed) ──
-          console.log('🔍 Starting transfer creation check:', {
-            anyApproved,
-            newlyApprovedLength: newlyApprovedItems.length,
-            claimNumber: claim.claimNumber,
-          });
-
-          if (newlyApprovedItems.length > 0) {
-            const salesOrder = claim.salesOrder;
-
-            console.log('🔍 Sales order info:', {
-              orderNumber: salesOrder.orderNumber,
-              locationId: salesOrder.locationId,
-            });
-
-            // Get POS location with warehouse info
-            const posLocation = await tx.location.findUnique({
-              where: { id: salesOrder.locationId || '' },
-              select: {
-                id: true,
-                name: true,
-                warehouseId: true,
-              },
-            });
-
-            console.log('🔍 POS Location found:', posLocation);
-
-            if (posLocation) {
-              console.log('✅ POS location found, proceeding with transfer...');
-
-              // ⚡ CLAIM SPECIFIC: Always send to PLM Location (C20001)
-              console.log('🎯 Claim Return: Finding PLM Location...');
-              let plmLocation = await tx.location.findFirst({
-                where: {
-                  code: 'C20001',
-                  isDeleted: false,
-                },
-                select: { id: true, name: true, code: true, warehouseId: true },
-              });
-
-              if (!plmLocation) {
-                // Fallback: search for any active location with "PLM" in its code or name
-                plmLocation = await tx.location.findFirst({
-                  where: {
-                    isDeleted: false,
-                    OR: [
-                      { code: { contains: 'PLM', mode: 'insensitive' } },
-                      { name: { contains: 'PLM', mode: 'insensitive' } },
-                    ],
-                  },
-                  select: {
-                    id: true,
-                    name: true,
-                    code: true,
-                    warehouseId: true,
-                  },
-                });
-              }
-
-              if (!plmLocation) {
-                console.log('❌ PLM Location (C20001) not found!');
-                throw new BadRequestException(
-                  'PLM Location not found for claim return. Please contact admin.',
-                );
-              }
-
-              const plmLocationId = plmLocation.id;
-              let plmWarehouseId = plmLocation.warehouseId;
-
-              if (!plmWarehouseId) {
-                console.log(
-                  '⚠️ PLM location has no warehouse, using first active warehouse...',
-                );
-                const defaultWarehouse = await tx.warehouse.findFirst({
-                  where: { isActive: true },
-                  select: { id: true, name: true },
-                });
-                if (defaultWarehouse) {
-                  plmWarehouseId = defaultWarehouse.id;
-                } else {
-                  throw new BadRequestException(
-                    'No warehouse found for PLM location',
-                  );
-                }
-              }
-
-              console.log('✅ Using PLM Location:', {
-                name: plmLocation.name,
-                code: plmLocation.code,
-                id: plmLocationId,
-                warehouseId: plmWarehouseId,
-              });
-
-              // Get POS location's original warehouse (for stock validation)
-              let posWarehouseId = posLocation.warehouseId;
-              if (!posWarehouseId) {
-                console.log(
-                  '⚠️ POS location has no warehouse, using first active warehouse...',
-                );
-                const defaultWarehouse = await tx.warehouse.findFirst({
-                  where: { isActive: true },
-                  select: { id: true, name: true },
-                });
-                if (defaultWarehouse) {
-                  posWarehouseId = defaultWarehouse.id;
-                  console.log(
-                    '✅ Using default warehouse:',
-                    defaultWarehouse.name,
-                  );
-                } else {
-                  throw new BadRequestException(
-                    'No warehouse found for POS location',
-                  );
-                }
-              }
-
-              console.log('📍 Warehouse IDs:', {
-                posWarehouse: posWarehouseId,
-                plmWarehouse: plmWarehouseId,
-              });
-
-              // Create automatic transfer request from POS location to PLM Warehouse
-              const today = new Date();
-              const currentMonth = today.getMonth();
-              const startYear =
-                currentMonth >= 6
-                  ? today.getFullYear()
-                  : today.getFullYear() - 1;
-              const endYear = startYear + 1;
-              const startYearShort = startYear.toString().slice(-2);
-              const endYearShort = endYear.toString().slice(-2);
-              const fiscalYearStr = `${startYearShort}-${endYearShort}`;
-              const prefix = `STN-${fiscalYearStr}`;
-
-              const lastTR = await tx.transferRequest.findFirst({
-                where: { requestNo: { startsWith: prefix } },
-                orderBy: { createdAt: 'desc' },
-                select: { requestNo: true },
-              });
-              const seq = lastTR
-                ? parseInt(lastTR.requestNo.split('-').pop() || '0', 10) + 1
-                : 1;
-              const transferRequestNo = `${prefix}-${String(seq).padStart(4, '0')}`;
-
-              const transferRequest = await tx.transferRequest.create({
-                data: {
-                  requestNo: transferRequestNo,
-                  fromLocationId: posLocation.id,
-                  fromWarehouseId: posWarehouseId, // POS location's warehouse
-                  toLocationId: plmLocationId, // PLM Location
-                  toWarehouseId: plmWarehouseId, // PLM Warehouse (if any)
-                  transferType: 'CLAIM_TO_PLM', // Special type for claims
-                  status: 'PENDING', // ⚡ Changed to PENDING (requires PLM acknowledgment)
-                  notes: `Auto-generated from approved claim ${claim.claimNumber} for order ${salesOrder.orderNumber}. Awaiting PLM acknowledgment before inventory update.`,
-                  createdById: reviewedBy || null,
-                  items: {
-                    create: newlyApprovedItems.map((item) => ({
-                      itemId: item.itemId,
-                      quantity: new Decimal(item.approvedQty),
-                    })),
-                  },
-                },
-              });
-
-              console.log('✅ Transfer request created:', {
-                id: transferRequest.id,
-                requestNo: transferRequest.requestNo,
-                status: 'PENDING - Awaiting PLM acknowledgment',
-              });
-
-              // Link transfer request to claim
-              await tx.posClaim.update({
-                where: { id },
-                data: { transferRequestId: transferRequest.id },
-              });
-
-              console.log('✅ Transfer request linked to claim');
-
-              // ── Generate EXCHANGE voucher for newly approved items ──
-              console.log(
-                '🎫 Generating exchange voucher for newly approved items...',
-              );
-
-              // Generate voucher code
-              const voucherCode = `EXC-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-              const voucherExpiresAt = new Date();
-              voucherExpiresAt.setDate(voucherExpiresAt.getDate() + 30); // 30 days expiry
-
-              const exchangeVoucher = await tx.voucher.create({
-                data: {
-                  code: voucherCode,
-                  voucherType: 'EXCHANGE',
-                  faceValue: newApprovedAmount,
-                  description: `Exchange voucher for approved claim ${claim.claimNumber}`,
-                  customerId: salesOrder.customerId || null,
-                  requireCustomerMatch: false,
-                  issuedByLocationId: salesOrder.locationId,
-                  issuedByUserId: reviewedBy || null,
-                  sourceOrderId: salesOrder.id,
-                  expiresAt: voucherExpiresAt,
-                  isActive: true,
-                  isRedeemed: false,
-                  locations: {
-                    create: {
-                      locationId: salesOrder.locationId || '',
-                    },
-                  },
-                  transactions: {
-                    create: {
-                      action: 'ISSUED',
-                      amountUsed: 0,
-                      locationId: salesOrder.locationId,
-                      notes: `Issued for approved claim ${claim.claimNumber}`,
-                    },
-                  },
-                },
-              });
-
-              console.log('✅ Exchange voucher created:', {
-                code: voucherCode,
-                amount: newApprovedAmount,
-                expiresAt: voucherExpiresAt,
-              });
-
-              // Link voucher to claim
-              await tx.posClaim.update({
-                where: { id },
-                data: {
-                  transferRequestId: transferRequest.id,
-                  voucherId: exchangeVoucher.id, // Link voucher
-                },
-              });
-
-              console.log('✅ Voucher linked to claim');
-
-              // Log transfer request creation
-              runInBackground(
-                'Auto-Create Transfer Request from Claim',
-                this.activityLogs.log({
-                  userId: ctx?.userId,
-                  action: 'create',
-                  module: 'transfer-request',
-                  entity: 'TransferRequest',
-                  entityId: transferRequest.id,
-                  description: `Auto-created transfer request ${transferRequestNo} from approved claim ${claim.claimNumber}. Awaiting PLM acknowledgment before inventory update.`,
-                  newValues: JSON.stringify({
-                    claimId: claim.id,
-                    transferRequestId: transferRequest.id,
-                  }),
-                  ipAddress: ctx?.ipAddress,
-                  userAgent: ctx?.userAgent,
-                  status: 'success',
-                }),
-              );
-            } else {
-              console.log('❌ POS location not found:', {
-                locationId: salesOrder.locationId,
-              });
-            }
-          } else {
-            console.log(
-              '⏭️ Skipping transfer creation: No newly approved items',
-            );
-          }
         },
         {
-          maxWait: 10000, // 10 seconds max wait
-          timeout: 15000, // 15 seconds timeout
+          maxWait: 10000,
+          timeout: 15000,
         },
       );
 
@@ -839,7 +599,7 @@ export class PosClaimsService {
           module: 'pos-claims',
           entity: 'PosClaim',
           entityId: id,
-          description: `Submitted review for POS claim ${claim.claimNumber}. Result: ${updated.data.status}. ${anyApproved ? `Transfer completed automatically - inventory updated.` : ''}`,
+          description: `Submitted review for POS claim ${claim.claimNumber}. Result: ${updated.data.status}.`,
           newValues: JSON.stringify(dto),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
@@ -854,7 +614,7 @@ export class PosClaimsService {
             'Notify POS - Claim Approved',
             this.notifyLocationUsers(claim.salesOrder.locationId, {
               title: '✅ Claim Approved',
-              message: `Claim ${claim.claimNumber} has been approved. Amount: Rs. ${totalApproved.toLocaleString()}. Exchange voucher generated.`,
+              message: `Claim ${claim.claimNumber} has been approved. Amount: Rs. ${totalApproved.toLocaleString()}. Awaiting PLM physical acknowledgment.`,
               category: 'claims',
               priority: 'high',
               actionType: 'view_claim',
@@ -891,7 +651,7 @@ export class PosClaimsService {
       return {
         status: true,
         data: updated.data,
-        message: `Claim decision submitted${anyApproved ? '. Transfer completed automatically - inventory updated.' : ''}`,
+        message: `Claim decision submitted successfully.${anyApproved ? ' Awaiting PLM physical acknowledgment.' : ''}`,
       };
     } catch (error: any) {
       runInBackground(
@@ -1148,4 +908,576 @@ export class PosClaimsService {
       console.error('Failed to notify location users:', error);
     }
   }
+
+  private async generateReturnNumber(
+    locationId: string,
+    tx: any,
+  ): Promise<string> {
+    let cleanCode = 'LOC';
+    if (locationId) {
+      const loc = await tx.location.findUnique({
+        where: { id: locationId },
+        select: { shortCode: true, code: true, name: true },
+      });
+      if (loc) {
+        const rawCode =
+          loc.shortCode?.trim() || loc.code?.trim() || loc.name;
+        cleanCode =
+          rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'LOC';
+      }
+    }
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const fiscalYearStartYear = month >= 6 ? year : year - 1;
+    const fiscalYearEndYear = fiscalYearStartYear + 1;
+    const fiscalYearStr = fiscalYearEndYear.toString().slice(-2);
+
+    const matchPrefix = `CLM-${cleanCode}${fiscalYearStr}-`;
+
+    const allPosReturns = await tx.posReturn.findMany({
+      where: {
+        returnNumber: { startsWith: matchPrefix },
+      },
+      select: { returnNumber: true },
+    });
+
+    let seq = 1;
+    for (const pr of allPosReturns) {
+      if (pr.returnNumber) {
+        const parts = pr.returnNumber.split('-');
+        const lastPart = parts[parts.length - 1];
+        if (/^\d+$/.test(lastPart)) {
+          const parsed = parseInt(lastPart, 10);
+          if (parsed >= seq) seq = parsed + 1;
+        }
+      }
+    }
+
+    let nextNumber = `${matchPrefix}${String(seq).padStart(5, '0')}`;
+    let exists = await tx.posReturn.findUnique({
+      where: { returnNumber: nextNumber },
+      select: { id: true },
+    });
+
+    while (exists) {
+      seq++;
+      nextNumber = `${matchPrefix}${String(seq).padStart(5, '0')}`;
+      exists = await tx.posReturn.findUnique({
+        where: { returnNumber: nextNumber },
+        select: { id: true },
+      });
+    }
+
+    return nextNumber;
+  }
+
+  private async generateTransferRequestNumber(tx: any): Promise<string> {
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const startYear =
+      currentMonth >= 6 ? today.getFullYear() : today.getFullYear() - 1;
+    const endYear = startYear + 1;
+    const startYearShort = startYear.toString().slice(-2);
+    const endYearShort = endYear.toString().slice(-2);
+    const fiscalYearStr = `${startYearShort}-${endYearShort}`;
+    const prefix = `STN-${fiscalYearStr}`;
+
+    const lastTR = await tx.transferRequest.findFirst({
+      where: { requestNo: { startsWith: prefix } },
+      orderBy: { createdAt: 'desc' },
+      select: { requestNo: true },
+    });
+    const seq = lastTR
+      ? parseInt(lastTR.requestNo.split('-').pop() || '0', 10) + 1
+      : 1;
+    return `${prefix}-${String(seq).padStart(4, '0')}`;
+  }
+
+  async acknowledgeClaim(
+    id: string,
+    userId?: string,
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      const claim = await this.prisma.posClaim.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              item: {
+                select: {
+                  id: true,
+                  sku: true,
+                  description: true,
+                  unitCost: true,
+                },
+              },
+            },
+          },
+          salesOrder: {
+            include: {
+              customer: true,
+              items: true,
+            },
+          },
+        },
+      });
+
+      if (!claim) {
+        throw new NotFoundException(`Claim ${id} not found`);
+      }
+
+      if (claim.status === 'COMPLETED' || claim.status === 'ACKNOWLEDGED') {
+        throw new BadRequestException('Claim has already been acknowledged');
+      }
+
+      if (
+        claim.status !== 'APPROVED' &&
+        claim.status !== 'PARTIALLY_APPROVED'
+      ) {
+        throw new BadRequestException(
+          `Claim cannot be acknowledged in status: ${claim.status}. It must be APPROVED first.`,
+        );
+      }
+
+      const approvedItems = claim.items.filter(
+        (i) =>
+          ['APPROVED', 'PARTIALLY_APPROVED'].includes(i.itemStatus) &&
+          i.approvedQty > 0,
+      );
+
+      if (approvedItems.length === 0) {
+        throw new BadRequestException(
+          'No approved items found to acknowledge in this claim',
+        );
+      }
+
+      const outletLocationId = claim.salesOrder?.locationId;
+      if (!outletLocationId) {
+        throw new BadRequestException(
+          'Outlet location not found on the original sales order',
+        );
+      }
+
+      const result = await this.prisma.$transaction(
+        async (tx) => {
+          // 1. Resolve Locations
+          const outletLocation = await tx.location.findUnique({
+            where: { id: outletLocationId },
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              shortCode: true,
+              warehouseId: true,
+            },
+          });
+
+          if (!outletLocation) {
+            throw new BadRequestException('Outlet location not found');
+          }
+
+          // ⚡ CLAIM SPECIFIC: Find PLM Location (C20001 or name containing PLM)
+          let plmLocation = await tx.location.findFirst({
+            where: { code: 'C20001', isDeleted: false },
+            select: { id: true, name: true, code: true, warehouseId: true },
+          });
+
+          if (!plmLocation) {
+            plmLocation = await tx.location.findFirst({
+              where: {
+                isDeleted: false,
+                OR: [
+                  { code: { contains: 'PLM', mode: 'insensitive' } },
+                  { name: { contains: 'PLM', mode: 'insensitive' } },
+                ],
+              },
+              select: { id: true, name: true, code: true, warehouseId: true },
+            });
+          }
+
+          if (!plmLocation) {
+            throw new BadRequestException(
+              'PLM Location (C20001) not found for claim return. Please contact admin.',
+            );
+          }
+
+          // Resolve Warehouses (for schema integrity)
+          let outletWarehouseId = outletLocation.warehouseId;
+          let plmWarehouseId = plmLocation.warehouseId;
+
+          if (!outletWarehouseId || !plmWarehouseId) {
+            const defaultWarehouse = await tx.warehouse.findFirst({
+              where: { isActive: true },
+              select: { id: true },
+            });
+            if (!outletWarehouseId) outletWarehouseId = defaultWarehouse?.id;
+            if (!plmWarehouseId) plmWarehouseId = defaultWarehouse?.id;
+          }
+
+          // 2. Generate POS Return Number & Totals
+          const returnNumber = await this.generateReturnNumber(
+            outletLocation.id,
+            tx,
+          );
+
+          let totalSubtotalWost = 0;
+          let totalTaxAmount = 0;
+          let totalRefundAmount = 0;
+
+          const returnItemsData = approvedItems.map((item) => {
+            const soi = claim.salesOrder?.items?.find(
+              (s: any) => s.id === item.salesOrderItemId,
+            );
+            const refundPerUnit = Number(item.unitPaidPrice);
+            const taxPercent = Number(soi?.taxPercent || 0);
+            const unitPriceWost =
+              taxPercent > 0
+                ? refundPerUnit / (1 + taxPercent / 100)
+                : refundPerUnit;
+            const lineTotal = refundPerUnit * item.approvedQty;
+            const lineTotalWost = unitPriceWost * item.approvedQty;
+            const taxAmt = lineTotal - lineTotalWost;
+
+            totalSubtotalWost += lineTotalWost;
+            totalTaxAmount += taxAmt;
+            totalRefundAmount += lineTotal;
+
+            return {
+              salesOrderItemId: item.salesOrderItemId,
+              itemId: item.itemId,
+              quantity: item.approvedQty,
+              originalUnitPrice: new Decimal(refundPerUnit),
+              originalPaidPerUnit: new Decimal(refundPerUnit),
+              refundPerUnit: new Decimal(refundPerUnit),
+              unitPriceWost: new Decimal(
+                Math.round(unitPriceWost * 10000) / 10000,
+              ),
+              lineTotalWost: new Decimal(Math.round(lineTotalWost * 100) / 100),
+              taxPercent: new Decimal(taxPercent),
+              taxAmount: new Decimal(Math.round(taxAmt * 100) / 100),
+              lineTotal: new Decimal(lineTotal),
+              reason: claim.reasonNotes || claim.reasonCode || 'CLAIM_RETURN',
+            };
+          });
+
+          // 3. Create pos_returns and pos_return_items entry
+          const savedPosReturn = await tx.posReturn.create({
+            data: {
+              returnNumber,
+              salesOrderId: claim.salesOrderId,
+              originalCustomerId: claim.salesOrder.customerId || null,
+              customerId: claim.salesOrder.customerId || null,
+              returnType: 'CLAIM',
+              refundMode: 'VOUCHER',
+              locationId: outletLocation.id,
+              createdById: userId || null,
+              cashierUserId: userId || null,
+              subtotalWost: new Decimal(
+                Math.round(totalSubtotalWost * 100) / 100,
+              ),
+              discountWost: new Decimal(0),
+              taxAmount: new Decimal(Math.round(totalTaxAmount * 100) / 100),
+              totalRefundAmount: new Decimal(
+                Math.round(totalRefundAmount * 100) / 100,
+              ),
+              reason: claim.reasonNotes || claim.reasonCode || 'CLAIM_RETURN',
+              isCrossLocation: false,
+              items: {
+                create: returnItemsData,
+              },
+            },
+          });
+
+          // 4. Generate CLAIM Voucher (Code: CLM-XXXXXX, Type: CLAIM)
+          const voucherCode = `CLM-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+          const voucherExpiresAt = new Date();
+          voucherExpiresAt.setDate(voucherExpiresAt.getDate() + 30); // 30 days expiry
+
+          const claimVoucher = await tx.voucher.create({
+            data: {
+              code: voucherCode,
+              voucherType: 'CLAIM',
+              faceValue: new Decimal(Math.round(totalRefundAmount * 100) / 100),
+              description: `Claim voucher for acknowledged claim ${claim.claimNumber} (Return: ${returnNumber})`,
+              customerId: claim.salesOrder.customerId || null,
+              requireCustomerMatch: false,
+              issuedByLocationId: outletLocation.id,
+              issuedByUserId: userId || null,
+              sourceOrderId: claim.salesOrderId,
+              expiresAt: voucherExpiresAt,
+              isActive: true,
+              isRedeemed: false,
+              locations: {
+                create: {
+                  locationId: outletLocation.id,
+                },
+              },
+              transactions: {
+                create: {
+                  action: 'ISSUED',
+                  amountUsed: 0,
+                  locationId: outletLocation.id,
+                  notes: `Issued for acknowledged claim ${claim.claimNumber} (Return: ${returnNumber})`,
+                },
+              },
+            },
+          });
+
+          // Link voucher to posReturn
+          await tx.posReturn.update({
+            where: { id: savedPosReturn.id },
+            data: { voucherId: claimVoucher.id },
+          });
+
+          // 5. Create Transfer Request (STN) in COMPLETED status (Location to Location: Outlet Location → PLM Location)
+          const transferRequestNo = await this.generateTransferRequestNumber(tx);
+          const now = new Date();
+
+          const transferRequest = await tx.transferRequest.create({
+            data: {
+              requestNo: transferRequestNo,
+              fromLocationId: outletLocation.id,
+              fromWarehouseId: null,
+              toLocationId: plmLocation.id,
+              toWarehouseId: null,
+              transferType: 'CLAIM_TO_PLM',
+              status: 'COMPLETED',
+              notes: claim.reviewNotes?.trim()
+                ? `Review Remarks: ${claim.reviewNotes.trim()} | Claim: ${claim.claimNumber} (Return: ${returnNumber}, Voucher: ${voucherCode})`
+                : `Auto-generated transfer for claim ${claim.claimNumber} (Return: ${returnNumber}, Voucher: ${voucherCode})`,
+              createdById: userId || null,
+              approvedById: userId || null,
+              checkedById: userId || null,
+              authorizedById: userId || null,
+              sourceApprovedById: userId || null,
+              checkedAt: now,
+              authorizedAt: now,
+              sourceApprovedAt: now,
+              items: {
+                create: approvedItems.map((item) => ({
+                  itemId: item.itemId,
+                  quantity: new Decimal(item.approvedQty),
+                })),
+              },
+            },
+          });
+
+          // Link STN to posReturn
+          await tx.posReturn.update({
+            where: { id: savedPosReturn.id },
+            data: { transferRequestId: transferRequest.id },
+          });
+
+          // 6. Stock Movements (Pure Location-to-Location)
+          for (const item of approvedItems) {
+            const itemRate = await this.getCurrentItemRate(tx, item.itemId);
+            const qty = item.approvedQty;
+
+            // 6a. POS Return (Inbound to POS Outlet Location)
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: outletWarehouseId,
+                locationId: outletLocation.id,
+                qty: qty,
+                movementType: 'INBOUND',
+                referenceType: 'POS_RETURN',
+                referenceId: savedPosReturn.id,
+                rate: itemRate,
+              },
+              tx,
+            );
+
+            // Increment POS Outlet inventory
+            const posStock = await tx.inventoryItem.findFirst({
+              where: {
+                itemId: item.itemId,
+                locationId: outletLocation.id,
+                status: 'AVAILABLE',
+              },
+            });
+
+            if (posStock) {
+              await tx.inventoryItem.update({
+                where: { id: posStock.id },
+                data: { quantity: { increment: qty } },
+              });
+            } else {
+              await tx.inventoryItem.create({
+                data: {
+                  itemId: item.itemId,
+                  warehouseId: outletWarehouseId,
+                  locationId: outletLocation.id,
+                  quantity: qty,
+                  status: 'AVAILABLE',
+                },
+              });
+            }
+
+            // 6b. Outlet Transfer Out (Outbound from POS Outlet Location)
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: outletWarehouseId,
+                locationId: outletLocation.id,
+                qty: -qty,
+                movementType: 'OUTBOUND',
+                referenceType: 'OUTLET_TRANSFER_OUT',
+                referenceId: transferRequest.id,
+                rate: itemRate,
+              },
+              tx,
+            );
+
+            // Decrement POS Outlet inventory
+            const posStockUpdated = await tx.inventoryItem.findFirst({
+              where: {
+                itemId: item.itemId,
+                locationId: outletLocation.id,
+                status: 'AVAILABLE',
+              },
+            });
+
+            if (posStockUpdated) {
+              await tx.inventoryItem.update({
+                where: { id: posStockUpdated.id },
+                data: { quantity: { decrement: qty } },
+              });
+            }
+
+            // 6c. PLM Inbound (Inbound to PLM Location)
+            await this.stockLedgerService.createEntry(
+              {
+                itemId: item.itemId,
+                warehouseId: plmWarehouseId,
+                locationId: plmLocation.id,
+                qty: qty,
+                movementType: 'INBOUND' as any,
+                referenceType: 'CLAIM_ACKNOWLEDGED',
+                referenceId: transferRequest.id,
+                rate: itemRate,
+              },
+              tx,
+            );
+
+            // Increment PLM Location inventory
+            const plmStock = await tx.inventoryItem.findFirst({
+              where: {
+                itemId: item.itemId,
+                warehouseId: plmWarehouseId,
+                locationId: plmLocation.id,
+                status: 'AVAILABLE',
+              },
+            });
+
+            if (plmStock) {
+              await tx.inventoryItem.update({
+                where: { id: plmStock.id },
+                data: { quantity: { increment: qty } },
+              });
+            } else {
+              await tx.inventoryItem.create({
+                data: {
+                  itemId: item.itemId,
+                  warehouseId: plmWarehouseId,
+                  locationId: plmLocation.id,
+                  quantity: qty,
+                  status: 'AVAILABLE',
+                },
+              });
+            }
+          }
+
+          // 7. Update Claim status and links
+          const updatedClaim = await tx.posClaim.update({
+            where: { id: claim.id },
+            data: {
+              status: 'COMPLETED',
+              transferRequestId: transferRequest.id,
+              voucherId: claimVoucher.id,
+            },
+          });
+
+          return {
+            claim: updatedClaim,
+            posReturn: savedPosReturn,
+            voucher: claimVoucher,
+            transferRequest,
+          };
+        },
+        {
+          maxWait: 10000,
+          timeout: 20000,
+        },
+      );
+
+      runInBackground(
+        'Acknowledge Claim',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-claims',
+          entity: 'PosClaim',
+          entityId: claim.id,
+          description: `PLM acknowledged claim ${claim.claimNumber}. Sales return ${result.posReturn.returnNumber} and voucher ${result.voucher.code} created.`,
+          newValues: JSON.stringify({
+            returnNumber: result.posReturn.returnNumber,
+            voucherCode: result.voucher.code,
+            transferRequestNo: result.transferRequest.requestNo,
+            status: 'COMPLETED',
+          }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      // 🔔 Notify POS Location
+      if (outletLocationId) {
+        runInBackground(
+          'Notify POS - Claim Acknowledged',
+          this.notifyLocationUsers(outletLocationId, {
+            title: '📦 Claim Acknowledged',
+            message: `Claim ${claim.claimNumber} acknowledged by PLM. Voucher ${result.voucher.code} has been issued.`,
+            category: 'claims',
+            priority: 'normal',
+            actionType: 'view_claim',
+            actionPayload: {
+              claimId: claim.id,
+              claimNumber: claim.claimNumber,
+            },
+            entityType: 'PosClaim',
+            entityId: claim.id,
+          }),
+        );
+      }
+
+      return {
+        status: true,
+        data: result,
+        message: `Claim acknowledged successfully. Return ${result.posReturn.returnNumber} and Claim Voucher ${result.voucher.code} created.`,
+      };
+    } catch (error: any) {
+      runInBackground(
+        'Acknowledge Claim (Failure)',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-claims',
+          entity: 'PosClaim',
+          entityId: id,
+          description: `Failed to acknowledge claim ${id}`,
+          errorMessage: error?.message,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'failure',
+        }),
+      );
+      throw error;
+    }
+  }
 }
+
