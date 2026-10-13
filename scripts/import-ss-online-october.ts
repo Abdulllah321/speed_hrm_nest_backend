@@ -87,8 +87,8 @@ async function processSsOnlineOctober(prisma: PrismaClient, isDryRun: boolean, c
   console.log(`======================================================================\n`);
 
   const dataDir = path.join(__dirname, '..', 'data');
-  const fileSales = path.join(dataDir, 'SS1011-1-10-oct-sales.md');
-  const fileReturns = path.join(dataDir, 'SS1011-1-10-oct-sales-return.md');
+  const fileSales = path.join(dataDir, 'SS1011-1-10-oct-sales copy.md');
+  const fileReturns = path.join(dataDir, 'SS1011-1-10-oct-sales-return copy.md');
   const fileExchangeVouchers = path.join(dataDir, 'SS1011-1-10-oct-exchange-voucher copy.md');
   const fileGiftVouchers = path.join(dataDir, 'SS1011-1-10-oct-exchange-voucher copy 2.md');
   const fileRefundVouchers = path.join(dataDir, 'SS1011-1-10-oct-refund-voucher.md');
@@ -161,90 +161,230 @@ async function processSsOnlineOctober(prisma: PrismaClient, isDryRun: boolean, c
     const octStart = new Date('2026-10-01T00:00:00.000Z');
     const octEnd = new Date('2026-10-10T23:59:59.999Z');
 
+    const salesRawForClean = fs.readFileSync(fileSales, 'utf-8').split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('|-') && !l.startsWith('| ---'));
+    const returnRawForClean = fs.readFileSync(fileReturns, 'utf-8').split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('|-') && !l.startsWith('| ---'));
+
+    const octSalesDocNos = new Set<string>();
+    for (let i = 1; i < salesRawForClean.length; i++) {
+      const p = parseMarkdownLine(salesRawForClean[i]);
+      if (p[2]) octSalesDocNos.add(p[2].trim());
+    }
+
+    const octReturnDocNos = new Set<string>();
+    for (let i = 1; i < returnRawForClean.length; i++) {
+      const p = parseMarkdownLine(returnRawForClean[i]);
+      if (p[2]) octReturnDocNos.add(p[2].trim());
+    }
+
     const existingSales = await prisma.salesOrder.findMany({
       where: {
         locationId: ssLocation.id,
-        createdAt: { gte: octStart, lte: octEnd },
+        orderNumber: { in: Array.from(octSalesDocNos) },
       },
       select: { id: true },
     });
-
-    if (existingSales.length > 0) {
-      const sIds = existingSales.map((s) => s.id);
-      console.log(`  Deleting ${sIds.length} existing October Sales Orders & related records...`);
-      await prisma.voucherRedemption.deleteMany({ where: { orderId: { in: sIds } } });
-      await prisma.salesOrderItem.deleteMany({ where: { salesOrderId: { in: sIds } } });
-      await prisma.stockMovement.deleteMany({ where: { referenceId: { in: sIds }, referenceType: 'POS_SALE' } });
-      await prisma.stockLedger.deleteMany({ where: { referenceId: { in: sIds }, referenceType: 'POS_SALE' } });
-      await prisma.salesOrder.deleteMany({ where: { id: { in: sIds } } });
-    }
 
     const existingReturns = await prisma.posReturn.findMany({
       where: {
         locationId: ssLocation.id,
-        createdAt: { gte: octStart, lte: octEnd },
+        returnNumber: { in: Array.from(octReturnDocNos) },
       },
       select: { id: true, voucherId: true },
     });
 
-    if (existingReturns.length > 0) {
-      const rIds = existingReturns.map((r) => r.id);
-      const vIds = existingReturns.map((r) => r.voucherId).filter(Boolean) as string[];
-      console.log(`  Deleting ${rIds.length} existing October PosReturns & related records...`);
-      await prisma.posReturnItem.deleteMany({ where: { posReturnId: { in: rIds } } });
-      await prisma.stockMovement.deleteMany({ where: { referenceId: { in: rIds }, referenceType: 'POS_RETURN' } });
-      await prisma.stockLedger.deleteMany({ where: { referenceId: { in: rIds }, referenceType: 'POS_RETURN' } });
-      await prisma.posReturn.deleteMany({ where: { id: { in: rIds } } });
+    const sIds = existingSales.map((s) => s.id);
+    const rIds = existingReturns.map((r) => r.id);
+    const returnVoucherIds = existingReturns.map((r) => r.voucherId).filter(Boolean) as string[];
 
-      if (vIds.length > 0) {
-        await prisma.voucherRedemption.deleteMany({ where: { voucherId: { in: vIds } } });
-        await prisma.voucherTransaction.deleteMany({ where: { voucherId: { in: vIds } } });
-        await prisma.voucherLocation.deleteMany({ where: { voucherId: { in: vIds } } });
-        await prisma.voucher.deleteMany({ where: { id: { in: vIds } } });
+    // Read old invalid barcodes from non-copy files if they exist to catch any invalid items
+    const oldInvalidBarcodes = new Set<string>();
+    const oldSalesFile = path.join(dataDir, 'SS1011-1-10-oct-sales.md');
+    const oldReturnsFile = path.join(dataDir, 'SS1011-1-10-oct-sales-return.md');
+    if (fs.existsSync(oldSalesFile)) {
+      const oldSLines = fs.readFileSync(oldSalesFile, 'utf-8').split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('|-') && !l.startsWith('| ---'));
+      for (let i = 1; i < oldSLines.length; i++) {
+        const p = parseMarkdownLine(oldSLines[i]);
+        if (p[6]) oldInvalidBarcodes.add(p[6].replace(/['"]/g, '').trim());
+      }
+    }
+    if (fs.existsSync(oldReturnsFile)) {
+      const oldRLines = fs.readFileSync(oldReturnsFile, 'utf-8').split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('|-') && !l.startsWith('| ---'));
+      for (let i = 1; i < oldRLines.length; i++) {
+        const p = parseMarkdownLine(oldRLines[i]);
+        if (p[6]) oldInvalidBarcodes.add(p[6].replace(/['"]/g, '').trim());
       }
     }
 
-    // Delete October Gift Vouchers
-    const existingGifts = await prisma.voucher.findMany({
+    // Find any auto-created/invalid items (by barcode from old file, or by ITEM- / POS Item description)
+    const badItems = await prisma.item.findMany({
       where: {
-        issuedByLocationId: ssLocation.id,
-        voucherType: 'GIFT',
-        createdAt: { gte: octStart, lte: octEnd },
+        OR: [
+          ...(oldInvalidBarcodes.size > 0 ? [{ barCode: { in: Array.from(oldInvalidBarcodes) } }] : []),
+          { description: { startsWith: 'POS Item (' } },
+          { itemId: { startsWith: 'ITEM-887792000000' } },
+          { itemId: { startsWith: 'ITEM-4052000000000' } },
+          { itemId: { startsWith: 'ITEM-4067910000000' } },
+          { itemId: { startsWith: 'ITEM-197600000000' } },
+          { itemId: { startsWith: 'ITEM-4550460000000' } },
+        ],
+      },
+      select: { id: true, barCode: true },
+    });
+    const badItemIds = new Set(badItems.map((b) => b.id));
+
+    // Calculate net delta per item from existing October stock ledgers to revert inventory
+    const saleLedgers = await prisma.stockLedger.findMany({
+      where: {
+        locationId: ssLocation.id,
+        referenceId: { in: sIds },
+        referenceType: 'POS_SALE',
+      },
+      select: { itemId: true, qty: true },
+    });
+
+    const returnLedgers = await prisma.stockLedger.findMany({
+      where: {
+        locationId: ssLocation.id,
+        referenceId: { in: rIds },
+        referenceType: 'POS_RETURN',
+      },
+      select: { itemId: true, qty: true },
+    });
+
+    const netDeltaRevertMap = new Map<string, number>();
+    for (const row of saleLedgers) {
+      netDeltaRevertMap.set(row.itemId, (netDeltaRevertMap.get(row.itemId) || 0) + Number(row.qty));
+    }
+    for (const row of returnLedgers) {
+      netDeltaRevertMap.set(row.itemId, (netDeltaRevertMap.get(row.itemId) || 0) + Number(row.qty));
+    }
+
+    // Revert inventory balances
+    for (const [itemId, netDelta] of netDeltaRevertMap.entries()) {
+      if (badItemIds.has(itemId)) {
+        await prisma.inventoryItem.deleteMany({
+          where: { itemId, locationId: ssLocation.id },
+        });
+      } else {
+        const inv = await prisma.inventoryItem.findFirst({
+          where: { itemId, locationId: ssLocation.id },
+        });
+        if (inv) {
+          const otherLedgers = await prisma.stockLedger.count({
+            where: {
+              locationId: ssLocation.id,
+              itemId,
+              referenceId: { notIn: [...sIds, ...rIds] },
+            },
+          });
+          if (otherLedgers === 0 && Number(inv.quantity) === netDelta) {
+            await prisma.inventoryItem.delete({ where: { id: inv.id } });
+          } else {
+            await prisma.inventoryItem.update({
+              where: { id: inv.id },
+              data: { quantity: { decrement: netDelta } },
+            });
+          }
+        }
+      }
+    }
+
+    // Delete vouchers
+    const octVouchers = await prisma.voucher.findMany({
+      where: {
+        OR: [
+          { id: { in: returnVoucherIds } },
+          { code: { startsWith: 'EXC-SSONLINE27-004' } },
+          { code: 'EXC-67M9ZI' },
+          { code: { in: ['GFT-SS1011-2627-0029', 'GFT-SS1011-2627-0030', 'GFT-SS1011-2627-0031'] } },
+          { code: 'REF-SSONLINE27-00873' },
+          { issuedByLocationId: ssLocation.id, createdAt: { gte: octStart, lte: octEnd } },
+        ],
       },
       select: { id: true },
     });
-    if (existingGifts.length > 0) {
-      const gIds = existingGifts.map((g) => g.id);
-      console.log(`  Deleting ${gIds.length} existing October Gift Vouchers...`);
-      await prisma.voucherRedemption.deleteMany({ where: { voucherId: { in: gIds } } });
-      await prisma.voucherTransaction.deleteMany({ where: { voucherId: { in: gIds } } });
-      await prisma.voucherLocation.deleteMany({ where: { voucherId: { in: gIds } } });
-      await prisma.voucher.deleteMany({ where: { id: { in: gIds } } });
+    const vIds = Array.from(new Set([...returnVoucherIds, ...octVouchers.map((v) => v.id)]));
+
+    if (sIds.length > 0 || vIds.length > 0) {
+      await prisma.voucherRedemption.deleteMany({
+        where: {
+          OR: [{ orderId: { in: sIds } }, { voucherId: { in: vIds } }],
+        },
+      });
     }
 
-    // Clean any orphaned or lingering stock movements & ledgers for October SS1011
+    if (vIds.length > 0) {
+      await prisma.voucherTransaction.deleteMany({ where: { voucherId: { in: vIds } } });
+      await prisma.voucherLocation.deleteMany({ where: { voucherId: { in: vIds } } });
+      await prisma.voucher.deleteMany({ where: { id: { in: vIds } } });
+    }
+
+    if (sIds.length > 0) {
+      console.log(`  Deleting ${sIds.length} existing October Sales Orders & related records...`);
+      await prisma.salesOrderItem.deleteMany({ where: { salesOrderId: { in: sIds } } });
+      await prisma.salesOrder.deleteMany({ where: { id: { in: sIds } } });
+    }
+
+    if (badItems.length > 0) {
+      await prisma.salesOrderItem.deleteMany({
+        where: { itemId: { in: Array.from(badItemIds) } },
+      });
+    }
+
+    if (rIds.length > 0) {
+      console.log(`  Deleting ${rIds.length} existing October PosReturns & related records...`);
+      await prisma.posReturnItem.deleteMany({ where: { posReturnId: { in: rIds } } });
+      await prisma.posReturn.deleteMany({ where: { id: { in: rIds } } });
+    }
+
+    // Clean stock movements & ledgers for October SS1011
     await prisma.stockMovement.deleteMany({
       where: {
         OR: [
-          { movementNo: { startsWith: 'MV-RET-SR-SSONLINE' } },
-          { movementNo: { startsWith: 'MV-SALE-SI-SSONLINE' } },
-          { toLocationId: ssLocation.id, movementDate: { gte: octStart, lte: octEnd } },
-          { fromLocationId: ssLocation.id, movementDate: { gte: octStart, lte: octEnd } },
+          { referenceId: { in: [...sIds, ...rIds] } },
+          { itemId: { in: Array.from(badItemIds) } },
+          { movementNo: { startsWith: 'MV-SALE-SI-SSONLINE27-04' } },
+          { movementNo: { startsWith: 'MV-RET-SR-SSONLINE27-004' } },
         ],
       },
     });
 
     await prisma.stockLedger.deleteMany({
       where: {
-        locationId: ssLocation.id,
-        createdAt: { gte: octStart, lte: octEnd },
+        OR: [
+          { referenceId: { in: [...sIds, ...rIds] } },
+          { itemId: { in: Array.from(badItemIds) } },
+          { locationId: ssLocation.id, createdAt: { gte: octStart, lte: octEnd } },
+        ],
       },
     });
 
-    console.log(`  ✅ Existing October records cleaned successfully.`);
+    // Delete auxiliary bad items records and bad items
+    if (badItems.length > 0) {
+      await prisma.monthlyStockSnapshot.deleteMany({
+        where: { itemId: { in: Array.from(badItemIds) } },
+      });
+      await prisma.inventoryItem.deleteMany({
+        where: { itemId: { in: Array.from(badItemIds) } },
+      });
+      await prisma.stockAdjustmentItem.deleteMany({
+        where: { itemId: { in: Array.from(badItemIds) } },
+      });
+      await prisma.transferRequestItem.deleteMany({
+        where: { itemId: { in: Array.from(badItemIds) } },
+      });
+      await prisma.discountCampaignItem.deleteMany({
+        where: { itemId: { in: Array.from(badItemIds) } },
+      });
+      await prisma.item.deleteMany({
+        where: { id: { in: Array.from(badItemIds) } },
+      });
+    }
+
+    console.log(`  ✅ Existing October records & invalid items cleaned successfully.`);
   }
 
-  // 3. Pre-cache Catalog Items & Barcode Resolution (Exact + Prefix Matching)
+  // 3. Pre-cache Catalog Items & Barcode Resolution (Strict Exact Matching)
   console.log(`\n🔍 Pre-caching Catalog Items and resolving barcodes...`);
   const itemCacheByBarcode = new Map<string, any>();
   const itemCacheById = new Map<string, any>();
@@ -292,64 +432,10 @@ async function processSsOnlineOctober(prisma: PrismaClient, isDryRun: boolean, c
     itemCacheById.set(it.id, it);
   }
 
-  // For barcodes not exactly matched (due to Excel scientific notation trailing zeros), resolve by prefix
-  for (const bar of allDistinctBarcodes) {
-    if (itemCacheByBarcode.has(bar)) continue;
-    const prefix = bar.replace(/0+$/, '');
-    if (prefix.length >= 5) {
-      const candidate = await prisma.item.findFirst({
-        where: { barCode: { startsWith: prefix } },
-        select: { id: true, barCode: true, sku: true, unitPrice: true, unitCost: true, description: true },
-      });
-      if (candidate) {
-        itemCacheByBarcode.set(bar, candidate);
-        itemCacheById.set(candidate.id, candidate);
-      }
-    }
-  }
-
-  // Create any remaining items in Item table so relations and inventory ledger succeed
+  // Verify all barcodes exist exactly in catalog
   const missingBarcodes = allDistinctBarcodes.filter((b) => !itemCacheByBarcode.has(b));
   if (missingBarcodes.length > 0) {
-    console.log(`  📦 Auto-creating ${missingBarcodes.length} missing items in catalog...`);
-    if (!isDryRun) {
-      await prisma.item.createMany({
-        data: missingBarcodes.map((b) => ({
-          itemId: `ITEM-${b}`,
-          sku: b,
-          barCode: b,
-          description: `POS Item (${b})`,
-          unitPrice: barcodeUnitPrices.get(b) || 0,
-          unitCost: Math.round((barcodeUnitPrices.get(b) || 0) * 0.7 * 100) / 100,
-          status: 'active',
-          isActive: true,
-        })),
-        skipDuplicates: true,
-      });
-
-      const newlyCreated = await prisma.item.findMany({
-        where: { barCode: { in: missingBarcodes } },
-        select: { id: true, barCode: true, sku: true, unitPrice: true, unitCost: true, description: true },
-      });
-
-      for (const it of newlyCreated) {
-        if (it.barCode) itemCacheByBarcode.set(it.barCode, it);
-        itemCacheById.set(it.id, it);
-      }
-    } else {
-      for (const b of missingBarcodes) {
-        const fakeItem = {
-          id: `dry-item-${b}`,
-          barCode: b,
-          sku: b,
-          unitPrice: barcodeUnitPrices.get(b) || 0,
-          unitCost: 0,
-          description: `POS Item (${b})`,
-        };
-        itemCacheByBarcode.set(b, fakeItem);
-        itemCacheById.set(fakeItem.id, fakeItem);
-      }
-    }
+    throw new Error(`Catalog verification failed: ${missingBarcodes.length} barcodes not found in database: ${missingBarcodes.slice(0, 10).join(', ')}`);
   }
 
   console.log(`  ✔ Successfully resolved 100% of items (${itemCacheByBarcode.size} barcode mappings indexed).`);
