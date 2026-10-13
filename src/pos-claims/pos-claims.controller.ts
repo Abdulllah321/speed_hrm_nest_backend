@@ -140,4 +140,17 @@ export class PosClaimsController {
       userAgent: req.headers['user-agent'],
     });
   }
+
+  @Post(':id/acknowledge')
+  @ApiOperation({
+    summary:
+      'PLM physically acknowledges receipt of claim items, generating POS return, claim voucher, and updating inventory',
+  })
+  acknowledge(@Param('id') id: string, @Req() req: any) {
+    return this.service.acknowledgeClaim(id, req.user?.id, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
 }

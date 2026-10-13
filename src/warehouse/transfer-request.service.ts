@@ -1382,12 +1382,22 @@ export class TransferRequestService {
     if (req.transferType === 'CLAIM_TO_PLM') {
       const claim = await this.prisma.posClaim.findFirst({
         where: { transferRequestId: req.id },
-        select: { claimNumber: true, claimType: true },
+        select: {
+          id: true,
+          claimNumber: true,
+          claimType: true,
+          reviewNotes: true,
+          reasonNotes: true,
+          reasonCode: true,
+        },
       });
       if (claim) {
         req.claim = {
           claimNo: claim.claimNumber,
           claimType: claim.claimType,
+          reviewNotes: claim.reviewNotes,
+          reasonNotes: claim.reasonNotes,
+          reasonCode: claim.reasonCode,
         };
       }
     }
