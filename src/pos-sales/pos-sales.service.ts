@@ -182,7 +182,7 @@ export class PosSalesService implements OnModuleInit {
     return this.generateSequentialNumber('RF', 'refundNumber', locationId, tx);
   }
 
-  // ─── Lookup items by barcode / SKU (for POS scanner & Online Orders) ──────────────
+  // ─── Lookup items by barcode / SKU (for POS scanner) ──────────────
   async lookupItem(query: string, locationId: string) {
     const searchTerm = query.trim();
     if (!searchTerm)
@@ -190,7 +190,7 @@ export class PosSalesService implements OnModuleInit {
 
     // ── Step 1: text-match items first (selective, small result set) ──
     // Exact matches on barCode/sku/itemId are boosted by ordering them first.
-    let items = await this.prisma.item.findMany({
+    const items = await this.prisma.item.findMany({
       where: {
         isActive: true,
         OR: [
@@ -211,52 +211,14 @@ export class PosSalesService implements OnModuleInit {
       },
     });
 
-    // Variant / Delimited SKU fallback (e.g. online orders often use SKU_SIZE, SKU-SIZE, or barcode with variant suffix)
-    if (
-      !items.length &&
-      (searchTerm.includes('_') ||
-        searchTerm.includes('-') ||
-        searchTerm.includes(' '))
-    ) {
-      const parts = searchTerm
-        .split(/[-_ ]+/)
-        .map((p) => p.trim())
-        .filter((p) => p.length >= 2);
-      if (parts.length > 0) {
-        items = await this.prisma.item.findMany({
-          where: {
-            isActive: true,
-            OR: [
-              { barCode: { equals: parts[0], mode: 'insensitive' } },
-              { sku: { equals: parts[0], mode: 'insensitive' } },
-              { itemId: { equals: parts[0], mode: 'insensitive' } },
-              { barCode: { contains: parts[0], mode: 'insensitive' } },
-              { sku: { contains: parts[0], mode: 'insensitive' } },
-            ],
-          },
-          take: 20,
-          include: {
-            brand: true,
-            size: true,
-            color: true,
-          },
-        });
-      }
-    }
-
     if (!items.length) return { status: true, data: [] };
 
     // ── Step 2: check stock only for the matched items (≤20 IDs) ──
-    // Uses actual available stock calculation (InventoryItem [AVAILABLE] + StockLedger - StockReserve)
+    // Single enrichForPos call handles both ledger + inventoryItem fallback.
     const enriched = await this.enrichForPos(items, locationId);
 
-    // Prioritize in-stock items first
-    const inStock = enriched.filter((i) => i.stockQty > 0);
-    // If inStock items exist, return them. Otherwise return enriched matches so online orders and POS can verify availability
-    return {
-      status: true,
-      data: inStock.length > 0 ? inStock : enriched,
-    };
+    // Return only items that are actually in stock at this location
+    return { status: true, data: enriched.filter((i) => i.stockQty > 0) };
   }
 
   // ─── Quick barcode scan (exact match only, returns single item) ───
