@@ -1191,40 +1191,54 @@ export class PosClaimsService {
             },
           });
 
-          // 4. Generate CLAIM Voucher (Code: CLM-XXXXXX, Type: CLAIM)
-          const voucherCode = `CLM-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-          const voucherExpiresAt = new Date();
-          voucherExpiresAt.setDate(voucherExpiresAt.getDate() + 30); // 30 days expiry
+          // 4. Generate or link CLAIM Voucher (Code: CLM-XXXXXX, Type: CLAIM)
+          let claimVoucher: any;
+          let voucherCode: string = '';
 
-          const claimVoucher = await tx.voucher.create({
-            data: {
-              code: voucherCode,
-              voucherType: 'CLAIM',
-              faceValue: new Decimal(Math.round(totalRefundAmount * 100) / 100),
-              description: `Claim voucher for acknowledged claim ${claim.claimNumber} (Return: ${returnNumber})`,
-              customerId: claim.salesOrder.customerId || null,
-              requireCustomerMatch: false,
-              issuedByLocationId: outletLocation.id,
-              issuedByUserId: userId || null,
-              sourceOrderId: claim.salesOrderId,
-              expiresAt: voucherExpiresAt,
-              isActive: true,
-              isRedeemed: false,
-              locations: {
-                create: {
-                  locationId: outletLocation.id,
+          if (claim.voucherId) {
+            claimVoucher = await tx.voucher.findUnique({
+              where: { id: claim.voucherId },
+            });
+            if (claimVoucher) {
+              voucherCode = claimVoucher.code;
+            }
+          }
+
+          if (!claimVoucher) {
+            voucherCode = `CLM-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+            const voucherExpiresAt = new Date();
+            voucherExpiresAt.setDate(voucherExpiresAt.getDate() + 30); // 30 days expiry
+
+            claimVoucher = await tx.voucher.create({
+              data: {
+                code: voucherCode,
+                voucherType: 'CLAIM',
+                faceValue: new Decimal(Math.round(totalRefundAmount * 100) / 100),
+                description: `Claim voucher for acknowledged claim ${claim.claimNumber} (Return: ${returnNumber})`,
+                customerId: claim.salesOrder.customerId || null,
+                requireCustomerMatch: false,
+                issuedByLocationId: outletLocation.id,
+                issuedByUserId: userId || null,
+                sourceOrderId: claim.salesOrderId,
+                expiresAt: voucherExpiresAt,
+                isActive: true,
+                isRedeemed: false,
+                locations: {
+                  create: {
+                    locationId: outletLocation.id,
+                  },
+                },
+                transactions: {
+                  create: {
+                    action: 'ISSUED',
+                    amountUsed: 0,
+                    locationId: outletLocation.id,
+                    notes: `Issued for acknowledged claim ${claim.claimNumber} (Return: ${returnNumber})`,
+                  },
                 },
               },
-              transactions: {
-                create: {
-                  action: 'ISSUED',
-                  amountUsed: 0,
-                  locationId: outletLocation.id,
-                  notes: `Issued for acknowledged claim ${claim.claimNumber} (Return: ${returnNumber})`,
-                },
-              },
-            },
-          });
+            });
+          }
 
           // Link voucher to posReturn
           await tx.posReturn.update({
@@ -1232,38 +1246,67 @@ export class PosClaimsService {
             data: { voucherId: claimVoucher.id },
           });
 
-          // 5. Create Transfer Request (STN) in COMPLETED status (Location to Location: Outlet Location → PLM Location)
-          const transferRequestNo = await this.generateTransferRequestNumber(tx);
+          // 5. Create or Update Transfer Request (STN) in COMPLETED status (Location to Location: Outlet Location → PLM Location)
           const now = new Date();
+          const transferNotes = claim.reviewNotes?.trim()
+            ? `Review Remarks: ${claim.reviewNotes.trim()} | Claim: ${claim.claimNumber} (Return: ${returnNumber}, Voucher: ${voucherCode})`
+            : `Auto-generated transfer for claim ${claim.claimNumber} (Return: ${returnNumber}, Voucher: ${voucherCode})`;
 
-          const transferRequest = await tx.transferRequest.create({
-            data: {
-              requestNo: transferRequestNo,
-              fromLocationId: outletLocation.id,
-              fromWarehouseId: null,
-              toLocationId: plmLocation.id,
-              toWarehouseId: null,
-              transferType: 'CLAIM_TO_PLM',
-              status: 'COMPLETED',
-              notes: claim.reviewNotes?.trim()
-                ? `Review Remarks: ${claim.reviewNotes.trim()} | Claim: ${claim.claimNumber} (Return: ${returnNumber}, Voucher: ${voucherCode})`
-                : `Auto-generated transfer for claim ${claim.claimNumber} (Return: ${returnNumber}, Voucher: ${voucherCode})`,
-              createdById: userId || null,
-              approvedById: userId || null,
-              checkedById: userId || null,
-              authorizedById: userId || null,
-              sourceApprovedById: userId || null,
-              checkedAt: now,
-              authorizedAt: now,
-              sourceApprovedAt: now,
-              items: {
-                create: approvedItems.map((item) => ({
-                  itemId: item.itemId,
-                  quantity: new Decimal(item.approvedQty),
-                })),
+          let transferRequest: any;
+          if (claim.transferRequestId) {
+            transferRequest = await tx.transferRequest.findUnique({
+              where: { id: claim.transferRequestId },
+            });
+          }
+
+          if (transferRequest) {
+            transferRequest = await tx.transferRequest.update({
+              where: { id: transferRequest.id },
+              data: {
+                status: 'COMPLETED',
+                notes: transferNotes,
+                fromLocationId: outletLocation.id,
+                fromWarehouseId: null,
+                toLocationId: plmLocation.id,
+                toWarehouseId: null,
+                approvedById: userId || null,
+                checkedById: userId || null,
+                authorizedById: userId || null,
+                sourceApprovedById: userId || null,
+                checkedAt: now,
+                authorizedAt: now,
+                sourceApprovedAt: now,
               },
-            },
-          });
+            });
+          } else {
+            const transferRequestNo = await this.generateTransferRequestNumber(tx);
+            transferRequest = await tx.transferRequest.create({
+              data: {
+                requestNo: transferRequestNo,
+                fromLocationId: outletLocation.id,
+                fromWarehouseId: null,
+                toLocationId: plmLocation.id,
+                toWarehouseId: null,
+                transferType: 'CLAIM_TO_PLM',
+                status: 'COMPLETED',
+                notes: transferNotes,
+                createdById: userId || null,
+                approvedById: userId || null,
+                checkedById: userId || null,
+                authorizedById: userId || null,
+                sourceApprovedById: userId || null,
+                checkedAt: now,
+                authorizedAt: now,
+                sourceApprovedAt: now,
+                items: {
+                  create: approvedItems.map((item) => ({
+                    itemId: item.itemId,
+                    quantity: new Decimal(item.approvedQty),
+                  })),
+                },
+              },
+            });
+          }
 
           // Link STN to posReturn
           await tx.posReturn.update({
