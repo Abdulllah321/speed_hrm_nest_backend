@@ -223,15 +223,10 @@ export class PosSalesService implements OnModuleInit {
 
   // ─── Quick barcode scan (exact match only, returns single item) ───
   async scanBarcode(barcode: string, locationId: string) {
-    const rawBarcode = barcode.trim();
-    let item = await this.prisma.item.findFirst({
+    const item = await this.prisma.item.findFirst({
       where: {
         isActive: true,
-        OR: [
-          { barCode: { equals: rawBarcode, mode: 'insensitive' } },
-          { sku: { equals: rawBarcode, mode: 'insensitive' } },
-          { itemId: { equals: rawBarcode, mode: 'insensitive' } },
-        ],
+        OR: [{ barCode: { equals: barcode.trim(), mode: 'insensitive' } }],
       },
       include: {
         brand: true,
@@ -240,37 +235,17 @@ export class PosSalesService implements OnModuleInit {
       },
     });
 
-    // Fallback for variant SKU barcodes (e.g. BARCODE_M or SKU-32)
-    if (
-      !item &&
-      (rawBarcode.includes('_') ||
-        rawBarcode.includes('-') ||
-        rawBarcode.includes(' '))
-    ) {
-      const basePart = rawBarcode.split(/[-_ ]+/)[0].trim();
-      if (basePart.length >= 2) {
-        item = await this.prisma.item.findFirst({
-          where: {
-            isActive: true,
-            OR: [
-              { barCode: { equals: basePart, mode: 'insensitive' } },
-              { sku: { equals: basePart, mode: 'insensitive' } },
-              { itemId: { equals: basePart, mode: 'insensitive' } },
-            ],
-          },
-          include: {
-            brand: true,
-            size: true,
-            color: true,
-          },
-        });
-      }
-    }
-
     if (!item)
-      return { status: false, message: 'Item not found for this barcode/SKU' };
+      return { status: false, message: 'Item not found for this barcode' };
 
     const enriched = await this.enrichForPos([item], locationId);
+    if (!enriched[0] || enriched[0].stockQty <= 0) {
+      return {
+        status: false,
+        message: `${item.description || item.sku || 'Item'} is out of stock at this location`,
+      };
+    }
+
     return { status: true, data: enriched[0] };
   }
 
