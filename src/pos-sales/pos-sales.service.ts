@@ -6525,11 +6525,38 @@ export class PosSalesService implements OnModuleInit {
 
     const itemIds = items.map((i) => i.id);
 
-    // Calculate true actual available stock across location & linked warehouse
-    const stockMap = await this.calculateActualAvailableStock(
-      itemIds,
-      locationId,
-    );
+    // Primary: sum ledger entries scoped to this outlet location
+    const stockEntries = await this.prisma.stockLedger.groupBy({
+      by: ['itemId'],
+      where: {
+        itemId: { in: itemIds },
+        locationId: locationId,
+      },
+      _sum: { qty: true },
+    });
+
+    const stockMap = new Map<string, number>();
+    for (const entry of stockEntries) {
+      stockMap.set(entry.itemId, Number(entry._sum.qty || 0));
+    }
+
+    // Fallback: for items with no ledger entry at this outlet, read inventoryItem directly.
+    // This covers transfers completed before the outlet ledger entry was written.
+    const missingIds = itemIds.filter((id) => !stockMap.has(id));
+    if (missingIds.length > 0) {
+      const inventoryItems = await this.prisma.inventoryItem.findMany({
+        where: {
+          itemId: { in: missingIds },
+          locationId: locationId,
+          status: 'AVAILABLE',
+        },
+        select: { itemId: true, quantity: true },
+      });
+      for (const inv of inventoryItems) {
+        const existing = stockMap.get(inv.itemId) || 0;
+        stockMap.set(inv.itemId, existing + Number(inv.quantity));
+      }
+    }
 
     // ── Fetch active campaign discounts scoped to this location ───────
     const campaignDiscounts = await this.getActiveCampaignDiscounts(
