@@ -62,6 +62,7 @@ export class StockRequisitionService {
       where: {
         itemId,
         warehouseId,
+        locationId: null,
       },
       _sum: { qty: true },
     });
@@ -74,6 +75,7 @@ export class StockRequisitionService {
           itemId,
           status: 'AVAILABLE',
           warehouseId,
+          locationId: null,
         },
         _sum: { quantity: true },
       });
@@ -831,6 +833,7 @@ export class StockRequisitionService {
         where: {
           itemId: { in: itemIds },
           warehouseId: requisition.fromWarehouseId,
+          locationId: null,
         },
         _sum: { qty: true },
       });
@@ -844,6 +847,7 @@ export class StockRequisitionService {
           itemId: { in: itemIds },
           status: 'AVAILABLE',
           warehouseId: requisition.fromWarehouseId,
+          locationId: null,
         },
         _sum: { quantity: true },
       });
@@ -1281,6 +1285,7 @@ export class StockRequisitionService {
         where: {
           itemId: { in: resolvedItems.map((i) => i.itemId) },
           warehouseId,
+          locationId: null,
         },
         _sum: { qty: true },
       });
@@ -1299,6 +1304,7 @@ export class StockRequisitionService {
             itemId: { in: noLedgerItems.map((i) => i.itemId) },
             status: 'AVAILABLE',
             warehouseId,
+            locationId: null,
           },
           _sum: { quantity: true },
         });
@@ -1540,6 +1546,7 @@ export class StockRequisitionService {
       where: {
         itemId: { in: itemIds },
         warehouseId: fromWarehouseId,
+        locationId: null,
       },
       _sum: {
         qty: true,
@@ -1559,6 +1566,7 @@ export class StockRequisitionService {
           itemId: { in: noLedgerItemIds },
           status: 'AVAILABLE',
           warehouseId: fromWarehouseId,
+          locationId: null,
         },
         _sum: { quantity: true },
       });
