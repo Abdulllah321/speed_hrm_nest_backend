@@ -1039,6 +1039,7 @@ export class StockActivityExportService {
       'TRANSFER_OUT',
       'OUTLET_TRANSFER_IN',
       'OUTLET_TRANSFER_OUT',
+      'TRANSFER_RECEIPT',
       'RETURN_REQUEST',
       'CLAIM_RETURN',
       'CLAIM_TO_PLM',
@@ -1152,9 +1153,12 @@ export class StockActivityExportService {
         m.adj += qty;
       } else if (qty > 0) {
         if (
-          ['TRANSFER_REQUEST', 'TRANSFER_IN', 'OUTLET_TRANSFER_IN'].includes(
-            ref,
-          )
+          [
+            'TRANSFER_REQUEST',
+            'TRANSFER_IN',
+            'OUTLET_TRANSFER_IN',
+            'TRANSFER_RECEIPT',
+          ].includes(ref)
         ) {
           const tr = entry.referenceId ? trMap.get(entry.referenceId) : null;
           if (tr) {

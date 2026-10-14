@@ -2,7 +2,6 @@
 
 ## Sheet1
 
-| __EMPTY | __EMPTY_1 | __EMPTY_2 | __EMPTY_3 | __EMPTY_4 | __EMPTY_5 | __EMPTY_6 |
 | --- | --- | --- | --- | --- | --- | --- |
 | Store | Location Id | Voucher Date | Credit Voucher Number | Credit | Narration |  |
 | NIKE-DOLMEN CLIFTON | N10001 | 46205 | 1 | 5629 | Credit Voucher Issued \| CrV#: 1 \| 02/07/2026 |  |

@@ -1510,7 +1510,10 @@ export class TransferRequestService {
           updateData.status = 'PENDING';
         }
       } else {
-        if (status === 'APPROVED' || status === 'COMPLETED') {
+        if (status === 'COMPLETED') {
+          return await this.acceptRequest(id, approvedById || ctx?.userId, ctx);
+        }
+        if (status === 'APPROVED') {
           updateData.approvedById = approvedById || ctx?.userId || null;
         }
       }
@@ -1791,55 +1794,72 @@ export class TransferRequestService {
       return this.prisma.$transaction(async (tx) => {
         if (request.transferType === 'WAREHOUSE_TO_OUTLET') {
           // Normal transfer: Warehouse → Outlet (Receiving into Outlet)
-          if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+          const existingInbound = await tx.stockLedger.findFirst({
+            where: {
+              referenceId: request.id,
+              movementType: 'INBOUND',
+            },
+          });
+
+          if (request.status === 'COMPLETED' && existingInbound) {
+            return request;
+          }
+
+          if (
+            request.status !== 'PENDING' &&
+            request.status !== 'APPROVED' &&
+            request.status !== 'COMPLETED'
+          ) {
             throw new BadRequestException(
               `Request is not in PENDING or APPROVED status (Current: ${request.status})`,
             );
           }
 
-          for (const item of request.items) {
-            const itemRate = await this.getCurrentItemRate(tx, item.itemId);
+          if (!existingInbound) {
+            for (const item of request.items) {
+              const itemRate = await this.getCurrentItemRate(tx, item.itemId);
 
-            // 1. Inbound into Destination Outlet Inventory
-            const existingStock = await tx.inventoryItem.findFirst({
-              where: {
-                itemId: item.itemId,
-                locationId: request.toLocationId!,
-                status: 'AVAILABLE',
-              },
-            });
-
-            if (existingStock) {
-              await tx.inventoryItem.update({
-                where: { id: existingStock.id },
-                data: { quantity: { increment: Number(item.quantity) } },
-              });
-            } else {
-              await tx.inventoryItem.create({
-                data: {
+              // 1. Inbound into Destination Outlet Inventory
+              const existingStock = await tx.inventoryItem.findFirst({
+                where: {
                   itemId: item.itemId,
-                  warehouseId: request.fromWarehouseId!,
                   locationId: request.toLocationId!,
-                  quantity: Number(item.quantity),
                   status: 'AVAILABLE',
                 },
               });
-            }
 
-            // 2. Inbound Stock Ledger for Outlet
-            await this.stockLedgerService.createEntry(
-              {
-                itemId: item.itemId,
-                warehouseId: request.fromWarehouseId!,
-                locationId: request.toLocationId!,
-                qty: Number(item.quantity),
-                movementType: 'INBOUND' as any,
-                referenceType: 'TRANSFER_RECEIPT',
-                referenceId: request.id,
-                rate: itemRate,
-              },
-              tx,
-            );
+              if (existingStock) {
+                await tx.inventoryItem.update({
+                  where: { id: existingStock.id },
+                  data: { quantity: { increment: Number(item.quantity) } },
+                });
+              } else {
+                await tx.inventoryItem.create({
+                  data: {
+                    itemId: item.itemId,
+                    warehouseId: request.fromWarehouseId!,
+                    locationId: request.toLocationId!,
+                    quantity: Number(item.quantity),
+                    status: 'AVAILABLE',
+                  },
+                });
+              }
+
+              // 2. Inbound Stock Ledger for Outlet
+              await this.stockLedgerService.createEntry(
+                {
+                  itemId: item.itemId,
+                  warehouseId: request.fromWarehouseId!,
+                  locationId: request.toLocationId!,
+                  qty: Number(item.quantity),
+                  movementType: 'INBOUND' as any,
+                  referenceType: 'TRANSFER_RECEIPT',
+                  referenceId: request.id,
+                  rate: itemRate,
+                },
+                tx,
+              );
+            }
           }
 
           const updated = await tx.transferRequest.update({
@@ -1947,76 +1967,146 @@ export class TransferRequestService {
             }
           }
         } else if (request.transferType === 'OUTLET_TO_OUTLET') {
-          // Outlet-to-outlet transfer: Only destination can accept after source approval
-          if (request.status !== 'SOURCE_APPROVED') {
+          // Outlet-to-outlet transfer: Verify and record both source outbound and destination inbound legs
+          const existingInbound = await tx.stockLedger.findFirst({
+            where: {
+              referenceId: request.id,
+              movementType: 'INBOUND',
+            },
+          });
+          const existingOutbound = await tx.stockLedger.findFirst({
+            where: {
+              referenceId: request.id,
+              movementType: 'OUTBOUND',
+            },
+          });
+
+          if (request.status === 'COMPLETED' && existingInbound && existingOutbound) {
+            return request;
+          }
+
+          if (
+            request.status !== 'SOURCE_APPROVED' &&
+            request.status !== 'APPROVED' &&
+            request.status !== 'COMPLETED'
+          ) {
             throw new BadRequestException(
               `Request must be source-approved first (Current: ${request.status})`,
             );
           }
 
-          for (const item of request.items) {
-            // Only need to add stock to destination (source already decreased)
-            const destItem = await tx.inventoryItem.findFirst({
-              where: {
-                locationId: request.toLocationId!,
-                itemId: item.itemId,
-                status: 'AVAILABLE',
-              },
+          let fallbackWhId: string =
+            request.fromWarehouseId || request.toWarehouseId || '';
+          if (!fallbackWhId) {
+            const defaultWh = await tx.warehouse.findFirst({
+              where: { isActive: true, isDeleted: false },
+              select: { id: true },
             });
+            fallbackWhId = defaultWh?.id || '';
+          }
 
-            // Find source stock to get actual warehouseId
-            const sourceStock = await tx.inventoryItem.findFirst({
-              where: {
-                locationId: request.fromLocationId!,
-                itemId: item.itemId,
-              },
-            });
-            let fallbackWhId: string =
-              request.fromWarehouseId || request.toWarehouseId || '';
-            if (!fallbackWhId) {
-              const defaultWh = await tx.warehouse.findFirst({
-                where: { isActive: true, isDeleted: false },
-                select: { id: true },
-              });
-              fallbackWhId = defaultWh?.id || '';
-            }
-            const actualWarehouseId: string =
-              sourceStock?.warehouseId || fallbackWhId || '';
-            const transferRate = await this.getCurrentItemRate(tx, item.itemId);
-
-            if (destItem) {
-              // Update existing stock at destination
-              await tx.inventoryItem.update({
-                where: { id: destItem.id },
-                data: { quantity: { increment: Number(item.quantity) } },
-              });
-            } else {
-              // Create new stock entry at destination
-              await tx.inventoryItem.create({
-                data: {
-                  warehouseId: actualWarehouseId,
-                  locationId: request.toLocationId!,
+          // 1. If source outbound ledger is missing (e.g. source approval was bypassed or not recorded),
+          // deduct stock from source location and record OUTLET_TRANSFER_OUT
+          if (!existingOutbound && request.fromLocationId) {
+            for (const item of request.items) {
+              const sourceStock = await tx.inventoryItem.findFirst({
+                where: {
+                  locationId: request.fromLocationId!,
                   itemId: item.itemId,
-                  quantity: Number(item.quantity),
                   status: 'AVAILABLE',
                 },
               });
-            }
 
-            // Create inbound ledger entry for destination
-            await this.stockLedgerService.createEntry(
-              {
-                itemId: item.itemId,
-                warehouseId: actualWarehouseId,
-                locationId: request.toLocationId!,
-                qty: Number(item.quantity),
-                movementType: 'INBOUND' as any,
-                referenceType: 'OUTLET_TRANSFER_IN',
-                referenceId: request.id,
-                rate: transferRate,
-              },
-              tx,
-            );
+              const actualWarehouseId: string =
+                sourceStock?.warehouseId || fallbackWhId;
+              const transferRate = await this.getCurrentItemRate(tx, item.itemId);
+
+              if (sourceStock) {
+                await tx.inventoryItem.update({
+                  where: { id: sourceStock.id },
+                  data: { quantity: { decrement: Number(item.quantity) } },
+                });
+              } else {
+                await tx.inventoryItem.create({
+                  data: {
+                    warehouseId: actualWarehouseId,
+                    locationId: request.fromLocationId!,
+                    itemId: item.itemId,
+                    quantity: -Number(item.quantity),
+                    status: 'AVAILABLE',
+                  },
+                });
+              }
+
+              await this.stockLedgerService.createEntry(
+                {
+                  itemId: item.itemId,
+                  warehouseId: actualWarehouseId,
+                  locationId: request.fromLocationId!,
+                  qty: -Number(item.quantity),
+                  movementType: 'OUTBOUND' as any,
+                  referenceType: 'OUTLET_TRANSFER_OUT',
+                  referenceId: request.id,
+                  rate: transferRate,
+                },
+                tx,
+              );
+            }
+          }
+
+          // 2. If destination inbound ledger is missing, add stock to destination and record OUTLET_TRANSFER_IN
+          if (!existingInbound && request.toLocationId) {
+            for (const item of request.items) {
+              const destItem = await tx.inventoryItem.findFirst({
+                where: {
+                  locationId: request.toLocationId!,
+                  itemId: item.itemId,
+                  status: 'AVAILABLE',
+                },
+              });
+
+              const sourceStock = await tx.inventoryItem.findFirst({
+                where: {
+                  locationId: request.fromLocationId!,
+                  itemId: item.itemId,
+                },
+              });
+
+              const actualWarehouseId: string =
+                destItem?.warehouseId || sourceStock?.warehouseId || fallbackWhId;
+              const transferRate = await this.getCurrentItemRate(tx, item.itemId);
+
+              if (destItem) {
+                await tx.inventoryItem.update({
+                  where: { id: destItem.id },
+                  data: { quantity: { increment: Number(item.quantity) } },
+                });
+              } else {
+                await tx.inventoryItem.create({
+                  data: {
+                    warehouseId: actualWarehouseId,
+                    locationId: request.toLocationId!,
+                    itemId: item.itemId,
+                    quantity: Number(item.quantity),
+                    status: 'AVAILABLE',
+                  },
+                });
+              }
+
+              await this.stockLedgerService.createEntry(
+                {
+                  itemId: item.itemId,
+                  warehouseId: actualWarehouseId,
+                  locationId: request.toLocationId!,
+                  qty: Number(item.quantity),
+                  movementType: 'INBOUND' as any,
+                  referenceType: 'OUTLET_TRANSFER_IN',
+                  referenceId: request.id,
+                  rate: transferRate,
+                },
+                tx,
+              );
+            }
           }
         }
 

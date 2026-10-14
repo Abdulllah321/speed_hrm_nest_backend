@@ -58,6 +58,10 @@ export class StockLedgerService {
           'RETURN_REQUEST',
           'OUTLET_TRANSFER_IN',
           'OUTLET_TRANSFER_OUT',
+          'TRANSFER_RECEIPT',
+          'DIRECT_TRANSFER',
+          'DIRECT_TRANSFER_IN',
+          'DIRECT_TRANSFER_OUT',
           'CLAIM_RETURN_REQUEST',
           'POS_CLAIM_APPROVED',
           'CLAIM_ACKNOWLEDGED',
@@ -245,7 +249,7 @@ export class StockLedgerService {
   async findAll(options?: {
     locationId?: string;
     warehouseId?: string;
-    movementType?: MovementType;
+    movementType?: MovementType | string;
     itemId?: string;
     referenceType?: string;
     page?: number;
@@ -319,10 +323,45 @@ export class StockLedgerService {
 
     const where: any = {
       ...(locationWhere && { locationId: locationWhere }),
-      ...(movementType && { movementType }),
       ...(itemId && { itemId }),
-      ...(referenceType && { referenceType }),
     };
+
+    const ALL_TRANSFER_REF_TYPES = [
+      'TRANSFER_REQUEST',
+      'TRANSFER_IN',
+      'TRANSFER_OUT',
+      'OUTLET_TRANSFER_IN',
+      'OUTLET_TRANSFER_OUT',
+      'TRANSFER_RECEIPT',
+      'RETURN_REQUEST',
+      'CLAIM_RETURN_REQUEST',
+      'POS_CLAIM_APPROVED',
+      'CLAIM_ACKNOWLEDGED',
+      'DIRECT_TRANSFER',
+      'DIRECT_TRANSFER_IN',
+      'DIRECT_TRANSFER_OUT',
+    ];
+
+    if (referenceType && referenceType !== 'all') {
+      if (referenceType === 'TRANSFER' || referenceType === 'TRANSFER_REQUEST') {
+        where.referenceType = { in: ALL_TRANSFER_REF_TYPES };
+      } else {
+        where.referenceType = referenceType;
+      }
+    }
+
+    if (movementType && (movementType as string) !== 'all') {
+      if ((movementType as string) === 'TRANSFER') {
+        // Transfers are recorded as INBOUND at receiving location and OUTBOUND at source location.
+        // When filtering by movementType === 'TRANSFER', match rows with movementType TRANSFER or any transfer referenceType.
+        where.OR = [
+          { movementType: 'TRANSFER' },
+          { referenceType: { in: ALL_TRANSFER_REF_TYPES } },
+        ];
+      } else {
+        where.movementType = movementType;
+      }
+    }
 
     if (startDate || endDate) {
       where.createdAt = {};
@@ -355,9 +394,9 @@ export class StockLedgerService {
         'pos sale': ['POS_SALE'],
         'pos return': ['POS_RETURN'],
         'pos void': ['POS_VOID'],
-        transfer: ['TRANSFER_REQUEST', 'TRANSFER_IN', 'TRANSFER_OUT'],
-        'transfer in': ['TRANSFER_IN', 'OUTLET_TRANSFER_IN'],
-        'transfer out': ['TRANSFER_OUT', 'OUTLET_TRANSFER_OUT'],
+        transfer: ALL_TRANSFER_REF_TYPES,
+        'transfer in': ['TRANSFER_IN', 'OUTLET_TRANSFER_IN', 'TRANSFER_RECEIPT', 'DIRECT_TRANSFER_IN'],
+        'transfer out': ['TRANSFER_OUT', 'OUTLET_TRANSFER_OUT', 'DIRECT_TRANSFER_OUT'],
         'return transfer': ['RETURN_REQUEST'],
         'outlet transfer in': ['OUTLET_TRANSFER_IN'],
         'outlet transfer out': ['OUTLET_TRANSFER_OUT'],
@@ -1340,6 +1379,7 @@ export class StockLedgerService {
         if (
           ref === 'TRANSFER_REQUEST' ||
           ref === 'TRANSFER_IN' ||
+          ref === 'TRANSFER_RECEIPT' ||
           ref === 'DIRECT_TRANSFER_IN' ||
           ref === 'STOCK_TRANSFER'
         ) {
@@ -1924,6 +1964,7 @@ export class StockLedgerService {
           'TRANSFER_REQUEST',
           'OUTLET_TRANSFER_IN',
           'OUTLET_TRANSFER_OUT',
+          'TRANSFER_RECEIPT',
           'RETURN_REQUEST',
           'CLAIM_RETURN',
           'CLAIM_TO_PLM',
@@ -2162,6 +2203,7 @@ export class StockLedgerService {
         'TRANSFER_REQUEST',
         'OUTLET_TRANSFER_IN',
         'OUTLET_TRANSFER_OUT',
+        'TRANSFER_RECEIPT',
         'RETURN_REQUEST',
         'CLAIM_RETURN',
         'CLAIM_TO_PLM',
@@ -2269,6 +2311,7 @@ export class StockLedgerService {
           'TRANSFER_REQUEST',
           'OUTLET_TRANSFER_IN',
           'OUTLET_TRANSFER_OUT',
+          'TRANSFER_RECEIPT',
           'RETURN_REQUEST',
           'CLAIM_RETURN',
           'CLAIM_TO_PLM',

@@ -46,7 +46,31 @@ function excelDateToJSDate(serial: number): Date {
   return new Date(date_info.getFullYear(), date_info.getMonth(), date_info.getDate(), hours, minutes, seconds);
 }
 
-function parseDateFromNarrationOrSerial(serialDate: number, narration: string): Date {
+function formatDate(d: Date): string {
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const year = d.getUTCFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function getFiscalYearSuffix(d: Date): string {
+  const month = d.getUTCMonth(); // 0-indexed (6 = July)
+  const year = d.getUTCFullYear();
+  const fyEndingYear = month >= 6 ? year + 1 : year;
+  return String(fyEndingYear).slice(-2);
+}
+
+export interface ParsedRow {
+  storeName: string;
+  locCode: string;
+  crNo: string;
+  creditAmt: number;
+  date: Date;
+  fySuffix: string;
+  narration?: string;
+}
+
+function parseFlexibleDate(val: any, narration?: string): Date | null {
   if (narration) {
     const match = narration.match(/(\d{2})\/(\d{2})\/(\d{4})/);
     if (match) {
@@ -54,45 +78,22 @@ function parseDateFromNarrationOrSerial(serialDate: number, narration: string): 
       return new Date(Date.UTC(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), 0, 0, 0));
     }
   }
-  return excelDateToJSDate(serialDate);
-}
 
-function formatDate(d: Date): string {
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
-  return `${day}/${month}/${year}`;
-}
-
-function getFiscalYearSuffix(d: Date): string {
-  const month = d.getMonth(); // 0-indexed (6 = July)
-  const year = d.getFullYear();
-  const fyEndingYear = month >= 6 ? year + 1 : year;
-  return String(fyEndingYear).slice(-2);
-}
-
-interface ParsedRow {
-  storeName: string;
-  locCode: string;
-  crNo: string;
-  creditAmt: number;
-  date: Date;
-  fySuffix: string;
-}
-
-function parseFlexibleDate(val: any): Date | null {
   if (val === undefined || val === null || val === '') return null;
 
   if (typeof val === 'number') {
     let num = val;
-    if (num < 100000) {
-      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-      return new Date(excelEpoch.getTime() + num * 86400000);
+    if (num > 30000 && num < 100000) {
+      return excelDateToJSDate(num);
     }
   }
 
   const str = String(val).trim();
   if (!str || str === 'null' || str === '-' || str === '0') return null;
+
+  if (/^\d{5}$/.test(str)) {
+    return excelDateToJSDate(parseInt(str, 10));
+  }
 
   if (str.includes('/')) {
     const [datePart, timePart] = str.split(/\s+/);
@@ -100,7 +101,6 @@ function parseFlexibleDate(val: any): Date | null {
     if (parts.length === 3) {
       let [d, m, y] = parts;
       if (d <= 12 && m > 12) {
-        // It's MM/DD/YY
         const temp = d;
         d = m;
         m = temp;
@@ -116,6 +116,66 @@ function parseFlexibleDate(val: any): Date | null {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
+const STORE_NAME_TO_CODE: Record<string, string> = {
+  // Nike
+  'NIKE-DOLMEN CLIFTON': 'N10001',
+  'NIKE-XINHUA MALL': 'N10002',
+  'NIKE-PACKAGES MALL': 'N10003',
+  'NIKE-CENTAURUS MALL': 'N10004',
+  'NIKE-SAFA GOLD MALL': 'N10005',
+
+  // Charles & Keith
+  'CHARLES & KEITH-DOLMEN CLIFTON': 'CK1001',
+  'C&K-DOLMEN CLIFTON': 'CK1001',
+  'CHARLES & KEITH-LUCKY ONE': 'CK1002',
+  'CHARLES & KEITH-LUCKY ONE MALL': 'CK1002',
+  'C&K-LUCKY ONE MALL': 'CK1002',
+  'CHARLES & KEITH-EMPORIUM MALL': 'CK1003',
+  'C&K-EMPORIUM MALL': 'CK1003',
+  'CHARLES & KEITH-PACKAGES MALL': 'CK1004',
+  'C&K-PACKAGES MALL': 'CK1004',
+  'CHARLES & KEITH-DOLMEN LAHORE': 'CK1005',
+  'C&K-DOLMEN LAHORE': 'CK1005',
+  'CHARLES & KEITH-CENTAURUS MALL': 'CK1006',
+  'C&K-CENTAURUS MALL': 'CK1006',
+
+  // Pedro
+  'PEDRO-DOLMEN CLIFTON': 'P10001',
+  'PEDRO-PACKAGES MALL': 'P10002',
+  'PEDRO-DOLMEN LAHORE': 'P10003',
+  'PEDRO-ONLINE': 'P10004',
+
+  // Puma
+  'PUMA - DOLMEN LAHORE': 'PU1001',
+  'PUMA-DOLMEN LAHORE': 'PU1001',
+  'PUMA-UNITED MALL MULTAN': 'PU1002',
+
+  // Adidas
+  'ADIDAS-LUCKY ONE MALL': 'A10001',
+  'ADIDAS-JINNAH ICON MALL': 'A10002',
+  'ADIDAS-MADISON SQUARE MALL': 'A10003',
+
+  // Speed Sports
+  'SPEED SPORTS-LUCKY ONE MALL': 'SS1001',
+  'SPEED SPORTS-DOLMEN CLIFTON': 'SS1002',
+  'SPEED SPORTS - ZAMZAM ARCADE': 'SS1003',
+  'SPEED SPORTS-ZAMZAM ARCADE': 'SS1003',
+  'SPEED SPORTS-FOUNTAIN AVENUE': 'SS1004',
+  'SPEED SPORTS-EMPORIUM MALL': 'SS1005',
+  'SPEED SPORTS-DOLMEN LAHORE': 'SS1006',
+  'SPEED SPORTS SAFA-1': 'SS1007',
+  'SPEED SPORTS-SAFA GOLD MALL': 'SS1007',
+  'SPEED SPORTS-GIGA MALL': 'SS1008',
+  'SPEED SPORTS-MALL OF MULTAN': 'SS1009',
+  'SPEED SPORTS-LYALLPUR GALLERIA': 'SS1010',
+  'SPEED SPORTS-ONLINE': 'SS1011',
+  'SPEED SPORTS-THE FORUM': 'SS1012',
+};
+
+function normalizeName(s: string): string {
+  return s.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+}
+
 export function readAndParseCreditVouchers(filePath: string): ParsedRow[] {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Data file not found at: ${filePath}`);
@@ -124,38 +184,92 @@ export function readAndParseCreditVouchers(filePath: string): ParsedRow[] {
   const content = fs.readFileSync(filePath, 'utf8');
   const lines = content.split('\n');
 
+  let storeCol = -1;
+  let locCol = -1;
+  let dateCol = -1;
+  let crNoCol = -1;
+  let amtCol = -1;
+  let narrationCol = -1;
+
   const rows: ParsedRow[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (!line.startsWith('|') || line.includes('---') || line.includes('__EMPTY') || line.includes('CostCentre')) {
+    if (!line.startsWith('|') || line.includes('---')) {
       continue;
     }
-    const cols = line.split('|').map((c) => c.trim());
-    if (cols.length > 1 && cols[0] === '') cols.shift();
-    if (cols.length > 0 && cols[cols.length - 1] === '') cols.pop();
-    
-    if (cols.length >= 8) {
-      let storeName = cols[0];
-      let locCode = cols[1];
 
-      const crNo = String(cols[4]).trim();
-      const docDateStr = cols[5];
-      const creditAmt = parseFloat(cols[7]);
+    const rawCols = line.split('|').map((c) => c.trim());
+    if (rawCols.length > 1 && rawCols[0] === '') rawCols.shift();
+    if (rawCols.length > 0 && rawCols[rawCols.length - 1] === '') rawCols.pop();
 
-      if (!isNaN(creditAmt) && creditAmt > 0) {
-        const date = parseFlexibleDate(docDateStr) || new Date('2026-07-01');
-        const fySuffix = getFiscalYearSuffix(date);
-        rows.push({
-          storeName,
-          locCode,
-          crNo,
-          creditAmt,
-          date,
-          fySuffix,
-        });
+    const lowerCols = rawCols.map((c) => c.toLowerCase());
+
+    // Check if this line is a table header
+    const isHeader = lowerCols.some(
+      (c) => c.includes('voucher') || c.includes('store') || c.includes('location'),
+    );
+
+    if (isHeader && (storeCol === -1 || crNoCol === -1)) {
+      for (let c = 0; c < lowerCols.length; c++) {
+        const h = lowerCols[c];
+        if (h.includes('store') || (h === 'name' && storeCol === -1)) {
+          storeCol = c;
+        } else if (h.includes('location id') || h.includes('locationid') || h === 'location') {
+          locCol = c;
+        } else if (h.includes('date')) {
+          dateCol = c;
+        } else if (h.includes('credit voucher no') || h.includes('credit voucher number') || h.includes('voucher no')) {
+          crNoCol = c;
+        } else if (h === 'credit' || h.includes('amount')) {
+          amtCol = c;
+        } else if (h.includes('narration') || h.includes('remarks')) {
+          narrationCol = c;
+        }
       }
+      continue;
     }
+
+    // Default legacy fallback column mapping if header wasn't matched explicitly
+    const actualStoreCol = storeCol >= 0 ? storeCol : 0;
+    const actualLocCol = locCol >= 0 ? locCol : 1;
+    const actualDateCol = dateCol >= 0 ? dateCol : 2;
+    const actualCrNoCol = crNoCol >= 0 ? crNoCol : 3;
+    const actualAmtCol = amtCol >= 0 ? amtCol : 4;
+
+    if (rawCols.length <= Math.max(actualStoreCol, actualCrNoCol, actualAmtCol)) {
+      continue;
+    }
+
+    const storeName = rawCols[actualStoreCol] || '';
+    const locCode = actualLocCol >= 0 && actualLocCol < rawCols.length ? rawCols[actualLocCol] : '';
+    const dateRaw = actualDateCol >= 0 && actualDateCol < rawCols.length ? rawCols[actualDateCol] : '';
+    let crNo = String(rawCols[actualCrNoCol]).trim();
+    const amtStr = String(rawCols[actualAmtCol]).replace(/,/g, '').trim();
+    const creditAmt = parseFloat(amtStr);
+
+    let narration = '';
+    if (narrationCol >= 0 && rawCols.length > narrationCol) {
+      narration = rawCols.slice(narrationCol).join(' | ');
+    } else if (rawCols.length > 5) {
+      narration = rawCols.slice(5).join(' | ');
+    }
+
+    if (isNaN(creditAmt) || creditAmt <= 0) continue;
+    if (!crNo || crNo === '-' || crNo.startsWith('-')) continue;
+
+    const date = parseFlexibleDate(dateRaw, narration) || new Date('2026-09-01');
+    const fySuffix = getFiscalYearSuffix(date);
+
+    rows.push({
+      storeName,
+      locCode,
+      crNo,
+      creditAmt,
+      date,
+      fySuffix,
+      narration,
+    });
   }
 
   return rows;
@@ -211,19 +325,24 @@ async function processTenantCreditVouchers(
   companyName: string,
   rows: ParsedRow[],
   isDryRun: boolean,
+  wipeExisting: boolean = false,
   deleteOnly: boolean = false,
 ) {
   console.log(`\n======================================================`);
   console.log(`🏢 Processing Tenant: [${companyName}]`);
   console.log(`======================================================`);
 
-  if (isDryRun) {
-    const existingCount = await prisma.voucher.count({
-      where: { voucherType: 'CREDIT' },
-    });
-    console.log(`⚠️ [DRY-RUN] Would remove ${existingCount.toLocaleString()} existing CREDIT vouchers.`);
+  if (wipeExisting || deleteOnly) {
+    if (isDryRun) {
+      const existingCount = await prisma.voucher.count({
+        where: { voucherType: 'CREDIT' },
+      });
+      console.log(`⚠️ [DRY-RUN] Would remove ${existingCount.toLocaleString()} existing CREDIT vouchers.`);
+    } else {
+      await cleanExistingCreditVouchers(prisma);
+    }
   } else {
-    await cleanExistingCreditVouchers(prisma);
+    console.log(`🛡️ Safe incremental mode active: existing vouchers will NOT be wiped.`);
   }
 
   if (deleteOnly) {
@@ -238,22 +357,65 @@ async function processTenantCreditVouchers(
   });
   console.log(`📍 Found ${locations.length} active locations in DB.`);
 
-  const locMap = new Map<string, typeof locations[0]>();
+  const locCodeMap = new Map<string, typeof locations[0]>();
+  const locShortCodeMap = new Map<string, typeof locations[0]>();
+  const locNameMap = new Map<string, typeof locations[0]>();
+
   for (const l of locations) {
-    locMap.set(l.code.toUpperCase(), l);
+    locCodeMap.set(l.code.toUpperCase(), l);
     if (l.shortCode) {
-      locMap.set(l.shortCode.toUpperCase(), l);
+      locShortCodeMap.set(l.shortCode.toUpperCase(), l);
+      locShortCodeMap.set(normalizeName(l.shortCode), l);
     }
+    locNameMap.set(normalizeName(l.name), l);
   }
 
-  // 2. Fetch existing redemptions from other voucher types (e.g. Corporate/Gift/Exchange)
+  function resolveLocation(r: ParsedRow) {
+    // 1. Check exact dictionary mapping
+    const directCode = STORE_NAME_TO_CODE[r.storeName];
+    if (directCode && locCodeMap.has(directCode.toUpperCase())) {
+      return locCodeMap.get(directCode.toUpperCase())!;
+    }
+
+    // 2. Check normalized name matching
+    const normStore = normalizeName(r.storeName);
+    if (locNameMap.has(normStore)) {
+      return locNameMap.get(normStore)!;
+    }
+
+    // 3. Check locCode against code or shortCode
+    if (r.locCode) {
+      const upperLoc = r.locCode.toUpperCase();
+      if (locCodeMap.has(upperLoc)) return locCodeMap.get(upperLoc)!;
+      if (locShortCodeMap.has(upperLoc)) return locShortCodeMap.get(upperLoc)!;
+    }
+
+    // 4. Fuzzy fallback matching
+    for (const l of locations) {
+      const normL = normalizeName(l.name);
+      if (normL.includes(normStore) || normStore.includes(normL)) {
+        return l;
+      }
+    }
+
+    return null;
+  }
+
+  // 2. Fetch existing codes from DB to avoid collision
+  const existingVouchersInDb = await prisma.voucher.findMany({
+    select: { code: true },
+  });
+  const existingCodesInDb = new Set(existingVouchersInDb.map((v) => v.code));
+  console.log(`📋 Found ${existingCodesInDb.size} existing voucher codes in database.`);
+
+  // 3. Fetch existing redemptions from other voucher types (e.g. Corporate/Gift/Exchange)
   const existingRedemptions = await prisma.voucherRedemption.findMany({
     select: { orderId: true },
   });
   const alreadyRedeemedOrderIds = new Set(existingRedemptions.map((r) => r.orderId));
-  console.log(`🔒 Excluded ${alreadyRedeemedOrderIds.size} orders already redeemed by other voucher types.`);
+  console.log(`🔒 Excluded ${alreadyRedeemedOrderIds.size} orders already redeemed by vouchers.`);
 
-  // 3. Load Candidate SalesOrders with voucherAmount > 0 for settlement matching
+  // 4. Load Candidate SalesOrders with voucherAmount > 0 for settlement matching
   console.log(`🔍 Loading SalesOrders with voucherAmount > 0 from 2026-07-01 onwards...`);
   const candidateOrders = await prisma.salesOrder.findMany({
     where: {
@@ -276,7 +438,7 @@ async function processTenantCreditVouchers(
   const availableOrders = candidateOrders.filter((o) => !alreadyRedeemedOrderIds.has(o.id));
   console.log(`📦 Available unlinked sales orders with voucher tender: ${availableOrders.length}`);
 
-  // 4. Generate Codes & Match Settlements
+  // 5. Generate Codes & Match Settlements
   const generatedCodes = new Set<string>();
   const matchedOrderIds = new Set<string>();
   const preparedVouchers: any[] = [];
@@ -290,9 +452,9 @@ async function processTenantCreditVouchers(
   const sortedRows = [...rows].sort((a, b) => b.date.getTime() - a.date.getTime());
 
   for (const r of sortedRows) {
-    const loc = locMap.get(r.locCode.toUpperCase());
+    const loc = resolveLocation(r);
     if (!loc) {
-      console.warn(`⚠️ Unknown location code: ${r.locCode} (${r.storeName})`);
+      console.warn(`⚠️ Unknown location: ${r.storeName} (code: ${r.locCode})`);
       continue;
     }
 
@@ -301,9 +463,9 @@ async function processTenantCreditVouchers(
       .toUpperCase();
 
     let code = `CRD-${cleanShortCode}${r.fySuffix}-${r.crNo.padStart(5, '0')}`;
-    if (generatedCodes.has(code)) {
+    if (generatedCodes.has(code) || existingCodesInDb.has(code)) {
       let suffix = 2;
-      while (generatedCodes.has(`${code}-${suffix}`)) {
+      while (generatedCodes.has(`${code}-${suffix}`) || existingCodesInDb.has(`${code}-${suffix}`)) {
         suffix++;
       }
       code = `${code}-${suffix}`;
@@ -345,7 +507,7 @@ async function processTenantCreditVouchers(
     const isRedeemed = Boolean(matchedOrder);
     const voucherId = crypto.randomUUID();
 
-    let description = `Credit Voucher Issued | CrV#: ${r.crNo} | ${formatDate(r.date)}`;
+    let description = r.narration || `Credit Voucher Issued | CrV#: ${r.crNo} | ${formatDate(r.date)}`;
 
     if (matchedOrder) {
       matchedOrderIds.add(matchedOrder.id);
@@ -394,7 +556,7 @@ async function processTenantCreditVouchers(
             voucherId,
             orderId: matchedOrder.id,
             amountUsed: new Prisma.Decimal(r.creditAmt),
-            createdAt: matchedOrder.createdAt, // Exact settlement date from uploaded sales data!
+            createdAt: matchedOrder.createdAt,
           }
         : null,
       issuedTransaction: {
@@ -413,9 +575,9 @@ async function processTenantCreditVouchers(
             orderId: matchedOrder.id,
             locationId: matchedOrder.locationId,
             action: 'REDEEMED',
-            amountUsed: new Prisma.Decimal(r.creditAmt), // Exact settled amount!
+            amountUsed: new Prisma.Decimal(r.creditAmt),
             notes: `Redeemed in Sales Order ${matchedOrder.orderNumber} (PKR ${r.creditAmt.toLocaleString()})`,
-            createdAt: matchedOrder.createdAt, // Exact settlement date!
+            createdAt: matchedOrder.createdAt,
           }
         : null,
     });
@@ -424,7 +586,7 @@ async function processTenantCreditVouchers(
   console.log(`\n======================================================`);
   console.log(`📊 PREPARATION SUMMARY FOR [${companyName}]`);
   console.log(`======================================================`);
-  console.log(`   - Total Credit Vouchers (>= 01-07-2026): ${rows.length.toLocaleString()}`);
+  console.log(`   - Total Credit Vouchers to Import      : ${preparedVouchers.length.toLocaleString()}`);
   console.log(`   - Total Face Value (PKR)               : PKR ${(redeemedValue + unredeemedValue).toLocaleString()}`);
   console.log(`   - Settled / Redeemed Vouchers          : ${redeemedCount.toLocaleString()} (PKR ${redeemedValue.toLocaleString()})`);
   console.log(`   - Active / Outstanding Vouchers        : ${unredeemedCount.toLocaleString()} (PKR ${unredeemedValue.toLocaleString()})`);
@@ -435,7 +597,7 @@ async function processTenantCreditVouchers(
     return;
   }
 
-  // 5. Insert into Database in Chunks of 100
+  // 6. Insert into Database in Chunks of 100
   console.log(`📥 Inserting ${preparedVouchers.length} Credit Vouchers into database...`);
   const CHUNK_SIZE = 100;
   const totalBatches = Math.ceil(preparedVouchers.length / CHUNK_SIZE);
@@ -470,7 +632,7 @@ async function processTenantCreditVouchers(
   }
   console.log('\n');
 
-  // 6. Update SalesOrder notes with redemption tags
+  // 7. Update SalesOrder notes with redemption tags
   if (orderNotesToUpdate.length > 0) {
     console.log(`📝 Updating notes on ${orderNotesToUpdate.length} redeemed SalesOrders...`);
     for (const item of orderNotesToUpdate) {
@@ -481,7 +643,7 @@ async function processTenantCreditVouchers(
     }
   }
 
-  // 7. Verification Summary
+  // 8. Verification Summary
   const countInDb = await prisma.voucher.count({
     where: { voucherType: 'CREDIT', isDeleted: false },
   });
@@ -508,14 +670,18 @@ async function processTenantCreditVouchers(
 
 async function main() {
   const isDryRun = process.argv.includes('--dry-run') || process.argv.includes('-d');
+  const wipeExisting = process.argv.includes('--clean') || process.argv.includes('--wipe');
   const deleteOnly = process.argv.includes('--delete-only') || process.argv.includes('--wipe-only');
   const tenantFilter = process.argv.find((arg) => arg.startsWith('--tenant='))?.split('=')[1];
 
-  let filePath = path.join(__dirname, '..', 'data', 'credit-voucher.md');
+  let filePath = path.join(__dirname, '..', 'data', 'credit_vouchers_1_25.md');
   const fileArg = process.argv.find((arg) => arg.startsWith('--file=') || arg.startsWith('--path='));
   if (fileArg) {
     const customPath = fileArg.split('=')[1];
     filePath = path.isAbsolute(customPath) ? customPath : path.join(process.cwd(), customPath);
+  } else if (!fs.existsSync(filePath)) {
+    // fallback to legacy file if credit_vouchers_1_25.md doesn't exist
+    filePath = path.join(__dirname, '..', 'data', 'credit-voucher.md');
   }
 
   console.log(`\n======================================================`);
@@ -525,13 +691,18 @@ async function main() {
   if (isDryRun) {
     console.log(`⚠️ DRY RUN MODE: No changes will be written.`);
   }
+  if (wipeExisting) {
+    console.log(`⚠️ WIPE MODE ACTIVE: Existing credit vouchers will be cleared before import.`);
+  } else {
+    console.log(`🛡️ SAFE INCREMENTAL MODE: Preserving all existing vouchers in database.`);
+  }
   if (deleteOnly) {
     console.log(`🗑️ DELETE-ONLY MODE: Existing credit vouchers will be deleted.`);
   }
 
   const rows = deleteOnly ? [] : readAndParseCreditVouchers(filePath);
   if (!deleteOnly) {
-    console.log(`📄 Successfully parsed ${rows.length.toLocaleString()} credit vouchers issued on or after 2026-07-01.`);
+    console.log(`📄 Successfully parsed ${rows.length.toLocaleString()} credit vouchers from data file.`);
   }
 
   const managementUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL;
@@ -567,7 +738,8 @@ async function main() {
         if (company.dbPassword) {
           try {
             const decPassword = encodeURIComponent(decrypt(company.dbPassword, masterKey));
-            connectionString = `postgresql://${company.dbUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
+            const encUser = encodeURIComponent(company.dbUser || '');
+            connectionString = `postgresql://${encUser}:${decPassword}@${company.dbHost || 'localhost'}:${company.dbPort || 5432}/${company.dbName}?schema=public`;
           } catch (e: any) {
             console.warn(`⚠️ Could not decrypt password for company ${company.name}, using dbUrl directly.`);
           }
@@ -578,7 +750,7 @@ async function main() {
         const prisma = new PrismaClient({ adapter: tenantAdapter } as any);
 
         try {
-          await processTenantCreditVouchers(prisma, company.name, rows, isDryRun, deleteOnly);
+          await processTenantCreditVouchers(prisma, company.name, rows, isDryRun, wipeExisting, deleteOnly);
         } catch (err: any) {
           console.error(`❌ Error processing tenant ${company.name}:`, err);
         } finally {
@@ -590,7 +762,7 @@ async function main() {
     }
   }
 
-  // Fallback to direct TENANT_DATABASE_URL or DATABASE_URL
+  // Direct connection fallback
   const directUrl =
     process.env.TENANT_DATABASE_URL ||
     process.env.DATABASE_URL ||
@@ -602,7 +774,7 @@ async function main() {
   const prisma = new PrismaClient({ adapter: directAdapter } as any);
 
   try {
-    await processTenantCreditVouchers(prisma, 'Direct Database', rows, isDryRun, deleteOnly);
+    await processTenantCreditVouchers(prisma, 'Direct Database', rows, isDryRun, wipeExisting, deleteOnly);
   } finally {
     await prisma.$disconnect();
     await directPool.end();
