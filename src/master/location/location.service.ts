@@ -50,10 +50,11 @@ export class LocationService {
       },
       orderBy: { name: 'asc' },
     });
-    return locations.map((loc) => ({
+    const data = locations.map((loc) => ({
       ...loc,
       brands: loc.locationBrands?.map((lb) => lb.brand) || [],
     }));
+    return { status: true, data };
   }
 
   async list() {
