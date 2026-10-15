@@ -9,6 +9,7 @@ import * as xlsx from 'xlsx';
 import { ReplaySubject, Observable } from 'rxjs';
 import { PosSalesService } from './pos-sales.service';
 import { VoucherService } from '../pos-config/voucher.service';
+import { InventoryService } from '../warehouse/inventory.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -35,6 +36,7 @@ export class OnlineOrderManagementService {
     private prisma: PrismaService,
     private posSalesService: PosSalesService,
     private voucherService: VoucherService,
+    private inventoryService: InventoryService,
   ) {}
 
   private saveSession(uploadId: string, session: any) {
@@ -809,6 +811,7 @@ export class OnlineOrderManagementService {
       const matchedItemId = dbItemMap.get(targetIdentifier) || (row.sku ? dbItemMap.get(row.sku.split('_')[0].trim().toLowerCase()) : undefined);
       const availableQty = matchedItemId ? (stockMap.get(matchedItemId) ?? 0) : 0;
       const requiredQty = Number(row.qty || 1);
+      (row as any).itemId = matchedItemId || null;
       (row as any).stock = {
         available: availableQty,
         isAvailable: availableQty >= requiredQty,
@@ -823,12 +826,14 @@ export class OnlineOrderManagementService {
           email: row.email,
           city: row.city,
           address: row.address,
+          note: row.note,
           paymentMethod: row.paymentMethod || 'Cash',
           trackingNumber: row.trackingNumber,
           marketplace: row.marketplace,
           channel: row.channel,
           orderedAt: row.orderedAt,
           status: row.salesOrderId || row.itemStatus === 'posted' ? 'posted' : 'pending',
+          confirmationStatus: (row.realMarketStatus || 'NEEDS_CONFIRMATION').toUpperCase(),
           salesOrderId: row.salesOrderId,
           salesOrderNumber: row.salesOrder?.orderNumber,
           salesOrder: row.salesOrder
@@ -1514,5 +1519,232 @@ export class OnlineOrderManagementService {
     });
 
     return { status: true, message: `Order ${orderNumber} deleted successfully.` };
+  }
+
+  /**
+   * Update telephonic confirmation status and call log notes for an order
+   */
+  async updateConfirmationStatus(
+    orderNumber: string,
+    dto: {
+      confirmationStatus: string;
+      notes?: string;
+      confirmedBy?: string;
+    },
+  ) {
+    if (!orderNumber) {
+      throw new BadRequestException('Order number is required.');
+    }
+
+    const existingRows = await this.prisma.onlineOrder.findMany({
+      where: { orderNumber },
+    });
+
+    if (!existingRows || existingRows.length === 0) {
+      throw new NotFoundException(`Order ${orderNumber} not found.`);
+    }
+
+    const status = (dto.confirmationStatus || 'CONFIRMED').trim().toUpperCase();
+    const noteText = dto.notes?.trim();
+    const existingNote = existingRows[0].note || '';
+    let updatedNote = existingNote;
+    if (noteText) {
+      const timestamp = new Date().toLocaleString();
+      const prefix = `[Call Log ${timestamp}]: ${noteText}`;
+      updatedNote = existingNote ? `${existingNote}\n${prefix}` : prefix;
+    }
+
+    await this.prisma.onlineOrder.updateMany({
+      where: { orderNumber },
+      data: {
+        realMarketStatus: status,
+        note: updatedNote,
+      },
+    });
+
+    return {
+      status: true,
+      message: `Order ${orderNumber} confirmation status set to ${status}`,
+      data: {
+        orderNumber,
+        confirmationStatus: status,
+        note: updatedNote,
+      },
+    };
+  }
+
+  /**
+   * Bulk update telephonic confirmation status for multiple orders at once
+   */
+  async bulkUpdateConfirmationStatus(
+    orderNumbers: string[],
+    dto: {
+      confirmationStatus: string;
+      notes?: string;
+      confirmedBy?: string;
+    },
+  ) {
+    if (!orderNumbers || orderNumbers.length === 0) {
+      throw new BadRequestException('At least one order number is required for bulk confirmation.');
+    }
+
+    const status = (dto.confirmationStatus || 'CONFIRMED').trim().toUpperCase();
+    const noteText = dto.notes?.trim();
+
+    if (noteText) {
+      const timestamp = new Date().toLocaleString();
+      const prefix = `[Bulk Log ${timestamp}]: ${noteText}`;
+      
+      const existingRows = await this.prisma.onlineOrder.findMany({
+        where: { orderNumber: { in: orderNumbers } },
+        select: { orderNumber: true, note: true },
+      });
+
+      const orderNotesMap = new Map<string, string>();
+      for (const row of existingRows) {
+        if (!orderNotesMap.has(row.orderNumber)) {
+          orderNotesMap.set(row.orderNumber, row.note || '');
+        }
+      }
+
+      for (const orderNum of orderNumbers) {
+        const oldNote = orderNotesMap.get(orderNum) || '';
+        const newNote = oldNote ? `${oldNote}\n${prefix}` : prefix;
+        await this.prisma.onlineOrder.updateMany({
+          where: { orderNumber: orderNum },
+          data: {
+            realMarketStatus: status,
+            note: newNote,
+          },
+        });
+      }
+    } else {
+      await this.prisma.onlineOrder.updateMany({
+        where: { orderNumber: { in: orderNumbers } },
+        data: {
+          realMarketStatus: status,
+        },
+      });
+    }
+
+    return {
+      status: true,
+      count: orderNumbers.length,
+      confirmationStatus: status,
+      message: `Successfully marked ${orderNumbers.length} order(s) as ${status}.`,
+    };
+  }
+
+  /**
+   * Fetch real-time available stock for an item/barcode across all warehouses and retail outlets
+   */
+  async getMultiLocationStock(identifier: string) {
+    if (!identifier || !identifier.trim()) {
+      throw new BadRequestException('Identifier (SKU, Barcode, or Item ID) is required.');
+    }
+    const clean = identifier.trim();
+
+    // 1. Locate Item in DB
+    const item = await this.prisma.item.findFirst({
+      where: {
+        OR: [
+          { id: clean },
+          { barCode: { equals: clean, mode: 'insensitive' } },
+          { sku: { equals: clean, mode: 'insensitive' } },
+          { itemId: { equals: clean, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        sku: true,
+        barCode: true,
+        description: true,
+        imageUrl: true,
+        brand: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!item) {
+      return {
+        status: false,
+        message: `No item found matching "${clean}"`,
+        data: null,
+      };
+    }
+
+    // 2. Fetch stock details across all locations
+    const stockDetails = await this.inventoryService.getDetailedStock(item.id);
+
+    // 3. Aggregate available quantities by location / warehouse
+    const locMap = new Map<string, {
+      locationId: string;
+      locationName: string;
+      warehouseId?: string;
+      isWarehouse: boolean;
+      availableQty: number;
+    }>();
+
+    for (const inv of stockDetails) {
+      const locId = inv.locationId || inv.warehouseId || 'unassigned';
+      const locName = inv.location?.name || inv.location?.warehouse?.name || (inv.warehouseId ? 'Warehouse' : 'Retail Store');
+      const isWarehouse = !inv.locationId;
+      const qty = Number(inv.quantity || 0);
+
+      if (locMap.has(locId)) {
+        locMap.get(locId)!.availableQty += qty;
+      } else {
+        locMap.set(locId, {
+          locationId: locId,
+          locationName: locName,
+          warehouseId: inv.warehouseId || undefined,
+          isWarehouse,
+          availableQty: qty,
+        });
+      }
+    }
+
+    const locations = Array.from(locMap.values()).sort((a, b) => b.availableQty - a.availableQty);
+
+    return {
+      status: true,
+      data: {
+        item: {
+          id: item.id,
+          sku: item.sku,
+          barcode: item.barCode,
+          name: item.description,
+          imageUrl: item.imageUrl,
+          brandName: item.brand?.name || null,
+        },
+        locations,
+        totalStock: locations.reduce((acc, l) => acc + l.availableQty, 0),
+      },
+    };
+  }
+
+  /**
+   * Batch fetch multi-location stock for multiple barcodes/SKUs in one call
+   */
+  async getBatchMultiLocationStock(identifiers: string[]) {
+    if (!identifiers || identifiers.length === 0) {
+      return { status: true, data: {} };
+    }
+    const cleanList = Array.from(new Set(identifiers.map(id => (id || '').trim()).filter(Boolean)));
+    const results: Record<string, any> = {};
+
+    await Promise.all(
+      cleanList.map(async (ident) => {
+        try {
+          const res = await this.getMultiLocationStock(ident);
+          if (res.status && res.data) {
+            results[ident] = res.data;
+          }
+        } catch (e) {
+          // ignore individual lookup failure
+        }
+      })
+    );
+
+    return { status: true, data: results };
   }
 }

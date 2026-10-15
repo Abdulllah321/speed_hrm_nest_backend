@@ -476,9 +476,9 @@ export class VoucherService {
   // ── Bulk issue vouchers ────────────────────────────────────────
   async bulkIssueVouchers(
     data: {
-      voucherType: VoucherType;
-      faceValue: number;
-      quantity: number; // max 500 per batch
+      voucherType?: VoucherType;
+      faceValue?: number;
+      quantity?: number; // max 50 per batch as requested
       discount?: number;
       description?: string;
       companyName?: string;
@@ -494,68 +494,219 @@ export class VoucherService {
       cardLast4?: string;
       slipNo?: string;
       merchantId?: string;
+      vouchers?: Array<{
+        voucherType?: VoucherType;
+        faceValue: number;
+        discount?: number;
+        description?: string;
+        companyName?: string;
+        companyGlCode?: string;
+        customerId?: string;
+        requireCustomerMatch?: boolean;
+        expiresAt?: string;
+        locationIds?: string[];
+        paymentMode?: string;
+        cardholderName?: string;
+        cardLast4?: string;
+        slipNo?: string;
+        merchantId?: string;
+      }>;
     },
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const isCorporate = data.voucherType === 'CORPORATE';
-      const issuedByLocationId = isCorporate
-        ? null
-        : (data.issuedByLocationId || null);
-      const qty = Math.min(data.quantity, 500);
-      const locationIds = data.locationIds ?? [];
+      const isCustomList = Array.isArray(data.vouchers) && data.vouchers.length > 0;
+      const targetCount = isCustomList
+        ? Math.min(data.vouchers!.length, 50)
+        : Math.min(Math.max(Number(data.quantity || 1), 1), 50);
 
-      // Generate all codes upfront and ensure uniqueness
-      const codes = new Set<string>();
-      while (codes.size < qty) {
-        codes.add(generateCode(data.voucherType));
+      // Build normalized list of vouchers to create
+      const itemsToCreate: Array<{
+        voucherType: VoucherType;
+        faceValue: number;
+        discount: number;
+        description?: string;
+        companyName?: string;
+        companyGlCode?: string;
+        customerId?: string;
+        requireCustomerMatch: boolean;
+        expiresAt?: Date;
+        locationIds: string[];
+        issuedByLocationId?: string | null;
+        paymentMode?: string;
+        cardholderName?: string;
+        cardLast4?: string;
+        slipNo?: string;
+        merchantId?: string;
+      }> = [];
+
+      if (isCustomList) {
+        for (let i = 0; i < targetCount; i++) {
+          const item = data.vouchers![i];
+          const vType: VoucherType = item.voucherType || data.voucherType || 'GIFT';
+          const isCorp = vType === 'CORPORATE';
+          const issuedLocId = isCorp
+            ? null
+            : (data.issuedByLocationId || null);
+
+          itemsToCreate.push({
+            voucherType: vType,
+            faceValue: Number(item.faceValue || 0),
+            discount: Number(item.discount ?? data.discount ?? 0),
+            description: item.description || data.description,
+            companyName: item.companyName || data.companyName,
+            companyGlCode: item.companyGlCode || data.companyGlCode,
+            customerId: item.customerId || data.customerId,
+            requireCustomerMatch: item.requireCustomerMatch ?? data.requireCustomerMatch ?? false,
+            expiresAt: item.expiresAt
+              ? new Date(item.expiresAt)
+              : data.expiresAt
+                ? new Date(data.expiresAt)
+                : undefined,
+            locationIds: item.locationIds ?? data.locationIds ?? [],
+            issuedByLocationId: issuedLocId,
+            paymentMode: item.paymentMode || data.paymentMode,
+            cardholderName: item.cardholderName || data.cardholderName,
+            cardLast4: item.cardLast4 || data.cardLast4,
+            slipNo: item.slipNo || data.slipNo,
+            merchantId: item.merchantId || data.merchantId,
+          });
+        }
+      } else {
+        const vType: VoucherType = data.voucherType || 'GIFT';
+        const isCorp = vType === 'CORPORATE';
+        const issuedLocId = isCorp
+          ? null
+          : (data.issuedByLocationId || null);
+        const expDate = data.expiresAt ? new Date(data.expiresAt) : undefined;
+        const locIds = data.locationIds ?? [];
+
+        for (let i = 0; i < targetCount; i++) {
+          itemsToCreate.push({
+            voucherType: vType,
+            faceValue: Number(data.faceValue || 0),
+            discount: Number(data.discount ?? 0),
+            description: data.description,
+            companyName: data.companyName,
+            companyGlCode: data.companyGlCode,
+            customerId: data.customerId,
+            requireCustomerMatch: data.requireCustomerMatch ?? false,
+            expiresAt: expDate,
+            locationIds: locIds,
+            issuedByLocationId: issuedLocId,
+            paymentMode: data.paymentMode,
+            cardholderName: data.cardholderName,
+            cardLast4: data.cardLast4,
+            slipNo: data.slipNo,
+            merchantId: data.merchantId,
+          });
+        }
       }
 
-      const expiresAt = data.expiresAt ? new Date(data.expiresAt) : undefined;
+      // Generate unique codes with guaranteed non-collision against DB
+      const generatedCodes: string[] = [];
+      const generatedSet = new Set<string>();
 
-      // Use createMany for the vouchers, then batch the junction records
+      for (const item of itemsToCreate) {
+        let code = generateCode(item.voucherType);
+        let attempts = 0;
+        while ((generatedSet.has(code) || attempts < 10) && attempts < 20) {
+          if (!generatedSet.has(code)) break;
+          code = generateCode(item.voucherType);
+          attempts++;
+        }
+        generatedSet.add(code);
+        generatedCodes.push(code);
+      }
+
+      // Check against DB for collisions
+      const existingInDb = await this.prisma.voucher.findMany({
+        where: { code: { in: Array.from(generatedSet) } },
+        select: { code: true },
+      });
+      if (existingInDb.length > 0) {
+        const collisionSet = new Set(existingInDb.map((e) => e.code));
+        for (let i = 0; i < generatedCodes.length; i++) {
+          if (collisionSet.has(generatedCodes[i])) {
+            let newCode = generateCode(itemsToCreate[i].voucherType);
+            while (collisionSet.has(newCode) || generatedSet.has(newCode)) {
+              newCode = generateCode(itemsToCreate[i].voucherType);
+            }
+            generatedSet.add(newCode);
+            generatedCodes[i] = newCode;
+          }
+        }
+      }
+
+      // Execute in a single transactional batch
       const created = await this.prisma.$transaction(async (tx) => {
-        const vouchers: { id: string; code: string }[] = [];
+        const vouchers: Array<{
+          id: string;
+          code: string;
+          faceValue: number;
+          discount: number;
+          voucherType: VoucherType;
+          expiresAt?: Date | null;
+        }> = [];
 
-        for (const code of codes) {
+        for (let i = 0; i < itemsToCreate.length; i++) {
+          const item = itemsToCreate[i];
+          const code = generatedCodes[i];
+          const isCorp = item.voucherType === 'CORPORATE';
+
           const v = await tx.voucher.create({
             data: {
               code,
-              voucherType: data.voucherType,
-              faceValue: data.faceValue,
-              discount: data.discount ?? 0,
-              description: data.description,
-              companyName: data.companyName,
-              companyGlCode: data.companyGlCode,
-              customerId: data.customerId,
-              requireCustomerMatch: data.requireCustomerMatch ?? false,
-              issuedByLocationId,
+              voucherType: item.voucherType,
+              faceValue: item.faceValue,
+              discount: item.discount,
+              description: item.description,
+              companyName: item.companyName,
+              companyGlCode: item.companyGlCode,
+              customerId: item.customerId,
+              requireCustomerMatch: item.requireCustomerMatch,
+              issuedByLocationId: item.issuedByLocationId,
               issuedByUserId: data.issuedByUserId,
-              expiresAt,
-              paymentMode: data.paymentMode,
-              cardholderName: data.cardholderName,
-              cardLast4: data.cardLast4,
-              slipNo: data.slipNo,
-              merchantId: data.merchantId,
+              expiresAt: item.expiresAt,
+              paymentMode: item.paymentMode,
+              cardholderName: item.cardholderName,
+              cardLast4: item.cardLast4,
+              slipNo: item.slipNo,
+              merchantId: item.merchantId,
               locations: {
-                create: locationIds.map((locId) => ({ locationId: locId })),
+                create: item.locationIds.map((locId) => ({ locationId: locId })),
               },
               transactions: {
                 create: {
                   action: 'ISSUED',
                   amountUsed: 0,
-                  locationId: issuedByLocationId,
-                  notes: isCorporate
-                    ? `Bulk issued (${qty}) as CORPORATE voucher (ERP Head Office issuance)`
-                    : data.paymentMode === 'CARD'
-                      ? `Bulk issued (${qty}) as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
-                      : `Bulk issued (${qty}) as ${data.voucherType} (Paid via Cash)`,
+                  locationId: item.issuedByLocationId,
+                  notes: isCorp
+                    ? `Bulk issued (${targetCount}) as CORPORATE voucher (ERP Head Office issuance)`
+                    : item.paymentMode === 'CARD'
+                      ? `Bulk issued (${targetCount}) as ${item.voucherType} (Paid via Card${item.cardLast4 ? ` - ****${item.cardLast4}` : ''})`
+                      : `Bulk issued (${targetCount}) as ${item.voucherType} (Paid via Cash)`,
                 },
               },
             },
-            select: { id: true, code: true },
+            select: {
+              id: true,
+              code: true,
+              faceValue: true,
+              discount: true,
+              voucherType: true,
+              expiresAt: true,
+            },
           });
-          vouchers.push(v);
+
+          vouchers.push({
+            id: v.id,
+            code: v.code,
+            faceValue: Number(v.faceValue),
+            discount: Number(v.discount || 0),
+            voucherType: v.voucherType,
+            expiresAt: v.expiresAt,
+          });
         }
 
         return vouchers;
@@ -568,7 +719,7 @@ export class VoucherService {
           action: 'create',
           module: 'pos-config',
           entity: 'Voucher',
-          description: `Bulk issued ${created.length} vouchers of type ${data.voucherType}`,
+          description: `Bulk issued ${created.length} vouchers`,
           newValues: JSON.stringify(data),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
@@ -578,7 +729,11 @@ export class VoucherService {
 
       return {
         status: true,
-        data: { count: created.length, codes: created.map((v) => v.code) },
+        data: {
+          count: created.length,
+          codes: created.map((v) => v.code),
+          vouchers: created,
+        },
         message: `${created.length} vouchers issued successfully`,
       };
     } catch (error: any) {

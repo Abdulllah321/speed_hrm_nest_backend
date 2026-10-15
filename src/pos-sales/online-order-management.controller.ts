@@ -202,6 +202,46 @@ export class OnlineOrderManagementController {
     return this.service.deleteOrder(orderNumber);
   }
 
+  @Put('order/:orderNumber/confirmation')
+  @ApiOperation({ summary: 'Update customer confirmation status and notes' })
+  async updateConfirmationStatus(
+    @Param('orderNumber') orderNumber: string,
+    @Body() body: { confirmationStatus: string; notes?: string },
+    @Req() req: any,
+  ) {
+    const cashier = req.user?.username || req.user?.email || 'User';
+    return this.service.updateConfirmationStatus(orderNumber, {
+      ...body,
+      confirmedBy: cashier,
+    });
+  }
+
+  @Post('bulk-confirm')
+  @ApiOperation({ summary: 'Bulk update customer confirmation status for multiple orders' })
+  async bulkUpdateConfirmationStatus(
+    @Body() body: { orderNumbers: string[]; confirmationStatus: string; notes?: string },
+    @Req() req: any,
+  ) {
+    const cashier = req.user?.username || req.user?.email || 'User';
+    return this.service.bulkUpdateConfirmationStatus(body.orderNumbers, {
+      confirmationStatus: body.confirmationStatus,
+      notes: body.notes,
+      confirmedBy: cashier,
+    });
+  }
+
+  @Get('barcode-stock/:identifier')
+  @ApiOperation({ summary: 'Get multi-location real-time stock for an item or barcode' })
+  async getBarcodeStock(@Param('identifier') identifier: string) {
+    return this.service.getMultiLocationStock(identifier);
+  }
+
+  @Post('batch-barcode-stock')
+  @ApiOperation({ summary: 'Batch get multi-location stock for multiple items/barcodes' })
+  async getBatchBarcodeStock(@Body() body: { identifiers: string[] }) {
+    return this.service.getBatchMultiLocationStock(body.identifiers || []);
+  }
+
   @Get('template/download')
   @ApiOperation({ summary: 'Download online orders CSV template' })
   async downloadTemplate(@Res() res: any) {
