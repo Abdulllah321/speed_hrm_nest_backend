@@ -235,32 +235,77 @@ export class PosClaimsService {
     const where: any = {};
     if (status && status !== 'ALL') where.status = status;
 
-    const [data, total] = await Promise.all([
-      this.prisma.posClaim.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-        skip: (page - 1) * limit,
-        include: {
-          salesOrder: { select: { orderNumber: true } },
-          items: {
-            select: {
-              id: true,
-              claimedQty: true,
-              approvedQty: true,
-              claimedAmount: true,
-              approvedAmount: true,
-              itemStatus: true,
+    const limitNum = limit !== undefined ? Number(limit) : 50;
+    const findOptions: any = {
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        salesOrder: {
+          select: {
+            id: true,
+            orderNumber: true,
+            locationId: true,
+          },
+        },
+        items: {
+          include: {
+            item: {
+              select: {
+                id: true,
+                sku: true,
+                description: true,
+                color: { select: { name: true } },
+                size: { select: { name: true } },
+              },
             },
           },
         },
-      }),
+      },
+    };
+
+    if (limitNum > 0) {
+      findOptions.take = limitNum;
+      findOptions.skip = (page - 1) * limitNum;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.posClaim.findMany(findOptions),
       this.prisma.posClaim.count({ where }),
     ]);
 
+    // Resolve location info for sales orders
+    const locationIds = Array.from(
+      new Set(
+        data
+          .map((c) => c.salesOrder?.locationId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    let locationMap = new Map<string, any>();
+    if (locationIds.length > 0) {
+      const locations = await this.prisma.location.findMany({
+        where: { id: { in: locationIds } },
+        select: { id: true, name: true, code: true, shortCode: true },
+      });
+      locationMap = new Map(locations.map((loc) => [loc.id, loc]));
+    }
+
+    const enhancedData = data.map((c) => ({
+      ...c,
+      salesOrder: c.salesOrder
+        ? {
+            ...c.salesOrder,
+            location: c.salesOrder.locationId
+              ? locationMap.get(c.salesOrder.locationId) || null
+              : null,
+          }
+        : null,
+    }));
+
     return {
       status: true,
-      data,
+      data: enhancedData,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
