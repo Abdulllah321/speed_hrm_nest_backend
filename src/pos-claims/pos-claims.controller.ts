@@ -43,8 +43,8 @@ export class PosClaimsController {
   ) {
     return this.service.findAll({
       status,
-      limit: limit ? parseInt(limit) : 50,
-      page: page ? parseInt(page) : 1,
+      limit: limit !== undefined ? parseInt(limit, 10) : 50,
+      page: page ? parseInt(page, 10) : 1,
     });
   }
 
