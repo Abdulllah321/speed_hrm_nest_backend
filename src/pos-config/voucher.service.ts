@@ -371,11 +371,17 @@ export class VoucherService {
     try {
       const code = generateCode(data.voucherType);
 
+      // Corporate vouchers are ERP/Head-Office issued — NEVER linked to any issuing location
+      const isCorporate = data.voucherType === 'CORPORATE';
+      const issuedByLocationId = isCorporate
+        ? null
+        : (data.issuedByLocationId || null);
+
       // EXCHANGE vouchers are usable everywhere by default (empty location restriction)
       // REFUND vouchers are also locked to issuing location (record-only)
       const locationIds =
-        data.voucherType === 'REFUND' && data.issuedByLocationId
-          ? [data.issuedByLocationId]
+        data.voucherType === 'REFUND' && issuedByLocationId
+          ? [issuedByLocationId]
           : (data.locationIds ?? []);
 
       // REFUND vouchers are immediately marked as redeemed (record-only, not usable)
@@ -392,7 +398,7 @@ export class VoucherService {
           companyName: data.companyName,
           companyGlCode: data.companyGlCode,
           requireCustomerMatch: data.requireCustomerMatch ?? false,
-          issuedByLocationId: data.issuedByLocationId,
+          issuedByLocationId,
           issuedByUserId: data.issuedByUserId,
           sourceOrderId: data.sourceOrderId,
           expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
@@ -410,12 +416,14 @@ export class VoucherService {
             create: {
               action: isRefundVoucher ? 'ISSUED_REFUND' : 'ISSUED',
               amountUsed: 0,
-              locationId: data.issuedByLocationId,
-              notes: isRefundVoucher
-                ? `Refund voucher issued - Cash refunded to customer (Record only)`
-                : data.paymentMode === 'CARD'
-                  ? `Issued as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
-                  : `Issued as ${data.voucherType} (Paid via Cash)`,
+              locationId: issuedByLocationId,
+              notes: isCorporate
+                ? `Issued as CORPORATE voucher (ERP Head Office issuance)`
+                : isRefundVoucher
+                  ? `Refund voucher issued - Cash refunded to customer (Record only)`
+                  : data.paymentMode === 'CARD'
+                    ? `Issued as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
+                    : `Issued as ${data.voucherType} (Paid via Cash)`,
             },
           },
         },
@@ -490,6 +498,10 @@ export class VoucherService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
+      const isCorporate = data.voucherType === 'CORPORATE';
+      const issuedByLocationId = isCorporate
+        ? null
+        : (data.issuedByLocationId || null);
       const qty = Math.min(data.quantity, 500);
       const locationIds = data.locationIds ?? [];
 
@@ -517,7 +529,7 @@ export class VoucherService {
               companyGlCode: data.companyGlCode,
               customerId: data.customerId,
               requireCustomerMatch: data.requireCustomerMatch ?? false,
-              issuedByLocationId: data.issuedByLocationId,
+              issuedByLocationId,
               issuedByUserId: data.issuedByUserId,
               expiresAt,
               paymentMode: data.paymentMode,
@@ -532,9 +544,10 @@ export class VoucherService {
                 create: {
                   action: 'ISSUED',
                   amountUsed: 0,
-                  locationId: data.issuedByLocationId,
-                  notes:
-                    data.paymentMode === 'CARD'
+                  locationId: issuedByLocationId,
+                  notes: isCorporate
+                    ? `Bulk issued (${qty}) as CORPORATE voucher (ERP Head Office issuance)`
+                    : data.paymentMode === 'CARD'
                       ? `Bulk issued (${qty}) as ${data.voucherType} (Paid via Card${data.cardLast4 ? ` - ****${data.cardLast4}` : ''})`
                       : `Bulk issued (${qty}) as ${data.voucherType} (Paid via Cash)`,
                 },
@@ -918,7 +931,7 @@ export class VoucherService {
             customerId: isCorporate ? null : voucher.customerId,
             companyName: isCorporate ? voucher.companyName : null,
             companyGlCode: isCorporate ? voucher.companyGlCode : null,
-            issuedByLocationId: locationId,
+            issuedByLocationId: isCorporate ? null : locationId,
             issuedByUserId: ctx?.userId,
             sourceOrderId: orderId,
             expiresAt,
@@ -952,9 +965,9 @@ export class VoucherService {
             voucherId: creditVoucher.id,
             action: 'ISSUED',
             amountUsed: 0,
-            locationId,
+            locationId: isCorporate ? null : locationId,
             notes: isCorporate
-              ? `Corporate voucher issued for unused balance of ${voucher.code}`
+              ? `Corporate voucher issued for unused balance of ${voucher.code} (ERP issuance)`
               : `Credit voucher issued for unused balance of ${voucher.code}`,
           },
         });
@@ -1291,4 +1304,106 @@ export class VoucherService {
       return { status: false, message: error.message };
     }
   }
+
+  // ── Update voucher allowed locations (single or bulk) ─────────
+  async updateVoucherLocations(
+    voucherIds: string[],
+    locationIds: string[],
+    mode: 'replace' | 'add' | 'clear' = 'replace',
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+  ) {
+    try {
+      if (!voucherIds || voucherIds.length === 0) {
+        return { status: false, message: 'No vouchers specified' };
+      }
+
+      const vouchers = await this.prisma.voucher.findMany({
+        where: { id: { in: voucherIds }, isDeleted: false },
+        select: { id: true, code: true },
+      });
+
+      if (vouchers.length === 0) {
+        return { status: false, message: 'No eligible vouchers found to update' };
+      }
+
+      const validVoucherIds = vouchers.map((v) => v.id);
+
+      await this.prisma.$transaction(async (tx) => {
+        if (mode === 'clear' || (mode === 'replace' && locationIds.length === 0)) {
+          // Clear all location restrictions -> Redeemable at all locations
+          await tx.voucherLocation.deleteMany({
+            where: { voucherId: { in: validVoucherIds } },
+          });
+        } else if (mode === 'replace') {
+          // Replace all locations
+          await tx.voucherLocation.deleteMany({
+            where: { voucherId: { in: validVoucherIds } },
+          });
+
+          if (locationIds.length > 0) {
+            const records = validVoucherIds.flatMap((vId) =>
+              locationIds.map((locId) => ({ voucherId: vId, locationId: locId })),
+            );
+            await tx.voucherLocation.createMany({
+              data: records,
+              skipDuplicates: true,
+            });
+          }
+        } else if (mode === 'add') {
+          // Add new locations without removing existing ones
+          if (locationIds.length > 0) {
+            const records = validVoucherIds.flatMap((vId) =>
+              locationIds.map((locId) => ({ voucherId: vId, locationId: locId })),
+            );
+            await tx.voucherLocation.createMany({
+              data: records,
+              skipDuplicates: true,
+            });
+          }
+        }
+
+        const actionNotes =
+          mode === 'clear' || (mode === 'replace' && locationIds.length === 0)
+            ? 'Allowed locations cleared (Redeemable at all locations)'
+            : mode === 'add'
+              ? `Added ${locationIds.length} redemption location(s)`
+              : `Updated allowed redemption locations (${locationIds.length} location(s))`;
+
+        const txData = validVoucherIds.map((vId) => ({
+          voucherId: vId,
+          action: 'LOCATIONS_UPDATED',
+          amountUsed: 0,
+          notes: actionNotes,
+        }));
+
+        await tx.voucherTransaction.createMany({
+          data: txData,
+        });
+      });
+
+      runInBackground(
+        'Update Voucher Locations',
+        this.activityLogs.log({
+          userId: ctx?.userId,
+          action: 'update',
+          module: 'pos-config',
+          entity: 'Voucher',
+          description: `Updated locations for ${validVoucherIds.length} voucher(s) (mode: ${mode}, locations: ${locationIds.length})`,
+          newValues: JSON.stringify({ voucherIds: validVoucherIds, locationIds, mode }),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          status: 'success',
+        }),
+      );
+
+      return {
+        status: true,
+        count: validVoucherIds.length,
+        message: `Successfully updated redemption locations for ${validVoucherIds.length} voucher(s)`,
+      };
+    } catch (error: any) {
+      return { status: false, message: error.message };
+    }
+  }
 }
+

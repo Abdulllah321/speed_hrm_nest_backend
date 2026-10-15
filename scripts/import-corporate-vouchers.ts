@@ -623,7 +623,7 @@ async function processTenantCorporateVouchers(
       companyName: compName,
       companyGlCode: compGl,
       description: desc,
-      issuedByLocationId: loc?.id || null,
+      issuedByLocationId: null, // Corporate vouchers are ERP-issued, never linked to an issuing location
       isActive,
       isRedeemed,
       expiresAt: row.dateValid,
@@ -675,10 +675,10 @@ async function processTenantCorporateVouchers(
       transactionDataList.push({
         id: crypto.randomUUID(),
         voucherId,
-        locationId: loc?.id || null,
+        locationId: null, // ERP issuance has no issuing store location
         action: 'ISSUED',
         amountUsed: new Prisma.Decimal(row.voucherValue),
-        notes: `Corporate voucher issued to ${compName} (Legacy Doc #${row.documentNumber})`,
+        notes: `Corporate voucher issued to ${compName} (ERP issuance - Legacy Doc #${row.documentNumber})`,
         createdAt: row.documentDate,
       });
     }

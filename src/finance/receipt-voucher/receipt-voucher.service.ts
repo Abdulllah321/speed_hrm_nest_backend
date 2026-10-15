@@ -656,7 +656,11 @@ export class ReceiptVoucherService {
     }
 
     // 2. Unpost GL transactions
-    await this.accounting.unpostLines('RECEIPT_VOUCHER', voucherId, prisma);
+    await this.accounting.unpostLines(
+      ['RECEIPT_VOUCHER', 'RSRV'],
+      voucherId,
+      prisma,
+    );
   }
 
   private async postReceiptVoucherToLedger(voucherId: string, prisma: any) {
@@ -709,10 +713,16 @@ export class ReceiptVoucherService {
 
     // ── Post journal lines ───────────────────────────────────────────────
     if (totalDebit > 0) {
+      const isRsrv =
+        voucher.type === 'rs_rv' ||
+        voucher.rvNo?.startsWith('RSRV') ||
+        voucher.rvNo?.startsWith('RS-RV');
+      const sourceType = isRsrv ? 'RSRV' : 'RECEIPT_VOUCHER';
+
       const existingTx = await prisma.accountTransaction.findFirst({
         where: {
           sourceId: voucher.id,
-          sourceType: 'RECEIPT_VOUCHER',
+          sourceType: { in: ['RECEIPT_VOUCHER', 'RSRV'] },
         },
         select: { id: true },
       });
@@ -736,11 +746,12 @@ export class ReceiptVoucherService {
       await this.accounting.postLines(
         allLines,
         {
-          sourceType: 'RECEIPT_VOUCHER',
+          sourceType,
           sourceId: voucher.id,
           sourceRef: voucher.rvNo,
           description:
-            voucher.description || `Receipt Voucher: ${voucher.rvNo}`,
+            voucher.description ||
+            `${isRsrv ? 'Retail Sale Receipt Voucher' : 'Receipt Voucher'}: ${voucher.rvNo}`,
           transactionDate: new Date(voucher.rvDate),
         },
         prisma,

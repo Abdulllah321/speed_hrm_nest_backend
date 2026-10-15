@@ -1156,14 +1156,15 @@ export class TransferRequestService {
     }
 
     if (params?.search) {
-      const q = params.search;
+      const q = params.search.trim();
       whereClause.OR = [
         { requestNo: { contains: q, mode: 'insensitive' } },
-        { inboundNo: { contains: q, mode: 'insensitive' } },
-        { formattedSerialNo: { contains: q, mode: 'insensitive' } },
+        { trackingNumber: { contains: q, mode: 'insensitive' } },
         { notes: { contains: q, mode: 'insensitive' } },
         { fromLocation: { name: { contains: q, mode: 'insensitive' } } },
+        { fromLocation: { code: { contains: q, mode: 'insensitive' } } },
         { fromWarehouse: { name: { contains: q, mode: 'insensitive' } } },
+        { fromWarehouse: { code: { contains: q, mode: 'insensitive' } } },
         {
           items: {
             some: { item: { barCode: { contains: q, mode: 'insensitive' } } },
@@ -1862,6 +1863,13 @@ export class TransferRequestService {
             }
           }
 
+          // Ensure fulfilledQty matches quantity for accepted items
+          await tx.$executeRaw`
+            UPDATE "TransferRequestItem"
+            SET "fulfilledQty" = quantity
+            WHERE "transferRequestId" = ${id}
+          `;
+
           const updated = await tx.transferRequest.update({
             where: { id },
             data: {
@@ -2109,6 +2117,13 @@ export class TransferRequestService {
             }
           }
         }
+
+        // Ensure fulfilledQty matches quantity for accepted items
+        await tx.$executeRaw`
+          UPDATE "TransferRequestItem"
+          SET "fulfilledQty" = quantity
+          WHERE "transferRequestId" = ${id}
+        `;
 
         // Update request status to completed
         const updated = await tx.transferRequest.update({
@@ -2368,6 +2383,13 @@ export class TransferRequestService {
             );
           }
         }
+
+        // Ensure fulfilledQty matches quantity for acknowledged claim items
+        await tx.$executeRaw`
+          UPDATE "TransferRequestItem"
+          SET "fulfilledQty" = quantity
+          WHERE "transferRequestId" = ${id}
+        `;
 
         // 4. Update transfer request status to COMPLETED (direct approved & completed, bypassing maker/checker)
         const now = new Date();

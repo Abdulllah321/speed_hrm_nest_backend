@@ -35,6 +35,7 @@ const SOURCE_LABELS: Record<string, string> = {
   PURCHASE_INVOICE: 'Purchase Invoice',
   PAYMENT_VOUCHER: 'Payment Voucher',
   RECEIPT_VOUCHER: 'Receipt Voucher',
+  RSRV: 'Retail Sale Receipt Voucher (RSRV)',
   JOURNAL_VOUCHER: 'Journal Voucher',
   ADVANCE_APPLICATION: 'Advance Application',
   SALES_INVOICE: 'Sales Invoice',
@@ -315,7 +316,7 @@ export class GeneralLedgerExportProcessor {
       // Row 2: Metadata Subtitle
       const sRow2 = summaryWs.getRow(2);
       sRow2.getCell(1).value =
-        `Period: ${from ? new Date(from).toLocaleDateString('en-GB') : 'Beginning'} to ${to ? new Date(to).toLocaleDateString('en-GB') : 'Present'}  |  Exported: ${new Date().toLocaleString('en-PK')}  |  Document Filter: ${sourceType ?? 'All Documents'}`;
+        `Period: ${from ? new Date(from).toLocaleDateString('en-GB') : 'Beginning'} to ${to ? new Date(to).toLocaleDateString('en-GB') : 'Present'}  |  Exported: ${new Date().toLocaleString('en-PK')}  |  Document Filter: ${sourceType && SOURCE_LABELS[sourceType] ? SOURCE_LABELS[sourceType] : (sourceType ?? 'All Documents')}`;
       sRow2.getCell(1).font = {
         italic: true,
         size: 9,

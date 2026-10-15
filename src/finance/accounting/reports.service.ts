@@ -558,9 +558,40 @@ export class ReportsService {
           OR: [{ accountId: acc.id }, { tagAccountId: acc.id }],
         };
 
+        const buildSourceCondition = (st?: string) => {
+          if (!st || st === 'all') return null;
+          if (st === 'RSRV') {
+            return {
+              OR: [
+                { sourceType: 'RSRV' },
+                {
+                  sourceType: 'RECEIPT_VOUCHER',
+                  sourceRef: { startsWith: 'RSRV' },
+                },
+                {
+                  sourceType: 'RECEIPT_VOUCHER',
+                  sourceRef: { startsWith: 'RS-RV' },
+                },
+              ],
+            };
+          }
+          if (st === 'RECEIPT_VOUCHER') {
+            return {
+              sourceType: 'RECEIPT_VOUCHER',
+              NOT: [
+                { sourceRef: { startsWith: 'RSRV' } },
+                { sourceRef: { startsWith: 'RS-RV' } },
+              ],
+            };
+          }
+          return { sourceType: st };
+        };
+
+        const sourceCond = buildSourceCondition(sourceType);
+
         const openingWhere: any = { AND: [accountMatch] };
-        if (sourceType) {
-          openingWhere.AND.push({ sourceType });
+        if (sourceCond) {
+          openingWhere.AND.push(sourceCond);
           if (fromDate)
             openingWhere.AND.push({ transactionDate: { lt: fromDate } });
         } else {
@@ -588,7 +619,7 @@ export class ReportsService {
         const openingBalance = d - c;
 
         const where: any = { AND: [accountMatch] };
-        if (sourceType) where.AND.push({ sourceType });
+        if (sourceCond) where.AND.push(sourceCond);
         else where.AND.push({ sourceType: { not: 'OPENING_BALANCE' } });
 
         if (fromDate || toDate) {
@@ -638,7 +669,14 @@ export class ReportsService {
             Boolean(id && typeof id === 'string' && id.trim()),
           );
         const rvIds = transactions
-          .filter((tx) => tx.sourceType === 'RECEIPT_VOUCHER')
+          .filter(
+            (tx) =>
+              tx.sourceType === 'RECEIPT_VOUCHER' ||
+              tx.sourceType === 'RSRV' ||
+              (tx.sourceType === 'RECEIPT_VOUCHER' &&
+                (tx.sourceRef?.startsWith('RSRV') ||
+                  tx.sourceRef?.startsWith('RS-RV'))),
+          )
           .map((tx) => tx.sourceId)
           .filter((id): id is string =>
             Boolean(id && typeof id === 'string' && id.trim()),
@@ -676,8 +714,18 @@ export class ReportsService {
           const deb = Number(tx.debit);
           const cred = Number(tx.credit);
           running += deb - cred;
+
+          const isRsrv =
+            tx.sourceType === 'RSRV' ||
+            (tx.sourceType === 'RECEIPT_VOUCHER' &&
+              (tx.sourceRef?.startsWith('RSRV') ||
+                tx.sourceRef?.startsWith('RS-RV')));
+
+          const effectiveSourceType = isRsrv ? 'RSRV' : tx.sourceType;
+
           return {
             ...tx,
+            sourceType: effectiveSourceType,
             debit: deb,
             credit: cred,
             runningBalance: running,

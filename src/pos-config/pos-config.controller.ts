@@ -294,18 +294,31 @@ export class PosConfigController {
   async issueVoucher(@Req() req: any, @Body() body: any) {
     let issuedByLocationId: string | undefined;
     const issuedByUserId: string | undefined = req.user?.id;
-    const posTerminalToken = req.cookies?.['posTerminalToken'];
-    if (posTerminalToken) {
-      try {
-        const jwt = require('jsonwebtoken');
-        const decoded: any = jwt.decode(posTerminalToken);
-        if (decoded?.locationId) issuedByLocationId = decoded.locationId;
-      } catch {
-        /* ignore */
+    const isCorporate = body?.voucherType === 'CORPORATE';
+
+    if (!isCorporate) {
+      const posTerminalToken = req.cookies?.['posTerminalToken'];
+      if (posTerminalToken) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded: any = jwt.decode(posTerminalToken);
+          if (decoded?.locationId) issuedByLocationId = decoded.locationId;
+        } catch {
+          /* ignore */
+        }
       }
+    } else {
+      delete body.issuedByLocationId;
     }
+
     return this.voucherService.issueVoucher(
-      { ...body, issuedByLocationId, issuedByUserId },
+      {
+        ...body,
+        issuedByLocationId: isCorporate
+          ? undefined
+          : (issuedByLocationId || body.issuedByLocationId),
+        issuedByUserId,
+      },
       {
         userId: req.user?.id,
         ipAddress: req.ip,
@@ -321,18 +334,31 @@ export class PosConfigController {
   async bulkIssueVouchers(@Req() req: any, @Body() body: any) {
     let issuedByLocationId: string | undefined;
     const issuedByUserId: string | undefined = req.user?.id;
-    const posTerminalToken = req.cookies?.['posTerminalToken'];
-    if (posTerminalToken) {
-      try {
-        const jwt = require('jsonwebtoken');
-        const decoded: any = jwt.decode(posTerminalToken);
-        if (decoded?.locationId) issuedByLocationId = decoded.locationId;
-      } catch {
-        /* ignore */
+    const isCorporate = body?.voucherType === 'CORPORATE';
+
+    if (!isCorporate) {
+      const posTerminalToken = req.cookies?.['posTerminalToken'];
+      if (posTerminalToken) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded: any = jwt.decode(posTerminalToken);
+          if (decoded?.locationId) issuedByLocationId = decoded.locationId;
+        } catch {
+          /* ignore */
+        }
       }
+    } else {
+      delete body.issuedByLocationId;
     }
+
     return this.voucherService.bulkIssueVouchers(
-      { ...body, issuedByLocationId, issuedByUserId },
+      {
+        ...body,
+        issuedByLocationId: isCorporate
+          ? undefined
+          : (issuedByLocationId || body.issuedByLocationId),
+        issuedByUserId,
+      },
       {
         userId: req.user?.id,
         ipAddress: req.ip,
@@ -441,6 +467,57 @@ export class PosConfigController {
       userAgent: req.headers['user-agent'],
     });
   }
+
+  @Put('vouchers/bulk/locations')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('pos.voucher.create', 'pos.voucher.void')
+  @ApiOperation({ summary: 'Update allowed redemption locations for multiple vouchers' })
+  async updateVoucherLocationsBulk(
+    @Body()
+    body: {
+      voucherIds: string[];
+      locationIds: string[];
+      mode?: 'replace' | 'add' | 'clear';
+    },
+    @Req() req: any,
+  ) {
+    return this.voucherService.updateVoucherLocations(
+      body.voucherIds,
+      body.locationIds || [],
+      body.mode || 'replace',
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
+  }
+
+  @Put('vouchers/:id/locations')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('pos.voucher.create', 'pos.voucher.void')
+  @ApiOperation({ summary: 'Update allowed redemption locations for a single voucher' })
+  async updateVoucherLocationsSingle(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      locationIds: string[];
+      mode?: 'replace' | 'add' | 'clear';
+    },
+    @Req() req: any,
+  ) {
+    return this.voucherService.updateVoucherLocations(
+      [id],
+      body.locationIds || [],
+      body.mode || 'replace',
+      {
+        userId: req.user?.id,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
+  }
+
 
   // ══════════════════════════════════════════════════════════════
   //  MERCHANT / BANK COMMISSION CONFIGS
