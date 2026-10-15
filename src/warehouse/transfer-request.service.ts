@@ -891,12 +891,32 @@ export class TransferRequestService {
     }
 
     if (params?.search) {
-      const q = params.search;
-      whereClause.OR = [
+      const q = params.search.trim();
+      let matchingTrId: string | null = null;
+      const trNumMatch = q.replace(/^TR\s*#?\s*/i, '').match(/^(?:IN[-_ ]?)?0*([1-9]\d*)$/i);
+      if (trNumMatch) {
+        const seq = parseInt(trNumMatch[1], 10);
+        if (seq > 0) {
+          const trRecord = await this.prisma.transferRequest.findMany({
+            where: { toLocationId: locationId },
+            orderBy: { createdAt: 'asc' },
+            skip: seq - 1,
+            take: 1,
+            select: { id: true },
+          });
+          if (trRecord.length > 0) {
+            matchingTrId = trRecord[0].id;
+          }
+        }
+      }
+
+      const orConditions: any[] = [
         { requestNo: { contains: q, mode: 'insensitive' } },
         { notes: { contains: q, mode: 'insensitive' } },
         { fromWarehouse: { name: { contains: q, mode: 'insensitive' } } },
+        { fromWarehouse: { code: { contains: q, mode: 'insensitive' } } },
         { fromLocation: { name: { contains: q, mode: 'insensitive' } } },
+        { fromLocation: { code: { contains: q, mode: 'insensitive' } } },
         {
           items: {
             some: { item: { barCode: { contains: q, mode: 'insensitive' } } },
@@ -909,12 +929,30 @@ export class TransferRequestService {
         },
         {
           items: {
+            some: { item: { uniqueNo: { contains: q, mode: 'insensitive' } } },
+          },
+        },
+        {
+          items: {
             some: {
               item: { description: { contains: q, mode: 'insensitive' } },
             },
           },
         },
+        {
+          items: {
+            some: {
+              item: { brand: { name: { contains: q, mode: 'insensitive' } } },
+            },
+          },
+        },
       ];
+
+      if (matchingTrId) {
+        orConditions.push({ id: matchingTrId });
+      }
+
+      whereClause.OR = orConditions;
     }
 
     if (params?.dateFrom || params?.dateTo) {
@@ -1156,14 +1194,32 @@ export class TransferRequestService {
     }
 
     if (params?.search) {
-      const q = params.search;
-      whereClause.OR = [
+      const q = params.search.trim();
+      let matchingTrId: string | null = null;
+      const trNumMatch = q.replace(/^TR\s*#?\s*/i, '').match(/^(?:IN[-_ ]?)?0*([1-9]\d*)$/i);
+      if (trNumMatch) {
+        const seq = parseInt(trNumMatch[1], 10);
+        if (seq > 0) {
+          const trRecord = await this.prisma.transferRequest.findMany({
+            where: { toLocationId: locationId },
+            orderBy: { createdAt: 'asc' },
+            skip: seq - 1,
+            take: 1,
+            select: { id: true },
+          });
+          if (trRecord.length > 0) {
+            matchingTrId = trRecord[0].id;
+          }
+        }
+      }
+
+      const orConditions: any[] = [
         { requestNo: { contains: q, mode: 'insensitive' } },
-        { inboundNo: { contains: q, mode: 'insensitive' } },
-        { formattedSerialNo: { contains: q, mode: 'insensitive' } },
         { notes: { contains: q, mode: 'insensitive' } },
         { fromLocation: { name: { contains: q, mode: 'insensitive' } } },
+        { fromLocation: { code: { contains: q, mode: 'insensitive' } } },
         { fromWarehouse: { name: { contains: q, mode: 'insensitive' } } },
+        { fromWarehouse: { code: { contains: q, mode: 'insensitive' } } },
         {
           items: {
             some: { item: { barCode: { contains: q, mode: 'insensitive' } } },
@@ -1176,12 +1232,40 @@ export class TransferRequestService {
         },
         {
           items: {
+            some: { item: { uniqueNo: { contains: q, mode: 'insensitive' } } },
+          },
+        },
+        {
+          items: {
             some: {
               item: { description: { contains: q, mode: 'insensitive' } },
             },
           },
         },
+        {
+          items: {
+            some: {
+              item: { brand: { name: { contains: q, mode: 'insensitive' } } },
+            },
+          },
+        },
       ];
+
+      if (matchingTrId) {
+        orConditions.push({ id: matchingTrId });
+      }
+
+      whereClause.OR = orConditions;
+    }
+
+    if (params?.dateFrom || params?.dateTo) {
+      const dateFilter: any = {};
+      if (params.dateFrom) dateFilter.gte = new Date(params.dateFrom);
+      if (params.dateTo)
+        dateFilter.lte = new Date(
+          new Date(params.dateTo).setHours(23, 59, 59, 999),
+        );
+      whereClause.createdAt = dateFilter;
     }
 
     if (params?.brand && params.brand !== 'ALL') {
