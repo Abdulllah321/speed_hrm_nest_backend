@@ -284,6 +284,16 @@ export class StockMovementService {
       );
 
       // 1. Decrease Stock in Outlet (Location-specific InventoryItem)
+      // Check available stock from StockLedger (source of truth for POS outlets) and InventoryItem
+      const ledgerAgg = await tx.stockLedger.aggregate({
+        where: {
+          locationId: dto.fromLocationId,
+          itemId: dto.itemId,
+        },
+        _sum: { qty: true },
+      });
+      const ledgerQty = Number(ledgerAgg._sum.qty || 0);
+
       const outletStock = await tx.inventoryItem.findFirst({
         where: {
           itemId: dto.itemId,
@@ -292,31 +302,51 @@ export class StockMovementService {
         },
       });
 
+      const inventoryQty = outletStock ? Number(outletStock.quantity || 0) : 0;
+      const effectiveStock = Math.max(ledgerQty, inventoryQty);
+
       console.log('📦 [Stock Movement] Outlet Stock Found:', {
         found: !!outletStock,
-        currentQty: outletStock?.quantity,
+        currentInventoryQty: inventoryQty,
+        currentLedgerQty: ledgerQty,
+        effectiveStock,
         requestedQty: dto.quantity,
         warehouseId: outletStock?.warehouseId,
       });
 
-      if (!outletStock || Number(outletStock.quantity) < dto.quantity) {
+      if (effectiveStock < dto.quantity) {
         throw new BadRequestException(
-          `Insufficient stock at outlet for item ${dto.itemId}. Current: ${outletStock?.quantity || 0}`,
+          `Insufficient stock at outlet for item ${dto.itemId}. Available: ${effectiveStock}, Requested: ${dto.quantity}`,
         );
       }
 
-      await tx.inventoryItem.update({
-        where: { id: outletStock.id },
-        data: { quantity: { decrement: dto.quantity } },
-      });
+      if (outletStock) {
+        await tx.inventoryItem.update({
+          where: { id: outletStock.id },
+          data: { quantity: { decrement: dto.quantity } },
+        });
+      } else {
+        await tx.inventoryItem.create({
+          data: {
+            itemId: dto.itemId,
+            locationId: dto.fromLocationId,
+            warehouseId: dto.toWarehouseId,
+            quantity: -dto.quantity,
+            status: 'AVAILABLE',
+          },
+        });
+      }
 
       console.log('✅ [Stock Movement] Outlet stock decreased');
 
       // 2. Create OUTBOUND ledger entry for outlet
+      const outletWarehouseId =
+        dto.fromWarehouseId || dto.toWarehouseId || outletStock?.warehouseId;
+
       await this.stockLedgerService.createEntry(
         {
           itemId: dto.itemId,
-          warehouseId: outletStock.warehouseId || dto.toWarehouseId,
+          warehouseId: outletWarehouseId,
           locationId: dto.fromLocationId,
           qty: -dto.quantity,
           movementType: MovementType.OUTBOUND,
@@ -334,6 +364,15 @@ export class StockMovementService {
       );
 
       // Normal transfer: Deduct from POS, Add to PLM
+      const ledgerAgg = await tx.stockLedger.aggregate({
+        where: {
+          locationId: dto.fromLocationId,
+          itemId: dto.itemId,
+        },
+        _sum: { qty: true },
+      });
+      const ledgerQty = Number(ledgerAgg._sum.qty || 0);
+
       const outletStock = await tx.inventoryItem.findFirst({
         where: {
           itemId: dto.itemId,
@@ -342,23 +381,40 @@ export class StockMovementService {
         },
       });
 
+      const inventoryQty = outletStock ? Number(outletStock.quantity || 0) : 0;
+      const effectiveStock = Math.max(ledgerQty, inventoryQty);
+
       console.log('📦 [Stock Movement] POS Stock Found:', {
         found: !!outletStock,
-        currentQty: outletStock?.quantity,
+        currentInventoryQty: inventoryQty,
+        currentLedgerQty: ledgerQty,
+        effectiveStock,
         requestedQty: dto.quantity,
       });
 
-      if (!outletStock || Number(outletStock.quantity) < dto.quantity) {
+      if (effectiveStock < dto.quantity) {
         throw new BadRequestException(
-          `Insufficient stock at POS for item ${dto.itemId}. Current: ${outletStock?.quantity || 0}`,
+          `Insufficient stock at POS for item ${dto.itemId}. Available: ${effectiveStock}, Requested: ${dto.quantity}`,
         );
       }
 
       // Deduct from POS
-      await tx.inventoryItem.update({
-        where: { id: outletStock.id },
-        data: { quantity: { decrement: dto.quantity } },
-      });
+      if (outletStock) {
+        await tx.inventoryItem.update({
+          where: { id: outletStock.id },
+          data: { quantity: { decrement: dto.quantity } },
+        });
+      } else {
+        await tx.inventoryItem.create({
+          data: {
+            itemId: dto.itemId,
+            locationId: dto.fromLocationId,
+            warehouseId: dto.fromWarehouseId || dto.toWarehouseId,
+            quantity: -dto.quantity,
+            status: 'AVAILABLE',
+          },
+        });
+      }
       console.log('✅ [Stock Movement] POS stock decreased');
 
       // Create OUTBOUND ledger entry for POS

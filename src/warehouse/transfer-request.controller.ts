@@ -143,15 +143,49 @@ export class TransferRequestController {
     return { status: true, data: data.data, meta: data.meta };
   }
 
+  @Get('pending-returns')
+  @Permissions('erp.inventory.transfer.view', 'pos.inventory.returns.view')
+  @ApiOperation({
+    summary: 'Get all pending returns from outlets for warehouse acceptance (fast)',
+  })
+  async getPendingReturnsWarehouse(@Query('warehouseId') warehouseId?: string) {
+    const data =
+      await this.transferRequestService.getPendingReturnsWarehouse(warehouseId);
+    return { status: true, data };
+  }
+
   @Get('return-requests')
   @Permissions('pos.inventory.returns.view')
   @ApiOperation({
     summary: 'Get return requests for a location (outlet to warehouse)',
   })
-  async getReturnRequests(@Query('locationId') locationId: string) {
-    const data =
-      await this.transferRequestService.getReturnRequests(locationId);
-    return { status: true, data };
+  async getReturnRequests(
+    @Query('locationId') locationId: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('statusFilter') statusFilter?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('brand') brand?: string,
+  ) {
+    const data = await this.transferRequestService.getReturnRequests(
+      locationId,
+      {
+        status,
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 20,
+        search,
+        sortBy,
+        statusFilter,
+        dateFrom,
+        dateTo,
+        brand,
+      },
+    );
+    return { status: true, data: data.data, meta: data.meta };
   }
 
   @Get('outbound-requests')
@@ -270,6 +304,10 @@ export class TransferRequestController {
     'pos.inventory.receiving.accept',
     'pos.inventory.inbound.accept',
     'pos.inventory.returns.approve',
+    'erp.inventory.transfer.create',
+    'erp.inventory.transfer.accept',
+    'erp.inventory.stock-transfer.read',
+    'erp.inventory.transfer.authorize',
   )
   @ApiOperation({ summary: 'Accept and execute transfer movement' })
   async accept(
