@@ -1911,14 +1911,97 @@ export class PosSalesService implements OnModuleInit {
     }
 
     const cleanSearch = orderNumber.trim();
+    const cleanSearchNoHash = cleanSearch.replace(/^#/, '').trim();
+
+    // 1. Resolve matching SalesOrder IDs from OnlineOrder (Shopify, marketplace, tracking)
+    const matchingOnlineOrders = await this.prisma.onlineOrder.findMany({
+      where: {
+        OR: [
+          { orderNumber: { equals: cleanSearch, mode: 'insensitive' } },
+          { orderNumber: { equals: cleanSearchNoHash, mode: 'insensitive' } },
+          { orderNumber: { contains: cleanSearchNoHash, mode: 'insensitive' } },
+          { orderId: { equals: cleanSearch, mode: 'insensitive' } },
+          { orderId: { equals: cleanSearchNoHash, mode: 'insensitive' } },
+          { trackingNumber: { equals: cleanSearch, mode: 'insensitive' } },
+        ],
+      },
+      select: { salesOrderId: true, orderNumber: true, itemStatus: true },
+      take: 20,
+    });
+
+    const onlineOrderSalesIds = matchingOnlineOrders
+      .map((o) => o.salesOrderId)
+      .filter(Boolean) as string[];
+
+    // 2. Build search criteria across POS order number, reference, notes, and online orders
+    const orConditions: any[] = [
+      // Direct SalesOrder orderNumber matches (exact and partial)
+      { orderNumber: { equals: cleanSearch, mode: 'insensitive' } },
+      { orderNumber: { equals: cleanSearchNoHash, mode: 'insensitive' } },
+      { orderNumber: { contains: cleanSearchNoHash, mode: 'insensitive' } },
+
+      // Return or refund number
+      { returnNumber: { equals: cleanSearch, mode: 'insensitive' } },
+      { refundNumber: { equals: cleanSearch, mode: 'insensitive' } },
+
+      // FBR Invoice number
+      { fbrInvoiceNumber: { equals: cleanSearch, mode: 'insensitive' } },
+      { fbrInvoiceNumber: { contains: cleanSearchNoHash, mode: 'insensitive' } },
+
+      // Reference stored in notes (e.g. "Online Order: 94013", "Ref: 94013")
+      { notes: { contains: cleanSearch, mode: 'insensitive' } },
+      { notes: { contains: cleanSearchNoHash, mode: 'insensitive' } },
+
+      // Relation to OnlineOrder
+      {
+        onlineOrders: {
+          some: {
+            OR: [
+              { orderNumber: { equals: cleanSearch, mode: 'insensitive' } },
+              { orderNumber: { equals: cleanSearchNoHash, mode: 'insensitive' } },
+              { orderNumber: { contains: cleanSearchNoHash, mode: 'insensitive' } },
+              { orderId: { equals: cleanSearch, mode: 'insensitive' } },
+              { orderId: { equals: cleanSearchNoHash, mode: 'insensitive' } },
+              { trackingNumber: { equals: cleanSearch, mode: 'insensitive' } },
+            ],
+          },
+        },
+      },
+    ];
+
+    if (onlineOrderSalesIds.length > 0) {
+      orConditions.push({ id: { in: onlineOrderSalesIds } });
+    }
+
     const rawOrders = await this.prisma.salesOrder.findMany({
       where: {
-        orderNumber: { equals: cleanSearch, mode: 'insensitive' },
         status: { notIn: ['hold', 'hold_expired', 'hold_cancelled'] },
+        OR: orConditions,
       },
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            contactNo: true,
+            email: true,
+            address: true,
+          },
+        },
+        onlineOrders: {
+          select: {
+            id: true,
+            orderNumber: true,
+            orderId: true,
+            trackingNumber: true,
+            customerName: true,
+            phone: true,
+            marketplace: true,
+          },
+          take: 5,
+        },
         items: {
           include: {
             item: {
@@ -1962,11 +2045,40 @@ export class PosSalesService implements OnModuleInit {
     });
 
     if (rawOrders.length === 0) {
+      if (matchingOnlineOrders.length > 0) {
+        const unposted = matchingOnlineOrders.find((o) => !o.salesOrderId);
+        if (unposted) {
+          return {
+            status: false,
+            message: `Online order #${unposted.orderNumber || cleanSearch} has not been posted to POS sales yet. Please post it before processing a return.`,
+          };
+        }
+      }
+
       return {
         status: false,
         message: `Order matching "${cleanSearch}" not found`,
       };
     }
+
+    // Prioritize exact orderNumber or exact reference match to the top
+    rawOrders.sort((a, b) => {
+      const aExact =
+        a.orderNumber.toLowerCase() === cleanSearch.toLowerCase() ||
+        a.orderNumber.toLowerCase() === cleanSearchNoHash.toLowerCase() ||
+        a.onlineOrders?.some(
+          (o) => (o.orderNumber || '').toLowerCase() === cleanSearchNoHash.toLowerCase(),
+        );
+      const bExact =
+        b.orderNumber.toLowerCase() === cleanSearch.toLowerCase() ||
+        b.orderNumber.toLowerCase() === cleanSearchNoHash.toLowerCase() ||
+        b.onlineOrders?.some(
+          (o) => (o.orderNumber || '').toLowerCase() === cleanSearchNoHash.toLowerCase(),
+        );
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+      return 0;
+    });
 
     const orderIds = rawOrders.map((o) => o.id);
     const returnEntries = await this.prisma.stockLedger.findMany({
@@ -2090,8 +2202,16 @@ export class PosSalesService implements OnModuleInit {
         hasReturn: false,
         hasRefund: false,
       };
+      const shopifyRef =
+        order.onlineOrders?.[0]?.orderNumber ||
+        (order.notes
+          ? order.notes.match(/Online Order:\s*([^\s|]+)/i)?.[1] ||
+            order.notes.match(/Ref:\s*([^\s|]+)/i)?.[1]
+          : null);
+
       return {
         ...order,
+        referenceNumber: shopifyRef || null,
         location: order.locationId
           ? locationMap.get(order.locationId) || null
           : null,
