@@ -1945,7 +1945,7 @@ export class TransferRequestService {
 
           // Use actual warehouseId from the inventoryItem record or fallback
           const actualWarehouseId: string =
-            sourceStock.warehouseId || fallbackWarehouseId;
+            sourceStock!.warehouseId || fallbackWarehouseId;
           const transferRate = await this.getCurrentItemRate(tx, item.itemId);
 
           // Create outbound ledger entry
