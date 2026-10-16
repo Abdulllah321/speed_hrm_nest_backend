@@ -235,7 +235,7 @@ export class TransferRequestService {
                 transferType,
                 status: isDirect
                   ? 'SOURCE_APPROVED'
-                  : transferType === 'OUTLET_TO_OUTLET'
+                  : transferType === 'OUTLET_TO_OUTLET' || transferType === 'OUTLET_TO_WAREHOUSE'
                     ? 'PENDING'
                     : 'PENDING_CHECKER',
                 requiresSourceApproval:
@@ -499,18 +499,18 @@ export class TransferRequestService {
           }
         } else if (
           transferType === 'OUTLET_TO_WAREHOUSE' &&
-          created.fromWarehouseId
+          (created.toWarehouseId || created.fromWarehouseId)
         ) {
           runInBackground(
             'Send Notification to Warehouse Managers',
-            this.notifyLocationUsers(created.fromWarehouseId, {
-              title: `New Return/Transfer Request: ${created.requestNo}`,
-              message: `An outlet has initiated a transfer of ${totalPcs} pcs.`,
+            this.notifyLocationUsers(created.toWarehouseId || created.fromWarehouseId, {
+              title: `New Return Request: ${created.requestNo}`,
+              message: `An outlet has initiated a stock return of ${totalPcs} pcs.`,
               category: 'erp_transfer_request',
               priority: 'high',
               actionType: 'NAVIGATE',
               actionPayload: {
-                url: '/erp/inventory/transactions/return-transfer',
+                url: '/erp/inventory/transactions/stock-transfer',
               },
               entityType: 'TransferRequest',
               entityId: created.id,
@@ -849,7 +849,15 @@ export class TransferRequestService {
           where: {
             fromLocationId: locationId,
             transferType: 'OUTLET_TO_WAREHOUSE',
-            status: { in: ['PENDING', 'APPROVED', 'PENDING_CHECKER'] },
+            status: {
+              in: [
+                'PENDING',
+                'PENDING_CHECKER',
+                'PENDING_AUTHORIZER',
+                'PENDING_APPROVER',
+                'SOURCE_APPROVED',
+              ],
+            },
           },
         }),
       ]);
@@ -891,12 +899,32 @@ export class TransferRequestService {
     }
 
     if (params?.search) {
-      const q = params.search;
-      whereClause.OR = [
+      const q = params.search.trim();
+      let matchingTrId: string | null = null;
+      const trNumMatch = q.replace(/^TR\s*#?\s*/i, '').match(/^(?:IN[-_ ]?)?0*([1-9]\d*)$/i);
+      if (trNumMatch) {
+        const seq = parseInt(trNumMatch[1], 10);
+        if (seq > 0) {
+          const trRecord = await this.prisma.transferRequest.findMany({
+            where: { toLocationId: locationId },
+            orderBy: { createdAt: 'asc' },
+            skip: seq - 1,
+            take: 1,
+            select: { id: true },
+          });
+          if (trRecord.length > 0) {
+            matchingTrId = trRecord[0].id;
+          }
+        }
+      }
+
+      const orConditions: any[] = [
         { requestNo: { contains: q, mode: 'insensitive' } },
         { notes: { contains: q, mode: 'insensitive' } },
         { fromWarehouse: { name: { contains: q, mode: 'insensitive' } } },
+        { fromWarehouse: { code: { contains: q, mode: 'insensitive' } } },
         { fromLocation: { name: { contains: q, mode: 'insensitive' } } },
+        { fromLocation: { code: { contains: q, mode: 'insensitive' } } },
         {
           items: {
             some: { item: { barCode: { contains: q, mode: 'insensitive' } } },
@@ -909,12 +937,30 @@ export class TransferRequestService {
         },
         {
           items: {
+            some: { item: { uniqueNo: { contains: q, mode: 'insensitive' } } },
+          },
+        },
+        {
+          items: {
             some: {
               item: { description: { contains: q, mode: 'insensitive' } },
             },
           },
         },
+        {
+          items: {
+            some: {
+              item: { brand: { name: { contains: q, mode: 'insensitive' } } },
+            },
+          },
+        },
       ];
+
+      if (matchingTrId) {
+        orConditions.push({ id: matchingTrId });
+      }
+
+      whereClause.OR = orConditions;
     }
 
     if (params?.dateFrom || params?.dateTo) {
@@ -984,30 +1030,176 @@ export class TransferRequestService {
     };
   }
 
-  async getReturnRequests(locationId: string) {
-    const requests = await this.prisma.transferRequest.findMany({
-      where: {
-        fromLocationId: locationId,
-        transferType: 'OUTLET_TO_WAREHOUSE',
-        status: { in: ['PENDING', 'APPROVED', 'PENDING_CHECKER'] },
+  async getPendingReturnsWarehouse(warehouseId?: string) {
+    const whereClause: any = {
+      transferType: 'OUTLET_TO_WAREHOUSE',
+      status: {
+        in: [
+          'PENDING',
+          'PENDING_CHECKER',
+          'PENDING_AUTHORIZER',
+          'PENDING_APPROVER',
+          'APPROVED',
+          'SOURCE_APPROVED',
+        ],
       },
+    };
+    if (warehouseId && warehouseId !== 'all') {
+      whereClause.toWarehouseId = warehouseId;
+    }
+
+    const requests = await this.prisma.transferRequest.findMany({
+      where: whereClause,
       include: {
         items: {
           include: {
             item: {
-              include: {
-                brand: true,
+              select: {
+                id: true,
+                sku: true,
+                barCode: true,
+                description: true,
                 color: true,
                 size: true,
+                brand: true,
               },
             },
           },
         },
+        fromLocation: { select: { id: true, name: true, code: true } },
+        toWarehouse: { select: { id: true, name: true, code: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
 
-    return Promise.all(requests.map((req) => this.enrichRequest(req)));
+    return requests;
+  }
+
+  async getReturnRequests(
+    locationId: string,
+    params?: {
+      status?: string;
+      page?: number;
+      limit?: number;
+      search?: string;
+      sortBy?: string;
+      statusFilter?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      brand?: string;
+    },
+  ) {
+    const whereClause: any = {
+      fromLocationId: locationId,
+      transferType: 'OUTLET_TO_WAREHOUSE',
+    };
+
+    if (params?.status === 'history') {
+      whereClause.status = {
+        in: ['COMPLETED', 'APPROVED', 'REJECTED'],
+      };
+      if (params?.statusFilter && params.statusFilter !== 'ALL') {
+        whereClause.status = params.statusFilter;
+      }
+    } else {
+      whereClause.status = {
+        in: [
+          'PENDING',
+          'PENDING_CHECKER',
+          'PENDING_AUTHORIZER',
+          'PENDING_APPROVER',
+          'APPROVED',
+          'SOURCE_APPROVED',
+        ],
+      };
+    }
+
+    if (params?.dateFrom || params?.dateTo) {
+      whereClause.createdAt = {};
+      if (params.dateFrom) whereClause.createdAt.gte = new Date(params.dateFrom);
+      if (params.dateTo) {
+        const toD = new Date(params.dateTo);
+        toD.setHours(23, 59, 59, 999);
+        whereClause.createdAt.lte = toD;
+      }
+    }
+
+    if (params?.search) {
+      const q = params.search;
+      whereClause.OR = [
+        { requestNo: { contains: q, mode: 'insensitive' } },
+        { notes: { contains: q, mode: 'insensitive' } },
+        { toWarehouse: { name: { contains: q, mode: 'insensitive' } } },
+        {
+          items: {
+            some: { item: { barCode: { contains: q, mode: 'insensitive' } } },
+          },
+        },
+        {
+          items: {
+            some: { item: { sku: { contains: q, mode: 'insensitive' } } },
+          },
+        },
+        {
+          items: {
+            some: {
+              item: { description: { contains: q, mode: 'insensitive' } },
+            },
+          },
+        },
+      ];
+    }
+
+    if (params?.brand && params.brand !== 'ALL') {
+      whereClause.AND = whereClause.AND || [];
+      whereClause.AND.push({
+        items: { some: { item: { brand: { name: params.brand } } } },
+      });
+    }
+
+    const page = params?.page || 1;
+    const limit = params?.limit || 20;
+    const skip = (page - 1) * limit;
+
+    let orderBy: any = { createdAt: 'desc' };
+    if (params?.sortBy === 'oldest') {
+      orderBy = { createdAt: 'asc' };
+    }
+
+    const [requests, total] = await Promise.all([
+      this.prisma.transferRequest.findMany({
+        where: whereClause,
+        include: {
+          items: {
+            include: {
+              item: {
+                include: {
+                  brand: true,
+                  color: true,
+                  size: true,
+                },
+              },
+            },
+          },
+          fromLocation: { select: { name: true, code: true } },
+          toWarehouse: { select: { name: true, code: true } },
+        },
+        orderBy,
+        skip,
+        take: limit,
+      }),
+      this.prisma.transferRequest.count({ where: whereClause }),
+    ]);
+
+    const enrichedRequests = await Promise.all(
+      requests.map((req) => this.enrichRequest(req)),
+    );
+
+    return {
+      data: enrichedRequests,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async getOutboundRequests(
@@ -1157,9 +1349,26 @@ export class TransferRequestService {
 
     if (params?.search) {
       const q = params.search.trim();
-      whereClause.OR = [
+      let matchingTrId: string | null = null;
+      const trNumMatch = q.replace(/^TR\s*#?\s*/i, '').match(/^(?:IN[-_ ]?)?0*([1-9]\d*)$/i);
+      if (trNumMatch) {
+        const seq = parseInt(trNumMatch[1], 10);
+        if (seq > 0) {
+          const trRecord = await this.prisma.transferRequest.findMany({
+            where: { toLocationId: locationId },
+            orderBy: { createdAt: 'asc' },
+            skip: seq - 1,
+            take: 1,
+            select: { id: true },
+          });
+          if (trRecord.length > 0) {
+            matchingTrId = trRecord[0].id;
+          }
+        }
+      }
+
+      const orConditions: any[] = [
         { requestNo: { contains: q, mode: 'insensitive' } },
-        { trackingNumber: { contains: q, mode: 'insensitive' } },
         { notes: { contains: q, mode: 'insensitive' } },
         { fromLocation: { name: { contains: q, mode: 'insensitive' } } },
         { fromLocation: { code: { contains: q, mode: 'insensitive' } } },
@@ -1177,12 +1386,40 @@ export class TransferRequestService {
         },
         {
           items: {
+            some: { item: { uniqueNo: { contains: q, mode: 'insensitive' } } },
+          },
+        },
+        {
+          items: {
             some: {
               item: { description: { contains: q, mode: 'insensitive' } },
             },
           },
         },
+        {
+          items: {
+            some: {
+              item: { brand: { name: { contains: q, mode: 'insensitive' } } },
+            },
+          },
+        },
       ];
+
+      if (matchingTrId) {
+        orConditions.push({ id: matchingTrId });
+      }
+
+      whereClause.OR = orConditions;
+    }
+
+    if (params?.dateFrom || params?.dateTo) {
+      const dateFilter: any = {};
+      if (params.dateFrom) dateFilter.gte = new Date(params.dateFrom);
+      if (params.dateTo)
+        dateFilter.lte = new Date(
+          new Date(params.dateTo).setHours(23, 59, 59, 999),
+        );
+      whereClause.createdAt = dateFilter;
     }
 
     if (params?.brand && params.brand !== 'ALL') {
@@ -1662,6 +1899,15 @@ export class TransferRequestService {
 
         // 1. Check and reserve stock at source outlet
         for (const item of request.items) {
+          const ledgerAgg = await tx.stockLedger.aggregate({
+            where: {
+              locationId: request.fromLocationId!,
+              itemId: item.itemId,
+            },
+            _sum: { qty: true },
+          });
+          const ledgerQty = Number(ledgerAgg._sum.qty || 0);
+
           const sourceStock = await tx.inventoryItem.findFirst({
             where: {
               locationId: request.fromLocationId!,
@@ -1670,20 +1916,32 @@ export class TransferRequestService {
             },
           });
 
-          if (
-            !sourceStock ||
-            Number(sourceStock.quantity) < Number(item.quantity)
-          ) {
+          const inventoryQty = sourceStock ? Number(sourceStock.quantity || 0) : 0;
+          const effectiveStock = Math.max(ledgerQty, inventoryQty);
+
+          if (effectiveStock < Number(item.quantity)) {
             throw new BadRequestException(
-              `Insufficient stock for item ${item.itemId} at source outlet. Current: ${sourceStock?.quantity || 0}, Requested: ${item.quantity}`,
+              `Insufficient stock for item ${item.itemId} at source outlet. Available: ${effectiveStock}, Requested: ${item.quantity}`,
             );
           }
 
           // Decrease source outlet stock
-          await tx.inventoryItem.update({
-            where: { id: sourceStock.id },
-            data: { quantity: { decrement: Number(item.quantity) } },
-          });
+          if (sourceStock) {
+            await tx.inventoryItem.update({
+              where: { id: sourceStock.id },
+              data: { quantity: { decrement: Number(item.quantity) } },
+            });
+          } else {
+            await tx.inventoryItem.create({
+              data: {
+                itemId: item.itemId,
+                locationId: request.fromLocationId!,
+                warehouseId: fallbackWarehouseId,
+                quantity: -Number(item.quantity),
+                status: 'AVAILABLE',
+              },
+            });
+          }
 
           // Use actual warehouseId from the inventoryItem record or fallback
           const actualWarehouseId: string =
@@ -1881,7 +2139,12 @@ export class TransferRequestService {
           return updated;
         } else if (request.transferType === 'OUTLET_TO_WAREHOUSE') {
           // Return transfer: Outlet → Warehouse
-          if (request.status !== 'PENDING' && request.status !== 'APPROVED') {
+          if (
+            request.status !== 'PENDING' &&
+            request.status !== 'APPROVED' &&
+            request.status !== 'PENDING_CHECKER' &&
+            request.status !== 'PENDING_AUTHORIZER'
+          ) {
             throw new BadRequestException(
               `Request is not in PENDING or APPROVED status (Current: ${request.status})`,
             );
@@ -1957,6 +2220,7 @@ export class TransferRequestService {
                 referenceType: 'CLAIM_RETURN_REQUEST',
                 referenceId: request.id,
                 userId: userId,
+                transaction: tx,
               });
             }
           } else {
@@ -1971,6 +2235,7 @@ export class TransferRequestService {
                 referenceType: 'RETURN_REQUEST',
                 referenceId: request.id,
                 userId: userId,
+                transaction: tx,
               });
             }
           }
