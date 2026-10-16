@@ -1440,17 +1440,30 @@ export class StockRequisitionService {
       parsedEndDate: endDate.toISOString(),
     });
 
-    // 1. Group sold items at the POS location by itemId
+    // 1. Group sold items at the POS location by itemId matching Net Sales Summary exactly
+    const salesWhere: any = {
+      locationId,
+      orderNumber: { not: { startsWith: 'RET-' } },
+      status: {
+        notIn: [
+          'hold',
+          'hold_expired',
+          'hold_cancelled',
+          'voided',
+          'cancelled',
+          'VOIDED',
+          'CANCELLED',
+          'draft',
+          'DRAFT',
+        ],
+      },
+      createdAt: { gte: startDate, lte: endDate },
+    };
+
     const salesItems = await this.prisma.salesOrderItem.groupBy({
       by: ['itemId'],
       where: {
-        salesOrder: {
-          locationId,
-          status: {
-            in: ['completed', 'partially_returned', 'exchanged', 'refunded'],
-          },
-          createdAt: { gte: startDate, lte: endDate },
-        },
+        salesOrder: salesWhere,
       },
       _sum: {
         quantity: true,
@@ -1458,56 +1471,54 @@ export class StockRequisitionService {
     });
 
     if (salesItems.length === 0) {
-      return [];
+      return { items: [], totalNetSales: 0 };
     }
 
     const itemIds = salesItems.map((si) => si.itemId);
 
-    // 1.5. Group returned items from StockLedger within the same date range
-    const returnItems = await this.prisma.stockLedger.groupBy({
-      by: ['itemId'],
-      where: {
-        itemId: { in: itemIds },
-        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
-        locationId,
-        createdAt: { gte: startDate, lte: endDate },
-      },
-      _sum: {
-        qty: true,
-      },
-    });
+    // 1.5. Returns from posReturn (identical to Net Sales Summary Report)
+    const returnWhere: any = {
+      locationId,
+      createdAt: { gte: startDate, lte: endDate },
+    };
 
-    const approvedClaimItems = await this.prisma.posClaimItem.groupBy({
+    const returnItems = await this.prisma.posReturnItem.groupBy({
       by: ['itemId'],
       where: {
-        itemId: { in: itemIds },
-        itemStatus: 'APPROVED',
-        approvedQty: { gt: 0 },
-        claim: {
-          status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
-          reviewedAt: { gte: startDate, lte: endDate },
-          salesOrder: { locationId },
-        },
+        posReturn: returnWhere,
       },
       _sum: {
-        approvedQty: true,
+        quantity: true,
       },
     });
 
     const returnedMap = new Map<string, number>();
-    for (const ri of returnItems) {
-      // StockLedger might store returns as positive or negative depending on transaction type,
-      // but usually for a return to store, it's a positive quantity addition to stock.
-      // In POS_RETURN, it's typically a receipt into the warehouse/store.
-      // Let's assume it's stored as absolute quantity or we take Math.abs
-      returnedMap.set(ri.itemId, Math.abs(Number(ri._sum.qty || 0)));
+    for (const entry of returnItems) {
+      returnedMap.set(entry.itemId, Math.abs(Number(entry._sum.quantity || 0)));
     }
-    for (const ci of approvedClaimItems) {
+
+    // 1.6. Claims from posClaim (identical to Net Sales Summary Report)
+    let claimItems: any[] = [];
+    try {
+      if ((this.prisma as any).posClaimItem?.groupBy) {
+        claimItems = await (this.prisma as any).posClaimItem.groupBy({
+          by: ['itemId'],
+          where: {
+            claim: {
+              salesOrder: { locationId },
+              createdAt: { gte: startDate, lte: endDate },
+            },
+          },
+          _sum: {
+            claimedQty: true,
+          },
+        });
+      }
+    } catch (_) {}
+
+    for (const ci of claimItems) {
       const current = returnedMap.get(ci.itemId) || 0;
-      returnedMap.set(
-        ci.itemId,
-        current + Math.abs(Number(ci._sum.approvedQty || 0)),
-      );
+      returnedMap.set(ci.itemId, current + Math.abs(Number(ci._sum?.claimedQty || 0)));
     }
 
     // 2. Fetch master items
@@ -1648,48 +1659,31 @@ export class StockRequisitionService {
       })
       .filter((c) => c.soldQty > 0);
 
-    // Calculate Exact Global Net Sales for the period to match Net Sales Summary report exactly
-    const allSalesItems = await this.prisma.salesOrderItem.aggregate({
-      where: {
-        salesOrder: {
-          locationId,
-          status: {
-            in: ['completed', 'partially_returned', 'exchanged', 'refunded'],
-          },
-          createdAt: { gte: startDate, lte: endDate },
-        },
-      },
-      _sum: { quantity: true },
-    });
+    // Calculate Exact Global Net Sales matching Net Sales Summary 1:1:
+    // Total Gross (Sales Orders) - Total Returns (posReturn) - Total Claims (posClaim)
+    const totalGross = salesItems.reduce(
+      (sum, s) => sum + Number(s._sum.quantity || 0),
+      0,
+    );
+    const totalRet = returnItems.reduce(
+      (sum, r) => sum + Math.abs(Number(r._sum.quantity || 0)),
+      0,
+    );
+    const totalClaim = claimItems.reduce(
+      (sum, c) => sum + Math.abs(Number(c._sum?.claimedQty || 0)),
+      0,
+    );
+    const totalNetSales = Math.max(0, totalGross - totalRet - totalClaim);
 
-    const allReturns = await this.prisma.stockLedger.aggregate({
-      where: {
-        locationId,
-        referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
-        createdAt: { gte: startDate, lte: endDate },
-      },
-      _sum: { qty: true },
-    });
-
-    const allClaims = await this.prisma.posClaimItem.aggregate({
-      where: {
-        itemStatus: 'APPROVED',
-        approvedQty: { gt: 0 },
-        claim: {
-          status: { in: ['APPROVED', 'PARTIALLY_APPROVED'] },
-          reviewedAt: { gte: startDate, lte: endDate },
-          salesOrder: { locationId },
-        },
-      },
-      _sum: { approvedQty: true },
-    });
-
-    const totalGross = Number(allSalesItems._sum.quantity || 0);
-    const totalRet = Math.abs(Number(allReturns._sum.qty || 0));
-    const totalClaim = Math.abs(Number(allClaims._sum.approvedQty || 0));
-    const totalNetSales = totalGross - totalRet - totalClaim;
+    console.log('=== REPLENISHMENT NET SALES SUMMARY MATCH ===');
+    console.log('totalGross (SalesOrder sum):', totalGross);
+    console.log('totalRet (posReturn sum):', totalRet);
+    console.log('totalClaim (posClaim sum):', totalClaim);
+    console.log('totalNetSales:', totalNetSales);
+    console.log('============================================');
 
     return { items: candidates, totalNetSales };
+
   }
 
   async getNextRequisitionNumber(
