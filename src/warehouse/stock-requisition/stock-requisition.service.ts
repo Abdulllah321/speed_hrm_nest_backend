@@ -1249,7 +1249,10 @@ export class StockRequisitionService {
     for (const nf of notFoundIdentifiers) {
       skippedItems.push({
         sku: nf.sku,
+        barcode: null,
         description: 'Not found in catalog',
+        color: null,
+        size: null,
         requestedQty: nf.quantity,
         availableStock: 0,
         reason: 'Item SKU / BarCode not registered in database catalog',
@@ -1337,8 +1340,12 @@ export class StockRequisitionService {
 
         if (netAvailable <= 0) {
           skippedItems.push({
+            itemId: item.itemId,
             sku: item.sku,
+            barcode: item.barcode || null,
             description: item.description || '',
+            color: item.color || null,
+            size: item.size || null,
             requestedQty: item.quantity,
             availableStock: 0,
             reason: `No stock available in ${whName} (Stock: 0)`,
@@ -1349,8 +1356,12 @@ export class StockRequisitionService {
             quantity: netAvailable,
           });
           skippedItems.push({
+            itemId: item.itemId,
             sku: item.sku,
+            barcode: item.barcode || null,
             description: item.description || '',
+            color: item.color || null,
+            size: item.size || null,
             requestedQty: item.quantity,
             availableStock: netAvailable,
             reason: `Requested ${item.quantity} Pcs, adjusted to available ${netAvailable} Pcs in ${whName}`,
