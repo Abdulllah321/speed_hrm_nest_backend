@@ -93,7 +93,35 @@ async function createDatabase(dbName: string) {
 }
 
 /**
- * Execute SQL file against a specific database
+ * Terminate active connections to a specific database
+ */
+async function terminateConnections(dbName: string) {
+    const baseUrl = process.env.DATABASE_URL_MANAGEMENT || process.env.DATABASE_URL!;
+    const config = parseUrl(baseUrl);
+    if (!config) return;
+
+    const maintenancePool = new Pool({
+        user: config.username,
+        password: config.password,
+        host: config.host,
+        port: parseInt(config.port),
+        database: 'postgres',
+    });
+
+    try {
+        await maintenancePool.query(
+            `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+            [dbName]
+        );
+    } catch (e: any) {
+        console.warn(`   ⚠️  Warning terminating connections for '${dbName}': ${e.message}`);
+    } finally {
+        await maintenancePool.end();
+    }
+}
+
+/**
+ * Execute SQL or dump file against a specific database
  */
 async function restoreDatabase(connectionString: string, filePath: string): Promise<void> {
     const config = parseUrl(connectionString);
@@ -104,6 +132,9 @@ async function restoreDatabase(connectionString: string, filePath: string): Prom
 
     console.log(`📦 Restoring ${basename(filePath)} to database '${config.database}'...`);
 
+    // Terminate existing active connections to prevent table lock conflicts
+    await terminateConnections(config.database);
+
     try {
         const fileBuffer = readFileSync(filePath);
         const isCustomFormat = fileBuffer.length > 4 &&
@@ -111,12 +142,39 @@ async function restoreDatabase(connectionString: string, filePath: string): Prom
             fileBuffer[2] === 0x44 && fileBuffer[3] === 0x4d;
 
         if (isCustomFormat) {
-            const pgRestoreCmd = `pg_restore --no-owner --no-acl --clean --if-exists -h ${config.host} -p ${config.port} -U ${config.username} -d ${config.database} "${filePath}"`;
-            execSync(pgRestoreCmd, {
-                env: { ...process.env, PGPASSWORD: config.password },
-                stdio: 'inherit',
-                shell: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
+            // Reset public schema to cleanly wipe existing objects and avoid FK constraint conflicts
+            const resetPool = new Pool({
+                user: config.username,
+                password: config.password,
+                host: config.host,
+                port: parseInt(config.port),
+                database: config.database,
             });
+            try {
+                await resetPool.query('DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;');
+                console.log('   🧹 Reset public schema to clean state.');
+            } catch (e: any) {
+                console.warn(`   ⚠️  Warning resetting schema: ${e.message}`);
+            } finally {
+                await resetPool.end();
+            }
+
+            console.log('   ↳ Restoring custom format dump with pg_restore...');
+            const pgRestoreCmd = `pg_restore --no-owner --no-acl -h ${config.host} -p ${config.port} -U ${config.username} -d ${config.database} "${filePath}"`;
+            try {
+                execSync(pgRestoreCmd, {
+                    env: { ...process.env, PGPASSWORD: config.password },
+                    stdio: 'inherit',
+                    shell: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
+                });
+            } catch (e: any) {
+                // pg_restore returns 1 on non-fatal notices/warnings. Status > 1 indicates fatal error.
+                if (e.status === 1) {
+                    console.log('   ⚠️  pg_restore completed with non-fatal warnings (code 1).');
+                } else {
+                    throw e;
+                }
+            }
         } else {
             const { writeFileSync, unlinkSync } = require('fs');
             const bridgeFilePath = join(process.cwd(), `tmp_restore_${config.database}.sql`);
@@ -160,29 +218,47 @@ END $$;
 }
 
 /**
- * Find matching SQL backup file for a tenant
+ * Find matching backup file for a tenant (.dump, .sql, .tar, .bak)
  */
-function findBackupFile(dbName: string): string | null {
-    const companiesDir = join(process.cwd(), 'backup', 'companies');
-    if (!existsSync(companiesDir)) return null;
+function findBackupFile(dbName: string, companyCode?: string, explicitFile?: string): string | null {
+    // 0. If explicit file was provided, check it first
+    if (explicitFile) {
+        const resolved = join(process.cwd(), explicitFile);
+        if (existsSync(resolved)) return resolved;
+        if (existsSync(explicitFile)) return explicitFile;
+    }
 
-    const files = readdirSync(companiesDir).filter(f => f.endsWith('.sql'));
+    const searchDirs = [
+        join(process.cwd(), 'backup', 'tenant_backup_chunks'),
+        join(process.cwd(), 'backup', 'companies'),
+        join(process.cwd(), 'backup'),
+    ];
 
-    // 1. Exact match with .sql
-    const exactMatch = files.find(f => f === `${dbName}.sql`);
-    if (exactMatch) return join(companiesDir, exactMatch);
+    const validExts = ['.dump', '.sql', '.tar', '.bak'];
 
-    // 2. Contains dbName
-    const partialMatch = files.find(f => f.includes(dbName));
-    if (partialMatch) return join(companiesDir, partialMatch);
+    for (const dir of searchDirs) {
+        if (!existsSync(dir)) continue;
+        const files = readdirSync(dir).filter(f => validExts.some(ext => f.endsWith(ext)));
 
-    // 3. Fallback to first available SQL file
-    if (files.length > 0) return join(companiesDir, files[0]);
+        // 1. Exact match on dbName + extension
+        const exactMatch = files.find(f => validExts.some(ext => f === `${dbName}${ext}`));
+        if (exactMatch) return join(dir, exactMatch);
+
+        // 2. Starts with or contains dbName
+        const dbMatch = files.find(f => f.includes(dbName));
+        if (dbMatch) return join(dir, dbMatch);
+
+        // 3. Contains companyCode (e.g. 'spl')
+        if (companyCode) {
+            const codeMatch = files.find(f => f.toLowerCase().includes(companyCode.toLowerCase()));
+            if (codeMatch) return join(dir, codeMatch);
+        }
+    }
 
     return null;
 }
 
-async function seedTenant(company: any, managementUrl: string, masterKey: string) {
+async function seedTenant(company: any, managementUrl: string, masterKey: string, explicitBackupFile?: string) {
     const dbName = company.dbName;
     console.log(`\n👉 Processing tenant: ${company.name} (${company.code}) [DB: ${dbName}]`);
 
@@ -205,22 +281,22 @@ async function seedTenant(company: any, managementUrl: string, masterKey: string
         // 1. Create DB if missing
         await createDatabase(dbName);
 
-        // 2. Push Schema
-        console.log('   🛠️  Pushing schema...');
+        // 2. Automated Backup Restoration
+        const backupPath = findBackupFile(dbName, company.code, explicitBackupFile);
+        if (backupPath) {
+            await restoreDatabase(connectionString, backupPath);
+        } else {
+            console.log('   ℹ️  No matching backup file found in backup/ directories, skipping restoration.');
+        }
+
+        // 3. Push Schema (ensure schema matches latest Prisma schema definitions after restore)
+        console.log('   🛠️  Syncing schema with prisma db push...');
         execSync('bunx prisma db push --schema prisma/schema --accept-data-loss', {
             env: { ...process.env, DATABASE_URL: connectionString },
             stdio: 'ignore',
             shell: process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
         });
-        console.log('   ✅ Schema pushed.');
-
-        // 3. Automated SQL Restoration
-        const sqlPath = findBackupFile(dbName);
-        if (sqlPath) {
-            await restoreDatabase(connectionString, sqlPath);
-        } else {
-            console.log('   ℹ️  No matching SQL backup found in backup/companies/, skipping restoration.');
-        }
+        console.log('   ✅ Schema synced.');
 
         // 4. Run Chart of Accounts Seeding
         console.log('   📊 Seeding Chart of Accounts...');
@@ -248,13 +324,37 @@ async function main() {
         process.exit(1);
     }
 
+    // CLI args parsing
+    const args = process.argv.slice(2);
+    let targetTenant: string | null = null;
+    let explicitFile: string | null = null;
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--tenant' || arg === '-t') {
+            targetTenant = args[++i];
+        } else if (arg.startsWith('--tenant=')) {
+            targetTenant = arg.split('=')[1];
+        } else if (arg === '--file' || arg === '-f') {
+            explicitFile = args[++i];
+        } else if (arg.startsWith('--file=')) {
+            explicitFile = arg.split('=')[1];
+        } else if (!arg.startsWith('-') && !explicitFile && !targetTenant) {
+            // Positional arg could be a file path or a tenant code/dbName
+            if (arg.endsWith('.dump') || arg.endsWith('.sql') || arg.endsWith('.tar') || arg.endsWith('.bak')) {
+                explicitFile = arg;
+            } else {
+                targetTenant = arg;
+            }
+        }
+    }
+
     const pool = new Pool({ connectionString: managementUrl });
     const adapter = new PrismaPg(pool);
     const management = new ManagementClient({ adapter } as any);
 
     try {
-        // Fetch all active companies directly from the table
-        const companies = await management.company.findMany({
+        let companies = await management.company.findMany({
             where: { status: 'active' }
         });
 
@@ -263,12 +363,36 @@ async function main() {
             return;
         }
 
-        console.log(`📡 Found ${companies.length} active companies. Proceeding with implementation...`);
+        // Filter by targetTenant if specified
+        if (targetTenant) {
+            const filtered = companies.filter(c =>
+                c.code.toLowerCase() === targetTenant!.toLowerCase() ||
+                c.dbName.toLowerCase() === targetTenant!.toLowerCase()
+            );
+            if (filtered.length === 0) {
+                console.error(`❌ Tenant '${targetTenant}' not found in active companies.`);
+                console.log('Available companies:', companies.map(c => `${c.code} (${c.dbName})`).join(', '));
+                process.exit(1);
+            }
+            companies = filtered;
+        } else if (explicitFile) {
+            // Infer tenant from explicit file name if not explicitly specified
+            const fileName = basename(explicitFile);
+            const matched = companies.find(c =>
+                fileName.includes(c.dbName) || fileName.toLowerCase().includes(c.code.toLowerCase())
+            );
+            if (matched) {
+                console.log(`🎯 Inferred tenant '${matched.code}' (${matched.dbName}) from file: ${fileName}`);
+                companies = [matched];
+            }
+        }
+
+        console.log(`📡 Found ${companies.length} active company to process. Proceeding...`);
 
         const results = { success: 0, failed: 0 };
         for (const company of companies) {
             try {
-                await seedTenant(company, managementUrl, masterKey);
+                await seedTenant(company, managementUrl, masterKey, explicitFile || undefined);
                 results.success++;
             } catch (err) {
                 results.failed++;
@@ -281,14 +405,18 @@ async function main() {
 
         if (results.failed > 0) {
             process.exit(1);
+        } else {
+            process.exit(0);
         }
     } catch (error: any) {
         console.error(`\n❌ Error during automated seeding process: ${error.message}`);
         process.exit(1);
     } finally {
-        await management.$disconnect();
-        await pool.end();
+        try {
+            await management.$disconnect();
+            await pool.end();
+        } catch (_) {}
     }
 }
 
-main();
+main().catch(() => process.exit(1));

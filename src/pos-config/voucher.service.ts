@@ -82,13 +82,31 @@ export class VoucherService {
       }
 
       // 3. Location Filter
-      if (filters?.locationId) {
-        baseWhere.AND.push({
-          OR: [
-            { issuedByLocationId: filters.locationId },
-            { locations: { some: { locationId: filters.locationId } } },
-          ],
-        });
+      if (filters?.locationId && filters.locationId !== 'ALL') {
+        const isCorpFilter = filters?.voucherType?.toUpperCase() === 'CORPORATE';
+        if (isCorpFilter) {
+          // Corporate vouchers are Head-Office issued (issuedByLocationId is null)
+          // Filter by allowed redemption locations (or universal redeemable everywhere)
+          baseWhere.AND.push({
+            OR: [
+              { locations: { some: { locationId: filters.locationId } } },
+              { locations: { none: {} } },
+            ],
+          });
+        } else {
+          baseWhere.AND.push({
+            OR: [
+              { issuedByLocationId: filters.locationId },
+              { locations: { some: { locationId: filters.locationId } } },
+              {
+                AND: [
+                  { voucherType: 'CORPORATE' },
+                  { locations: { none: {} } },
+                ],
+              },
+            ],
+          });
+        }
       }
 
       // 4. Date Range Filter (createdAt)
@@ -517,8 +535,8 @@ export class VoucherService {
     try {
       const isCustomList = Array.isArray(data.vouchers) && data.vouchers.length > 0;
       const targetCount = isCustomList
-        ? Math.min(data.vouchers!.length, 50)
-        : Math.min(Math.max(Number(data.quantity || 1), 1), 50);
+        ? Math.min(data.vouchers!.length, 500)
+        : Math.min(Math.max(Number(data.quantity || 1), 1), 500);
 
       // Build normalized list of vouchers to create
       const itemsToCreate: Array<{

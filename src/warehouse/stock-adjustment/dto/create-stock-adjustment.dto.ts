@@ -19,8 +19,11 @@ export class CreateStockAdjustmentItemDto {
   locationId?: string;
 
   @IsNumber()
-  @Min(0)
   physicalQty: number;
+
+  @IsNumber()
+  @IsOptional()
+  currentQty?: number;
 
   @IsNumber()
   @IsOptional()
@@ -34,8 +37,12 @@ export class CreateStockAdjustmentItemDto {
 
 export class CreateStockAdjustmentDto {
   @IsString()
-  @IsNotEmpty()
-  warehouseId: string;
+  @IsOptional()
+  warehouseId?: string;
+
+  @IsString()
+  @IsOptional()
+  locationId?: string;
 
   @IsOptional()
   @IsString()

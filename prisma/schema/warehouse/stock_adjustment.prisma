@@ -1,7 +1,8 @@
 model StockAdjustment {
   id             String                @id @default(uuid())
   adjustmentNo   String                @unique @map("adjustment_no")
-  warehouseId    String                @map("warehouse_id")
+  warehouseId    String?               @map("warehouse_id")
+  locationId     String?               @map("location_id")
   adjustmentDate DateTime              @default(now()) @map("adjustment_date")
   status         String                @default("DRAFT") // DRAFT, SUBMITTED, CANCELLED
   adjustmentType String                @default("STANDARD") @map("adjustment_type") // STANDARD, SWAP
@@ -12,11 +13,13 @@ model StockAdjustment {
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
 
-  warehouse      Warehouse             @relation(fields: [warehouseId], references: [id])
+  warehouse      Warehouse?            @relation(fields: [warehouseId], references: [id])
+  location       Location?             @relation(fields: [locationId], references: [id])
   items          StockAdjustmentItem[]
 
   @@map("stock_adjustments")
   @@index([warehouseId])
+  @@index([locationId])
   @@index([status])
 }
 

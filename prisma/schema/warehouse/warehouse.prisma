@@ -92,6 +92,7 @@ model Location {
   stockRequisitions         StockRequisition[]         @relation("StockRequisition_toLocation")
   inventoryItems            InventoryItem[]
   stockAdjustmentItems      StockAdjustmentItem[]
+  stockAdjustments          StockAdjustment[]
 
   voucherLocations          VoucherLocation[]
   discountCampaignLocations DiscountCampaignLocation[]

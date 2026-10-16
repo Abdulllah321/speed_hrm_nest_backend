@@ -240,7 +240,10 @@ export class InventoryService {
           select: { itemId: true, closingQty: true },
         });
         for (const entry of snapshotEntries) {
-          snapshotMap.set(entry.itemId, Number(entry.closingQty || 0));
+          snapshotMap.set(
+            entry.itemId,
+            (snapshotMap.get(entry.itemId) || 0) + Number(entry.closingQty || 0),
+          );
         }
       }
 
@@ -271,7 +274,10 @@ export class InventoryService {
       });
       const fallbackMap = new Map<string, number>();
       for (const inv of fallbackItems) {
-        fallbackMap.set(inv.itemId, Number(inv.quantity || 0));
+        fallbackMap.set(
+          inv.itemId,
+          (fallbackMap.get(inv.itemId) || 0) + Number(inv.quantity || 0),
+        );
       }
 
       stockMap = new Map();

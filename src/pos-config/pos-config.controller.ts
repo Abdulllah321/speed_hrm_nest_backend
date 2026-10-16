@@ -255,17 +255,10 @@ export class PosConfigController {
     @Query('limit') limit?: string,
     @Query('includeVoided') includeVoided?: string,
   ) {
-    let locationId = locationIdQuery;
-    const posTerminalToken = req.cookies?.['posTerminalToken'];
-    if (!locationId && posTerminalToken) {
-      try {
-        const jwt = require('jsonwebtoken');
-        const decoded: any = jwt.decode(posTerminalToken);
-        if (decoded?.locationId) locationId = decoded.locationId;
-      } catch {
-        /* ignore */
-      }
-    }
+    const locationId =
+      locationIdQuery && locationIdQuery !== 'ALL'
+        ? locationIdQuery
+        : undefined;
     return this.voucherService.listVouchers({
       voucherType,
       status,
