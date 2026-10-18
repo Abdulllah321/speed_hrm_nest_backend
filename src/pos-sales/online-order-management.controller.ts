@@ -69,6 +69,23 @@ export class OnlineOrderManagementController {
     };
   }
 
+  @Get('resolve-item')
+  @ApiOperation({
+    summary: 'Resolve product master details and dual inventory stock by barcode or SKU',
+  })
+  async resolveItem(
+    @Query('barcode') barcode: string,
+    @Query('term') term: string,
+    @Req() req: any,
+  ) {
+    const query = barcode || term;
+    if (!query || !query.trim()) {
+      throw new BadRequestException('Barcode or SKU is required.');
+    }
+    const { locationId } = this.extractLocationContext(req);
+    return this.service.resolveItemDetails(query, locationId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Upload online orders file for validation' })
   async uploadFile(@Req() req: any) {

@@ -20,7 +20,7 @@ export type VoucherType =
 //   CORPORATE   → CRP-XXXXXX
 //   OUTLET_GIFT → OGT-XXXXXX
 //   REFUND      → RFD-XXXXXX
-function generateCode(type: VoucherType): string {
+function generateCode(type: VoucherType, abbr?: string): string {
   const prefix: Record<VoucherType, string> = {
     GIFT: 'GFT',
     EXCHANGE: 'EXC',
@@ -30,6 +30,12 @@ function generateCode(type: VoucherType): string {
     REFUND: 'RFD',
   };
   const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+  if (type === 'CORPORATE' && abbr && abbr.trim() && abbr !== 'N/A') {
+    const cleanAbbr = abbr.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (cleanAbbr) {
+      return `${prefix[type]}-${cleanAbbr}-${rand}`;
+    }
+  }
   return `${prefix[type]}-${rand}`;
 }
 
@@ -387,7 +393,7 @@ export class VoucherService {
     ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
   ) {
     try {
-      const code = generateCode(data.voucherType);
+      const code = generateCode(data.voucherType, data.companyGlCode);
 
       // Corporate vouchers are ERP/Head-Office issued — NEVER linked to any issuing location
       const isCorporate = data.voucherType === 'CORPORATE';
@@ -626,11 +632,11 @@ export class VoucherService {
       const generatedSet = new Set<string>();
 
       for (const item of itemsToCreate) {
-        let code = generateCode(item.voucherType);
+        let code = generateCode(item.voucherType, item.companyGlCode);
         let attempts = 0;
         while ((generatedSet.has(code) || attempts < 10) && attempts < 20) {
           if (!generatedSet.has(code)) break;
-          code = generateCode(item.voucherType);
+          code = generateCode(item.voucherType, item.companyGlCode);
           attempts++;
         }
         generatedSet.add(code);
@@ -646,9 +652,9 @@ export class VoucherService {
         const collisionSet = new Set(existingInDb.map((e) => e.code));
         for (let i = 0; i < generatedCodes.length; i++) {
           if (collisionSet.has(generatedCodes[i])) {
-            let newCode = generateCode(itemsToCreate[i].voucherType);
+            let newCode = generateCode(itemsToCreate[i].voucherType, itemsToCreate[i].companyGlCode);
             while (collisionSet.has(newCode) || generatedSet.has(newCode)) {
-              newCode = generateCode(itemsToCreate[i].voucherType);
+              newCode = generateCode(itemsToCreate[i].voucherType, itemsToCreate[i].companyGlCode);
             }
             generatedSet.add(newCode);
             generatedCodes[i] = newCode;

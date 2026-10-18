@@ -1476,12 +1476,64 @@ export class PosSalesController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('search') search?: string,
+    @Query('companyName') companyName?: string,
+    @Query('abbr') abbr?: string,
   ) {
     const data = await this.corporateVoucherExportService.getReportData({
       locationId,
       startDate,
       endDate,
       search,
+      companyName,
+      abbr,
+    });
+    return { status: true, data };
+  }
+
+  @Get('reports/corporate-voucher/grouped')
+  @ApiOperation({ summary: 'Get Grouped Corporate Voucher by Client and Abbreviation' })
+  async getGroupedCorporateVoucherReport(
+    @Query('locationId') locationId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+    @Query('abbr') abbr?: string,
+    @Query('status') status?: string,
+  ) {
+    const data = await this.corporateVoucherExportService.getGroupedClientReport({
+      locationId,
+      startDate,
+      endDate,
+      search,
+      abbr,
+      status,
+    });
+    return { status: true, data };
+  }
+
+  @Get('reports/corporate-voucher/client-vouchers')
+  @ApiOperation({ summary: 'Get Paginated Individual Vouchers for a Specific Corporate Client' })
+  async getCorporateClientVouchers(
+    @Query('companyName') companyName: string,
+    @Query('abbr') abbr?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('locationId') locationId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const data = await this.corporateVoucherExportService.getClientVouchers({
+      companyName,
+      abbr,
+      status,
+      search,
+      startDate,
+      endDate,
+      locationId,
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 50,
     });
     return { status: true, data };
   }

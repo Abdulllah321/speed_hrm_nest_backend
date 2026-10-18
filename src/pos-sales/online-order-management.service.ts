@@ -193,7 +193,67 @@ export class OnlineOrderManagementService {
       };
     }
 
-    // 3. Not found in system
+    // 3. Check in AllianceDiscount table (Bank Card Alliances e.g. 4902-87, 4902-88, 5140-10, 4293-3507, 5556-99)
+    const normalizedBin = cleanCode.replace(/[-#\s]/g, '');
+    const alliances = await this.prisma.allianceDiscount.findMany({
+      where: {
+        isDeleted: false,
+        isActive: true,
+      },
+    });
+
+    const matchedAlliance = alliances.find((a) => {
+      const aCode = (a.code || '').trim().toLowerCase();
+      const cCode = cleanCode.toLowerCase();
+      if (
+        aCode === cCode ||
+        aCode.replace(/[-#\s]/g, '') === normalizedBin.toLowerCase()
+      ) {
+        return true;
+      }
+      if (a.binNumbers && Array.isArray(a.binNumbers)) {
+        return a.binNumbers.some((bin) => {
+          const cleanBin = bin.replace(/[-#\s]/g, '').toLowerCase();
+          return (
+            cleanBin === normalizedBin.toLowerCase() ||
+            normalizedBin.toLowerCase().startsWith(cleanBin) ||
+            cleanBin.startsWith(normalizedBin.toLowerCase())
+          );
+        });
+      }
+      return false;
+    });
+
+    if (matchedAlliance) {
+      const now = new Date();
+      let isValid = true;
+      let status = 'VALID';
+      let message = `Bank Alliance Discount (${matchedAlliance.partnerName} - ${matchedAlliance.discountPercent}%)`;
+
+      if (matchedAlliance.endDate && matchedAlliance.endDate < now) {
+        isValid = false;
+        status = 'EXPIRED';
+        message = `Bank alliance expired on ${matchedAlliance.endDate.toISOString().split('T')[0]}`;
+      } else if (matchedAlliance.startDate && matchedAlliance.startDate > now) {
+        isValid = false;
+        status = 'NOT_STARTED';
+        message = `Bank alliance starts on ${matchedAlliance.startDate.toISOString().split('T')[0]}`;
+      }
+
+      return {
+        type: 'ALLIANCE',
+        id: matchedAlliance.id,
+        code: matchedAlliance.code,
+        partnerName: matchedAlliance.partnerName,
+        discountPercent: Number(matchedAlliance.discountPercent || 0),
+        maxDiscount: matchedAlliance.maxDiscount ? Number(matchedAlliance.maxDiscount) : null,
+        status,
+        isValid,
+        message,
+      };
+    }
+
+    // 4. Not found in system
     return {
       type: 'UNKNOWN',
       code: cleanCode,
@@ -344,11 +404,12 @@ export class OnlineOrderManagementService {
         select: { id: true, sku: true, barCode: true, itemId: true, description: true, taxRate1: true },
       });
 
-      const dbItemMap = new Map<string, any>();
+      const dbBarcodeMap = new Map<string, any>();
+      const dbSkuMap = new Map<string, any>();
       for (const it of dbItems) {
-        if (it.sku) dbItemMap.set(it.sku.trim().toLowerCase(), it);
-        if (it.barCode) dbItemMap.set(it.barCode.trim().toLowerCase(), it);
-        if (it.itemId) dbItemMap.set(it.itemId.trim().toLowerCase(), it);
+        if (it.barCode) dbBarcodeMap.set(it.barCode.trim().toLowerCase(), it);
+        if (it.sku) dbSkuMap.set(it.sku.trim().toLowerCase(), it);
+        if (it.itemId) dbSkuMap.set(it.itemId.trim().toLowerCase(), it);
       }
 
       // 3. Check Vouchers / Coupons
@@ -402,13 +463,17 @@ export class OnlineOrderManagementService {
           }
         }
 
-        // Item SKU check
-        const targetSku = (row.systemSku || row.barcode || row.sku || '').trim().toLowerCase();
-        let matched = dbItemMap.get(targetSku);
-        if (!matched && row.sku) {
-          const baseSku = row.sku.split('_')[0].trim().toLowerCase();
-          matched = dbItemMap.get(baseSku);
-        }
+        // Item check: Barcode FIRST as master unique link, then SKU
+        const cleanBarcode = row.barcode?.trim().toLowerCase();
+        const cleanSystemSku = row.systemSku?.trim().toLowerCase();
+        const cleanSku = row.sku?.trim().toLowerCase();
+        const baseSku = row.sku ? row.sku.split('_')[0].trim().toLowerCase() : undefined;
+
+        let matched =
+          (cleanBarcode ? dbBarcodeMap.get(cleanBarcode) : undefined) ||
+          (cleanSystemSku ? dbSkuMap.get(cleanSystemSku) : undefined) ||
+          (cleanSku ? dbSkuMap.get(cleanSku) : undefined) ||
+          (baseSku ? dbSkuMap.get(baseSku) : undefined);
 
         if (!matched) {
           missingItemCount++;
@@ -725,8 +790,23 @@ export class OnlineOrderManagementService {
    */
   async getGroupedOrders(locationId?: string, targetOrderNumber?: string) {
     const where: any = {};
-    if (locationId) where.locationId = locationId;
     if (targetOrderNumber) where.orderNumber = targetOrderNumber;
+
+    if (locationId) {
+      // Check if location is specifically an online location with orders
+      const loc = await this.prisma.location.findUnique({
+        where: { id: locationId },
+        select: { id: true, isOnline: true },
+      });
+      if (loc?.isOnline) {
+        const orderCountForLoc = await this.prisma.onlineOrder.count({
+          where: { locationId },
+        });
+        if (orderCountForLoc > 0) {
+          where.locationId = locationId;
+        }
+      }
+    }
 
     const allRows = await this.prisma.onlineOrder.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
@@ -771,34 +851,119 @@ export class OnlineOrderManagementService {
         })
       : [];
 
-    const dbItemMap = new Map<string, string>(); // identifier (lowercase) -> item.id
+    const dbBarcodeMap = new Map<string, string>(); // barcode -> item.id (unique per size/variant)
+    const dbSkuMap = new Map<string, string>();     // sku/itemId -> item.id
     const matchedItemIds = new Set<string>();
+
     for (const it of dbItems) {
-      if (it.sku) dbItemMap.set(it.sku.trim().toLowerCase(), it.id);
-      if (it.barCode) dbItemMap.set(it.barCode.trim().toLowerCase(), it.id);
-      if (it.itemId) dbItemMap.set(it.itemId.trim().toLowerCase(), it.id);
+      if (it.barCode) dbBarcodeMap.set(it.barCode.trim().toLowerCase(), it.id);
+      if (it.sku) dbSkuMap.set(it.sku.trim().toLowerCase(), it.id);
+      if (it.itemId) dbSkuMap.set(it.itemId.trim().toLowerCase(), it.id);
       matchedItemIds.add(it.id);
     }
 
-    // Also support prefix/split SKU matching for variants
+    // Also support prefix/split SKU matching for variants if not already matched
     for (const row of allRows) {
-      if (row.sku && !dbItemMap.has(row.sku.trim().toLowerCase())) {
+      if (row.sku && !dbSkuMap.has(row.sku.trim().toLowerCase())) {
         const baseSku = row.sku.split('_')[0].trim().toLowerCase();
-        const baseId = dbItemMap.get(baseSku);
+        const baseId = dbSkuMap.get(baseSku);
         if (baseId) {
-          dbItemMap.set(row.sku.trim().toLowerCase(), baseId);
+          dbSkuMap.set(row.sku.trim().toLowerCase(), baseId);
         }
       }
     }
 
-    // Real-time actual available stock verification via posSalesService
-    const stockMap =
-      matchedItemIds.size > 0
+    // ── DUAL REAL-TIME STOCK VERIFICATION (COMPANY WIDE + LOCAL) ──
+    const itemIdsArray = Array.from(matchedItemIds);
+
+    // 1. Company-wide stock (100% matched to Available Stock Report logic)
+    const [companyLedgerSums, companyReserveSums, locationStockRows, allLocations, allWarehouses] =
+      itemIdsArray.length > 0
+        ? await Promise.all([
+            this.prisma.stockLedger.groupBy({
+              by: ['itemId'],
+              where: { itemId: { in: itemIdsArray } },
+              _sum: { qty: true },
+            }),
+            this.prisma.stockReserve.groupBy({
+              by: ['itemId'],
+              where: {
+                itemId: { in: itemIdsArray },
+                OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+              },
+              _sum: { quantity: true },
+            }),
+            this.prisma.stockLedger.groupBy({
+              by: ['itemId', 'locationId', 'warehouseId'],
+              where: { itemId: { in: itemIdsArray } },
+              _sum: { qty: true },
+            }),
+            this.prisma.location.findMany({
+              select: { id: true, name: true, code: true },
+            }),
+            this.prisma.warehouse.findMany({
+              where: { isDeleted: false, isActive: true },
+              select: { id: true, name: true, code: true },
+            }),
+          ])
+        : [[], [], [], [], []];
+
+    const locNameMap = new Map<string, string>();
+    for (const l of allLocations) locNameMap.set(l.id, l.name);
+    const whNameMap = new Map<string, string>();
+    for (const w of allWarehouses) whNameMap.set(w.id, w.name);
+
+    const reserveMap = new Map<string, number>();
+    for (const r of companyReserveSums) {
+      reserveMap.set(r.itemId, Number(r._sum.quantity || 0));
+    }
+
+    const companyStockMap = new Map<string, number>();
+    for (const l of companyLedgerSums) {
+      const netLedger = Number(l._sum.qty || 0);
+      const res = reserveMap.get(l.itemId) || 0;
+      companyStockMap.set(l.itemId, Math.max(0, netLedger - res));
+    }
+
+    // 2. Breakdown of stock by location for each item
+    const itemLocationBreakdown = new Map<string, Array<{ id: string; name: string; type: string; qty: number }>>();
+    for (const row of locationStockRows) {
+      const qty = Number(row._sum.qty || 0);
+      if (qty > 0) {
+        const list = itemLocationBreakdown.get(row.itemId) || [];
+        const locId = row.locationId;
+        const whId = row.warehouseId;
+        const isLoc = !!locId;
+        const name = locId
+          ? (locNameMap.get(locId) || 'Outlet')
+          : whId
+          ? (whNameMap.get(whId) || 'Warehouse')
+          : 'Other';
+        const targetId = locId || whId;
+        if (targetId) {
+          list.push({
+            id: targetId,
+            name,
+            type: isLoc ? 'OUTLET' : 'WAREHOUSE',
+            qty,
+          });
+          itemLocationBreakdown.set(row.itemId, list);
+        }
+      }
+    }
+    // Sort each item's location list by highest quantity
+    for (const list of itemLocationBreakdown.values()) {
+      list.sort((a, b) => b.qty - a.qty);
+    }
+
+    // 3. Local store stock (if a specific terminal locationId is active)
+    const localStockMap =
+      locationId && itemIdsArray.length > 0
         ? await this.posSalesService.calculateActualAvailableStock(
-            Array.from(matchedItemIds),
+            itemIdsArray,
             locationId,
           )
-        : new Map<string, number>();
+        : companyStockMap;
 
     // Group rows by orderNumber
     const grouped = new Map<string, any>();
@@ -806,15 +971,36 @@ export class OnlineOrderManagementService {
     for (const row of allRows) {
       const key = row.orderNumber || row.orderId || row.id;
 
-      // Attach real-time stock verification to line item
-      const targetIdentifier = (row.systemSku || row.barcode || row.sku || '').trim().toLowerCase();
-      const matchedItemId = dbItemMap.get(targetIdentifier) || (row.sku ? dbItemMap.get(row.sku.split('_')[0].trim().toLowerCase()) : undefined);
-      const availableQty = matchedItemId ? (stockMap.get(matchedItemId) ?? 0) : 0;
+      // Master unique linking key is BARCODE (matches exact size & variant)
+      const cleanBarcode = row.barcode?.trim().toLowerCase();
+      const cleanSystemSku = row.systemSku?.trim().toLowerCase();
+      const cleanSku = row.sku?.trim().toLowerCase();
+      const baseSku = row.sku ? row.sku.split('_')[0].trim().toLowerCase() : undefined;
+
+      const matchedItemId =
+        (cleanBarcode ? dbBarcodeMap.get(cleanBarcode) : undefined) ||
+        (cleanSystemSku ? dbSkuMap.get(cleanSystemSku) : undefined) ||
+        (cleanSku ? dbSkuMap.get(cleanSku) : undefined) ||
+        (baseSku ? dbSkuMap.get(baseSku) : undefined);
+
       const requiredQty = Number(row.qty || 1);
+      const companyAvailableQty = matchedItemId ? (companyStockMap.get(matchedItemId) ?? 0) : 0;
+      const localAvailableQty = matchedItemId ? (localStockMap.get(matchedItemId) ?? 0) : 0;
+      const isCompanyAvailable = companyAvailableQty >= requiredQty;
+      const isLocallyAvailable = localAvailableQty >= requiredQty;
+      const isAvailable = isCompanyAvailable || isLocallyAvailable;
+      const requiresSourcing = !isLocallyAvailable && isCompanyAvailable;
+
       (row as any).itemId = matchedItemId || null;
       (row as any).stock = {
-        available: availableQty,
-        isAvailable: availableQty >= requiredQty,
+        available: companyAvailableQty, // Displays the exact company available stock from report!
+        companyAvailable: companyAvailableQty,
+        localAvailable: localAvailableQty,
+        isAvailable,
+        isCompanyAvailable,
+        isLocallyAvailable,
+        requiresSourcing,
+        locations: matchedItemId ? (itemLocationBreakdown.get(matchedItemId) || []) : [],
       };
 
       if (!grouped.has(key)) {
@@ -854,6 +1040,8 @@ export class OnlineOrderManagementService {
           voucherRedeemed: 0,
           orderTotal: 0,
           allStockAvailable: true,
+          hasLocalStock: true,
+          requiresSourcing: false,
         });
       }
 
@@ -870,6 +1058,11 @@ export class OnlineOrderManagementService {
       const lineDisc = lineGross * (discPercent / 100);
       order.totalDiscount += lineDisc;
 
+      (row as any).lineGross = lineGross;
+      (row as any).discountPercent = discPercent;
+      (row as any).discountAmount = Math.round(lineDisc * 100) / 100;
+      (row as any).netTotal = Math.max(0, lineGross - lineDisc);
+
       if (Number(row.shippingCharges || 0) > order.shippingCharges) {
         order.shippingCharges = Number(row.shippingCharges);
       }
@@ -881,11 +1074,17 @@ export class OnlineOrderManagementService {
       order.allStockAvailable = order.items.every(
         (i: any) => i.stock?.isAvailable !== false,
       );
+      order.hasLocalStock = order.items.every(
+        (i: any) => i.stock?.isLocallyAvailable === true,
+      );
+      order.requiresSourcing = order.items.some(
+        (i: any) => i.stock?.requiresSourcing === true,
+      );
 
       // 2. Items after discount
       const itemsNet = Math.max(0, order.grossSubtotal - order.totalDiscount);
 
-      // 3. Voucher deduction
+      // 3. Voucher & Alliance deduction
       let voucherDeduction = 0;
       if (order.voucherInfo && order.voucherInfo.isValid) {
         if (order.voucherInfo.type === 'VOUCHER') {
@@ -902,6 +1101,13 @@ export class OnlineOrderManagementService {
               itemsNet,
             );
           }
+        } else if (order.voucherInfo.type === 'ALLIANCE') {
+          const alliancePct = Number(order.voucherInfo.discountPercent || 0);
+          let allianceDisc = itemsNet * (alliancePct / 100);
+          if (order.voucherInfo.maxDiscount && order.voucherInfo.maxDiscount > 0) {
+            allianceDisc = Math.min(allianceDisc, Number(order.voucherInfo.maxDiscount));
+          }
+          voucherDeduction = allianceDisc;
         }
       }
       order.voucherRedeemed = Math.round(voucherDeduction * 100) / 100;
@@ -920,6 +1126,22 @@ export class OnlineOrderManagementService {
 
       // 5. Remaining tender amount to pay (Cash/Card)
       order.payableAfterVoucher = Math.max(0, order.orderTotal - order.voucherRedeemed);
+
+      const totalUnits = order.items.reduce((sum: number, i: any) => sum + Number(i.qty || 1), 0);
+      const avgDiscountPercent = order.grossSubtotal > 0
+        ? Math.round((order.totalDiscount / order.grossSubtotal) * 1000) / 10
+        : 0;
+
+      order.financials = {
+        grossSubtotal: Math.round(order.grossSubtotal * 100) / 100,
+        itemDiscounts: Math.round(order.totalDiscount * 100) / 100,
+        discountPercent: avgDiscountPercent,
+        voucherDeduction: order.voucherRedeemed,
+        shippingCharges: order.shippingCharges,
+        netGrandTotal: order.orderTotal,
+        remainingPayable: order.payableAfterVoucher,
+        totalUnits,
+      };
 
       return order;
     });
@@ -1049,6 +1271,13 @@ export class OnlineOrderManagementService {
           } else {
             voucherDeduction = Math.min(Number(vRes.discountValue || 0), itemsNet);
           }
+        } else if (vRes.type === 'ALLIANCE') {
+          const pct = Number(vRes.discountPercent || 0);
+          let disc = itemsNet * (pct / 100);
+          if (vRes.maxDiscount && vRes.maxDiscount > 0) {
+            disc = Math.min(disc, Number(vRes.maxDiscount));
+          }
+          voucherDeduction = disc;
         }
       }
     }
@@ -1241,20 +1470,20 @@ export class OnlineOrderManagementService {
     for (const row of orderRows) {
       let item: any = null;
 
-      // 1. Try matching System SKU
-      if (row.systemSku) {
+      // 1. Try matching Barcode FIRST (Master unique key for exact size/variant)
+      if (row.barcode) {
+        item = dbItems.find(
+          (i) => matchStr(row.barcode, i.barCode),
+        );
+      }
+
+      // 2. Try matching System SKU
+      if (!item && row.systemSku) {
         item = dbItems.find(
           (i) =>
             matchStr(row.systemSku, i.sku) ||
             matchStr(row.systemSku, i.barCode) ||
             matchStr(row.systemSku, i.itemId),
-        );
-      }
-
-      // 2. Try matching Barcode
-      if (!item && row.barcode) {
-        item = dbItems.find(
-          (i) => matchStr(row.barcode, i.barCode) || matchStr(row.barcode, i.sku),
         );
       }
 
@@ -1319,10 +1548,12 @@ export class OnlineOrderManagementService {
     const itemsNet = Math.max(0, grossItemsTotal - totalLineDiscount);
     const shippingFee = Number(orderRows[0].shippingCharges || 0);
 
-    // ── VOUCHER & COUPON RESOLUTION ──
+    // ── VOUCHER & COUPON & ALLIANCE RESOLUTION ──
     const couponCode = orderRows.find((r) => r.couponCode)?.couponCode?.trim();
     let voucherRedemptions: any[] = [];
     let couponId: string | undefined = undefined;
+    let allianceId: string | undefined = undefined;
+    let allianceMeta: any = undefined;
     let voucherDeduction = 0;
 
     if (couponCode) {
@@ -1339,6 +1570,18 @@ export class OnlineOrderManagementService {
           ];
         } else if (resolved.type === 'COUPON') {
           couponId = resolved.id;
+        } else if (resolved.type === 'ALLIANCE') {
+          allianceId = resolved.id;
+          allianceMeta = {
+            partnerName: resolved.partnerName,
+            cardLast4: '0000',
+          };
+          const alliancePct = Number(resolved.discountPercent || 0);
+          let allianceDisc = itemsNet * (alliancePct / 100);
+          if (resolved.maxDiscount && resolved.maxDiscount > 0) {
+            allianceDisc = Math.min(allianceDisc, Number(resolved.maxDiscount));
+          }
+          voucherDeduction = allianceDisc;
         }
       } else if (resolved && !resolved.isValid) {
         console.warn(`[ONLINE ORDER] Voucher "${couponCode}" issue: ${resolved.message}`);
@@ -1364,7 +1607,14 @@ export class OnlineOrderManagementService {
     // Map payment method
     const paymentStr = orderRows[0].paymentMethod?.toLowerCase() || 'cash';
     let tenderMethod = 'cash';
-    if (paymentStr.includes('card') || paymentStr.includes('visa') || paymentStr.includes('master')) {
+    if (
+      allianceId ||
+      paymentStr.includes('card') ||
+      paymentStr.includes('visa') ||
+      paymentStr.includes('master') ||
+      paymentStr.includes('unumpay') ||
+      paymentStr.includes('unum')
+    ) {
       tenderMethod = 'card';
     } else if (paymentStr.includes('bank') || paymentStr.includes('online') || paymentStr.includes('transfer')) {
       tenderMethod = 'bank_transfer';
@@ -1375,6 +1625,7 @@ export class OnlineOrderManagementService {
       tenders.push({
         method: tenderMethod,
         amount: remainingPayable,
+        cardLast4: tenderMethod === 'card' ? '0000' : undefined,
       });
     }
 
@@ -1391,6 +1642,8 @@ export class OnlineOrderManagementService {
       tenders,
       voucherRedemptions: voucherRedemptions.length > 0 ? voucherRedemptions : undefined,
       couponId,
+      allianceId,
+      allianceMeta,
     };
 
     const ctx = {
@@ -1602,7 +1855,7 @@ export class OnlineOrderManagementService {
 
       const orderNotesMap = new Map<string, string>();
       for (const row of existingRows) {
-        if (!orderNotesMap.has(row.orderNumber)) {
+        if (row.orderNumber && !orderNotesMap.has(row.orderNumber)) {
           orderNotesMap.set(row.orderNumber, row.note || '');
         }
       }
@@ -1746,5 +1999,161 @@ export class OnlineOrderManagementService {
     );
 
     return { status: true, data: results };
+  }
+
+  /**
+   * Resolve full item master details by barcode, SKU, or item code with dual stock (company & local)
+   */
+  async resolveItemDetails(term: string, locationId?: string) {
+    if (!term || !term.trim()) {
+      throw new BadRequestException('Barcode or SKU is required.');
+    }
+    const clean = term.trim();
+
+    // 1. Primary lookup by barcode, sku, or itemId (case-insensitive exact)
+    let item = await this.prisma.item.findFirst({
+      where: {
+        isActive: true,
+        OR: [
+          { barCode: { equals: clean, mode: 'insensitive' } },
+          { sku: { equals: clean, mode: 'insensitive' } },
+          { itemId: { equals: clean, mode: 'insensitive' } },
+        ],
+      },
+      include: {
+        brand: { select: { id: true, name: true } },
+        size: { select: { id: true, name: true } },
+        color: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+      },
+    });
+
+    // 2. Fallback lookup if not found: startsWith or split SKU (prefix before '_')
+    if (!item && clean.length >= 3) {
+      const baseClean = clean.split('_')[0].trim();
+      item = await this.prisma.item.findFirst({
+        where: {
+          isActive: true,
+          OR: [
+            { barCode: { startsWith: clean, mode: 'insensitive' } },
+            { sku: { startsWith: clean, mode: 'insensitive' } },
+            { sku: { equals: baseClean, mode: 'insensitive' } },
+          ],
+        },
+        include: {
+          brand: { select: { id: true, name: true } },
+          size: { select: { id: true, name: true } },
+          color: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true } },
+        },
+      });
+    }
+
+    if (!item) {
+      return {
+        status: false,
+        message: `Product not found for barcode or SKU "${clean}"`,
+        data: null,
+      };
+    }
+
+    // 3. Compute real-time dual stock (Company-wide & Local Store)
+    const [companyLedger, companyReserve, locationLedgerRows, allLocations, allWarehouses] =
+      await Promise.all([
+        this.prisma.stockLedger.aggregate({
+          where: { itemId: item.id },
+          _sum: { qty: true },
+        }),
+        this.prisma.stockReserve.aggregate({
+          where: {
+            itemId: item.id,
+            OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+          },
+          _sum: { quantity: true },
+        }),
+        this.prisma.stockLedger.groupBy({
+          by: ['locationId', 'warehouseId'],
+          where: { itemId: item.id },
+          _sum: { qty: true },
+        }),
+        this.prisma.location.findMany({
+          select: { id: true, name: true, code: true },
+        }),
+        this.prisma.warehouse.findMany({
+          where: { isDeleted: false, isActive: true },
+          select: { id: true, name: true, code: true },
+        }),
+      ]);
+
+    const totalLedger = Number(companyLedger._sum.qty || 0);
+    const totalReserve = Number(companyReserve._sum.quantity || 0);
+    const companyAvailable = Math.max(0, totalLedger - totalReserve);
+
+    let localAvailable = 0;
+    if (locationId) {
+      const localStockMap = await this.posSalesService.calculateActualAvailableStock(
+        [item.id],
+        locationId,
+      );
+      localAvailable = localStockMap.get(item.id) ?? 0;
+    } else {
+      localAvailable = companyAvailable;
+    }
+
+    const locNameMap = new Map<string, string>();
+    for (const l of allLocations) locNameMap.set(l.id, l.name);
+    const whNameMap = new Map<string, string>();
+    for (const w of allWarehouses) whNameMap.set(w.id, w.name);
+
+    const locations = locationLedgerRows
+      .map((r) => {
+        const locId = r.locationId;
+        const whId = r.warehouseId;
+        const name =
+          (locId ? locNameMap.get(locId) : null) ||
+          (whId ? whNameMap.get(whId) : null) ||
+          'Store / Warehouse';
+        return {
+          id: locId || whId || '',
+          name,
+          qty: Math.max(0, Number(r._sum.qty || 0)),
+          isWarehouse: !locId,
+        };
+      })
+      .filter((l) => l.qty > 0)
+      .sort((a, b) => b.qty - a.qty);
+
+    const price = Number(item.unitPrice || 0);
+
+    return {
+      status: true,
+      message: 'Product resolved successfully',
+      data: {
+        id: item.id,
+        sku: item.sku,
+        barcode: item.barCode || '',
+        systemSku: item.itemId || item.sku,
+        name: item.description || item.sku,
+        brand: item.brand?.name || '',
+        size: item.size?.name || '',
+        color: item.color?.name || '',
+        category: item.category?.name || '',
+        price,
+        unitPrice: price,
+        retailPrice: price,
+        discountRate: Number(item.discountRate || 0),
+        discountAmount: Number(item.discountAmount || 0),
+        stock: {
+          available: companyAvailable,
+          companyAvailable,
+          localAvailable,
+          isAvailable: companyAvailable > 0 || localAvailable > 0,
+          isCompanyAvailable: companyAvailable > 0,
+          isLocallyAvailable: localAvailable > 0,
+          requiresSourcing: localAvailable <= 0 && companyAvailable > 0,
+          locations,
+        },
+      },
+    };
   }
 }
