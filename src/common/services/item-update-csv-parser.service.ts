@@ -11,6 +11,8 @@ export interface ItemUpdateParsedRecord {
     fob?: number | null;
     taxRate1?: number | null;
     taxRate2?: number | null;
+    discountRate?: number | null;
+    season?: string | null;
   };
 }
 
@@ -20,71 +22,128 @@ export class ItemUpdateCsvParserService {
 
   private normalizeValue(value: any): string | null {
     if (value === null || value === undefined) return null;
-    const str = String(value).trim();
+
+    let str = String(value).trim();
+    if (!str) return null;
+
+    // Handle scientific notation e.g., 8.90123E+12
+    if (/^[0-9]+(\.[0-9]+)?[eE][+-]?[0-9]+$/.test(str)) {
+      const num = Number(str);
+      if (!isNaN(num)) {
+        str = num.toLocaleString('fullwide', { useGrouping: false });
+      }
+    }
+
+    // Strip trailing .0 from numeric identifiers
+    if (/^\d+\.0$/.test(str)) {
+      str = str.replace(/\.0$/, '');
+    }
+
     const naPatterns = ['n/a', 'n / a', 'null', 'none', '-', '', '–', '—'];
     if (naPatterns.includes(str.toLowerCase())) return null;
+
     return str;
   }
 
-  private parseNumber(value: any): number | null {
-    if (value === null || value === undefined) return null;
-    const str = String(value)
-      .trim()
-      .replace(/[^0-9.\-]/g, '');
-    const num = parseFloat(str);
+  /**
+   * Parse number from string or Excel value.
+   * - Empty / N/A / dash returns undefined (meaning: do not update, leave existing)
+   * - Valid numbers return number
+   * - Invalid string returns null (so validator catches and reports syntax errors)
+   */
+  private parseNumber(
+    value: any,
+    isPercentage = false,
+  ): number | null | undefined {
+    if (value === null || value === undefined) return undefined;
+
+    const normalized = this.normalizeValue(value);
+    if (normalized === null) return undefined;
+
+    // Handle Excel percentage numbers (e.g. 0.05 => 5)
+    if (typeof value === 'number') {
+      if (isPercentage && value > 0 && value < 1) {
+        return Math.round(value * 10000) / 100;
+      }
+      return value;
+    }
+
+    let cleanStr = normalized.replace(/,/g, '').trim();
+    if (isPercentage && cleanStr.endsWith('%')) {
+      cleanStr = cleanStr.replace('%', '').trim();
+    }
+
+    // Clean non-numeric characters except '-' and '.'
+    cleanStr = cleanStr.replace(/[^0-9.\-]/g, '');
+    if (!cleanStr || cleanStr === '-') return undefined;
+
+    const num = parseFloat(cleanStr);
     return isNaN(num) ? null : num;
   }
 
-  private isEmptyRow(row: any): boolean {
-    if (!row) return true;
-    const barCode = this.getValue(row, [
+  private isEmptyRow(row: Record<string, any>): boolean {
+    if (!row || typeof row !== 'object') return true;
+    const values = Object.values(row);
+    if (values.length === 0) return true;
+    return values.every((v) => this.normalizeValue(v) === null);
+  }
+
+  /**
+   * Builds an O(1) case-and-punctuation-insensitive lookup map for row keys
+   */
+  private buildNormalizedRowMap(row: Record<string, any>): Map<string, any> {
+    const map = new Map<string, any>();
+    for (const [key, val] of Object.entries(row)) {
+      if (key !== undefined) {
+        map.set(key.toLowerCase().replace(/[\s_\-\.]/g, ''), val);
+      }
+    }
+    return map;
+  }
+
+  private getValueFromMap(map: Map<string, any>, keys: string[]): any {
+    for (const key of keys) {
+      const cleanKey = key.toLowerCase().replace(/[\s_\-\.]/g, '');
+      if (map.has(cleanKey)) return map.get(cleanKey);
+    }
+    return null;
+  }
+
+  private mapColumns(row: Record<string, any>): ItemUpdateParsedRecord['data'] {
+    const rowMap = this.buildNormalizedRowMap(row);
+
+    const rawBarcode = this.getValueFromMap(rowMap, [
       'Barcode',
       'Bar Code',
       'barCode',
+      'Bar_Code',
       'Code',
     ]);
-    const sku = this.getValue(row, [
+    const rawSku = this.getValueFromMap(rowMap, [
       'SKU',
       'sku',
       'ItemCode',
       'Item Code',
       'Item_Code',
     ]);
-    const salePrice = this.getValue(row, [
-      'Sale Price',
-      'SalePrice',
-      'UnitPrice',
-      'Unit Price',
-      'Price',
-    ]);
-    const fob = this.getValue(row, ['FOB', 'fob']);
-    return !barCode && !sku && !salePrice && !fob;
-  }
-
-  private getValue(row: any, keys: string[]): any {
-    if (!row) return null;
-    for (const key of keys) {
-      if (row[key] !== undefined) return row[key];
-      const lowerKey = key.toLowerCase().replace(/[\s_\-\.]/g, '');
-      const actualKey = Object.keys(row).find(
-        (k) => k.toLowerCase().replace(/[\s_\-\.]/g, '') === lowerKey,
-      );
-      if (actualKey && row[actualKey] !== undefined) return row[actualKey];
-    }
-    return null;
-  }
-
-  private mapColumns(row: any): ItemUpdateParsedRecord['data'] {
-    const rawSalePrice = this.getValue(row, [
+    const rawSalePrice = this.getValueFromMap(rowMap, [
       'Sale Price',
       'SalePrice',
       'UnitPrice',
       'Unit Price',
       'Price',
       'Sale_Price',
+      'Retail Price',
+      'RetailPrice',
     ]);
-    const rawFob = this.getValue(row, ['FOB', 'fob', 'FobPrice', 'Fob Price']);
-    const rawTaxRate1 = this.getValue(row, [
+    const rawFob = this.getValueFromMap(rowMap, [
+      'FOB',
+      'fob',
+      'FobPrice',
+      'Fob Price',
+      'Fob_Price',
+    ]);
+    const rawTaxRate1 = this.getValueFromMap(rowMap, [
       'Sales Tax Rate',
       'SalesTaxRate',
       'Tax Rate 1',
@@ -92,8 +151,9 @@ export class ItemUpdateCsvParserService {
       'taxrate1',
       'taxRate1',
       'Sales_Tax_Rate',
+      'Tax Rate',
     ]);
-    const rawTaxRate2 = this.getValue(row, [
+    const rawTaxRate2 = this.getValueFromMap(rowMap, [
       'Additional Sales Tax',
       'AdditionalSalesTax',
       'Tax Rate 2',
@@ -101,51 +161,40 @@ export class ItemUpdateCsvParserService {
       'taxrate2',
       'taxRate2',
       'Additional_Sales_Tax',
+      'Additional Tax',
+    ]);
+    const rawDiscountRate = this.getValueFromMap(rowMap, [
+      'Discount %',
+      'Discount%',
+      'Discount Rate',
+      'DiscountRate',
+      'Discount',
+      'discount',
+      'Discount Percentage',
+      'DiscountPercentage',
+      'Discount_Percentage',
+      'Discount_Rate',
+    ]);
+    const rawSeason = this.getValueFromMap(rowMap, [
+      'Season',
+      'season',
+      'Season Name',
+      'SeasonName',
+      'Season_Name',
+      'New Season',
+      'NewSeason',
+      'New_Season',
     ]);
 
     return {
-      barCode:
-        this.normalizeValue(
-          this.getValue(row, [
-            'Barcode',
-            'Bar Code',
-            'barCode',
-            'Bar_Code',
-            'Code',
-          ]),
-        ) ?? undefined,
-      sku:
-        this.normalizeValue(
-          this.getValue(row, [
-            'SKU',
-            'sku',
-            'ItemCode',
-            'Item Code',
-            'Item_Code',
-          ]),
-        ) ?? undefined,
-      salePrice:
-        rawSalePrice !== null &&
-        rawSalePrice !== undefined &&
-        String(rawSalePrice).trim() !== ''
-          ? this.parseNumber(rawSalePrice)
-          : undefined,
-      fob:
-        rawFob !== null && rawFob !== undefined && String(rawFob).trim() !== ''
-          ? this.parseNumber(rawFob)
-          : undefined,
-      taxRate1:
-        rawTaxRate1 !== null &&
-        rawTaxRate1 !== undefined &&
-        String(rawTaxRate1).trim() !== ''
-          ? this.parseNumber(rawTaxRate1)
-          : undefined,
-      taxRate2:
-        rawTaxRate2 !== null &&
-        rawTaxRate2 !== undefined &&
-        String(rawTaxRate2).trim() !== ''
-          ? this.parseNumber(rawTaxRate2)
-          : undefined,
+      barCode: this.normalizeValue(rawBarcode) ?? undefined,
+      sku: this.normalizeValue(rawSku) ?? undefined,
+      salePrice: this.parseNumber(rawSalePrice, false),
+      fob: this.parseNumber(rawFob, false),
+      taxRate1: this.parseNumber(rawTaxRate1, true),
+      taxRate2: this.parseNumber(rawTaxRate2, true),
+      discountRate: this.parseNumber(rawDiscountRate, true),
+      season: this.normalizeValue(rawSeason) ?? undefined,
     };
   }
 
@@ -155,7 +204,8 @@ export class ItemUpdateCsvParserService {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const csvString = fileBuffer.toString('utf-8');
-      let rowCount = 0;
+      let physicalRow = 1; // Row 1 is header
+      let streamedCount = 0;
 
       Papa.parse(csvString, {
         header: true,
@@ -163,18 +213,22 @@ export class ItemUpdateCsvParserService {
         chunkSize: 1024 * 1024 * 2,
         chunk: async (results, parser) => {
           parser.pause();
-          for (const row of results.data) {
+          for (const row of results.data as Record<string, any>[]) {
+            physicalRow++;
             if (!this.isEmptyRow(row)) {
               await onRecord({
-                row: ++rowCount + 1,
+                row: physicalRow,
                 data: this.mapColumns(row),
               });
+              streamedCount++;
             }
           }
           parser.resume();
         },
         complete: () => {
-          this.logger.log(`Streamed ${rowCount} Item Update records from CSV`);
+          this.logger.log(
+            `Streamed ${streamedCount} Item Update records from CSV (${physicalRow - 1} rows scanned)`,
+          );
           resolve();
         },
         error: (error) => {
@@ -190,17 +244,20 @@ export class ItemUpdateCsvParserService {
     onRecord: (record: ItemUpdateParsedRecord) => Promise<void>,
   ): Promise<void> {
     try {
-      const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+      const workbook = XLSX.read(fileBuffer, {
+        type: 'buffer',
+        cellDates: true,
+      });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       if (!worksheet) return;
 
       const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
 
+      // 1. Detect Header Row
       let headerRowIdx = range.s.r;
-      let foundHeader = false;
       for (let R = range.s.r; R <= range.e.r; ++R) {
-        let nonIdxCount = 0;
+        let nonBlankCount = 0;
         for (let C = range.s.c; C <= range.e.c; ++C) {
           const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
           if (
@@ -209,59 +266,44 @@ export class ItemUpdateCsvParserService {
             cell.v !== undefined &&
             String(cell.v).trim() !== ''
           ) {
-            nonIdxCount++;
+            nonBlankCount++;
           }
         }
-        if (nonIdxCount >= 2) {
+        if (nonBlankCount >= 2) {
           headerRowIdx = R;
-          foundHeader = true;
           break;
         }
       }
-      if (!foundHeader) {
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-          let hasCells = false;
-          for (let C = range.s.c; C <= range.e.c; ++C) {
-            const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
-            if (
-              cell &&
-              cell.v !== null &&
-              cell.v !== undefined &&
-              String(cell.v).trim() !== ''
-            ) {
-              hasCells = true;
-              break;
-            }
-          }
-          if (hasCells) {
-            headerRowIdx = R;
-            break;
-          }
-        }
-      }
 
-      const headers: string[] = [];
+      // 2. Read headers mapped by column index C (prevents column shift if range.s.c > 0)
+      const headersByCol: Record<number, string> = {};
       for (let C = range.s.c; C <= range.e.c; ++C) {
         const cell =
           worksheet[XLSX.utils.encode_cell({ r: headerRowIdx, c: C })];
-        headers.push(
-          cell && cell.v !== null && cell.v !== undefined
-            ? String(cell.v).trim()
-            : `UNKNOWN_${C}`,
-        );
+        const val =
+          cell && cell.w
+            ? cell.w.trim()
+            : cell?.v !== null && cell?.v !== undefined
+              ? String(cell.v).trim()
+              : '';
+        headersByCol[C] = val || `COL_${C}`;
       }
 
+      // 3. Stream data rows
       let rowCount = 0;
       for (let R = headerRowIdx + 1; R <= range.e.r; ++R) {
-        const rowObj: any = {};
+        const rowObj: Record<string, any> = {};
         let hasData = false;
         for (let C = range.s.c; C <= range.e.c; ++C) {
           const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
           if (cell && cell.v !== null && cell.v !== undefined) {
-            rowObj[headers[C]] = cell.v;
+            // Prefer formatted text 'w' for string fields/barcodes to prevent scientific notation
+            rowObj[headersByCol[C]] =
+              cell.t === 's' || (cell.w && !cell.t) ? cell.w : cell.v;
             hasData = true;
           }
         }
+
         if (hasData && !this.isEmptyRow(rowObj)) {
           await onRecord({
             row: R + 1,

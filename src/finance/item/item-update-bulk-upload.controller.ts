@@ -89,18 +89,20 @@ export class ItemUpdateBulkUploadController extends BaseBulkUploadController {
   }
 
   @Get('template/download')
-  @ApiOperation({ summary: 'Download price/tax update CSV template' })
+  @ApiOperation({
+    summary: 'Download price, tax, discount & season update CSV template',
+  })
   @Permissions('erp.item.read')
   async downloadTemplate(@Res() res: any) {
     const template = [
-      'Barcode,SKU,Sale Price,FOB,Sales Tax Rate,Additional Sales Tax',
-      'BAR-001,SKU-001,200.00,12.50,5,0',
-      'BAR-002,SKU-002,150.00,10.00,5,0',
+      'Barcode,SKU,Sale Price,FOB,Sales Tax Rate,Additional Sales Tax,Discount %,Season',
+      'BAR-001,SKU-001,200.00,12.50,5,0,10,SS25',
+      'BAR-002,SKU-002,150.00,10.00,5,0,0,FW25',
     ].join('\n');
     res.header('Content-Type', 'text/csv');
     res.header(
       'Content-Disposition',
-      'attachment; filename="item-update-prices-template.csv"',
+      'attachment; filename="item-update-template.csv"',
     );
     return res.status(HttpStatus.OK).send(template);
   }

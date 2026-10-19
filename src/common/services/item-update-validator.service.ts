@@ -144,14 +144,45 @@ export class ItemUpdateValidatorService {
       }
     }
 
+    // 6. Discount % Validation (optional, between 0 and 100)
+    if (data.discountRate !== undefined) {
+      if (data.discountRate === null) {
+        errors.push({
+          row,
+          field: 'discountRate',
+          value: null,
+          reason: 'Discount % must be a valid number.',
+        });
+      } else if (data.discountRate < 0 || data.discountRate > 100) {
+        errors.push({
+          row,
+          field: 'discountRate',
+          value: data.discountRate,
+          reason: 'Discount % must be a valid percentage between 0 and 100.',
+        });
+      }
+    }
+
+    // 7. Season Validation (optional, max 100 characters)
+    if (data.season !== undefined && data.season !== null) {
+      if (data.season.trim().length > 100) {
+        errors.push({
+          row,
+          field: 'season',
+          value: data.season,
+          reason: 'Season name is too long (maximum 100 characters).',
+        });
+      }
+    }
+
     return { isValid: errors.length === 0, errors };
   }
 
   validateRecords(
     records: ItemUpdateParsedRecord[],
+    seenBarcodes: Set<string> = new Set<string>(),
   ): ItemUpdateValidationError[] {
     const allErrors: ItemUpdateValidationError[] = [];
-    const seenBarcodes = new Set<string>();
     for (const record of records) {
       const result = this.validateRecord(record, seenBarcodes);
       allErrors.push(...result.errors);

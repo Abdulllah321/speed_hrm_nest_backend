@@ -63,17 +63,69 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
       return;
     }
 
-    // 2. Fetch existing items in bulk by barcode and/or SKU
+    // 2. Resolve seasons present in the batch
+    const seasonsInBatch = [
+      ...new Set(
+        batch
+          .map((r) => r.data.season)
+          .filter((s): s is string => Boolean(s && s.trim())),
+      ),
+    ];
+
+    const seasonMap = new Map<string, string>(); // cleanLowerName -> seasonId
+    if (seasonsInBatch.length > 0) {
+      const existingSeasons = await prisma.season.findMany({
+        where: {
+          name: { in: seasonsInBatch },
+          isDeleted: false,
+        },
+        select: { id: true, name: true },
+      });
+
+      for (const s of existingSeasons) {
+        seasonMap.set(s.name.trim().toLowerCase(), s.id);
+      }
+
+      // Create missing seasons if any
+      for (const seasonName of seasonsInBatch) {
+        const cleanName = seasonName.trim();
+        const lowerName = cleanName.toLowerCase();
+        if (!seasonMap.has(lowerName)) {
+          try {
+            const created = await prisma.season.create({
+              data: { name: cleanName, status: 'active' },
+              select: { id: true, name: true },
+            });
+            seasonMap.set(lowerName, created.id);
+          } catch {
+            const found = await prisma.season.findFirst({
+              where: { name: { equals: cleanName, mode: 'insensitive' } },
+              select: { id: true },
+            });
+            if (found) seasonMap.set(lowerName, found.id);
+          }
+        }
+      }
+    }
+
+    // 3. Fetch existing items in bulk by barcode and/or SKU (including existing season data)
     const orConditions: any[] = [];
     if (barcodes.length > 0) orConditions.push({ barCode: { in: barcodes } });
     if (skus.length > 0) orConditions.push({ sku: { in: skus } });
 
     const existingItems = await prisma.item.findMany({
       where: { OR: orConditions },
-      select: { id: true, barCode: true, sku: true },
+      select: {
+        id: true,
+        barCode: true,
+        sku: true,
+        seasonId: true,
+        oldSeason: true,
+        season: { select: { id: true, name: true } },
+      },
     });
 
-    // Map trimmed barcodes and SKUs to internal database items (arrays of items since SKU/barcode can match multiple items)
+    // Map trimmed barcodes and SKUs to internal database items
     const barcodeToItemsMap = new Map<string, typeof existingItems>();
     const skuToItemsMap = new Map<string, typeof existingItems>();
     for (const item of existingItems) {
@@ -99,8 +151,19 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
       payload: any;
     }[] = [];
 
+    const oldSeasonsToRegister = new Set<string>();
+
     for (const record of batch) {
-      const { barCode, sku, salePrice, fob, taxRate1, taxRate2 } = record.data;
+      const {
+        barCode,
+        sku,
+        salePrice,
+        fob,
+        taxRate1,
+        taxRate2,
+        discountRate,
+        season,
+      } = record.data;
 
       if (!barCode && !sku) {
         progress.failedRecords++;
@@ -138,29 +201,88 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
         continue;
       }
 
-      // Construct payload dynamically (only include fields that are actually provided)
-      const payload: any = {};
-      if (salePrice !== undefined && salePrice !== null)
-        payload.unitPrice = salePrice;
-      if (fob !== undefined && fob !== null) payload.fob = fob;
-      if (taxRate1 !== undefined && taxRate1 !== null)
-        payload.taxRate1 = taxRate1;
-      if (taxRate2 !== undefined && taxRate2 !== null)
-        payload.taxRate2 = taxRate2;
-
-      if (Object.keys(payload).length === 0) {
-        progress.skippedRecords++;
-        progress.processedRecords++;
-        continue;
+      // Construct base payload for scalar price and tax fields
+      const basePayload: any = {};
+      if (salePrice !== undefined && salePrice !== null) {
+        basePayload.unitPrice = salePrice;
+      }
+      if (fob !== undefined && fob !== null) {
+        basePayload.fob = fob;
+      }
+      if (taxRate1 !== undefined && taxRate1 !== null) {
+        basePayload.taxRate1 = taxRate1;
+      }
+      if (taxRate2 !== undefined && taxRate2 !== null) {
+        basePayload.taxRate2 = taxRate2;
+      }
+      if (discountRate !== undefined && discountRate !== null) {
+        basePayload.discountRate = discountRate;
       }
 
+      let matchedItemsAdded = 0;
+
       for (const matchedItem of matchedItems) {
-        validRecordsInBatch.push({ record, itemId: matchedItem.id, payload });
+        const itemPayload: any = { ...basePayload };
+
+        // Handle Season and Old Season rollover
+        if (season) {
+          const cleanSeasonName = season.trim();
+          const targetSeasonId = seasonMap.get(cleanSeasonName.toLowerCase());
+
+          if (targetSeasonId) {
+            const currentSeasonName = matchedItem.season?.name?.trim();
+
+            // When updating with a new season:
+            // "Adding the current season to the old and replacing the season with the new season"
+            if (
+              currentSeasonName &&
+              currentSeasonName.toLowerCase() !== cleanSeasonName.toLowerCase()
+            ) {
+              itemPayload.oldSeason = currentSeasonName;
+              itemPayload.seasonId = targetSeasonId;
+              oldSeasonsToRegister.add(currentSeasonName);
+            } else if (!matchedItem.seasonId) {
+              itemPayload.seasonId = targetSeasonId;
+            } else {
+              itemPayload.seasonId = targetSeasonId;
+            }
+          }
+        }
+
+        if (Object.keys(itemPayload).length === 0) {
+          continue;
+        }
+
+        validRecordsInBatch.push({
+          record,
+          itemId: matchedItem.id,
+          payload: itemPayload,
+        });
+        matchedItemsAdded++;
+      }
+
+      if (matchedItemsAdded === 0) {
+        progress.skippedRecords++;
       }
       progress.processedRecords++;
     }
 
-    // 3. Batch Update Operations inside database Transactions (chunked to avoid timeouts)
+    // Ensure newly archived seasons exist in OldSeason master table
+    if (oldSeasonsToRegister.size > 0) {
+      for (const oldSeasonName of oldSeasonsToRegister) {
+        try {
+          await prisma.oldSeason.upsert({
+            where: { name: oldSeasonName },
+            create: { name: oldSeasonName, status: 'active' },
+            update: {},
+          });
+        } catch {
+          // Ignore unique constraint or concurrent insert errors
+        }
+      }
+    }
+
+    // 4. Batch Update Operations inside database Transactions (chunked to avoid timeouts)
     if (validRecordsInBatch.length > 0) {
       const chunkSize = 200;
       for (let i = 0; i < validRecordsInBatch.length; i += chunkSize) {
@@ -174,7 +296,7 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
           );
           await prisma.$transaction(transactionPromises);
 
-          // Since multiple updates can belong to the same CSV row, count unique rows successfully updated in this chunk
+          // Count unique CSV rows successfully updated in this chunk
           const uniqueRowNumbers = new Set(chunk.map((x) => x.record.row));
           progress.successRecords += uniqueRowNumbers.size;
         } catch (error) {
@@ -182,7 +304,6 @@ export class ItemUpdateUploadProcessor extends BaseUploadProcessor<ItemUpdatePar
             `Batch transaction update failed for chunk ${i / chunkSize + 1}: ${error.message}. Retrying chunk individually...`,
           );
           // Fallback to row-by-row updates for isolation of errors
-          // Group the chunk's valid item updates by their original CSV row
           const rowsGrouped = new Map<number, typeof chunk>();
           for (const item of chunk) {
             const row = item.record.row;

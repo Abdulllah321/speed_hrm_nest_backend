@@ -1004,6 +1004,18 @@ export class OnlineOrderManagementService {
       };
 
       if (!grouped.has(key)) {
+        const rawMarketStatus = (row.realMarketStatus || '').trim().toUpperCase();
+        let normalizedConfStatus = 'NEEDS_CONFIRMATION';
+        if (['CONFIRMED', 'APPROVED', 'VERIFIED'].includes(rawMarketStatus)) {
+          normalizedConfStatus = 'CONFIRMED';
+        } else if (['CALL_BACK', 'CALLBACK', 'RETRY'].includes(rawMarketStatus)) {
+          normalizedConfStatus = 'CALL_BACK';
+        } else if (['CANCELLED', 'CANCELED', 'REJECTED'].includes(rawMarketStatus)) {
+          normalizedConfStatus = 'CANCELLED';
+        } else {
+          normalizedConfStatus = 'NEEDS_CONFIRMATION';
+        }
+
         grouped.set(key, {
           orderNumber: row.orderNumber,
           orderId: row.orderId,
@@ -1019,7 +1031,8 @@ export class OnlineOrderManagementService {
           channel: row.channel,
           orderedAt: row.orderedAt,
           status: row.salesOrderId || row.itemStatus === 'posted' ? 'posted' : 'pending',
-          confirmationStatus: (row.realMarketStatus || 'NEEDS_CONFIRMATION').toUpperCase(),
+          confirmationStatus: normalizedConfStatus,
+          realMarketStatus: row.realMarketStatus,
           salesOrderId: row.salesOrderId,
           salesOrderNumber: row.salesOrder?.orderNumber,
           salesOrder: row.salesOrder
