@@ -174,6 +174,21 @@ export class PosSalesController {
     return this.posSalesService.scanBarcode(barcode, locationId);
   }
 
+  // ─── Live stock verification for multiple items at a location ─────
+  @Post('check-stock')
+  @ApiOperation({ summary: 'Check live stock for list of item IDs at location' })
+  async checkStock(
+    @Body() body: { itemIds: string[]; locationId?: string },
+    @Req() req: any,
+  ) {
+    const locationId =
+      body.locationId || req.user?.locationId || this.extractLocationFromCookie(req);
+    if (!locationId) {
+      throw new BadRequestException('Location context is required');
+    }
+    return this.posSalesService.checkStock(body.itemIds || [], locationId);
+  }
+
   private extractLocationFromCookie(req: any): string | undefined {
     if (req.cookies?.posTerminalToken) {
       try {

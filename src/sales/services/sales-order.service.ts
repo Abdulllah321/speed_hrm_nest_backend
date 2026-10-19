@@ -220,7 +220,7 @@ export class SalesOrderService {
           resolvedWarehouseId = logisticWh.id;
         }
       }
-
+      
       // Validate available stock for each item at resolvedWarehouseId (matching /pos/new-sale stock logic)
       if (resolvedWarehouseId) {
         for (const item of createSalesOrderDto.items) {
