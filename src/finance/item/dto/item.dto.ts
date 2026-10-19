@@ -8,6 +8,7 @@ import {
   IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PartialType } from '@nestjs/swagger';
 
 export class CreateItemDto {
   // itemId will be auto-generated (6-digit serial)
@@ -97,11 +98,36 @@ export class CreateItemDto {
 
   @IsString()
   @IsOptional()
+  movementName?: string;
+
+  @IsString()
+  @IsOptional()
+  uniqueNo?: string;
+
+  @IsString()
+  @IsOptional()
   heelHeight?: string;
 
   @IsString()
   @IsOptional()
   width?: string;
+
+  @IsString()
+  @IsOptional()
+  uom?: string;
+
+  @IsString()
+  @IsOptional()
+  currency?: string;
+
+  @IsDate()
+  @IsOptional()
+  @Type(() => Date)
+  launchDate?: Date;
+
+  @IsString()
+  @IsOptional()
+  oldSeason?: string;
 
   // Master Relations (Id's)
   @IsUUID()
@@ -157,7 +183,7 @@ export class CreateItemDto {
   segmentId?: string;
 }
 
-export class UpdateItemDto extends CreateItemDto {}
+export class UpdateItemDto extends PartialType(CreateItemDto) {}
 
 // ─── Bulk Discount ────────────────────────────────────────────────────────────
 

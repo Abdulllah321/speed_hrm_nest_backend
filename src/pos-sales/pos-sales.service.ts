@@ -249,6 +249,31 @@ export class PosSalesService implements OnModuleInit {
     return { status: true, data: enriched[0] };
   }
 
+  // ─── Check live stock for multiple items at an outlet location ────
+  async checkStock(itemIds: string[], locationId: string) {
+    if (!itemIds || !itemIds.length) {
+      return { status: true, data: {} };
+    }
+
+    const items = await this.prisma.item.findMany({
+      where: { id: { in: itemIds } },
+      select: { id: true, sku: true, barCode: true, description: true },
+    });
+
+    const enriched = await this.enrichForPos(items, locationId);
+    const stockMap: Record<string, number> = {};
+    for (const item of enriched) {
+      stockMap[item.id] = Number(item.stockQty || 0);
+    }
+    for (const id of itemIds) {
+      if (stockMap[id] === undefined) {
+        stockMap[id] = 0;
+      }
+    }
+
+    return { status: true, data: stockMap };
+  }
+
   private async resolveWarehouseId(
     tx: any,
     locationId: string | null | undefined,

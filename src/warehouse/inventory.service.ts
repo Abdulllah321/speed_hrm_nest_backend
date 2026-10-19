@@ -22,6 +22,7 @@ export class InventoryService {
       where: {
         itemId,
         warehouseId,
+        locationId: null,
         status: 'AVAILABLE',
       },
       _sum: {
@@ -295,7 +296,7 @@ export class InventoryService {
       }
       physicalMap = stockMap;
     } else if (warehouseId) {
-      // Warehouse stock: use StockLedger minus active reservations
+      // Warehouse stock: use StockLedger minus active reservations (with InventoryItem fallback matching POS)
       const stockEntries = await this.prisma.stockLedger.groupBy({
         by: ['itemId'],
         where: {
@@ -325,11 +326,33 @@ export class InventoryService {
         stockEntries.map((a) => [a.itemId, Number(a._sum.qty) || 0]),
       );
 
+      // Fallback: for items with no ledger entry at this warehouse, check inventoryItem directly
+      const missingIds = itemIds.filter(
+        (id) => !physicalMap.has(id) || (physicalMap.get(id) || 0) <= 0,
+      );
+      if (missingIds.length > 0) {
+        const fallbackItems = await this.prisma.inventoryItem.findMany({
+          where: {
+            itemId: { in: missingIds },
+            warehouseId,
+            locationId: null,
+            status: 'AVAILABLE',
+          },
+          select: { itemId: true, quantity: true },
+        });
+        for (const inv of fallbackItems) {
+          const current = physicalMap.get(inv.itemId) || 0;
+          if (current <= 0) {
+            physicalMap.set(inv.itemId, Number(inv.quantity || 0));
+          }
+        }
+      }
+
       stockMap = new Map(
-        stockEntries.map((a) => {
-          const physical = Number(a._sum.qty) || 0;
-          const reserved = resMap.get(a.itemId) || 0;
-          return [a.itemId, Math.max(0, physical - reserved)];
+        itemIds.map((id) => {
+          const physical = physicalMap.get(id) || 0;
+          const reserved = resMap.get(id) || 0;
+          return [id, Math.max(0, physical - reserved)];
         }),
       );
     } else {
