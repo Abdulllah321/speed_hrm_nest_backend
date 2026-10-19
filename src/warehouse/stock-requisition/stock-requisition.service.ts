@@ -1650,6 +1650,9 @@ export class StockRequisitionService {
         return {
           itemId: item.id,
           sku: item.sku,
+          barcode: item.barCode || null,
+          barCode: item.barCode || null,
+          uniqueNo: item.uniqueNo || null,
           description: item.description || '',
           color: item.color?.name || null,
           size: item.size?.name || null,
