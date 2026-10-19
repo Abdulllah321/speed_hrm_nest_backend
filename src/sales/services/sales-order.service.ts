@@ -221,6 +221,66 @@ export class SalesOrderService {
         }
       }
 
+      // Validate available stock for each item at resolvedWarehouseId (matching /pos/new-sale stock logic)
+      if (resolvedWarehouseId) {
+        for (const item of createSalesOrderDto.items) {
+          const requestedQty = Number(item.quantity || 0);
+          if (requestedQty <= 0) {
+            throw new BadRequestException('Item quantity must be greater than 0');
+          }
+
+          // Primary: sum StockLedger entries for this warehouse
+          const stockEntries = await this.prisma.stockLedger.groupBy({
+            by: ['itemId'],
+            where: {
+              itemId: item.itemId,
+              warehouseId: resolvedWarehouseId,
+            },
+            _sum: { qty: true },
+          });
+
+          let physicalStock = Number(stockEntries[0]?._sum?.qty || 0);
+
+          // Fallback: for items with no ledger entry, check InventoryItem directly
+          if (stockEntries.length === 0 || physicalStock <= 0) {
+            const invItems = await this.prisma.inventoryItem.aggregate({
+              where: {
+                itemId: item.itemId,
+                warehouseId: resolvedWarehouseId,
+                status: 'AVAILABLE',
+              },
+              _sum: { quantity: true },
+            });
+            const invQty = Number(invItems._sum.quantity || 0);
+            if (invQty > 0) {
+              physicalStock = invQty;
+            }
+          }
+
+          const reservations = await this.prisma.stockReserve.aggregate({
+            where: {
+              itemId: item.itemId,
+              warehouseId: resolvedWarehouseId,
+              OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+            },
+            _sum: { quantity: true },
+          });
+
+          const reservedStock = Number(reservations._sum.quantity || 0);
+          const availableStock = Math.max(0, physicalStock - reservedStock);
+
+          if (availableStock <= 0 || requestedQty > availableStock) {
+            const itemRecord = await this.prisma.item.findUnique({
+              where: { id: item.itemId },
+              select: { sku: true },
+            });
+            throw new BadRequestException(
+              `Item "${itemRecord?.sku || item.itemId}" is out of stock (Available: ${availableStock}, Requested: ${requestedQty}).`,
+            );
+          }
+        }
+      }
+
       // Create sales order with items (pure retail prices and quantities, no taxes/margins)
       const created = await this.prisma.eRPSalesOrder.create({
         data: {
