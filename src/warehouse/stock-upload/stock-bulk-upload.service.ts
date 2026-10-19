@@ -28,6 +28,7 @@ export class StockBulkUploadService {
       data: {
         jobId: tempJobId,
         filename,
+        moduleName: 'STOCK',
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',

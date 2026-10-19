@@ -27,6 +27,7 @@ export class MerchantBulkUploadService {
       data: {
         jobId: tempJobId,
         filename,
+        moduleName: 'MERCHANTS',
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',

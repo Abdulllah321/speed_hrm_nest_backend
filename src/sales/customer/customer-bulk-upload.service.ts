@@ -27,6 +27,7 @@ export class CustomerBulkUploadService {
       data: {
         jobId: tempJobId,
         filename,
+        moduleName: 'CUSTOMERS',
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',

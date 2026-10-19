@@ -32,6 +32,7 @@ export class SalesHistoryBulkUploadService {
       data: {
         jobId: tempJobId,
         filename,
+        moduleName: 'SALES_HISTORY',
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',

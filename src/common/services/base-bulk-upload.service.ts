@@ -26,6 +26,7 @@ export abstract class BaseBulkUploadService {
       data: {
         jobId: tempJobId,
         filename,
+        moduleName: this.uploadType.toUpperCase().replace(/-/g, '_'),
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',
@@ -212,6 +213,7 @@ export abstract class BaseBulkUploadService {
       select: {
         id: true,
         filename: true,
+        moduleName: true,
         status: true,
         totalRecords: true,
         successRecords: true,

@@ -41,6 +41,7 @@ export class SrnBulkUploadService {
         id: uploadId,
         jobId: uploadId,
         filename,
+        moduleName: 'SRN',
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',

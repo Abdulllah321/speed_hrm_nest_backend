@@ -98,6 +98,42 @@ export class StockAdjustmentController {
     });
   }
 
+  @Post(':id/approve')
+  async approve(
+    @Param('id') id: string,
+    @Body()
+    dto: {
+      items?: { itemId: string; physicalQty: number; rate?: number }[];
+      notes?: string;
+    },
+    @Req() req: any,
+  ) {
+    this.logger.log(`Stock adjustment approve request received for ID: ${id}`);
+    return this.service.submit(id, dto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post(':id/accept')
+  async accept(
+    @Param('id') id: string,
+    @Body()
+    dto: {
+      items?: { itemId: string; physicalQty: number; rate?: number }[];
+      notes?: string;
+    },
+    @Req() req: any,
+  ) {
+    this.logger.log(`Stock adjustment accept request received for ID: ${id}`);
+    return this.service.submit(id, dto, {
+      userId: req.user?.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   @Post(':id/reject')
   async reject(
     @Param('id') id: string,

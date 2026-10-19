@@ -548,21 +548,24 @@ export class StockAdjustmentService {
         },
       });
 
-      // Apply the adjustment effect to stock immediately on creation
-      for (const line of adj.items) {
-        const adjustedQty = Number(line.adjustedQty);
-        if (adjustedQty === 0) continue;
+      // Only apply stock movement if status is SUBMITTED (e.g. direct post by admin)
+      // For DRAFT or PENDING_APPROVAL, NO stock movement is applied on creation.
+      if (adj.status === 'SUBMITTED') {
+        for (const line of adj.items) {
+          const adjustedQty = Number(line.adjustedQty);
+          if (adjustedQty === 0) continue;
 
-        await this.applyStockMovement(tx, {
-          itemId: line.itemId,
-          locationId: line.locationId || finalLocationId,
-          warehouseId: finalWarehouseId,
-          qty: adjustedQty,
-          rate: line.rate,
-          referenceId: adj.id,
-          referenceType: 'STOCK_ADJUSTMENT',
-          adjustmentDate: adj.adjustmentDate,
-        });
+          await this.applyStockMovement(tx, {
+            itemId: line.itemId,
+            locationId: line.locationId || finalLocationId,
+            warehouseId: finalWarehouseId,
+            qty: adjustedQty,
+            rate: line.rate,
+            referenceId: adj.id,
+            referenceType: 'STOCK_ADJUSTMENT',
+            adjustmentDate: adj.adjustmentDate,
+          });
+        }
       }
 
       runInBackground(
@@ -694,22 +697,7 @@ export class StockAdjustmentService {
     );
 
     return this.prisma.$transaction(async (tx) => {
-      // Revert previous stock movements for existing items
-      for (const line of existing.items) {
-        const adjustedQty = Number(line.adjustedQty);
-        if (adjustedQty === 0) continue;
-
-        await this.applyStockMovement(tx, {
-          itemId: line.itemId,
-          locationId: line.locationId || existing.locationId,
-          warehouseId: existing.warehouseId,
-          qty: -adjustedQty,
-          rate: line.rate,
-          referenceId: existing.id,
-          referenceType: 'STOCK_ADJUSTMENT_UPDATE',
-          adjustmentDate: new Date(),
-        });
-      }
+      // Draft / pending approval adjustments have not moved stock, so no stock movement to revert.
 
       // Delete existing items
       await tx.stockAdjustmentItem.deleteMany({
@@ -733,21 +721,23 @@ export class StockAdjustmentService {
         include: { items: true },
       });
 
-      // Apply new stock movements for updated items
-      for (const line of updated.items) {
-        const adjustedQty = Number(line.adjustedQty);
-        if (adjustedQty === 0) continue;
+      // Only apply stock movements if the adjustment status is now SUBMITTED
+      if (updated.status === 'SUBMITTED') {
+        for (const line of updated.items) {
+          const adjustedQty = Number(line.adjustedQty);
+          if (adjustedQty === 0) continue;
 
-        await this.applyStockMovement(tx, {
-          itemId: line.itemId,
-          locationId: line.locationId || finalLocationId,
-          warehouseId: finalWarehouseId,
-          qty: adjustedQty,
-          rate: line.rate,
-          referenceId: updated.id,
-          referenceType: 'STOCK_ADJUSTMENT',
-          adjustmentDate: updated.adjustmentDate,
-        });
+          await this.applyStockMovement(tx, {
+            itemId: line.itemId,
+            locationId: line.locationId || finalLocationId,
+            warehouseId: finalWarehouseId,
+            qty: adjustedQty,
+            rate: line.rate,
+            referenceId: updated.id,
+            referenceType: 'STOCK_ADJUSTMENT',
+            adjustmentDate: updated.adjustmentDate,
+          });
+        }
       }
 
       runInBackground(
@@ -784,8 +774,8 @@ export class StockAdjustmentService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // If adjustment was not REJECTED, stock effect was active, so reverse it
-      if (existing.status !== 'REJECTED' && existing.status !== 'CANCELLED') {
+      // ONLY reverse stock if the adjustment had actually been SUBMITTED / posted to live stock
+      if (existing.status === 'SUBMITTED') {
         for (const line of existing.items) {
           const adjustedQty = Number(line.adjustedQty);
           if (adjustedQty === 0) continue;
@@ -860,12 +850,12 @@ export class StockAdjustmentService {
 
     if (adj.status !== 'DRAFT' && adj.status !== 'PENDING_APPROVAL') {
       throw new BadRequestException(
-        'Stock adjustment is already submitted, rejected or cancelled',
+        `Stock adjustment is already ${adj.status.toLowerCase()}`,
       );
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // If manager updated quantities or instructions during approval
+      // 1. If manager updated quantities or instructions during approval
       if (dto) {
         if (dto.notes !== undefined) {
           await tx.stockAdjustment.update({
@@ -880,27 +870,8 @@ export class StockAdjustmentService {
               (i) => i.itemId === updatedItem.itemId,
             );
             if (existingItem) {
-              const oldAdjustedQty = Number(existingItem.adjustedQty);
               const newAdjustedQty =
                 updatedItem.physicalQty - Number(existingItem.currentQty);
-              const deltaToApply = newAdjustedQty - oldAdjustedQty;
-
-              // Only the delta difference between manager's count and initial request is applied
-              if (deltaToApply !== 0) {
-                await this.applyStockMovement(tx, {
-                  itemId: existingItem.itemId,
-                  locationId: existingItem.locationId || adj.locationId,
-                  warehouseId: adj.warehouseId,
-                  qty: deltaToApply,
-                  rate:
-                    updatedItem.rate !== undefined
-                      ? updatedItem.rate
-                      : existingItem.rate,
-                  referenceId: adj.id,
-                  referenceType: 'STOCK_ADJUSTMENT',
-                  adjustmentDate: adj.adjustmentDate,
-                });
-              }
 
               await tx.stockAdjustmentItem.update({
                 where: { id: existingItem.id },
@@ -918,26 +889,48 @@ export class StockAdjustmentService {
         }
       }
 
-      // Update Header Status to SUBMITTED
-      // Note: If no quantities were altered by manager, stock was already affected on creation.
+      // 2. Fetch all current items for this adjustment to apply stock movement
+      const finalItems = await tx.stockAdjustmentItem.findMany({
+        where: { stockAdjustmentId: id },
+      });
+
+      // 3. Apply the adjustment effect to stock (LIVE INVENTORY & STOCK LEDGER)
+      for (const line of finalItems) {
+        const adjustedQty = Number(line.adjustedQty);
+        if (adjustedQty === 0) continue;
+
+        await this.applyStockMovement(tx, {
+          itemId: line.itemId,
+          locationId: line.locationId || adj.locationId,
+          warehouseId: adj.warehouseId,
+          qty: adjustedQty,
+          rate: line.rate,
+          referenceId: adj.id,
+          referenceType: 'STOCK_ADJUSTMENT',
+          adjustmentDate: new Date(),
+        });
+      }
+
+      // 4. Update Header Status to SUBMITTED
       const updated = await tx.stockAdjustment.update({
         where: { id },
         data: {
           status: 'SUBMITTED',
           approvedById: ctx?.userId,
-          adjustmentDate: adj.adjustmentDate || new Date(),
+          adjustmentDate: new Date(),
         },
+        include: { items: true },
       });
 
       runInBackground(
         'Submit Stock Adjustment',
         this.activityLogs.log({
           userId: ctx?.userId,
-          action: 'update',
+          action: 'approve',
           module: 'stock-adjustment',
           entity: 'StockAdjustment',
           entityId: updated.id,
-          description: `Submitted stock adjustment ${updated.adjustmentNo}`,
+          description: `Approved & submitted stock adjustment ${updated.adjustmentNo}`,
           newValues: JSON.stringify({ status: 'SUBMITTED' }),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
@@ -970,23 +963,7 @@ export class StockAdjustmentService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Revert the stock effect applied on creation
-      for (const line of adj.items) {
-        const adjustedQty = Number(line.adjustedQty);
-        if (adjustedQty === 0) continue;
-
-        await this.applyStockMovement(tx, {
-          itemId: line.itemId,
-          locationId: line.locationId || adj.locationId,
-          warehouseId: adj.warehouseId,
-          qty: -adjustedQty, // reverse effect
-          rate: line.rate,
-          referenceId: adj.id,
-          referenceType: 'STOCK_ADJUSTMENT_REJECTION',
-          adjustmentDate: new Date(),
-        });
-      }
-
+      // Since stock was never moved for draft/pending adjustments, NO stock reversal is required.
       const updated = await tx.stockAdjustment.update({
         where: { id },
         data: {

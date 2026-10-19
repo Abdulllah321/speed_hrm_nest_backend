@@ -41,6 +41,7 @@ export class PoBulkUploadService {
         id: uploadId,
         jobId: uploadId,
         filename,
+        moduleName: 'PURCHASE_ORDERS',
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',

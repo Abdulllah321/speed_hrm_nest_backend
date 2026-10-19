@@ -37,6 +37,7 @@ export class ItemBulkUploadService {
       data: {
         jobId,
         filename,
+        moduleName: 'ITEMS',
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',

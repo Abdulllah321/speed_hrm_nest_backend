@@ -30,6 +30,7 @@ export class CoaBulkUploadService {
       data: {
         jobId: tempJobId,
         filename,
+        moduleName: 'COA',
         totalRecords: 0,
         uploadedBy: userId,
         status: 'validating',
