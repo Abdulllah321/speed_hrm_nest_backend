@@ -12,6 +12,7 @@ import { runInBackground } from '../../common/utils/run-in-background.util';
 import { TransferRequestService } from '../transfer-request.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { StockLedgerService } from '../stock-ledger/stock-ledger.service';
+import { PrismaMasterService } from '../../database/prisma-master.service';
 
 @Injectable()
 export class StockRequisitionService {
@@ -21,7 +22,74 @@ export class StockRequisitionService {
     private transferRequestService: TransferRequestService,
     private notifications: NotificationsService,
     private stockLedgerService: StockLedgerService,
+    private prismaMaster: PrismaMasterService,
   ) {}
+
+  private async checkOutletRequestPermission(
+    action: 'approve' | 'edit',
+    userId?: string,
+    userObj?: any,
+  ) {
+    let roleName = '';
+    let permissions: string[] = [];
+
+    if (userObj) {
+      roleName = (
+        typeof userObj.roleName === 'string'
+          ? userObj.roleName
+          : typeof userObj.role === 'string'
+            ? userObj.role
+            : userObj.role?.name || ''
+      ).toLowerCase();
+      permissions = Array.isArray(userObj.permissions) ? userObj.permissions : [];
+    } else if (userId) {
+      const dbUser = await this.prismaMaster.user.findUnique({
+        where: { id: userId },
+        select: {
+          role: {
+            select: {
+              name: true,
+              permissions: {
+                select: { permission: { select: { name: true } } },
+              },
+            },
+          },
+        },
+      });
+      if (dbUser?.role) {
+        roleName = (dbUser.role.name || '').toLowerCase();
+        permissions = dbUser.role.permissions.map((p) => p.permission.name);
+      }
+    }
+
+    if (!roleName && permissions.length === 0) return;
+
+    const isSuperOrAdmin =
+      roleName === 'admin' ||
+      roleName === 'super-admin' ||
+      roleName === 'super_admin' ||
+      permissions.includes('*');
+
+    if (isSuperOrAdmin) return;
+
+    const hasManage = permissions.includes(
+      'erp.inventory.stock-requisition.outlet-request.manage',
+    );
+    const hasSpecific =
+      action === 'approve'
+        ? permissions.includes(
+            'erp.inventory.stock-requisition.outlet-request.approve',
+          )
+        : permissions.includes(
+            'erp.inventory.stock-requisition.outlet-request.edit',
+          );
+
+    if (!hasManage && !hasSpecific) {
+      throw new ForbiddenException(
+        `You do not have permission to ${action} Outlet Requests (Outlet to Warehouse)`,
+      );
+    }
+  }
 
   private async getCurrentItemRate(
     tx: Prisma.TransactionClient,
@@ -314,6 +382,7 @@ export class StockRequisitionService {
       items?: { itemId: string; quantity: number }[];
     },
     userId: string,
+    userObj?: any,
   ) {
     const existing = await this.prisma.stockRequisition.findUnique({
       where: { id },
@@ -328,6 +397,13 @@ export class StockRequisitionService {
       throw new BadRequestException('Only draft requisitions can be edited');
     }
 
+    // Check permission specifically for Outlet Request
+    if (
+      (existing.documentType || '').toLowerCase().trim() === 'outlet request'
+    ) {
+      await this.checkOutletRequestPermission('edit', userId, userObj);
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // 1. Delete previous reservations for this SRN
       await tx.stockReserve.deleteMany({
@@ -339,6 +415,36 @@ export class StockRequisitionService {
 
       // 2. Delete existing items if new items are provided
       if (data.items) {
+        // For Outlet Request, HO can reduce quantities or remove items, but cannot add new items or increase quantity
+        if (
+          (existing.documentType || '').toLowerCase().trim() === 'outlet request'
+        ) {
+          const originalItemMap = new Map<string, number>(
+            existing.items.map((i) => [i.itemId, Number(i.quantity)]),
+          );
+          for (const reqItem of data.items) {
+            const origQty = originalItemMap.get(reqItem.itemId);
+            if (origQty === undefined) {
+              const itemDetail = await tx.item.findUnique({
+                where: { id: reqItem.itemId },
+                select: { sku: true },
+              });
+              throw new BadRequestException(
+                `Cannot add new items (${itemDetail?.sku || reqItem.itemId}) to an Outlet Request. Only reducing quantities or removing items is allowed.`,
+              );
+            }
+            if (reqItem.quantity > origQty) {
+              const itemDetail = await tx.item.findUnique({
+                where: { id: reqItem.itemId },
+                select: { sku: true },
+              });
+              throw new BadRequestException(
+                `Cannot increase quantity for ${itemDetail?.sku || reqItem.itemId}. Original requested quantity: ${origQty}, requested: ${reqItem.quantity}. Quantities can only be decreased.`,
+              );
+            }
+          }
+        }
+
         await tx.stockRequisitionItem.deleteMany({
           where: { stockRequisitionId: id },
         });
@@ -474,7 +580,7 @@ export class StockRequisitionService {
   /**
    * Approve a draft Stock Requisition (checks stock and creates reservations)
    */
-  async approveRequisition(id: string, userId: string) {
+  async approveRequisition(id: string, userId: string, userObj?: any) {
     const existing = await this.prisma.stockRequisition.findUnique({
       where: { id },
       include: { items: true },
@@ -486,6 +592,13 @@ export class StockRequisitionService {
 
     if (existing.status !== 'DRAFT') {
       throw new BadRequestException('Only draft requisitions can be approved');
+    }
+
+    // Check permission specifically for Outlet Request
+    if (
+      (existing.documentType || '').toLowerCase().trim() === 'outlet request'
+    ) {
+      await this.checkOutletRequestPermission('approve', userId, userObj);
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -744,40 +857,6 @@ export class StockRequisitionService {
       throw new BadRequestException(
         `Requisition status is '${requisition.status}'. Only PENDING requisitions can be converted.`,
       );
-    }
-
-    if ((requisition.documentType || '').toLowerCase() === 'outlet request') {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-          role: {
-            include: {
-              permissions: {
-                include: { permission: true },
-              },
-            },
-          },
-        },
-      });
-
-      const roleName = (user?.role?.name || '').toLowerCase();
-      const isAdmin =
-        roleName === 'admin' ||
-        roleName === 'super_admin' ||
-        roleName === 'superadmin';
-
-      if (!isAdmin) {
-        const isWarehouseRole = roleName.includes('warehouse');
-        const hasWarehousePermission = user?.role?.permissions?.some((p) =>
-          p.permission.name.startsWith('erp.inventory.warehouse.'),
-        );
-
-        if (isWarehouseRole || hasWarehousePermission) {
-          throw new ForbiddenException(
-            'Warehouse users are not permitted to transfer Outlet Request requisitions to STN.',
-          );
-        }
-      }
     }
 
     // Map requisition items for easy check

@@ -173,6 +173,7 @@ export class StockRequisitionController {
       id,
       dto,
       req.user?.id,
+      req.user,
     );
     return {
       status: true,
@@ -188,6 +189,7 @@ export class StockRequisitionController {
     const data = await this.requisitionService.approveRequisition(
       id,
       req.user?.id,
+      req.user,
     );
     return {
       status: true,

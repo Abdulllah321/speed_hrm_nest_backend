@@ -322,6 +322,7 @@ export class TransferRequestController {
         userId: req.user?.id,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
+        user: req.user,
       },
     );
     return {

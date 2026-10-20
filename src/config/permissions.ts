@@ -1906,6 +1906,24 @@ export const PERMISSIONS = [
     description: 'Approve Stock Requisition Note',
   },
   {
+    name: 'erp.inventory.stock-requisition.outlet-request.manage',
+    module: 'erp.inventory.stock-requisition',
+    action: 'outlet-request.manage',
+    description: 'Approve & Edit Outlet Request (Outlet to Warehouse)',
+  },
+  {
+    name: 'erp.inventory.stock-requisition.outlet-request.approve',
+    module: 'erp.inventory.stock-requisition',
+    action: 'outlet-request.approve',
+    description: 'Approve Outlet Request (Outlet to Warehouse)',
+  },
+  {
+    name: 'erp.inventory.stock-requisition.outlet-request.edit',
+    module: 'erp.inventory.stock-requisition',
+    action: 'outlet-request.edit',
+    description: 'Edit Outlet Request (Outlet to Warehouse)',
+  },
+  {
     name: 'erp.inventory.stock-requisition.pending.read',
     description: 'View Pending Stock Requisitions',
   },
