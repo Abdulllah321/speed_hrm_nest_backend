@@ -555,7 +555,8 @@ export class MerchantUploadProcessor {
           Action: existing ? 'Updated' : 'Created',
           CostCentreTag: data.costCentre || tagId,
           BankName: data.bank || '',
-          Location: data.location || '',
+          TagId: tagId,
+          MerchantCode: merchantCode,
           Rate: rate,
         });
         progress.successRecords++;
