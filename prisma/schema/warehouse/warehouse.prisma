@@ -99,6 +99,7 @@ model Location {
   merchantConfigLocations   MerchantConfigLocation[]
   locationBrands            LocationBrand[]
   monthlyStockSnapshots     MonthlyStockSnapshot[]
+  salesReturns              SalesReturn[]              @relation("SalesReturn_finalLocation")
 
   @@index([warehouseId])
   @@index([centerId])

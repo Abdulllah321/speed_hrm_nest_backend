@@ -7,6 +7,7 @@ model SalesReturn {
   customerId         String           @map("customer_id")
   warehouseId        String           @map("warehouse_id")
   finalWarehouseId   String?          @map("final_warehouse_id")
+  finalLocationId    String?          @map("final_location_id")
   returnDate         DateTime         @default(now()) @map("return_date")
   returnType         String           @default("DEFECTIVE") // DEFECTIVE, EXCESS, WRONG_ITEM, DAMAGED, SHORTAGE
   reason             String?
@@ -27,6 +28,7 @@ model SalesReturn {
   customer        Customer         @relation(fields: [customerId], references: [id])
   warehouse       Warehouse        @relation("SalesReturn_warehouse", fields: [warehouseId], references: [id])
   finalWarehouse  Warehouse?       @relation("SalesReturn_finalWarehouse", fields: [finalWarehouseId], references: [id])
+  finalLocation   Location?        @relation("SalesReturn_finalLocation", fields: [finalLocationId], references: [id])
   creditNote      CreditNote?
 
   @@map("sales_returns")
