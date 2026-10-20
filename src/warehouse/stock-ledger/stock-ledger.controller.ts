@@ -24,7 +24,7 @@ import { StockTransactionDetailExportService } from './stock-transaction-detail-
 import { AvailableStockSummaryExportService } from './available-stock-summary-export.service';
 import { OverallAvailableReservedStockExportService } from './overall-available-reserved-stock-export.service';
 import { InventoryAgingExportService } from './inventory-aging-export.service';
-import { MovementType } from '@prisma/client';
+import type { MovementType } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 import { FiscalYearClosingService } from './fiscal-year-closing.service';
@@ -71,7 +71,7 @@ export class StockLedgerController {
   async findAll(
     @Query('warehouseId') warehouseId?: string,
     @Query('locationId') locationId?: string,
-    @Query('movementType') movementType?: MovementType,
+    @Query('movementType') movementType?: string,
     @Query('itemId') itemId?: string,
     @Query('referenceType') referenceType?: string,
     @Query('page') page?: string,
@@ -84,7 +84,7 @@ export class StockLedgerController {
     return this.stockLedgerService.findAll({
       warehouseId,
       locationId,
-      movementType,
+      movementType: movementType as MovementType,
       itemId,
       referenceType,
       page: page ? parseInt(page, 10) : undefined,
@@ -102,7 +102,7 @@ export class StockLedgerController {
     @Req() req: any,
     @Query('warehouseId') warehouseId?: string,
     @Query('locationId') locationId?: string,
-    @Query('movementType') movementType?: MovementType,
+    @Query('movementType') movementType?: string,
     @Query('itemId') itemId?: string,
     @Query('referenceType') referenceType?: string,
     @Query('search') search?: string,
@@ -113,7 +113,7 @@ export class StockLedgerController {
       userId: req.user?.userId || req.user?.id,
       warehouseId,
       locationId,
-      movementType,
+      movementType: movementType as MovementType,
       itemId,
       referenceType,
       search,

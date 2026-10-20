@@ -36,6 +36,7 @@ export interface CoaUploadProgress {
     reason: string;
     data: any;
   }>;
+  successRows: Array<Record<string, any>>;
 }
 
 @Processor('coa-upload')
@@ -128,6 +129,7 @@ export class CoaUploadProcessor {
         failedRecords: 0,
         skippedRecords: 0,
         errors: [],
+        successRows: [],
       };
 
       let totalRecordsCount = 0;
@@ -305,11 +307,34 @@ export class CoaUploadProcessor {
         return;
       }
 
+            let successReportPath: string | null = null;
+      if (progress.successRows && progress.successRows.length > 0) {
+        const reportDir = path.join(process.cwd(), 'uploads', 'bulk', 'coa');
+        if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
+        successReportPath = path.join(reportDir, `success-${uploadId}.csv`);
+        const headers = Object.keys(progress.successRows[0]);
+        const csvLines = [
+          headers.join(','),
+          ...progress.successRows.map((r) =>
+            headers
+              .map((h) => {
+                const v = r[h] == null ? '' : String(r[h]);
+                return v.includes(',') || v.includes('"') || v.includes('\n')
+                  ? `"${v.replace(/"/g, '""')}"`
+                  : v;
+              })
+              .join(','),
+          ),
+        ];
+        fs.writeFileSync(successReportPath, csvLines.join('\n'), 'utf8');
+      }
+
       await prisma.bulkUpload.update({
         where: { id: uploadId },
         data: {
           status: 'completed',
           message: `COA import completed successfully: ${progress.successRecords} accounts added.`,
+          ...(successReportPath ? { successReportPath } : {}),
           completedAt: new Date(),
         },
       });
@@ -609,6 +634,14 @@ export class CoaUploadProcessor {
           );
         }
 
+        progress.successRows.push({
+          Row: record.row,
+          Action: 'Created',
+          Code: created.code,
+          Name: created.name,
+          Type: created.type,
+          IsGroup: created.isGroup ? 'Yes' : 'No',
+        });
         progress.successRecords++;
       } catch (error) {
         this.logger.error(

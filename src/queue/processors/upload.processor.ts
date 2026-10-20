@@ -531,6 +531,7 @@ export class UploadProcessor {
             totalRecords: totalRecordsCount,
             failedRecords: totalInvalidRows,
             successRecords: totalValidRows,
+            errorReportPath: totalInvalidRows > 0 ? errorReportPath : null,
             errors: previewErrors as any,
             message: `Validation complete: ${totalValidRows} valid, ${totalInvalidRows} invalid rows.${totalInvalidRows > MAX_PREVIEW_ERRORS ? ` Showing first ${MAX_PREVIEW_ERRORS} of ${totalInvalidRows} errors — download full report for all.` : ''}`,
             completedAt: new Date(),

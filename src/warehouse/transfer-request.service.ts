@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransferRequest, Prisma } from '@prisma/client';
@@ -2163,7 +2164,7 @@ export class TransferRequestService {
   async acceptRequest(
     id: string,
     userId?: string,
-    ctx?: { userId?: string; ipAddress?: string; userAgent?: string },
+    ctx?: { userId?: string; ipAddress?: string; userAgent?: string; user?: any },
   ) {
     try {
       const request = await this.prisma.transferRequest.findUnique({
@@ -2297,6 +2298,71 @@ export class TransferRequestService {
           return updated;
         } else if (request.transferType === 'OUTLET_TO_WAREHOUSE') {
           // Return transfer: Outlet → Warehouse
+          // Verify that user has Warehouse role or warehouse permission
+          const effectiveUserId = ctx?.userId || userId;
+          let roleName = '';
+          let permissions: string[] = [];
+
+          if (ctx?.user) {
+            roleName = (
+              typeof ctx.user.roleName === 'string'
+                ? ctx.user.roleName
+                : typeof ctx.user.role === 'string'
+                  ? ctx.user.role
+                  : ctx.user.role?.name || ''
+            ).toLowerCase();
+            permissions = Array.isArray(ctx.user.permissions)
+              ? ctx.user.permissions
+              : [];
+          } else if (effectiveUserId) {
+            const dbUser = await this.prismaMaster.user.findUnique({
+              where: { id: effectiveUserId },
+              select: {
+                role: {
+                  select: {
+                    name: true,
+                    permissions: {
+                      select: { permission: { select: { name: true } } },
+                    },
+                  },
+                },
+              },
+            });
+            if (dbUser?.role) {
+              roleName = (dbUser.role.name || '').toLowerCase();
+              permissions = dbUser.role.permissions.map((p) => p.permission.name);
+            }
+          }
+
+          if (roleName || permissions.length > 0) {
+            const isSuperOrAdmin =
+              roleName === 'admin' ||
+              roleName === 'super-admin' ||
+              roleName === 'super_admin' ||
+              permissions.includes('*');
+
+            const isWarehouseRole =
+              roleName.includes('warehouse') || roleName.includes('wh');
+
+            const warehousePermissions = [
+              'erp.inventory.warehouse.stock-transfer',
+              'erp.inventory.warehouse.stock-requisition.pending',
+              'erp.inventory.warehouse.view',
+              'erp.inventory.warehouse.inventory.view',
+              'erp.inventory.transfer.accept',
+            ];
+
+            const hasWhPermission = permissions.some((p) =>
+              warehousePermissions.includes(p),
+            );
+
+            if (!isSuperOrAdmin && !isWarehouseRole && !hasWhPermission) {
+              throw new ForbiddenException(
+                'Only users with Warehouse role or permission can accept returns to warehouse',
+              );
+            }
+          }
+
           if (
             request.status !== 'PENDING' &&
             request.status !== 'APPROVED' &&

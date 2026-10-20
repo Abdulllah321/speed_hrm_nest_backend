@@ -112,13 +112,41 @@ export class ImportHistoryService {
       throw new NotFoundException(`Import record ${uploadId} not found`);
     }
 
-    // 1. Try the saved error-report file path first
-    if (record.errorReportPath) {
-      const filePath = path.isAbsolute(record.errorReportPath)
-        ? record.errorReportPath
-        : path.join(process.cwd(), record.errorReportPath);
+    // 1. Try the saved error-report file path first, or default items jsonl path
+    const candidatePath =
+      record.errorReportPath ||
+      path.join(process.cwd(), 'uploads', 'bulk', `errors-${uploadId}.jsonl`);
+    const filePath = path.isAbsolute(candidatePath)
+      ? candidatePath
+      : path.join(process.cwd(), candidatePath);
 
-      if (fs.existsSync(filePath)) {
+    if (fs.existsSync(filePath)) {
+      if (filePath.endsWith('.jsonl')) {
+        res.header('Content-Type', 'text/csv');
+        res.header(
+          'Content-Disposition',
+          `attachment; filename="import-errors-${uploadId}.csv"`,
+        );
+        res.write('Row,Field,Reason,Value\n');
+        const { createInterface } = await import('readline');
+        const rl = createInterface({
+          input: fs.createReadStream(filePath),
+          crlfDelay: Infinity,
+        });
+        for await (const line of rl) {
+          if (!line.trim()) continue;
+          try {
+            const e = JSON.parse(line);
+            const row = e.row ?? 'N/A';
+            const field = String(e.field ?? e.data?.field ?? 'N/A').replace(/"/g, '""');
+            const reason = String(e.reason ?? '').replace(/"/g, '""');
+            const value = String(e.value ?? e.data?.value ?? 'N/A').replace(/"/g, '""');
+            res.write(`${row},"${field}","${reason}","${value}"\n`);
+          } catch {}
+        }
+        res.end();
+        return;
+      } else {
         res.header('Content-Type', 'text/csv');
         res.header(
           'Content-Disposition',
@@ -135,10 +163,10 @@ export class ImportHistoryService {
     let csv = 'Row,Field,Reason,Value\n';
     errors.forEach((e) => {
       const row = e.row ?? 'N/A';
-      const field = e.field ?? e.data?.field ?? 'N/A';
+      const field = String(e.field ?? e.data?.field ?? 'N/A').replace(/"/g, '""');
       const reason = String(e.reason ?? '').replace(/"/g, '""');
-      const value = e.value ?? e.data?.value ?? 'N/A';
-      csv += `${row},${field},"${reason}",${value}\n`;
+      const value = String(e.value ?? e.data?.value ?? 'N/A').replace(/"/g, '""');
+      csv += `${row},"${field}","${reason}","${value}"\n`;
     });
 
     res.header('Content-Type', 'text/csv');

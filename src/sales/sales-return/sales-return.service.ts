@@ -58,6 +58,7 @@ export class SalesReturnService {
             createDto.finalWarehouseId !== createDto.warehouseId
               ? createDto.finalWarehouseId
               : null,
+          finalLocationId: createDto.finalLocationId || null,
           returnType: createDto.returnType || 'DEFECTIVE',
           reason: createDto.reason,
           notes: createDto.notes,
@@ -86,6 +87,7 @@ export class SalesReturnService {
           customer: true,
           warehouse: true,
           finalWarehouse: true,
+          finalLocation: true,
         },
       });
 
@@ -147,6 +149,8 @@ export class SalesReturnService {
         deliveryChallan: true,
         customer: true,
         warehouse: true,
+        finalWarehouse: true,
+        finalLocation: true,
         creditNote: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -206,6 +210,7 @@ export class SalesReturnService {
         customer: true,
         warehouse: true,
         finalWarehouse: true,
+        finalLocation: true,
       },
     });
 
@@ -239,6 +244,10 @@ export class SalesReturnService {
 
       if (updateDto.returnType) updateData.returnType = updateDto.returnType;
       if (updateDto.warehouseId) updateData.warehouseId = updateDto.warehouseId;
+      if (updateDto.finalWarehouseId !== undefined)
+        updateData.finalWarehouseId = updateDto.finalWarehouseId || null;
+      if (updateDto.finalLocationId !== undefined)
+        updateData.finalLocationId = updateDto.finalLocationId || null;
       if (updateDto.reason !== undefined) updateData.reason = updateDto.reason;
       if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
       if (updateDto.staxEInvoiceNumber !== undefined)
@@ -681,6 +690,7 @@ export class SalesReturnService {
     const hasFinalWarehouse =
       !!salesReturn.finalWarehouseId &&
       salesReturn.finalWarehouseId !== salesReturn.warehouseId;
+    const hasFinalLocation = !!(salesReturn as any).finalLocationId;
 
     const referenceType =
       salesReturn.sourceType === 'DELIVERY_CHALLAN'
@@ -705,6 +715,18 @@ export class SalesReturnService {
       if (!finalWarehouse) {
         throw new Error(
           `Final destination warehouse with ID ${salesReturn.finalWarehouseId} does not exist`,
+        );
+      }
+    }
+
+    let finalLocation: any = null;
+    if (hasFinalLocation) {
+      finalLocation = await this.prisma.location.findUnique({
+        where: { id: (salesReturn as any).finalLocationId },
+      });
+      if (!finalLocation) {
+        throw new Error(
+          `Final destination location with ID ${(salesReturn as any).finalLocationId} does not exist`,
         );
       }
     }
@@ -759,6 +781,31 @@ export class SalesReturnService {
           referenceType: 'SALES_RETURN_TRANSFER_IN',
           referenceId: salesReturn.id,
         });
+      } else if (hasFinalLocation) {
+        // ── Entry #2: Return Warehouse → Final Location (OUTBOUND from warehouse) ──────
+        stockLedgerEntries.push({
+          itemId: itemExists.id,
+          warehouseId: salesReturn.warehouseId,
+          qty: -qty, // negative = stock leaving
+          movementType: 'OUTBOUND',
+          unitCost,
+          rate: unitCost,
+          referenceType: 'SALES_RETURN_TRANSFER_OUT',
+          referenceId: salesReturn.id,
+        });
+
+        // ── Entry #3: Final Location (INBOUND to location) ───────────────────
+        stockLedgerEntries.push({
+          itemId: itemExists.id,
+          warehouseId: finalLocation.warehouseId || salesReturn.warehouseId,
+          locationId: finalLocation.id,
+          qty,
+          movementType: 'INBOUND',
+          unitCost,
+          rate: unitCost,
+          referenceType: 'SALES_RETURN_TRANSFER_IN',
+          referenceId: salesReturn.id,
+        });
       }
     }
 
@@ -774,12 +821,17 @@ export class SalesReturnService {
     for (const entry of stockLedgerEntries) {
       const delta = Number(entry.qty); // positive = add, negative = subtract
 
+      const whereClause: any = {
+        itemId: entry.itemId,
+        warehouseId: entry.warehouseId,
+        status: 'AVAILABLE',
+      };
+      if (entry.locationId) {
+        whereClause.locationId = entry.locationId;
+      }
+
       const existingInventory = await this.prisma.inventoryItem.findFirst({
-        where: {
-          itemId: entry.itemId,
-          warehouseId: entry.warehouseId,
-          status: 'AVAILABLE',
-        },
+        where: whereClause,
       });
 
       if (existingInventory) {
@@ -794,6 +846,7 @@ export class SalesReturnService {
           data: {
             itemId: entry.itemId,
             warehouseId: entry.warehouseId,
+            ...(entry.locationId ? { locationId: entry.locationId } : {}),
             quantity: delta,
             status: 'AVAILABLE',
           },
