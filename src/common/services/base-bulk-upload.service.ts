@@ -50,6 +50,11 @@ export abstract class BaseBulkUploadService {
     );
     fs.writeFileSync(filePath, fileBuffer);
 
+    await this.prisma.bulkUpload.update({
+      where: { id: upload.id },
+      data: { uploadedFilePath: filePath },
+    });
+
     const job = await this.uploadQueue.add(
       {
         uploadId: upload.id,

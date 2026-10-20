@@ -453,6 +453,14 @@ export class PoUploadProcessor {
       },
     });
 
+    progress.successRows.push({
+      Action: 'Created',
+      PoNumber: poNumber,
+      Vendor: vendor.name || vendorId,
+      OrderType: orderType,
+      GoodsType: goodsType,
+      LineItems: itemsData.length,
+    });
     progress.successRecords++;
   }
 

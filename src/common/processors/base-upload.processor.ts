@@ -13,6 +13,7 @@ export interface BaseUploadProgress {
   failedRecords: number;
   skippedRecords: number;
   errors: Array<{ row: number; reason: string; data: any }>;
+  successRows: Array<Record<string, any>>;  // Each processor pushes a flat row summary here
 }
 
 export abstract class BaseUploadProcessor<TRecord = any> {
@@ -103,6 +104,7 @@ export abstract class BaseUploadProcessor<TRecord = any> {
         failedRecords: 0,
         skippedRecords: 0,
         errors: [],
+        successRows: [],
       };
 
       let totalRecordsCount = 0;
@@ -217,6 +219,52 @@ export abstract class BaseUploadProcessor<TRecord = any> {
           await this.processBatch(importBatch, progress, prisma);
         }
 
+        // ── Generate success report CSV ──────────────────────────────────
+        let successReportPath: string | null = null;
+        if (progress.successRows.length > 0) {
+          const reportDir = path.join(process.cwd(), 'uploads', 'bulk', this.uploadType);
+          if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
+          successReportPath = path.join(reportDir, `success-${uploadId}.csv`);
+
+          const headers = Object.keys(progress.successRows[0]);
+          const csvLines = [
+            headers.join(','),
+            ...progress.successRows.map((r) =>
+              headers
+                .map((h) => {
+                  const v = r[h] == null ? '' : String(r[h]);
+                  return v.includes(',') || v.includes('"') || v.includes('\n')
+                    ? `"${v.replace(/"/g, '""')}"`
+                    : v;
+                })
+                .join(','),
+            ),
+          ];
+          fs.writeFileSync(successReportPath, csvLines.join('\n'), 'utf8');
+          this.logger.log(
+            `[Job ${job.id}] Success report generated: ${successReportPath} (${progress.successRows.length} rows)`,
+          );
+        }
+
+        // ── Generate error report CSV from import-phase failures ─────────
+        let errorReportPath: string | null = null;
+        const importErrors = progress.errors.filter((e) => e.row > 0);
+        if (importErrors.length > 0) {
+          const reportDir = path.join(process.cwd(), 'uploads', 'bulk', this.uploadType);
+          if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
+          errorReportPath = path.join(reportDir, `errors-import-${uploadId}.csv`);
+          const csvLines = [
+            'Row,Reason,Field,Value',
+            ...importErrors.map((e) => {
+              const reason = String(e.reason ?? '').replace(/"/g, '""');
+              const field = String(e.data?.field ?? '').replace(/"/g, '""');
+              const value = String(e.data?.value ?? '').replace(/"/g, '""');
+              return `${e.row},"${reason}","${field}","${value}"`;
+            }),
+          ];
+          fs.writeFileSync(errorReportPath, csvLines.join('\n'), 'utf8');
+        }
+
         // ─────────────────────────────────────────────────────────────
         // VALIDATE PHASE
         // ─────────────────────────────────────────────────────────────
@@ -309,8 +357,22 @@ export abstract class BaseUploadProcessor<TRecord = any> {
       }
 
       // ─────────────────────────────────────────────────────────────
-      // Import complete
+      // Import complete — save report paths to DB
       // ─────────────────────────────────────────────────────────────
+
+      // Collect report paths we generated above (captured in closure)
+      const reportDir = path.join(process.cwd(), 'uploads', 'bulk', this.uploadType);
+      const successReportPath = fs.existsSync(
+        path.join(reportDir, `success-${uploadId}.csv`),
+      )
+        ? path.join(reportDir, `success-${uploadId}.csv`)
+        : null;
+      const errorReportPath = fs.existsSync(
+        path.join(reportDir, `errors-import-${uploadId}.csv`),
+      )
+        ? path.join(reportDir, `errors-import-${uploadId}.csv`)
+        : null;
+
       await prisma.bulkUpload.update({
         where: { id: uploadId },
         data: {
@@ -318,8 +380,10 @@ export abstract class BaseUploadProcessor<TRecord = any> {
           processedRecords: progress.processedRecords,
           successRecords: progress.successRecords,
           failedRecords: progress.failedRecords,
-          message: `${this.uploadType} import completed: ${progress.successRecords} records added.`,
+          message: `${this.uploadType} import completed: ${progress.successRecords} records added${progress.failedRecords > 0 ? `, ${progress.failedRecords} failed` : ''}.`,
           completedAt: new Date(),
+          ...(successReportPath ? { successReportPath } : {}),
+          ...(errorReportPath ? { errorReportPath } : {}),
         },
       });
 

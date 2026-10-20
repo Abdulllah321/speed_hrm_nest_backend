@@ -63,6 +63,8 @@ export class ImportHistoryService {
           failedRecords: true,
           skippedRecords: true,
           message: true,
+          uploadedFilePath: true,
+          successReportPath: true,
           createdAt: true,
           completedAt: true,
         },
@@ -145,6 +147,89 @@ export class ImportHistoryService {
       `attachment; filename="import-errors-${uploadId}.csv"`,
     );
     res.status(200).send(csv);
+  }
+
+  async streamUploadedFile(userId: string, uploadId: string, res: any) {
+    const record = await this.prisma.bulkUpload.findFirst({
+      where: { id: uploadId, uploadedBy: userId },
+      select: { id: true, filename: true, uploadedFilePath: true },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Import record ${uploadId} not found`);
+    }
+
+    if (!record.uploadedFilePath) {
+      return res.status(404).send({
+        status: false,
+        message: 'Original uploaded file is not available (path not stored).',
+      });
+    }
+
+    const filePath = path.isAbsolute(record.uploadedFilePath)
+      ? record.uploadedFilePath
+      : path.join(process.cwd(), record.uploadedFilePath);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send({
+        status: false,
+        message: 'Uploaded file no longer exists on disk.',
+      });
+    }
+
+    const ext = path.extname(record.filename).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.xls': 'application/vnd.ms-excel',
+      '.csv': 'text/csv',
+    };
+    const mime = mimeMap[ext] ?? 'application/octet-stream';
+
+    const safeFilename = record.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.header('Content-Type', mime);
+    res.header('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    fs.createReadStream(filePath).pipe(res);
+  }
+
+  async streamSuccessReport(userId: string, uploadId: string, res: any) {
+    const record = await this.prisma.bulkUpload.findFirst({
+      where: { id: uploadId, uploadedBy: userId },
+      select: { id: true, filename: true, successReportPath: true },
+    });
+
+    if (!record) {
+      throw new NotFoundException(`Import record ${uploadId} not found`);
+    }
+
+    if (!record.successReportPath) {
+      return res.status(404).send({
+        status: false,
+        message: 'No success report available for this import.',
+      });
+    }
+
+    const filePath = path.isAbsolute(record.successReportPath)
+      ? record.successReportPath
+      : path.join(process.cwd(), record.successReportPath);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send({
+        status: false,
+        message: 'Success report file not found on disk.',
+      });
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const mime =
+      ext === '.xlsx'
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'text/csv';
+    res.header('Content-Type', mime);
+    res.header(
+      'Content-Disposition',
+      `attachment; filename="import-success-${uploadId}${ext}"`,
+    );
+    fs.createReadStream(filePath).pipe(res);
   }
 
   getAvailableModules() {

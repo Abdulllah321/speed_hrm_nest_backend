@@ -54,6 +54,11 @@ export class ItemBulkUploadService {
     const filePath = path.join(uploadDir, `upload-${upload.id}.${ext}`);
     fs.writeFileSync(filePath, fileBuffer);
 
+    await this.prisma.bulkUpload.update({
+      where: { id: upload.id },
+      data: { uploadedFilePath: filePath },
+    });
+
     // Add validation job to queue — file is already on disk, no buffer needed
     const job = await this.uploadQueue.add(
       {

@@ -49,10 +49,13 @@ export class SrnBulkUploadService {
     });
 
     const ext = filename.split('.').pop();
-    fs.writeFileSync(
-      path.join(uploadDir, `srn-upload-${upload.id}.${ext}`),
-      fileBuffer,
-    );
+    const filePath = path.join(uploadDir, `srn-upload-${upload.id}.${ext}`);
+    fs.writeFileSync(filePath, fileBuffer);
+
+    await this.prisma.bulkUpload.update({
+      where: { id: upload.id },
+      data: { uploadedFilePath: filePath },
+    });
 
     await this.uploadQueue.add(
       {

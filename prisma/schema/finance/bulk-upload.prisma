@@ -11,6 +11,7 @@ model BulkUpload {
   status            String    @default("pending")
   message           String?
   errors            Json?
+  uploadedFilePath  String?
   errorReportPath   String?
   successReportPath String?
   successSummary    Json?

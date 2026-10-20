@@ -531,6 +531,13 @@ export class SrnUploadProcessor {
       return requisition;
     });
 
+    progress.successRows.push({
+      Action: 'Created',
+      RequisitionNo: requisitionNo,
+      DocumentType: documentType,
+      FinancialYear: financialYear,
+      LineItems: itemsData.length,
+    });
     progress.successRecords++;
   }
 }

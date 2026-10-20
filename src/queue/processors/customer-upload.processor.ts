@@ -401,6 +401,13 @@ export class CustomerUploadProcessor {
             where: { traderId } as any,
             data: customerPayload,
           });
+          progress.successRows.push({
+            Row: record.row,
+            Action: 'Updated',
+            Name: customerPayload.name,
+            TraderId: traderId || '',
+            Phone: customerPayload.contactNo || '',
+          });
           progress.successRecords++;
         } catch {
           progress.failedRecords++;
@@ -425,6 +432,12 @@ export class CustomerUploadProcessor {
         for (const item of toCreate) {
           try {
             await prisma.customer.create({ data: item });
+            progress.successRows.push({
+              Action: 'Created',
+              Name: item.name,
+              TraderId: item.traderId || '',
+              Phone: item.contactNo || '',
+            });
             progress.successRecords++;
           } catch {
             progress.failedRecords++;

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransferRequest, Prisma } from '@prisma/client';
@@ -15,6 +16,8 @@ import { PrismaMasterService } from '../database/prisma-master.service';
 
 @Injectable()
 export class TransferRequestService {
+  private readonly logger = new Logger(TransferRequestService.name);
+
   constructor(
     private prisma: PrismaService,
     private stockMovementService: StockMovementService,
@@ -270,7 +273,21 @@ export class TransferRequestService {
                 },
               },
               include: {
-                items: true,
+                items: {
+                  include: {
+                    item: {
+                      select: {
+                        id: true,
+                        sku: true,
+                        description: true,
+                      },
+                    },
+                  },
+                },
+                fromLocation: { select: { id: true, name: true, code: true } },
+                toLocation: { select: { id: true, name: true, code: true } },
+                fromWarehouse: { select: { id: true, name: true, code: true } },
+                toWarehouse: { select: { id: true, name: true, code: true } },
               },
             });
 
@@ -450,17 +467,39 @@ export class TransferRequestService {
           0,
         );
 
+        const fromName =
+          (created as any).fromLocation?.name ||
+          (created as any).fromWarehouse?.name ||
+          'Warehouse';
+        const toName =
+          (created as any).toLocation?.name ||
+          (created as any).toWarehouse?.name ||
+          'Store';
+
+        const sampleSkus = ((created as any).items || [])
+          .map((i: any) => i.item?.sku)
+          .filter(Boolean)
+          .slice(0, 3)
+          .join(', ');
+        const skuSummary = sampleSkus
+          ? ` (${data.items.length} items, ${totalPcs} pcs - e.g. ${sampleSkus}${(created as any).items.length > 3 ? '...' : ''})`
+          : ` (${data.items.length} items, ${totalPcs} pcs)`;
+
         if (transferType === 'WAREHOUSE_TO_OUTLET' && created.toLocationId) {
           runInBackground(
             'Send POS Location Notification on Warehouse Dispatch',
             this.notifications.sendPosLocationNotification({
               locationId: created.toLocationId,
-              title: `Incoming Stock Transfer: ${created.requestNo}`,
-              message: `Stock Transfer ${created.requestNo} (${data.items.length} items, ${totalPcs} pcs) has been dispatched from warehouse.`,
+              title: `📦 Incoming Stock Transfer: ${created.requestNo}`,
+              message: `Warehouse "${fromName}" dispatched transfer ${created.requestNo}${skuSummary} to your store "${toName}". Tap to open POS Receiving.`,
               category: 'pos_stock_transfer',
               priority: 'high',
               actionType: 'NAVIGATE',
-              actionPayload: { url: '/pos/inventory/receiving' },
+              actionPayload: {
+                url: '/pos/inventory/receiving',
+                requestNo: created.requestNo,
+                transferId: created.id,
+              },
               entityType: 'TransferRequest',
               entityId: created.id,
             }),
@@ -471,12 +510,16 @@ export class TransferRequestService {
               'Send POS Location Notification on Direct Transfer',
               this.notifications.sendPosLocationNotification({
                 locationId: created.toLocationId,
-                title: `Incoming Inter-branch Transfer: ${created.requestNo}`,
-                message: `Transfer ${created.requestNo} (${data.items.length} items, ${totalPcs} pcs) dispatched from another outlet.`,
+                title: `📦 Incoming Branch Transfer: ${created.requestNo}`,
+                message: `Store "${fromName}" dispatched inter-branch transfer ${created.requestNo}${skuSummary} to your store "${toName}". Tap to open POS Receiving.`,
                 category: 'pos_stock_transfer',
                 priority: 'high',
                 actionType: 'NAVIGATE',
-                actionPayload: { url: '/pos/inventory/receiving' },
+                actionPayload: {
+                  url: '/pos/inventory/receiving',
+                  requestNo: created.requestNo,
+                  transferId: created.id,
+                },
                 entityType: 'TransferRequest',
                 entityId: created.id,
               }),
@@ -486,12 +529,16 @@ export class TransferRequestService {
               'Send POS Location Notification on Transfer Request',
               this.notifications.sendPosLocationNotification({
                 locationId: created.fromLocationId,
-                title: `New Stock Request: ${created.requestNo}`,
-                message: `Another outlet has requested ${totalPcs} pcs. Please review and dispatch.`,
+                title: `📋 New Stock Request: ${created.requestNo}`,
+                message: `Store "${toName}" requested ${totalPcs} pcs (${data.items.length} items)${sampleSkus ? ` - ${sampleSkus}` : ''} under request ${created.requestNo}. Tap to review and dispatch.`,
                 category: 'pos_stock_transfer',
                 priority: 'high',
                 actionType: 'NAVIGATE',
-                actionPayload: { url: '/pos/inventory/request-transfer' },
+                actionPayload: {
+                  url: '/pos/inventory/request-transfer',
+                  requestNo: created.requestNo,
+                  transferId: created.id,
+                },
                 entityType: 'TransferRequest',
                 entityId: created.id,
               }),
@@ -502,18 +549,43 @@ export class TransferRequestService {
           (created.toWarehouseId || created.fromWarehouseId)
         ) {
           runInBackground(
-            'Send Notification to Warehouse Managers',
-            this.notifyLocationUsers(created.toWarehouseId || created.fromWarehouseId, {
-              title: `New Return Request: ${created.requestNo}`,
-              message: `An outlet has initiated a stock return of ${totalPcs} pcs.`,
+            'Send Notification to Warehouse Managers on Outlet Return',
+            this.notifications.sendWarehouseRoleNotification({
+              title: `↩️ New Outlet Stock Return: ${created.requestNo}`,
+              message: `Store "${fromName}" initiated stock return ${created.requestNo}${skuSummary} to warehouse "${toName}". Reason: ${data.notes || 'Outlet return'}.`,
               category: 'erp_transfer_request',
               priority: 'high',
               actionType: 'NAVIGATE',
               actionPayload: {
                 url: '/erp/inventory/transactions/stock-transfer',
+                requestNo: created.requestNo,
+                transferId: created.id,
               },
               entityType: 'TransferRequest',
               entityId: created.id,
+              warehouseId: created.toWarehouseId || created.fromWarehouseId,
+            }),
+          );
+        } else if (
+          transferType === 'WAREHOUSE_TO_WAREHOUSE' &&
+          (created.toWarehouseId || created.fromWarehouseId)
+        ) {
+          runInBackground(
+            'Send Notification on Inter-Warehouse Transfer',
+            this.notifications.sendWarehouseRoleNotification({
+              title: `🚚 Inter-Warehouse Transfer: ${created.requestNo}`,
+              message: `Inter-warehouse transfer ${created.requestNo}${skuSummary} initiated from "${fromName}" to "${toName}".`,
+              category: 'erp_transfer_request',
+              priority: 'normal',
+              actionType: 'NAVIGATE',
+              actionPayload: {
+                url: '/erp/inventory/transactions/stock-transfer',
+                requestNo: created.requestNo,
+                transferId: created.id,
+              },
+              entityType: 'TransferRequest',
+              entityId: created.id,
+              warehouseId: created.toWarehouseId || created.fromWarehouseId,
             }),
           );
         }
@@ -815,6 +887,41 @@ export class TransferRequestService {
         status: 'success',
       }),
     );
+
+    if (
+      updated.toLocationId &&
+      (data.trackingNumber || data.courierName || data.riderName)
+    ) {
+      const totalPcs = (updated.items || []).reduce(
+        (s: number, i: any) => s + Number(i.quantity || 0),
+        0,
+      );
+      const courierInfo = [
+        data.courierName || data.riderName,
+        data.trackingNumber ? `Tracking #: ${data.trackingNumber}` : '',
+      ]
+        .filter(Boolean)
+        .join(' - ');
+
+      runInBackground(
+        'Notify POS - Dispatch Details Updated',
+        this.notifications.sendPosLocationNotification({
+          locationId: updated.toLocationId,
+          title: `🚚 Transfer In Transit: ${existing.requestNo}`,
+          message: `Transfer ${existing.requestNo} (${totalPcs} pcs) is in transit via ${courierInfo}. Tap to open POS Receiving.`,
+          category: 'pos_stock_transfer',
+          priority: 'high',
+          actionType: 'NAVIGATE',
+          actionPayload: {
+            url: '/pos/inventory/receiving',
+            requestNo: existing.requestNo,
+            transferId: existing.id,
+          },
+          entityType: 'TransferRequest',
+          entityId: existing.id,
+        }),
+      );
+    }
 
     return updated;
   }
@@ -1809,7 +1916,15 @@ export class TransferRequestService {
     try {
       const request = await this.prisma.transferRequest.findUnique({
         where: { id },
-        include: { items: true },
+        include: {
+          items: {
+            include: {
+              item: { select: { sku: true, description: true } },
+            },
+          },
+          fromLocation: { select: { id: true, name: true, code: true } },
+          toLocation: { select: { id: true, name: true, code: true } },
+        },
       });
 
       if (!request) {
@@ -1990,6 +2105,39 @@ export class TransferRequestService {
           }),
         );
 
+        if (request.toLocationId) {
+          const totalPcs = (items || request.items || []).reduce(
+            (s, i) => s + Number(i.quantity || 0),
+            0,
+          );
+          const sampleSkus = (request.items || [])
+            .map((i: any) => i.item?.sku)
+            .filter(Boolean)
+            .slice(0, 3)
+            .join(', ');
+          const fromLocName = request.fromLocation?.name || 'Source Store';
+          const toLocName = request.toLocation?.name || 'Your Store';
+
+          runInBackground(
+            'Notify POS - Transfer Dispatched by Source Outlet',
+            this.notifications.sendPosLocationNotification({
+              locationId: request.toLocationId,
+              title: `🚚 Stock Transfer Dispatched: ${request.requestNo}`,
+              message: `Store "${fromLocName}" approved & dispatched transfer ${request.requestNo} (${totalPcs} pcs${sampleSkus ? ` - ${sampleSkus}` : ''}) to "${toLocName}". Tap to open POS Receiving.`,
+              category: 'pos_stock_transfer',
+              priority: 'high',
+              actionType: 'NAVIGATE',
+              actionPayload: {
+                url: '/pos/inventory/receiving',
+                requestNo: request.requestNo,
+                transferId: request.id,
+              },
+              entityType: 'TransferRequest',
+              entityId: request.id,
+            }),
+          );
+        }
+
         return updated;
       });
     } catch (error: any) {
@@ -2020,7 +2168,17 @@ export class TransferRequestService {
     try {
       const request = await this.prisma.transferRequest.findUnique({
         where: { id },
-        include: { items: true },
+        include: {
+          items: {
+            include: {
+              item: { select: { sku: true, description: true } },
+            },
+          },
+          fromLocation: { select: { id: true, name: true, code: true } },
+          toLocation: { select: { id: true, name: true, code: true } },
+          fromWarehouse: { select: { id: true, name: true, code: true } },
+          toWarehouse: { select: { id: true, name: true, code: true } },
+        },
       });
 
       if (!request) {
@@ -2415,6 +2573,57 @@ export class TransferRequestService {
           }),
         );
 
+        const totalPcs = (request.items || []).reduce(
+          (s: number, i: any) => s + Number(i.quantity || 0),
+          0,
+        );
+        const toName =
+          request.toLocation?.name ||
+          request.toWarehouse?.name ||
+          'Destination';
+
+        if (request.fromLocationId) {
+          runInBackground(
+            'Notify POS - Transfer Received by Destination',
+            this.notifications.sendPosLocationNotification({
+              locationId: request.fromLocationId,
+              title: `✅ Transfer Received: ${request.requestNo}`,
+              message: `Store "${toName}" accepted delivery of transfer ${request.requestNo} (${totalPcs} pcs). Inventory updated.`,
+              category: 'pos_stock_transfer',
+              priority: 'normal',
+              actionType: 'NAVIGATE',
+              actionPayload: {
+                url: '/pos/inventory/outbound',
+                requestNo: request.requestNo,
+                transferId: request.id,
+              },
+              entityType: 'TransferRequest',
+              entityId: request.id,
+            }),
+          );
+        }
+
+        if (request.fromWarehouseId) {
+          runInBackground(
+            'Notify Warehouse - Transfer Delivered to Outlet',
+            this.notifications.sendWarehouseRoleNotification({
+              title: `✅ Transfer Delivered: ${request.requestNo}`,
+              message: `Transfer ${request.requestNo} (${totalPcs} pcs) has been accepted and received by store "${toName}".`,
+              category: 'erp_transfer_request',
+              priority: 'normal',
+              actionType: 'NAVIGATE',
+              actionPayload: {
+                url: '/erp/inventory/transactions/stock-transfer',
+                requestNo: request.requestNo,
+                transferId: request.id,
+              },
+              entityType: 'TransferRequest',
+              entityId: request.id,
+              warehouseId: request.fromWarehouseId,
+            }),
+          );
+        }
+
         return updated;
       });
     } catch (error: any) {
@@ -2696,17 +2905,22 @@ export class TransferRequestService {
 
         // 🔔 Notify POS location about PLM acknowledgment
         if (request.fromLocationId) {
+          const totalClaimPcs = (request.items || []).reduce(
+            (s, i) => s + Number(i.quantity || 0),
+            0,
+          );
           runInBackground(
             'Notify POS - Transfer Acknowledged',
             this.notifyLocationUsers(request.fromLocationId, {
-              title: '📦 Transfer Acknowledged',
-              message: `PLM has acknowledged receipt of transfer ${updated.requestNo}. Inventory updated.`,
-              category: 'inventory',
+              title: `📦 Claim Transfer Acknowledged: ${updated.requestNo}`,
+              message: `PLM Warehouse has acknowledged receipt of claim transfer ${updated.requestNo} (${totalClaimPcs} pcs). Outlet inventory updated. Tap to open POS Returns.`,
+              category: 'pos_stock_transfer',
               priority: 'normal',
-              actionType: 'view_transfer',
+              actionType: 'NAVIGATE',
               actionPayload: {
-                transferId: updated.id,
+                url: '/pos/inventory/returns',
                 requestNo: updated.requestNo,
+                transferId: updated.id,
               },
               entityType: 'TransferRequest',
               entityId: updated.id,
@@ -2736,14 +2950,14 @@ export class TransferRequestService {
     }
   }
 
-  // 🔔 Helper: Notify users at specific location
+  // 🔔 Helper: Notify users at specific location or warehouse
   private async notifyLocationUsers(
-    locationId: string,
+    locationOrWarehouseId: string,
     notificationData: {
       title: string;
       message: string;
-      category: string;
-      priority: 'low' | 'normal' | 'high' | 'urgent';
+      category?: string;
+      priority?: 'low' | 'normal' | 'high' | 'urgent';
       actionType?: string;
       actionPayload?: any;
       entityType?: string;
@@ -2751,21 +2965,48 @@ export class TransferRequestService {
     },
   ) {
     try {
-      // For now, get all users and let notification system handle filtering
-      // In future, can add location-based filtering when user-location relationship is clarified
-      const allUsers = await this.prismaMaster.user.findMany({
-        select: { id: true },
+      if (!locationOrWarehouseId) return;
+
+      // Auto-detect if ID is a warehouse
+      const warehouse = await this.prisma.warehouse.findUnique({
+        where: { id: locationOrWarehouseId },
+        select: { id: true, name: true },
       });
 
-      // Send notification to each user (notification system will handle user preferences)
-      for (const user of allUsers) {
-        await this.notifications.create({
-          userId: user.id,
-          ...notificationData,
+      if (warehouse) {
+        await this.notifications.sendWarehouseRoleNotification({
+          warehouseId: warehouse.id,
+          title: notificationData.title,
+          message: notificationData.message,
+          category: notificationData.category || 'erp_transfer_request',
+          priority: notificationData.priority || 'high',
+          actionType: notificationData.actionType || 'NAVIGATE',
+          actionPayload: notificationData.actionPayload || {
+            url: '/erp/inventory/transactions/stock-transfer',
+          },
+          entityType: notificationData.entityType || 'TransferRequest',
+          entityId: notificationData.entityId,
         });
+        return;
       }
-    } catch (error) {
-      console.error('Failed to notify location users:', error);
+
+      await this.notifications.sendPosLocationNotification({
+        locationId: locationOrWarehouseId,
+        title: notificationData.title,
+        message: notificationData.message,
+        category: notificationData.category || 'pos_stock_transfer',
+        priority: notificationData.priority || 'high',
+        actionType: notificationData.actionType || 'NAVIGATE',
+        actionPayload: notificationData.actionPayload || {
+          url: '/pos/inventory/receiving',
+        },
+        entityType: notificationData.entityType || 'TransferRequest',
+        entityId: notificationData.entityId,
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to notify location/warehouse users for ${locationOrWarehouseId}: ${error.message}`,
+      );
     }
   }
 

@@ -59,4 +59,42 @@ export class ImportHistoryController {
       });
     }
   }
+
+  @Get(':uploadId/download')
+  @ApiOperation({ summary: 'Download the original uploaded file for an import' })
+  async downloadUploadedFile(
+    @Req() req: any,
+    @Param('uploadId') uploadId: string,
+    @Res() res: any,
+  ) {
+    const userId = req.user?.userId ?? req.user?.id;
+    try {
+      await this.service.streamUploadedFile(userId, uploadId, res);
+    } catch (err: any) {
+      const statusCode = err?.status ?? 404;
+      res.status(statusCode).send({
+        status: false,
+        message: err?.message ?? 'File not found',
+      });
+    }
+  }
+
+  @Get(':uploadId/success-report')
+  @ApiOperation({ summary: 'Download the success report for an import' })
+  async downloadSuccessReport(
+    @Req() req: any,
+    @Param('uploadId') uploadId: string,
+    @Res() res: any,
+  ) {
+    const userId = req.user?.userId ?? req.user?.id;
+    try {
+      await this.service.streamSuccessReport(userId, uploadId, res);
+    } catch (err: any) {
+      const statusCode = err?.status ?? 404;
+      res.status(statusCode).send({
+        status: false,
+        message: err?.message ?? 'Success report not found',
+      });
+    }
+  }
 }

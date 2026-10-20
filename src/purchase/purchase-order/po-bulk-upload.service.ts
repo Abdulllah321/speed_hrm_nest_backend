@@ -49,10 +49,13 @@ export class PoBulkUploadService {
     });
 
     const ext = filename.split('.').pop();
-    fs.writeFileSync(
-      path.join(uploadDir, `po-upload-${upload.id}.${ext}`),
-      fileBuffer,
-    );
+    const filePath = path.join(uploadDir, `po-upload-${upload.id}.${ext}`);
+    fs.writeFileSync(filePath, fileBuffer);
+
+    await this.prisma.bulkUpload.update({
+      where: { id: upload.id },
+      data: { uploadedFilePath: filePath },
+    });
 
     // Enqueue with the UUID as a custom Bull jobId — UUIDs never collide
     await this.uploadQueue.add(

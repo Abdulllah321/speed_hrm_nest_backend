@@ -46,6 +46,11 @@ export class CoaBulkUploadService {
     const filePath = path.join(uploadDir, `coa-upload-${upload.id}.${ext}`);
     fs.writeFileSync(filePath, fileBuffer);
 
+    await this.prisma.bulkUpload.update({
+      where: { id: upload.id },
+      data: { uploadedFilePath: filePath },
+    });
+
     const job = await this.uploadQueue.add(
       {
         uploadId: upload.id,

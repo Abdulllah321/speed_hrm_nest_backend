@@ -356,6 +356,11 @@ export class UploadProcessor {
           this.logger.log(
             `[Job ${job.id}] Success export report generated successfully at ${successReportPath}`,
           );
+
+          await prisma.bulkUpload.update({
+            where: { id: uploadId },
+            data: { successReportPath },
+          });
         }
       } else {
         // Stage 1: Validation Mode
