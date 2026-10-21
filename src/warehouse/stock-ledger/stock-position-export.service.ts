@@ -743,192 +743,314 @@ export class StockPositionExportService {
       'Computing fiscal opening B/F balances & in-range ledger movements...',
     );
 
-    const fiscalOpeningDate =
+    const snapshotDate =
       await this.fiscalClosingService.findLatestFiscalOpeningSnapshotDate(
         prisma,
         startDate,
       );
+    const queryStartDate =
+      snapshotDate && snapshotDate < startDate ? snapshotDate : startDate;
 
-    const effectiveFiscalOpeningDate =
-      fiscalOpeningDate && fiscalOpeningDate < startDate
-        ? fiscalOpeningDate
-        : null;
-
-    // 1. Opening Balance (B/F)
-    const bfMap = new Map<string, number>();
+    const ledgerMap = new Map<string, any[]>();
+    let chunkIndex = 0;
+    const totalChunks = matchedItemChunks.length;
 
     for (const chunk of matchedItemChunks) {
-      const bfWhere: any = {
-        AND: [
-          locationOrWarehouseWhere,
-          {
-            itemId: { in: chunk },
-            createdAt: effectiveFiscalOpeningDate
-              ? { gte: effectiveFiscalOpeningDate, lt: startDate }
-              : { lt: startDate },
-          },
-        ],
-      };
+      chunkIndex++;
+      const pct = 45 + Math.floor((chunkIndex / Math.max(1, totalChunks)) * 20);
+      await onProgress?.(
+        pct,
+        `Fetching stock ledger entries for ${matchedItemIds.length} items (Chunk ${chunkIndex} of ${totalChunks})...`,
+      );
 
-      const bfGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId'],
-        where: bfWhere,
-        _sum: { qty: true },
-      });
-
-      for (const row of bfGroup) {
-        const qtyVal = Number(row._sum.qty || 0);
-        bfMap.set(row.itemId, (bfMap.get(row.itemId) || 0) + qtyVal);
-      }
-
-      // Add in-range opening balance entries (OPENING_BALANCE, BULK_STOCK_UPLOAD, FISCAL_YEAR_OPENING)
-      const inRangeOpeningGroup = await prisma.stockLedger.groupBy({
-        by: ['itemId'],
+      const chunkLedgerEntries = await prisma.stockLedger.findMany({
         where: {
           AND: [
             locationOrWarehouseWhere,
             {
               itemId: { in: chunk },
-              createdAt: { gte: startDate, lte: endDate },
-              OR: [
-                { movementType: MovementType.OPENING_BALANCE },
-                { referenceType: 'OPENING_BALANCE' },
-                { referenceType: 'BULK_STOCK_UPLOAD' },
-                { referenceType: 'FISCAL_YEAR_OPENING' },
-              ],
-            },
-          ],
-        },
-        _sum: { qty: true },
-      });
-
-      for (const row of inRangeOpeningGroup) {
-        const qtyVal = Number(row._sum.qty || 0);
-        bfMap.set(row.itemId, (bfMap.get(row.itemId) || 0) + qtyVal);
-      }
-    }
-
-    // 2. In-range Stock Ledger Movements
-    const ledgerEntries: any[] = [];
-    for (const chunk of matchedItemChunks) {
-      const chunkEntries = await prisma.stockLedger.findMany({
-        where: {
-          AND: [
-            locationOrWarehouseWhere,
-            {
-              itemId: { in: chunk },
-              createdAt: { gte: startDate, lte: endDate },
-              NOT: [
-                { movementType: MovementType.OPENING_BALANCE },
-                { referenceType: 'OPENING_BALANCE' },
-                { referenceType: 'BULK_STOCK_UPLOAD' },
-                { referenceType: 'FISCAL_YEAR_OPENING' },
-              ],
+              createdAt: {
+                gte: queryStartDate,
+                lte: endDate,
+              },
             },
           ],
         },
         select: {
+          id: true,
           itemId: true,
           qty: true,
-          referenceType: true,
           movementType: true,
+          referenceType: true,
+          createdAt: true,
         },
+        orderBy: { createdAt: 'asc' },
       });
-      ledgerEntries.push(...chunkEntries);
+
+      for (const entry of chunkLedgerEntries) {
+        let list = ledgerMap.get(entry.itemId);
+        if (!list) {
+          list = [];
+          ledgerMap.set(entry.itemId, list);
+        }
+        list.push(entry);
+      }
     }
 
-    // Map movements per item
-    const itemMovementsMap = new Map<
-      string,
-      {
-        purchases: number;
-        purchaseReturns: number;
-        positiveAdjustments: number;
-        negativeAdjustments: number;
-        sales: number;
-        salesReturns: number;
-      }
-    >();
+    type ItemPositionMetrics = {
+      opening: number;
+      purchases: number;
+      purchaseReturns: number;
+      netPurchases: number;
+      positiveAdjustments: number;
+      negativeAdjustments: number;
+      netAdjustments: number;
+      sales: number;
+      salesReturns: number;
+      netSales: number;
+      beginning: number;
+      end: number;
+    };
 
-    for (const entry of ledgerEntries) {
-      const itemId = entry.itemId;
-      let m = itemMovementsMap.get(itemId);
-      if (!m) {
-        m = {
-          purchases: 0,
-          purchaseReturns: 0,
-          positiveAdjustments: 0,
-          negativeAdjustments: 0,
-          sales: 0,
-          salesReturns: 0,
-        };
-        itemMovementsMap.set(itemId, m);
-      }
+    const itemMetricsMap = new Map<string, ItemPositionMetrics>();
 
-      const qty = Number(entry.qty || 0);
-      const ref = entry.referenceType || '';
-      const mov = entry.movementType;
+    for (const item of items) {
+      const entries = ledgerMap.get(item.id) || [];
 
-      if (
-        mov === MovementType.ADJUSTMENT ||
-        ref === 'STOCK_ADJUSTMENT' ||
-        ref === 'ADJUSTMENT'
-      ) {
-        if (qty >= 0) {
-          m.positiveAdjustments += qty;
-        } else {
-          m.negativeAdjustments += Math.abs(qty);
-        }
-      } else if (qty > 0) {
+      let qtyBalance = 0;
+      let openingQty = 0;
+      let periodOpeningQty = 0;
+
+      let purchases = 0;
+      let purchaseReturns = 0;
+
+      let sales = 0;
+      let salesReturns = 0;
+      let salesQty = 0;
+
+      let positiveAdjustments = 0;
+      let negativeAdjustments = 0;
+      let adjQty = 0;
+
+      for (const entry of entries) {
+        const entryQty = Number(entry.qty);
+        const ref = entry.referenceType || '';
+
+        const isBeforePeriod = entry.createdAt < startDate;
+        const isFiscalYearOpening = ref === 'FISCAL_YEAR_OPENING';
+
+        // Skip mid-range automated Fiscal Year Opening snapshots to prevent double counting when querying across fiscal years
         if (
-          [
-            'GRN',
-            'LANDED_COST',
-            'PURCHASE_INVOICE',
-            'PURCHASE_RECEIPT',
-          ].includes(ref)
+          isFiscalYearOpening &&
+          !isBeforePeriod &&
+          queryStartDate < entry.createdAt &&
+          startDate < entry.createdAt
         ) {
-          m.purchases += qty;
-        } else if (
+          continue;
+        }
+
+        const isOpening =
+          entry.movementType === 'OPENING_BALANCE' ||
+          entry.movementType === MovementType.OPENING_BALANCE ||
+          ref === 'OPENING_BALANCE' ||
+          ref === 'BULK_STOCK_UPLOAD' ||
+          ref === 'FISCAL_YEAR_OPENING';
+
+        const isAdjustment =
+          entry.movementType === 'ADJUSTMENT' ||
+          entry.movementType === MovementType.ADJUSTMENT ||
+          ref === 'ADJUSTMENT' ||
+          ref === 'STOCK_ADJUSTMENT' ||
+          ref === 'SADJ' ||
+          ref === 'CLOSING_BALANCE' ||
+          ref === 'MANUAL_ZERO_STOCK' ||
+          ref.startsWith('SADJ') ||
+          ref.includes('ADJUSTMENT') ||
+          ref.includes('CLOSING_BALANCE') ||
+          ref.includes('ZERO_STOCK');
+
+        const isTransfer =
+          entry.movementType === 'TRANSFER' ||
+          entry.movementType === MovementType.TRANSFER ||
           [
+            'TRANSFER_REQUEST',
+            'OUTLET_TRANSFER_IN',
+            'OUTLET_TRANSFER_OUT',
+            'TRANSFER_RECEIPT',
+            'RETURN_REQUEST',
+            'TRANSFER',
+            'STOCK_TRANSFER',
+            'TRANSFER_IN',
+            'TRANSFER_OUT',
+            'STN',
+            'STOCK_TRANSFER_NOTE',
+            'DIRECT_TRANSFER',
+            'DIRECT_TRANSFER_IN',
+            'DIRECT_TRANSFER_OUT',
+            'STOCK_MOVEMENT',
+            'INTER_OUTLET_TRANSFER',
+            'CROSS_LOCATION_RETURN_TRANSFER',
+            'CLAIM_TO_PLM',
+            'CLAIM_RETURN',
+            'CLAIM_RETURN_REQUEST',
+            'POS_CLAIM_APPROVED',
+            'CLAIM_ACKNOWLEDGED',
+            'STOCK_REQUISITION',
+          ].includes(ref) ||
+          ref.startsWith('TRANSFER') ||
+          ref.includes('TRANSFER');
+
+        const isPosSalesReturn =
+          !isTransfer &&
+          ([
             'POS_RETURN',
             'POS_EXCHANGE_IN',
             'POS_REFUND',
             'POS_VOID',
-            'POS_CLAIM_APPROVED',
-            'SALES_RETURN_DC',
-            'SALES_RETURN_INV',
-            'WHOLESALE_RETURN',
-          ].includes(ref)
-        ) {
-          m.salesReturns += qty;
-        } else {
-          m.positiveAdjustments += qty;
-        }
-      } else if (qty < 0) {
-        const absQty = Math.abs(qty);
+            'SALES_RETURN',
+            'SRN',
+          ].includes(ref) ||
+            ref.startsWith('POS_RETURN') ||
+            ref.startsWith('POS_REFUND') ||
+            ref.startsWith('POS_VOID') ||
+            ref.startsWith('SALES_RETURN'));
+
         if (
-          [
-            'PURCHASE_RETURN',
-            'PURCHASE_RETURN_LC',
-            'PURCHASE_RETURN_GRN',
-            'PURCHASE_RETURN_INV',
-          ].includes(ref)
+          entry.movementType === 'INBOUND' ||
+          entry.movementType === MovementType.INBOUND ||
+          entry.movementType === 'OPENING_BALANCE' ||
+          entry.movementType === MovementType.OPENING_BALANCE ||
+          isOpening ||
+          ((entry.movementType === 'ADJUSTMENT' ||
+            entry.movementType === MovementType.ADJUSTMENT) &&
+            entryQty > 0) ||
+          ((entry.movementType === 'TRANSFER' ||
+            entry.movementType === MovementType.TRANSFER) &&
+            entryQty > 0) ||
+          (isTransfer && entryQty > 0) ||
+          isPosSalesReturn
         ) {
-          m.purchaseReturns += absQty;
-        } else if (
-          [
-            'POS_SALE',
-            'POS_EXCHANGE_OUT',
-            'DELIVERY_CHALLAN',
-            'SALES_DELIVERY',
-          ].includes(ref)
-        ) {
-          m.sales += absQty;
+          qtyBalance += entryQty;
+
+          if (!isBeforePeriod) {
+            const isPurchase =
+              !isTransfer &&
+              !isOpening &&
+              !isAdjustment &&
+              !isPosSalesReturn &&
+              (ref === 'GRN' ||
+                ref === 'PURCHASE' ||
+                ref === 'LANDED_COST' ||
+                ref.startsWith('GRN') ||
+                ref.startsWith('PURCHASE') ||
+                entry.movementType === 'INBOUND' ||
+                entry.movementType === MovementType.INBOUND);
+
+            if (isOpening) {
+              periodOpeningQty += entryQty;
+            } else if (isAdjustment) {
+              positiveAdjustments += entryQty;
+              adjQty += entryQty;
+            } else if (isTransfer) {
+              // Internal transfers must NOT be counted in Purchases, Sales, or Adjustments
+            } else if (isPosSalesReturn) {
+              // Sales Return reduces Net Sales
+              salesReturns += entryQty;
+              salesQty -= entryQty;
+            } else if (isPurchase) {
+              purchases += entryQty;
+            }
+          }
         } else {
-          m.negativeAdjustments += absQty;
+          // Outbound
+          qtyBalance += entryQty; // entryQty is negative
+
+          if (!isBeforePeriod) {
+            const isPurchaseReturn =
+              [
+                'PURCHASE_RETURN',
+                'PURCHASE_RETURN_GRN',
+                'PURCHASE_RETURN_LC',
+                'PURCHASE_RETURN_INV',
+                'PRN',
+                'PURCHASE_RETURN_NOTE',
+              ].includes(ref) ||
+              ref.startsWith('PURCHASE_RETURN') ||
+              ref.startsWith('PRN');
+
+            const isSale =
+              !isTransfer &&
+              !isAdjustment &&
+              !isOpening &&
+              ([
+                'POS_SALE',
+                'POS_EXCHANGE_OUT',
+                'POS_RETURN',
+                'POS_EXCHANGE_IN',
+                'POS_REFUND',
+                'POS_VOID',
+                'SALE',
+                'SALES_ORDER',
+                'DELIVERY_CHALLAN',
+              ].includes(ref) ||
+                ref.startsWith('POS_SALE') ||
+                ref.startsWith('SALE') ||
+                entry.movementType === 'OUTBOUND' ||
+                entry.movementType === MovementType.OUTBOUND);
+
+            const absQty = Math.abs(entryQty);
+
+            if (isPurchaseReturn) {
+              purchaseReturns += absQty;
+            } else if (isAdjustment) {
+              negativeAdjustments += absQty;
+              adjQty += entryQty; // negative
+            } else if (isTransfer) {
+              // Internal transfers must NOT be counted in Sales or Purchase Returns
+            } else if (isSale) {
+              if (entryQty > 0) {
+                // Return
+                salesReturns += entryQty;
+                salesQty -= entryQty;
+              } else {
+                // Sale (outbound)
+                sales += absQty;
+                salesQty += absQty;
+              }
+            }
+          }
+        }
+
+        if (isBeforePeriod) {
+          openingQty = qtyBalance;
         }
       }
+
+      const safeOpeningQty = Math.max(0, openingQty);
+      const finalOpeningQty = safeOpeningQty + periodOpeningQty;
+
+      const netPurchases = purchases - purchaseReturns;
+      const netAdjustments = adjQty;
+
+      const availableQty = finalOpeningQty + purchases - purchaseReturns;
+      const beginning = availableQty + netAdjustments;
+      const netSales = salesQty; // = sales - salesReturns
+      const end = beginning - netSales; // = availableQty - salesQty + adjQty = closingQty in Valuation!
+
+      itemMetricsMap.set(item.id, {
+        opening: finalOpeningQty,
+        purchases,
+        purchaseReturns,
+        netPurchases,
+        positiveAdjustments,
+        negativeAdjustments,
+        netAdjustments,
+        sales,
+        salesReturns,
+        netSales,
+        beginning,
+        end,
+      });
     }
 
     await onProgress?.(
@@ -1209,40 +1331,49 @@ export class StockPositionExportService {
     // Iterate through items and build records
     for (const item of items) {
       const iId = item.id;
-      const opening = bfMap.get(iId) || 0;
-      const m = itemMovementsMap.get(iId) || {
+      const m = itemMetricsMap.get(iId) || {
+        opening: 0,
         purchases: 0,
         purchaseReturns: 0,
+        netPurchases: 0,
         positiveAdjustments: 0,
         negativeAdjustments: 0,
+        netAdjustments: 0,
         sales: 0,
         salesReturns: 0,
+        netSales: 0,
+        beginning: 0,
+        end: 0,
       };
 
-      const netPurchases = m.purchases - m.purchaseReturns;
-      const netAdjustments = m.positiveAdjustments - m.negativeAdjustments;
-      const beginning = opening + netPurchases + netAdjustments;
-
+      const opening = m.opening;
+      const purchases = m.purchases;
+      const purchaseReturns = m.purchaseReturns;
+      const netPurchases = m.netPurchases;
+      const positiveAdjustments = m.positiveAdjustments;
+      const negativeAdjustments = m.negativeAdjustments;
+      const netAdjustments = m.netAdjustments;
+      const beginning = m.beginning;
       const sales = m.sales;
       const salesReturns = m.salesReturns;
-      const netSales = sales - salesReturns;
+      const netSales = m.netSales;
+      const end = m.end;
 
       const sellThroughPercent =
         beginning > 0
           ? Math.round((netSales / beginning) * 10000) / 100
           : 0;
 
-      const end = beginning - netSales;
       // In Total Quantity, user wants total sale quantity on the last sale date across all outlets
       const totalQty = lastSaleDateQtyMap.get(iId) || 0;
 
       // Skip item if absolutely zero activity across all dimensions
       if (
         opening === 0 &&
-        m.purchases === 0 &&
-        m.purchaseReturns === 0 &&
-        m.positiveAdjustments === 0 &&
-        m.negativeAdjustments === 0 &&
+        purchases === 0 &&
+        purchaseReturns === 0 &&
+        positiveAdjustments === 0 &&
+        negativeAdjustments === 0 &&
         sales === 0 &&
         salesReturns === 0 &&
         end === 0 &&
@@ -1257,8 +1388,8 @@ export class StockPositionExportService {
       let actualLaunchDateObj: Date | null = null;
       let launchDate = '-';
 
-      if (item.launchDate) {
-        actualLaunchDateObj = new Date(item.launchDate);
+      if ((item as any).launchDate) {
+        actualLaunchDateObj = new Date((item as any).launchDate);
         launchDate = formatDateOnly(actualLaunchDateObj);
       } else if (poLaunch?.date) {
         actualLaunchDateObj = poLaunch.date;
@@ -1278,11 +1409,11 @@ export class StockPositionExportService {
         actualLaunchDateObj <= endDate
       ) {
         if (
-          item.launchQty !== undefined &&
-          item.launchQty !== null &&
-          Number(item.launchQty) > 0
+          (item as any).launchQty !== undefined &&
+          (item as any).launchQty !== null &&
+          Number((item as any).launchQty) > 0
         ) {
-          launchQty = Number(item.launchQty);
+          launchQty = Number((item as any).launchQty);
         } else if (poLaunch?.qty && poLaunch.qty > 0) {
           launchQty = poLaunch.qty;
         } else if (launchInfo?.launchQty && launchInfo.launchQty > 0) {
