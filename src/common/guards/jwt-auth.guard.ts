@@ -27,13 +27,19 @@ export class JwtAuthGuard implements CanActivate {
     const authHeader = req.headers['authorization'] as string;
     let token: string | undefined;
 
+    const queryToken = req.query?.token;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
-    } else if (req.query?.token) {
+    } else if (
+      queryToken &&
+      queryToken !== 'undefined' &&
+      queryToken !== 'null' &&
+      String(queryToken).trim() !== ''
+    ) {
       // Allow token via query param for file download links opened in a new tab.
       // Browser GET requests (window.open) don't carry Authorization headers
       // or cross-origin cookies, so we fall back to ?token= for download endpoints.
-      token = req.query.token as string;
+      token = queryToken as string;
     } else if (req.cookies) {
       token = req.cookies['accessToken'];
     }

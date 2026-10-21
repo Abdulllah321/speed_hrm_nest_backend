@@ -692,14 +692,11 @@ export class AvailableStockSummaryExportService {
           : undefined;
 
     const orConditions: any[] = [];
-    if (locIds.length > 0) {
-      orConditions.push({ locationId: { in: locIds } });
-    }
-    if (targetWarehouseLocationIds.length > 0) {
-      orConditions.push({ locationId: { in: targetWarehouseLocationIds } });
+    if (uniqueTargetLocationIds.length > 0) {
+      orConditions.push({ locationId: { in: uniqueTargetLocationIds } });
     }
     if (whIds.length > 0) {
-      orConditions.push({ warehouseId: { in: whIds }, locationId: null });
+      orConditions.push({ warehouseId: { in: whIds } });
     }
 
     const locationOrWarehouseWhere =
@@ -1102,12 +1099,7 @@ export class AvailableStockSummaryExportService {
       ref?: string | null,
     ) => {
       if (!isSeparate) return 'all';
-      if (locId) {
-        if (whLocIdToWhIdMap.has(locId)) {
-          return `wh:${whLocIdToWhIdMap.get(locId)}`;
-        }
-        return `loc:${locId}`;
-      }
+      if (locId) return `loc:${locId}`;
       if (whId) {
         if (ref && ref.startsWith('POS_')) return 'unknown';
         return `wh:${whId}`;
@@ -1377,51 +1369,6 @@ export class AvailableStockSummaryExportService {
 
     const flatItemsList: any[] = [];
 
-    const getMergedValue = (
-      map: Map<string, number>,
-      key: string,
-      altKey?: string,
-    ): number => {
-      const val1 = map.get(key) || 0;
-      if (altKey && altKey !== key) {
-        const val2 = map.get(altKey) || 0;
-        return val1 + val2;
-      }
-      return val1;
-    };
-
-    const getMergedMovement = (key: string, altKey?: string) => {
-      const m1 = movementMetricsMap.get(key);
-      const m2 =
-        altKey && altKey !== key ? movementMetricsMap.get(altKey) : null;
-      if (!m1 && !m2) {
-        return {
-          fromWarehouse: 0,
-          fromOutlet: 0,
-          toWarehouse: 0,
-          toOutlet: 0,
-          exchg: 0,
-          refund: 0,
-          claim: 0,
-          sales: 0,
-          adj: 0,
-        };
-      }
-      if (!m2) return m1!;
-      if (!m1) return m2;
-      return {
-        fromWarehouse: m1.fromWarehouse + m2.fromWarehouse,
-        fromOutlet: m1.fromOutlet + m2.fromOutlet,
-        toWarehouse: m1.toWarehouse + m2.toWarehouse,
-        toOutlet: m1.toOutlet + m2.toOutlet,
-        exchg: m1.exchg + m2.exchg,
-        refund: m1.refund + m2.refund,
-        claim: m1.claim + m2.claim,
-        sales: m1.sales + m2.sales,
-        adj: m1.adj + m2.adj,
-      };
-    };
-
     const addTotals = (target: any, source: any) => {
       target.quantity += source.quantity;
       target.transit += source.transit;
@@ -1442,15 +1389,26 @@ export class AvailableStockSummaryExportService {
         const mapKey = `${locKey}_${item.id}`;
         const altMapKey = item.itemId ? `${locKey}_${item.itemId}` : mapKey;
 
-        const bf = getMergedValue(bfMap, mapKey, altMapKey);
-        const transit = getMergedValue(transitMap, mapKey, altMapKey);
-        const reserved = getMergedValue(reserveMap, mapKey, altMapKey);
-        const pendingInvoice = getMergedValue(
-          pendingInvoiceMap,
-          mapKey,
-          altMapKey,
-        );
-        const m = getMergedMovement(mapKey, altMapKey);
+        const bf = (bfMap.get(mapKey) ?? bfMap.get(altMapKey)) || 0;
+        const transit =
+          (transitMap.get(mapKey) ?? transitMap.get(altMapKey)) || 0;
+        const reserved =
+          (reserveMap.get(mapKey) ?? reserveMap.get(altMapKey)) || 0;
+        const pendingInvoice =
+          (pendingInvoiceMap.get(mapKey) ?? pendingInvoiceMap.get(altMapKey)) ||
+          0;
+        const m = (movementMetricsMap.get(mapKey) ??
+          movementMetricsMap.get(altMapKey)) || {
+          fromWarehouse: 0,
+          fromOutlet: 0,
+          toWarehouse: 0,
+          toOutlet: 0,
+          exchg: 0,
+          refund: 0,
+          claim: 0,
+          sales: 0,
+          adj: 0,
+        };
 
         const totalTrfIn = m.fromWarehouse + m.fromOutlet;
         const totalTrfOut = m.toWarehouse + m.toOutlet;

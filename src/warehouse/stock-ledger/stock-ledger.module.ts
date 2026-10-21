@@ -5,6 +5,8 @@ import { StockLedgerController } from './stock-ledger.controller';
 import { StockLedgerExportProcessor } from './stock-ledger-export.processor';
 import { StockActivityExportService } from './stock-activity-export.service';
 import { StockActivityExportProcessor } from './stock-activity-export.processor';
+import { StockPositionExportService } from './stock-position-export.service';
+import { StockPositionExportProcessor } from './stock-position-export.processor';
 import { StockValuationExportService } from './stock-valuation-export.service';
 import { StockValuationExportProcessor } from './stock-valuation-export.processor';
 import { StockTransactionDetailExportService } from './stock-transaction-detail-export.service';
@@ -32,6 +34,7 @@ import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
     BullModule.registerQueue(
       { name: 'stock-ledger-export' },
       { name: 'stock-activity-export' },
+      { name: 'stock-position-export' },
       { name: 'stock-valuation-export' },
       { name: 'stock-transaction-detail-export' },
       { name: 'available-stock-summary-export' },
@@ -45,6 +48,8 @@ import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
     StockLedgerExportProcessor,
     StockActivityExportService,
     StockActivityExportProcessor,
+    StockPositionExportService,
+    StockPositionExportProcessor,
     StockValuationExportService,
     StockValuationExportProcessor,
     StockTransactionDetailExportService,
@@ -61,6 +66,7 @@ import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
   exports: [
     StockLedgerService,
     StockActivityExportService,
+    StockPositionExportService,
     StockValuationExportService,
     StockTransactionDetailExportService,
     AvailableStockSummaryExportService,
@@ -70,3 +76,4 @@ import { FiscalYearClosingCron } from './fiscal-year-closing.cron';
   ],
 })
 export class StockLedgerModule {}
+
