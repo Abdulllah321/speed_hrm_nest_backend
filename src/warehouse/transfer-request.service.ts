@@ -568,7 +568,7 @@ export class TransferRequestService {
             }),
           );
         } else if (
-          transferType === 'WAREHOUSE_TO_WAREHOUSE' &&
+          (transferType as string) === 'WAREHOUSE_TO_WAREHOUSE' &&
           (created.toWarehouseId || created.fromWarehouseId)
         ) {
           runInBackground(

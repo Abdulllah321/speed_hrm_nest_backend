@@ -19,6 +19,7 @@ import { Observable, interval } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { StockLedgerService } from './stock-ledger.service';
 import { StockActivityExportService } from './stock-activity-export.service';
+import { StockPositionExportService } from './stock-position-export.service';
 import { StockValuationExportService } from './stock-valuation-export.service';
 import { StockTransactionDetailExportService } from './stock-transaction-detail-export.service';
 import { AvailableStockSummaryExportService } from './available-stock-summary-export.service';
@@ -37,6 +38,7 @@ export class StockLedgerController {
   constructor(
     private readonly stockLedgerService: StockLedgerService,
     private readonly stockActivityExportService: StockActivityExportService,
+    private readonly stockPositionExportService: StockPositionExportService,
     private readonly stockValuationExportService: StockValuationExportService,
     private readonly stockTransactionDetailExportService: StockTransactionDetailExportService,
     private readonly availableStockSummaryExportService: AvailableStockSummaryExportService,
@@ -321,6 +323,93 @@ export class StockLedgerController {
     const userId = req.user?.id || req.user?.userId;
     const result =
       await this.stockActivityExportService.registerClientGeneratedExport(
+        req.prisma || (this.stockLedgerService as any).prisma,
+        userId,
+        body,
+      );
+    return { status: true, data: result };
+  }
+
+  // ─── Stock Position PRO ERP Preview & SSE Endpoints ───────────────────────
+  @Post('reports/stock-position/queue')
+  @UseGuards(JwtAuthGuard)
+  async queueStockPositionPreview(
+    @Req() req: any,
+    @Body()
+    body: {
+      locationId?: string;
+      warehouseId?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+      brandIds?: string[];
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const userRole =
+      req.user?.role?.name ||
+      req.user?.role ||
+      req.user?.roleName ||
+      req.user?.userRole;
+    const result = await this.stockPositionExportService.queueReportPreview({
+      userId,
+      userRole,
+      ...body,
+    });
+    return { status: true, data: result };
+  }
+
+  @Sse('reports/stock-position/stream/:jobId')
+  streamStockPositionStatus(
+    @Param('jobId') jobId: string,
+  ): Observable<MessageEvent> {
+    return interval(1000).pipe(
+      switchMap(async () => {
+        const queueStatus =
+          await this.stockPositionExportService.getJobQueueStatus(jobId);
+        return {
+          data: JSON.stringify({
+            status: queueStatus.status || queueStatus.state,
+            state: queueStatus.state,
+            progress: queueStatus.progress,
+            message: queueStatus.message,
+            queuePosition: queueStatus.queuePosition,
+            waitingCount: queueStatus.waitingCount,
+            failedReason: queueStatus.failedReason,
+          }),
+        } as MessageEvent;
+      }),
+    );
+  }
+
+  @Get('reports/stock-position/result/:jobId')
+  @UseGuards(JwtAuthGuard)
+  async getStockPositionResult(@Param('jobId') jobId: string) {
+    const data =
+      await this.stockPositionExportService.getReportPreviewResult(jobId);
+    if (!data) {
+      return {
+        status: false,
+        message: 'Stock Position report result not found or expired',
+      };
+    }
+    return { status: true, data };
+  }
+
+  @Post('reports/stock-position/export/register-client-export')
+  @UseGuards(JwtAuthGuard)
+  async registerClientStockPositionExport(
+    @Req() req: any,
+    @Body()
+    body: {
+      fileName: string;
+      fileBase64: string;
+      mimeType: string;
+    },
+  ) {
+    const userId = req.user?.id || req.user?.userId;
+    const result =
+      await this.stockPositionExportService.registerClientGeneratedExport(
         req.prisma || (this.stockLedgerService as any).prisma,
         userId,
         body,

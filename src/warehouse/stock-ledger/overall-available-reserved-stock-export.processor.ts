@@ -275,12 +275,6 @@ export class OverallAvailableReservedStockExportProcessor {
             width: 14,
             align: 'right',
           },
-          {
-            header: 'Pending Invoice',
-            key: 'pendingInvoice',
-            width: 14,
-            align: 'right',
-          },
           { header: 'Total', key: 'total', width: 14, align: 'right' },
           {
             header: 'Selling Price',
@@ -504,7 +498,6 @@ export class OverallAvailableReservedStockExportProcessor {
             quantity: tot.quantity,
             transit: tot.transit,
             reserved: tot.reserved,
-            pendingInvoice: tot.pendingInvoice ?? 0,
             total: tot.total,
             unitPrice: unitPriceVal,
             discountRate: discountVal,
@@ -575,7 +568,6 @@ export class OverallAvailableReservedStockExportProcessor {
           quantity: grandTotals.quantity,
           transit: grandTotals.transit,
           reserved: grandTotals.reserved,
-          pendingInvoice: grandTotals.pendingInvoice ?? 0,
           total: grandTotals.total,
           unitPrice: '',
           discountRate: '',
@@ -704,7 +696,6 @@ export class OverallAvailableReservedStockExportProcessor {
             <td class="num">${formatVal(tot.quantity)}</td>
             <td class="num">${formatVal(tot.transit)}</td>
             <td class="num">${formatVal(tot.reserved)}</td>
-            <td class="num">${formatVal(tot.pendingInvoice || 0)}</td>
             <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">${formatVal(tot.unitPrice)}</td>
             <td class="num">${tot.discountRate ? tot.discountRate.toFixed(2) : '-'}</td>
@@ -728,7 +719,6 @@ export class OverallAvailableReservedStockExportProcessor {
             <td class="num">${formatVal(tot.quantity)}</td>
             <td class="num">${formatVal(tot.transit)}</td>
             <td class="num">${formatVal(tot.reserved)}</td>
-            <td class="num">${formatVal(tot.pendingInvoice || 0)}</td>
             <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">-</td>
             <td class="num">${tot.discountRate ? tot.discountRate.toFixed(2) : '-'}</td>
@@ -750,7 +740,6 @@ export class OverallAvailableReservedStockExportProcessor {
             <td class="num">${formatVal(tot.quantity)}</td>
             <td class="num">${formatVal(tot.transit)}</td>
             <td class="num">${formatVal(tot.reserved)}</td>
-            <td class="num">${formatVal(tot.pendingInvoice || 0)}</td>
             <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">-</td>
             <td class="num">-</td>
@@ -829,7 +818,6 @@ export class OverallAvailableReservedStockExportProcessor {
               <th class="num">Quantity</th>
               <th class="num">In Transit</th>
               <th class="num">Stock Reserved</th>
-              <th class="num">Pending Inv</th>
               <th class="num">Total</th>
               <th class="num">Selling Price</th>
               <th class="num">Disc %</th>
@@ -847,7 +835,6 @@ export class OverallAvailableReservedStockExportProcessor {
               <td class="num">${formatVal(grandTotals.quantity)}</td>
               <td class="num">${formatVal(grandTotals.transit)}</td>
               <td class="num">${formatVal(grandTotals.reserved)}</td>
-              <td class="num">${formatVal(grandTotals.pendingInvoice || 0)}</td>
               <td class="num">${formatVal(grandTotals.total)}</td>
               <td class="num">-</td>
               <td class="num">-</td>

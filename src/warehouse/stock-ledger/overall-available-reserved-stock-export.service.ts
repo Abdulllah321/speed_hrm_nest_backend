@@ -602,7 +602,6 @@ export class OverallAvailableReservedStockExportService {
 
     // Resolve target location IDs for queries
     const targetLocationIds: string[] = [...locIds];
-    const targetWarehouseLocationIds: string[] = [];
     if (whIds.length > 0) {
       for (const whId of whIds) {
         const whObj = allWarehouses.find(
@@ -618,7 +617,6 @@ export class OverallAvailableReservedStockExportService {
         );
         for (const ml of matchingLocs) {
           targetLocationIds.push(ml.id);
-          targetWarehouseLocationIds.push(ml.id);
         }
       }
     }
@@ -631,19 +629,9 @@ export class OverallAvailableReservedStockExportService {
           ? uniqueTargetLocationIds[0]
           : undefined;
 
-    const orConditions: any[] = [];
-    if (locIds.length > 0) {
-      orConditions.push({ locationId: { in: locIds } });
-    }
-    if (targetWarehouseLocationIds.length > 0) {
-      orConditions.push({ locationId: { in: targetWarehouseLocationIds } });
-    }
-    if (whIds.length > 0) {
-      orConditions.push({ warehouseId: { in: whIds }, locationId: null });
-    }
-
-    const locationOrWarehouseWhere =
-      orConditions.length > 0 ? { OR: orConditions } : {};
+    const locationOrWarehouseWhere = locationWhere
+      ? { locationId: locationWhere }
+      : {};
 
     const warehouses = allWarehouses.filter(
       (w) =>
@@ -683,56 +671,53 @@ export class OverallAvailableReservedStockExportService {
           ? `AND 1=0`
           : ``;
 
-    // Compute Fiscal Year start directly from stock_ledgers (single source of truth)
-    const startDate = getDefaultFiscalYearStart(endDate);
+    // 1. Get the latest Monthly Snapshot (instead of Fiscal Year Opening)
+    const latestSnapshot = await prisma.monthlyStockSnapshot.findFirst({
+      where: { date: { lte: endDate } },
+      orderBy: { date: 'desc' },
+      select: { date: true },
+    });
+
+    const snapshotDate = latestSnapshot?.date;
+    const startDate =
+      snapshotDate && snapshotDate < endDate
+        ? snapshotDate
+        : getDefaultFiscalYearStart(endDate);
+    const queryStartDate = snapshotDate; // Prevent scanning full history for distinct items!
 
     await onProgress?.(20, 'Querying stock ledgers & inventory items...');
 
-    // SQL scoping filters for raw queries
-    let scopeFilterSql = '';
-    let scopeFilterPrismaSql = '';
-    if (
-      locIds.length > 0 ||
-      targetWarehouseLocationIds.length > 0 ||
-      whIds.length > 0
-    ) {
-      const allTargetLocs = [
-        ...new Set([...locIds, ...targetWarehouseLocationIds]),
-      ];
-      const partsSql: string[] = [];
-      const partsPrisma: string[] = [];
-      if (allTargetLocs.length > 0) {
-        const inLocs = allTargetLocs.map((id) => `'${id}'`).join(',');
-        partsSql.push(`location_id IN (${inLocs})`);
-        partsPrisma.push(`"locationId" IN (${inLocs})`);
-      }
-      if (whIds.length > 0) {
-        const inWhs = whIds.map((id) => `'${id}'`).join(',');
-        partsSql.push(
-          `(warehouse_id IN (${inWhs}) AND location_id IS NULL)`,
-        );
-        partsPrisma.push(
-          `("warehouseId" IN (${inWhs}) AND "locationId" IS NULL)`,
-        );
-      }
-      if (partsSql.length > 0) {
-        scopeFilterSql = `AND (${partsSql.join(' OR ')})`;
-        scopeFilterPrismaSql = `AND (${partsPrisma.join(' OR ')})`;
-      }
-    }
+    // Bypass Prisma engine overhead for massive queries
+    const locationInClauseDb =
+      uniqueTargetLocationIds.length > 0
+        ? `AND location_id IN (${uniqueTargetLocationIds.map((id) => `'${id}'`).join(',')})`
+        : '';
+    const locationInClausePrisma =
+      uniqueTargetLocationIds.length > 0
+        ? `AND "locationId" IN (${uniqueTargetLocationIds.map((id) => `'${id}'`).join(',')})`
+        : '';
 
-    const [inventoryItems, ledgerItems] = await Promise.all([
+    const [inventoryItems, ledgerItems, snapshotResults] = await Promise.all([
       prisma.$queryRawUnsafe<any[]>(`
         SELECT "itemId", "locationId", "warehouseId" 
         FROM "InventoryItem" 
-        WHERE 1=1 ${scopeFilterPrismaSql}
+        WHERE 1=1 ${locationInClausePrisma}
       `),
       prisma.$queryRawUnsafe<any[]>(`
         SELECT DISTINCT item_id as "itemId", location_id as "locationId", warehouse_id as "warehouseId" 
         FROM stock_ledgers 
         WHERE created_at <= '${endDate.toISOString()}'
-        ${scopeFilterSql}
+        ${queryStartDate ? `AND created_at >= '${queryStartDate.toISOString()}'` : ''}
+        ${locationInClauseDb}
       `),
+      snapshotDate
+        ? prisma.$queryRawUnsafe<any[]>(`
+            SELECT item_id as "itemId", location_id as "locationId", warehouse_id as "warehouseId", closing_qty as "closingQty" 
+            FROM monthly_stock_snapshots 
+            WHERE date = '${snapshotDate.toISOString()}'
+            ${locationInClauseDb}
+          `)
+        : Promise.resolve([]),
     ]);
 
     const activeStockLocIds = [
@@ -740,6 +725,7 @@ export class OverallAvailableReservedStockExportService {
         [
           ...inventoryItems.map((i) => i.locationId),
           ...ledgerItems.map((l) => l.locationId),
+          ...snapshotResults.map((s) => s.locationId),
         ].filter(Boolean),
       ),
     ] as string[];
@@ -756,6 +742,7 @@ export class OverallAvailableReservedStockExportService {
       ...new Set([
         ...inventoryItems.map((i) => i.itemId),
         ...ledgerItems.map((l) => l.itemId),
+        ...snapshotResults.map((s) => s.itemId),
       ]),
     ];
 
@@ -814,17 +801,17 @@ export class OverallAvailableReservedStockExportService {
       transitItemsResults,
       reserveGroupResults,
       tenantSettingsResults,
-      pendingInvoiceGroupResults,
-      salesOrderReserveResults,
     ] = await Promise.all([
-      prisma.stockLedger.groupBy({
-        by: groupByCols,
-        where: {
-          ...locationOrWarehouseWhere,
-          createdAt: { lt: startDate },
-        },
-        _sum: { qty: true },
-      }),
+      snapshotDate
+        ? Promise.resolve([])
+        : prisma.stockLedger.groupBy({
+            by: groupByCols,
+            where: {
+              ...locationOrWarehouseWhere,
+              createdAt: { lt: startDate },
+            },
+            _sum: { qty: true },
+          }),
       prisma.stockLedger.groupBy({
         by: groupByCols,
         where: {
@@ -909,55 +896,6 @@ export class OverallAvailableReservedStockExportService {
           standardCost: true,
         },
       }),
-      // Query pending invoices (DCs not yet invoiced)
-      prisma.deliveryChallanItem.findMany({
-        where: {
-          deliveryChallan: {
-            status: { in: ['PENDING', 'DELIVERED'] },
-            ...(whIds.length > 0
-              ? { warehouseId: { in: warehouses.map((w) => w.id) } }
-              : {}),
-          },
-        },
-        select: {
-          itemId: true,
-          deliveredQty: true,
-          deliveryChallan: {
-            select: { warehouseId: true },
-          },
-        },
-      }),
-      // Query Sales Order Reserved stock
-      prisma.eRPSalesOrderItem.findMany({
-        where: {
-          salesOrder: {
-            status: { in: ['DRAFT', 'CONFIRMED', 'WAREHOUSE_VERIFIED'] },
-            ...(whIds.length > 0
-              ? { warehouseId: { in: warehouses.map((w) => w.id) } }
-              : {}),
-          },
-        },
-        select: {
-          itemId: true,
-          quantity: true,
-          salesOrder: {
-            select: {
-              warehouseId: true,
-              deliveryChallans: {
-                where: { status: { not: 'CANCELLED' } },
-                select: {
-                  items: {
-                    select: {
-                      itemId: true,
-                      deliveredQty: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      }),
     ]);
 
     const getLocOrWhKey = (
@@ -978,22 +916,17 @@ export class OverallAvailableReservedStockExportService {
       return 'unknown';
     };
 
-    const getMergedValue = (
-      map: Map<string, number>,
-      key: string,
-      altKey?: string,
-    ): number => {
-      const val1 = map.get(key) || 0;
-      if (altKey && altKey !== key) {
-        const val2 = map.get(altKey) || 0;
-        return val1 + val2;
-      }
-      return val1;
-    };
-
     // Build B/F Opening map
     const bfMap = new Map<string, number>();
 
+    // Apply Snapshot Data (Instantly!)
+    for (const r of snapshotResults) {
+      const locKey = getLocOrWhKey(r.locationId, r.warehouseId, 'SNAPSHOT');
+      const key = `${locKey}_${r.itemId}`;
+      bfMap.set(key, (bfMap.get(key) || 0) + Number(r.closingQty || 0));
+    }
+
+    // Apply Fallback Legacy Ledger Data (If no snapshot)
     for (const r of bfGroupResults) {
       const locKey = getLocOrWhKey(
         r.locationId,
@@ -1039,46 +972,6 @@ export class OverallAvailableReservedStockExportService {
       }
       const allKey = `all_${row.itemId}`;
       reserveMap.set(allKey, (reserveMap.get(allKey) || 0) + qty);
-    }
-
-    // Add Sales Order Reservations to Reserve Map
-    for (const row of salesOrderReserveResults) {
-      let qty = Number(row.quantity || 0);
-
-      // Subtract quantities already in delivery challans
-      for (const dc of row.salesOrder.deliveryChallans) {
-        for (const dcItem of dc.items) {
-          if (dcItem.itemId === row.itemId) {
-            qty -= Number(dcItem.deliveredQty || 0);
-          }
-        }
-      }
-
-      if (qty > 0) {
-        const whId = row.salesOrder.warehouseId;
-        if (whId) {
-          const key = `wh:${whId}_${row.itemId}`;
-          reserveMap.set(key, (reserveMap.get(key) || 0) + qty);
-        }
-        const allKey = `all_${row.itemId}`;
-        reserveMap.set(allKey, (reserveMap.get(allKey) || 0) + qty);
-      }
-    }
-
-    // Pending Invoice map
-    const pendingInvoiceMap = new Map<string, number>();
-    for (const row of pendingInvoiceGroupResults) {
-      const qty = Number(row.deliveredQty || 0);
-      const whId = row.deliveryChallan?.warehouseId;
-      if (whId) {
-        const key = `wh:${whId}_${row.itemId}`;
-        pendingInvoiceMap.set(key, (pendingInvoiceMap.get(key) || 0) + qty);
-      }
-      const allKey = `all_${row.itemId}`;
-      pendingInvoiceMap.set(
-        allKey,
-        (pendingInvoiceMap.get(allKey) || 0) + qty,
-      );
     }
 
     // Movement metrics map
@@ -1182,38 +1075,6 @@ export class OverallAvailableReservedStockExportService {
       }
     }
 
-    const getMergedMovement = (key: string, altKey?: string) => {
-      const m1 = movementMetricsMap.get(key);
-      const m2 =
-        altKey && altKey !== key ? movementMetricsMap.get(altKey) : null;
-      if (!m1 && !m2) {
-        return {
-          fromWarehouse: 0,
-          fromOutlet: 0,
-          toWarehouse: 0,
-          toOutlet: 0,
-          exchg: 0,
-          refund: 0,
-          claim: 0,
-          sales: 0,
-          adj: 0,
-        };
-      }
-      if (!m2) return m1!;
-      if (!m1) return m2;
-      return {
-        fromWarehouse: m1.fromWarehouse + m2.fromWarehouse,
-        fromOutlet: m1.fromOutlet + m2.fromOutlet,
-        toWarehouse: m1.toWarehouse + m2.toWarehouse,
-        toOutlet: m1.toOutlet + m2.toOutlet,
-        exchg: m1.exchg + m2.exchg,
-        refund: m1.refund + m2.refund,
-        claim: m1.claim + m2.claim,
-        sales: m1.sales + m2.sales,
-        adj: m1.adj + m2.adj,
-      };
-    };
-
     // Collect all item IDs that have activity or inventory
     const activeItemIdsSet = new Set<string>();
     for (const r of bfGroupResults)
@@ -1228,10 +1089,6 @@ export class OverallAvailableReservedStockExportService {
       if (r?.itemId) activeItemIdsSet.add(r.itemId);
     for (const t of transitItemsResults)
       if (t?.itemId) activeItemIdsSet.add(t.itemId);
-    for (const p of pendingInvoiceGroupResults)
-      if (p?.itemId) activeItemIdsSet.add(p.itemId);
-    for (const so of salesOrderReserveResults)
-      if (so?.itemId) activeItemIdsSet.add(so.itemId);
 
     const activeItemIds = Array.from(activeItemIdsSet).filter(Boolean);
 
@@ -1314,15 +1171,25 @@ export class OverallAvailableReservedStockExportService {
       let itemAvailableStockSum = 0;
       let itemTransitSum = 0;
       let itemReservedSum = 0;
-      let itemPendingInvoiceSum = 0;
 
       const warehouseStocks: Record<string, number> = {};
       for (const wh of warehouses) {
         const key = `wh:${wh.id}_${item.id}`;
         const altKey = item.itemId ? `wh:${wh.id}_${item.itemId}` : key;
 
-        const bf = getMergedValue(bfMap, key, altKey);
-        const m = getMergedMovement(key, altKey);
+        const bf = (bfMap.get(key) ?? bfMap.get(altKey)) || 0;
+        const m = (movementMetricsMap.get(key) ??
+          movementMetricsMap.get(altKey)) || {
+          fromWarehouse: 0,
+          fromOutlet: 0,
+          toWarehouse: 0,
+          toOutlet: 0,
+          exchg: 0,
+          refund: 0,
+          claim: 0,
+          sales: 0,
+          adj: 0,
+        };
 
         const totalTrfIn = m.fromWarehouse + m.fromOutlet;
         const totalTrfOut = m.toWarehouse + m.toOutlet;
@@ -1336,9 +1203,8 @@ export class OverallAvailableReservedStockExportService {
           m.sales +
           m.adj;
 
-        const tr = getMergedValue(transitMap, key, altKey);
-        const rs = getMergedValue(reserveMap, key, altKey);
-        const pi = getMergedValue(pendingInvoiceMap, key, altKey);
+        const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
+        const rs = (reserveMap.get(key) ?? reserveMap.get(altKey)) || 0;
 
         const availWh = stockWh - rs;
         warehouseStocks[wh.id] = availWh;
@@ -1346,7 +1212,6 @@ export class OverallAvailableReservedStockExportService {
 
         itemTransitSum += tr;
         itemReservedSum += rs;
-        itemPendingInvoiceSum += pi;
       }
 
       const locationStocks: Record<string, number> = {};
@@ -1354,8 +1219,19 @@ export class OverallAvailableReservedStockExportService {
         const key = `loc:${loc.id}_${item.id}`;
         const altKey = item.itemId ? `loc:${loc.id}_${item.itemId}` : key;
 
-        const bf = getMergedValue(bfMap, key, altKey);
-        const m = getMergedMovement(key, altKey);
+        const bf = (bfMap.get(key) ?? bfMap.get(altKey)) || 0;
+        const m = (movementMetricsMap.get(key) ??
+          movementMetricsMap.get(altKey)) || {
+          fromWarehouse: 0,
+          fromOutlet: 0,
+          toWarehouse: 0,
+          toOutlet: 0,
+          exchg: 0,
+          refund: 0,
+          claim: 0,
+          sales: 0,
+          adj: 0,
+        };
 
         const totalTrfIn = m.fromWarehouse + m.fromOutlet;
         const totalTrfOut = m.toWarehouse + m.toOutlet;
@@ -1369,24 +1245,16 @@ export class OverallAvailableReservedStockExportService {
           m.sales +
           m.adj;
 
-        const tr = getMergedValue(transitMap, key, altKey);
-        const rs = getMergedValue(reserveMap, key, altKey);
-        const pi = getMergedValue(pendingInvoiceMap, key, altKey);
-
-        const availLoc = stockLoc - rs;
+        const availLoc = stockLoc;
         locationStocks[loc.id] = availLoc;
         itemAvailableStockSum += availLoc;
 
+        const tr = (transitMap.get(key) ?? transitMap.get(altKey)) || 0;
         itemTransitSum += tr;
-        itemReservedSum += rs;
-        itemPendingInvoiceSum += pi;
       }
 
       const totalBalance =
-        itemAvailableStockSum +
-        itemTransitSum +
-        itemReservedSum +
-        itemPendingInvoiceSum;
+        itemAvailableStockSum + itemTransitSum + itemReservedSum;
       const unitPrice = Number(item.unitPrice || 0);
       const value = totalBalance * unitPrice;
 
@@ -1411,7 +1279,6 @@ export class OverallAvailableReservedStockExportService {
         itemAvailableStockSum === 0 &&
         itemTransitSum === 0 &&
         itemReservedSum === 0 &&
-        itemPendingInvoiceSum === 0 &&
         totalBalance === 0
       ) {
         continue;
@@ -1432,7 +1299,6 @@ export class OverallAvailableReservedStockExportService {
         quantity: itemAvailableStockSum,
         transit: itemTransitSum,
         reserved: itemReservedSum,
-        pendingInvoice: itemPendingInvoiceSum,
         total: totalBalance,
         unitPrice,
         value,
@@ -1449,7 +1315,6 @@ export class OverallAvailableReservedStockExportService {
       grandTotals.quantity += itemAvailableStockSum;
       grandTotals.transit += itemTransitSum;
       grandTotals.reserved += itemReservedSum;
-      grandTotals.pendingInvoice += itemPendingInvoiceSum;
       grandTotals.total += totalBalance;
       grandTotals.value += value;
       grandTotals.costingValue += costingValue;
@@ -1489,7 +1354,6 @@ export class OverallAvailableReservedStockExportService {
       quantity: 0,
       transit: 0,
       reserved: 0,
-      pendingInvoice: 0,
       total: 0,
       unitPrice: 0,
       value: 0,
