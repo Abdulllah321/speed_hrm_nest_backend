@@ -245,6 +245,13 @@ export class PosClaimsService {
             id: true,
             orderNumber: true,
             locationId: true,
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                contactNo: true,
+              },
+            },
           },
         },
         items: {
@@ -254,6 +261,7 @@ export class PosClaimsService {
                 id: true,
                 sku: true,
                 description: true,
+                brand: { select: { name: true } },
                 color: { select: { name: true } },
                 size: { select: { name: true } },
               },
@@ -314,7 +322,19 @@ export class PosClaimsService {
     const claim = await this.prisma.posClaim.findUnique({
       where: { id },
       include: {
-        salesOrder: { select: { orderNumber: true, grandTotal: true } },
+        salesOrder: {
+          select: {
+            orderNumber: true,
+            grandTotal: true,
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                contactNo: true,
+              },
+            },
+          },
+        },
         items: {
           include: {
             item: {
@@ -322,6 +342,8 @@ export class PosClaimsService {
                 description: true,
                 sku: true,
                 barCode: true,
+                brand: { select: { name: true } },
+                color: { select: { name: true } },
                 size: { select: { name: true } },
               },
             },
@@ -450,9 +472,9 @@ export class PosClaimsService {
         },
       });
       if (!claim) throw new NotFoundException('Claim not found');
-      if (!['SUBMITTED', 'UNDER_REVIEW'].includes(claim.status)) {
+      if (['COMPLETED', 'ACKNOWLEDGED'].includes(claim.status)) {
         throw new BadRequestException(
-          `Claim cannot be reviewed in status: ${claim.status}`,
+          `Claim cannot be reviewed or edited after it has been acknowledged`,
         );
       }
 
@@ -475,32 +497,8 @@ export class PosClaimsService {
             );
             if (!claimItem) continue;
 
-            const wasAlreadyDecided = [
-              'APPROVED',
-              'PARTIALLY_APPROVED',
-              'REJECTED',
-            ].includes(claimItem.itemStatus);
-
-            let approvedQty = claimItem.approvedQty;
-            let itemStatus = claimItem.itemStatus;
-            let approvedAmount = new Decimal(claimItem.approvedAmount);
-
-            if (wasAlreadyDecided) {
-              if (
-                itemStatus === 'APPROVED' ||
-                itemStatus === 'PARTIALLY_APPROVED'
-              ) {
-                anyApproved = true;
-              }
-              totalApproved = totalApproved.add(approvedAmount);
-              if (itemStatus !== 'APPROVED') {
-                allApproved = false;
-              }
-              continue;
-            }
-
-            // Process decision for pending items
-            itemStatus = (itemDecision as any).status || 'REJECTED';
+            let itemStatus = (itemDecision as any).status || 'REJECTED';
+            let approvedQty = 0;
 
             if (itemStatus === 'PENDING') {
               anyPending = true;
@@ -508,99 +506,49 @@ export class PosClaimsService {
               approvedQty = 0;
             } else if (itemStatus === 'REJECTED' || itemStatus === 'MENDED') {
               approvedQty = 0;
+              allApproved = false;
             } else {
               // APPROVED or PARTIALLY_APPROVED
               approvedQty = Math.min(
-                Math.max(0, itemDecision.approvedQty),
+                Math.max(
+                  0,
+                  itemDecision.approvedQty !== undefined
+                    ? itemDecision.approvedQty
+                    : claimItem.claimedQty,
+                ),
                 claimItem.claimedQty,
               );
               if (approvedQty === 0) {
                 itemStatus = 'REJECTED';
+                allApproved = false;
               } else if (approvedQty === claimItem.claimedQty) {
                 itemStatus = 'APPROVED';
               } else {
                 itemStatus = 'PARTIALLY_APPROVED';
+                allApproved = false;
               }
             }
 
-            approvedAmount = new Decimal(claimItem.unitPaidPrice).mul(
+            const approvedAmount = new Decimal(claimItem.unitPaidPrice).mul(
               approvedQty,
             );
 
             if (approvedQty > 0) {
               anyApproved = true;
-
-              // Get item details for transfer request
-              const itemDetails = await tx.item.findUnique({
-                where: { id: claimItem.itemId },
-                select: { sku: true, description: true },
-              });
-
-              newlyApprovedItems.push({
-                itemId: claimItem.itemId,
-                approvedQty,
-                sku: itemDetails?.sku || 'UNKNOWN',
-              });
-
               newApprovedAmount = newApprovedAmount.add(approvedAmount);
-            }
-            if (itemStatus !== 'APPROVED') {
-              allApproved = false;
             }
 
             totalApproved = totalApproved.add(approvedAmount);
 
-            if (itemStatus === 'PARTIALLY_APPROVED') {
-              const remainingQty = claimItem.claimedQty - approvedQty;
-              const remainingClaimedAmt = new Decimal(
-                claimItem.unitPaidPrice,
-              ).mul(remainingQty);
-              const remainingStatus =
-                (itemDecision as any).remainingStatus === 'PENDING'
-                  ? 'PENDING'
-                  : 'REJECTED';
-
-              if (remainingStatus === 'PENDING') {
-                anyPending = true;
-              }
-
-              await tx.posClaimItem.update({
-                where: { id: itemDecision.claimItemId },
-                data: {
-                  claimedQty: approvedQty,
-                  approvedQty,
-                  claimedAmount: approvedAmount,
-                  approvedAmount,
-                  itemStatus: 'APPROVED',
-                  reviewNotes: itemDecision.reviewNotes || null,
-                },
-              });
-
-              await tx.posClaimItem.create({
-                data: {
-                  claimId: claim.id,
-                  salesOrderItemId: claimItem.salesOrderItemId,
-                  itemId: claimItem.itemId,
-                  claimedQty: remainingQty,
-                  approvedQty: 0,
-                  unitPaidPrice: claimItem.unitPaidPrice,
-                  claimedAmount: remainingClaimedAmt,
-                  approvedAmount: 0,
-                  itemStatus: remainingStatus,
-                  reviewNotes: itemDecision.reviewNotes || null,
-                },
-              });
-            } else {
-              await tx.posClaimItem.update({
-                where: { id: itemDecision.claimItemId },
-                data: {
-                  approvedQty,
-                  approvedAmount,
-                  itemStatus,
-                  reviewNotes: itemDecision.reviewNotes || null,
-                },
-              });
-            }
+            await tx.posClaimItem.update({
+              where: { id: itemDecision.claimItemId },
+              data: {
+                approvedQty,
+                approvedAmount,
+                itemStatus,
+                reviewNotes: itemDecision.reviewNotes || null,
+              },
+            });
           }
 
           const allMended = dto.items.every(
@@ -627,6 +575,14 @@ export class PosClaimsService {
               reviewedBy: reviewedBy || null,
             },
           });
+
+          // Cancel pending auto-generated transfer request if claim is no longer approved
+          if (!anyApproved && claim.transferRequestId) {
+            await tx.transferRequest.updateMany({
+              where: { id: claim.transferRequestId, status: 'PENDING' },
+              data: { status: 'CANCELLED' },
+            });
+          }
         },
         {
           maxWait: 10000,
@@ -784,9 +740,9 @@ export class PosClaimsService {
 
       if (!claim) throw new NotFoundException('Claim not found');
 
-      if (!['SUBMITTED', 'UNDER_REVIEW'].includes(claim.status)) {
+      if (['COMPLETED', 'ACKNOWLEDGED'].includes(claim.status)) {
         throw new BadRequestException(
-          `Cannot reject claim in status: ${claim.status}`,
+          `Cannot reject claim in status: ${claim.status}. It has already been acknowledged.`,
         );
       }
 
@@ -814,6 +770,14 @@ export class PosClaimsService {
             reviewedBy: rejectedBy || null,
           },
         });
+
+        // Cancel pending auto-generated transfer request if exists
+        if (claim.transferRequestId) {
+          await tx.transferRequest.updateMany({
+            where: { id: claim.transferRequestId, status: 'PENDING' },
+            data: { status: 'CANCELLED' },
+          });
+        }
       });
 
       const updated = await this.findOne(id);
@@ -1149,9 +1113,20 @@ export class PosClaimsService {
             );
           }
 
-          // Resolve Warehouses (for schema integrity)
-          let outletWarehouseId = outletLocation.warehouseId;
-          let plmWarehouseId = plmLocation.warehouseId;
+          // Resolve Warehouses - Central Logistic Warehouse (C40001 / LOGISTIC AREA)
+          const logisticWarehouse = await tx.warehouse.findFirst({
+            where: {
+              OR: [
+                { code: 'C40001' },
+                { name: { contains: 'LOGISTIC', mode: 'insensitive' } },
+              ],
+              isActive: true,
+            },
+            select: { id: true, name: true, code: true },
+          });
+
+          let outletWarehouseId = outletLocation.warehouseId || logisticWarehouse?.id;
+          let plmWarehouseId = plmLocation.warehouseId || logisticWarehouse?.id;
 
           if (!outletWarehouseId || !plmWarehouseId) {
             const defaultWarehouse = await tx.warehouse.findFirst({
