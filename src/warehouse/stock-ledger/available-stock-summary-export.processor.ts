@@ -17,6 +17,7 @@ export interface AvailableStockSummaryExportJobData {
   tenantDbUrl: string;
   locationId?: string;
   warehouseId?: string;
+  asOfDate?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -75,14 +76,43 @@ export class AvailableStockSummaryExportProcessor {
   @Process('generate-report-preview')
   async handleReportPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
+
+    const existing =
+      this.availableStockSummaryService.getReportPreviewResult(jobId);
+    if (existing) {
+      this.logger.log(
+        `[ReportPreview ${jobId}] Preview result already generated and available. Skipping computation.`,
+      );
+      return;
+    }
+
+    if (this.availableStockSummaryService.isJobCancelled(jobId)) {
+      this.logger.log(
+        `[ReportPreview ${jobId}] Job was cancelled by user before starting. Skipping.`,
+      );
+      return;
+    }
+
+    const safeProgress = async (percent: number, message: string) => {
+      try {
+        if (!this.availableStockSummaryService.isJobCancelled(jobId)) {
+          await job.progress({ percent, message });
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[ReportPreview ${jobId}] Progress update suppressed: ${err.message}`,
+        );
+      }
+    };
+
     this.logger.log(
       `[ReportPreview ${jobId}] Starting background preview computation`,
     );
     try {
-      await job.progress({
-        percent: 5,
-        message: 'Worker thread started. Connecting to database...',
-      });
+      await safeProgress(
+        5,
+        'Worker thread started. Connecting to database...',
+      );
       const prisma =
         tenantId && tenantDbUrl
           ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
@@ -95,7 +125,7 @@ export class AvailableStockSummaryExportProcessor {
             ...opts,
             previewJobId: jobId,
             onProgress: async (percent: number, message: string) => {
-              await job.progress({ percent, message });
+              await safeProgress(percent, message);
             },
           },
         );
@@ -107,20 +137,23 @@ export class AvailableStockSummaryExportProcessor {
         return;
       }
 
-      await job.progress({
-        percent: 90,
-        message: 'Compressing report payload & caching result...',
-      });
+      await safeProgress(
+        90,
+        'Compressing report payload & caching result...',
+      );
       this.availableStockSummaryService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({
-        percent: 100,
-        message: 'Report computation complete!',
-      });
+      await safeProgress(100, 'Report computation complete!');
       this.logger.log(
         `[ReportPreview ${jobId}] Successfully generated and saved preview result`,
       );
     } catch (err: any) {
+      if (this.availableStockSummaryService.isJobCancelled(jobId)) {
+        this.logger.warn(
+          `[ReportPreview ${jobId}] Error during cancelled job: ${err.message}`,
+        );
+        return;
+      }
       this.logger.error(
         `[ReportPreview ${jobId}] Failed: ${err.message}`,
         err.stack,

@@ -78,11 +78,43 @@ export class StockTransactionDetailExportProcessor {
   @Process('generate-report-preview')
   async handleReportPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
+
+    const existing = this.reportService.getReportPreviewResult(jobId);
+    if (existing) {
+      this.logger.log(
+        `[ReportPreview ${jobId}] Preview result already generated and available. Skipping computation.`,
+      );
+      return;
+    }
+
+    if (this.reportService.isJobCancelled(jobId)) {
+      this.logger.log(
+        `[ReportPreview ${jobId}] Job was cancelled by user before starting. Skipping.`,
+      );
+      return;
+    }
+
+    const safeProgress = async (progressObj: {
+      percent: number;
+      stage: string;
+      message: string;
+    }) => {
+      try {
+        if (!this.reportService.isJobCancelled(jobId)) {
+          await job.progress(progressObj);
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[ReportPreview ${jobId}] Progress update suppressed: ${err.message}`,
+        );
+      }
+    };
+
     this.logger.log(
       `[ReportPreview ${jobId}] Starting background preview computation`,
     );
     try {
-      await job.progress({
+      await safeProgress({
         percent: 5,
         stage: 'INIT',
         message: 'Connecting to database & initializing query pipeline...',
@@ -92,13 +124,13 @@ export class StockTransactionDetailExportProcessor {
           ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
           : new PrismaService({ tenantId, tenantDbUrl } as any);
 
-      await job.progress({
+      await safeProgress({
         percent: 25,
         stage: 'FETCH_CATALOG',
         message: 'Querying active catalog items & brand hierarchy...',
       });
 
-      await job.progress({
+      await safeProgress({
         percent: 45,
         stage: 'FETCH_TRANSACTIONS',
         message:
@@ -118,7 +150,7 @@ export class StockTransactionDetailExportProcessor {
         return;
       }
 
-      await job.progress({
+      await safeProgress({
         percent: 85,
         stage: 'INDEX_PAYLOAD',
         message:
@@ -126,7 +158,7 @@ export class StockTransactionDetailExportProcessor {
       });
       this.reportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({
+      await safeProgress({
         percent: 100,
         stage: 'READY',
         message: 'Report computation complete! Rendering table view...',
@@ -135,6 +167,12 @@ export class StockTransactionDetailExportProcessor {
         `[ReportPreview ${jobId}] Successfully generated and saved preview result`,
       );
     } catch (err: any) {
+      if (this.reportService.isJobCancelled(jobId)) {
+        this.logger.warn(
+          `[ReportPreview ${jobId}] Error during cancelled job: ${err.message}`,
+        );
+        return;
+      }
       this.logger.error(
         `[ReportPreview ${jobId}] Failed: ${err.message}`,
         err.stack,

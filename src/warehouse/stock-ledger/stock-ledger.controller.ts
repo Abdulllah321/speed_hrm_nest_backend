@@ -421,6 +421,7 @@ export class StockLedgerController {
   @UseGuards(JwtAuthGuard)
   async getValuationReport(
     @Query('locationId') locationId?: string,
+    @Query('asOfDate') asOfDate?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('summaryOnly') summaryOnly?: string,
@@ -435,6 +436,7 @@ export class StockLedgerController {
     const resData =
       await this.stockValuationExportService.getValuationReportData({
         locationId,
+        asOfDate,
         startDate,
         endDate,
         summaryOnly: summaryOnly === 'true',
@@ -462,6 +464,7 @@ export class StockLedgerController {
     @Body()
     body: {
       locationId?: string;
+      asOfDate?: string;
       startDate?: string;
       endDate?: string;
       format: 'xlsx' | 'pdf';
@@ -632,6 +635,7 @@ export class StockLedgerController {
   async getAvailableStockSummaryReport(
     @Query('locationId') locationId?: string,
     @Query('warehouseId') warehouseId?: string,
+    @Query('asOfDate') asOfDate?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('reportType') reportType?: 'merged' | 'separate',
@@ -649,6 +653,7 @@ export class StockLedgerController {
         {
           locationId,
           warehouseId,
+          asOfDate,
           startDate,
           endDate,
           reportType,
@@ -681,6 +686,7 @@ export class StockLedgerController {
     body: {
       locationId?: string;
       warehouseId?: string;
+      asOfDate?: string;
       startDate?: string;
       endDate?: string;
       reportType?: 'merged' | 'separate';
@@ -747,6 +753,7 @@ export class StockLedgerController {
     body: {
       locationId?: string;
       warehouseId?: string;
+      asOfDate?: string;
       startDate?: string;
       endDate?: string;
       format: 'xlsx' | 'pdf';
@@ -805,6 +812,7 @@ export class StockLedgerController {
     @Body()
     body: {
       locationId?: string;
+      asOfDate?: string;
       startDate?: string;
       endDate?: string;
       summaryOnly?: boolean;

@@ -18,6 +18,7 @@ export interface QueueAvailableStockSummaryExportOptions {
   userId: string;
   locationId?: string;
   warehouseId?: string;
+  asOfDate?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -116,6 +117,7 @@ export class AvailableStockSummaryExportService {
     userId: string;
     locationId?: string;
     warehouseId?: string;
+    asOfDate?: string;
     startDate?: string;
     endDate?: string;
     reportType?: 'merged' | 'separate';
@@ -150,7 +152,11 @@ export class AvailableStockSummaryExportService {
             );
             if (wJob.data?.jobId)
               this.cancelledPreviewJobIds.add(wJob.data.jobId);
-            await wJob.remove();
+            try {
+              await wJob.remove();
+            } catch (e) {
+              /* ignore if already removed or transitioned */
+            }
           }
         }
 
@@ -182,6 +188,7 @@ export class AvailableStockSummaryExportService {
         tenantDbUrl,
         locationId: opts.locationId,
         warehouseId: opts.warehouseId,
+        asOfDate: opts.asOfDate,
         startDate: opts.startDate,
         endDate: opts.endDate,
         reportType: opts.reportType || 'merged',
@@ -378,6 +385,7 @@ export class AvailableStockSummaryExportService {
         tenantDbUrl,
         locationId: opts.locationId,
         warehouseId: opts.warehouseId,
+        asOfDate: opts.asOfDate,
         startDate: opts.startDate,
         endDate: opts.endDate,
         format: opts.format,
@@ -505,6 +513,7 @@ export class AvailableStockSummaryExportService {
   async getAvailableStockSummaryReportData(opts: {
     locationId?: string;
     warehouseId?: string;
+    asOfDate?: string;
     startDate?: string;
     endDate?: string;
     reportType?: 'merged' | 'separate';
@@ -532,6 +541,7 @@ export class AvailableStockSummaryExportService {
     opts: {
       locationId?: string;
       warehouseId?: string;
+      asOfDate?: string;
       startDate?: string;
       endDate?: string;
       reportType?: 'merged' | 'separate';
@@ -551,6 +561,7 @@ export class AvailableStockSummaryExportService {
     const {
       locationId,
       warehouseId,
+      asOfDate: asOfStr,
       startDate: startStr,
       endDate: endStr,
       reportType = 'merged',
@@ -634,10 +645,20 @@ export class AvailableStockSummaryExportService {
       return new Date(fyYear, 6, 1, 0, 0, 0, 0);
     };
 
+    const endDate = asOfStr
+      ? new Date(asOfStr)
+      : endStr
+        ? new Date(endStr)
+        : new Date(now);
+    if (asOfStr && asOfStr.length === 10) {
+      endDate.setHours(23, 59, 59, 999);
+    } else if (endStr && endStr.length === 10) {
+      endDate.setHours(23, 59, 59, 999);
+    }
+
     const startDate = startStr
       ? new Date(startStr)
-      : getDefaultFiscalYearStart(now);
-    const endDate = endStr ? new Date(endStr) : new Date(now);
+      : getDefaultFiscalYearStart(endDate);
 
     await onProgress?.(15, 'Loading outlet and warehouse location metadata...');
 
@@ -1046,33 +1067,27 @@ export class AvailableStockSummaryExportService {
       `Joining product catalog, brands, categories & size details for ${activeItemIds.length} active items...`,
     );
 
-    // Single joined query on Item table with Brand, Division, Category, Gender, Silhouette, Size, Color relations
-    const CHUNK_SIZE = 1000;
-    const itemChunks: string[][] = [];
+    const CHUNK_SIZE = 2500;
+    const items: any[] = [];
     for (let i = 0; i < activeItemIds.length; i += CHUNK_SIZE) {
-      itemChunks.push(activeItemIds.slice(i, i + CHUNK_SIZE));
+      if (checkCancelled()) break;
+      const chunk = activeItemIds.slice(i, i + CHUNK_SIZE);
+      const batchItems = await prisma.item.findMany({
+        where: {
+          OR: [{ id: { in: chunk } }, { itemId: { in: chunk } }],
+        },
+        include: {
+          brand: true,
+          division: true,
+          category: true,
+          gender: true,
+          silhouette: true,
+          size: true,
+          color: true,
+        },
+      });
+      items.push(...batchItems);
     }
-
-    const itemsNested = await Promise.all(
-      itemChunks.map((chunk) =>
-        prisma.item.findMany({
-          where: {
-            OR: [{ id: { in: chunk } }, { itemId: { in: chunk } }],
-          },
-          include: {
-            brand: true,
-            division: true,
-            category: true,
-            gender: true,
-            silhouette: true,
-            size: true,
-            color: true,
-          },
-        }),
-      ),
-    );
-
-    const items = itemsNested.flat();
     if (items.length === 0 || isAborted?.()) {
       return {
         root: [],

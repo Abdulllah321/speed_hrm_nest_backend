@@ -16,6 +16,7 @@ export interface StockValuationExportJobData {
   tenantId: string;
   tenantDbUrl: string;
   locationId?: string;
+  asOfDate?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -422,14 +423,43 @@ export class StockValuationExportProcessor {
   @Process('generate-valuation-preview')
   async handleValuationPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
+
+    const existing =
+      this.stockValuationExportService.getReportPreviewResult(jobId);
+    if (existing) {
+      this.logger.log(
+        `[ValuationPreview ${jobId}] Valuation preview result already generated and available. Skipping computation.`,
+      );
+      return;
+    }
+
+    if (this.stockValuationExportService.isJobCancelled(jobId)) {
+      this.logger.log(
+        `[ValuationPreview ${jobId}] Job was cancelled by user before starting. Skipping.`,
+      );
+      return;
+    }
+
+    const safeProgress = async (percent: number, message: string) => {
+      try {
+        if (!this.stockValuationExportService.isJobCancelled(jobId)) {
+          await job.progress({ percent, message });
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[ValuationPreview ${jobId}] Progress update suppressed: ${err.message}`,
+        );
+      }
+    };
+
     this.logger.log(
       `[ValuationPreview ${jobId}] Starting background valuation preview computation`,
     );
     try {
-      await job.progress({
-        percent: 5,
-        message: 'Worker thread active. Connecting to database...',
-      });
+      await safeProgress(
+        5,
+        'Worker thread active. Connecting to database...',
+      );
       const prisma =
         tenantId && tenantDbUrl
           ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
@@ -442,7 +472,7 @@ export class StockValuationExportProcessor {
             ...opts,
             previewJobId: jobId,
             onProgress: async (percent: number, message: string) => {
-              await job.progress({ percent, message });
+              await safeProgress(percent, message);
             },
           },
         );
@@ -454,20 +484,23 @@ export class StockValuationExportProcessor {
         return;
       }
 
-      await job.progress({
-        percent: 90,
-        message: 'Compressing report payload & caching valuation preview...',
-      });
+      await safeProgress(
+        90,
+        'Compressing report payload & caching valuation preview...',
+      );
       this.stockValuationExportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({
-        percent: 100,
-        message: 'Stock valuation report computation complete!',
-      });
+      await safeProgress(100, 'Stock valuation report computation complete!');
       this.logger.log(
         `[ValuationPreview ${jobId}] Successfully generated and saved valuation preview result`,
       );
     } catch (err: any) {
+      if (this.stockValuationExportService.isJobCancelled(jobId)) {
+        this.logger.warn(
+          `[ValuationPreview ${jobId}] Error during cancelled job: ${err.message}`,
+        );
+        return;
+      }
       this.logger.error(
         `[ValuationPreview ${jobId}] Failed: ${err.message}`,
         err.stack,
@@ -484,6 +517,7 @@ export class StockValuationExportProcessor {
       tenantId,
       tenantDbUrl,
       locationId,
+      asOfDate: asOfStr,
       startDate: startStr,
       endDate: endStr,
       format,
@@ -502,7 +536,7 @@ export class StockValuationExportProcessor {
       showSilhouette,
       showArticle,
       showVariant,
-    } = job.data;
+    } = job.data as any;
     this.logger.log(
       `[StockValuationExport ${jobId}] Starting ${format.toUpperCase()} (${exportType || 'hierarchical'}) export for user ${userId}`,
     );
@@ -529,10 +563,22 @@ export class StockValuationExportProcessor {
       }
 
       const now = new Date();
-      const startDate = startStr
-        ? new Date(startStr)
-        : new Date(now.getFullYear(), now.getMonth(), 1);
-      const endDate = endStr ? new Date(endStr) : new Date(now);
+      const getDefaultFiscalYearStart = (ref: Date) => {
+        const year = ref.getFullYear();
+        const month = ref.getMonth(); // 0 = Jan, 6 = July
+        const fyYear = month >= 6 ? year : year - 1;
+        return new Date(fyYear, 6, 1, 0, 0, 0, 0);
+      };
+
+      const endDate = asOfStr
+        ? new Date(asOfStr)
+        : endStr
+          ? new Date(endStr)
+          : new Date(now);
+      endDate.setHours(23, 59, 59, 999);
+
+      const fyStartDate = getDefaultFiscalYearStart(endDate);
+      const startDate = startStr ? new Date(startStr) : fyStartDate;
 
       await job.progress(20);
 
@@ -554,6 +600,7 @@ export class StockValuationExportProcessor {
             prisma,
             {
               locationId,
+              asOfDate: asOfStr,
               startDate: startStr,
               endDate: endStr,
               filterBrands,

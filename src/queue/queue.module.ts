@@ -1,3 +1,4 @@
+
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 
@@ -30,6 +31,11 @@ import { BullModule } from '@nestjs/bull';
               timeout: 4 * 60 * 60 * 1000, // 4 hour timeout — enough for 3 lakh records
               removeOnComplete: false,
               removeOnFail: false,
+            },
+            settings: {
+              lockDuration: 300000, // 5 minutes lock so heavy report jobs don't stall prematurely
+              stalledInterval: 60000, // Check for stalled jobs every 1 minute
+              maxStalledCount: 0, // Never re-run a stalled job (prevents duplicated processor runs)
             },
           };
         } catch (error) {

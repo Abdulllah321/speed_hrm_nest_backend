@@ -13,6 +13,7 @@ import { chunkArray } from '../../common/utils/chunk.util';
 export interface QueueStockValuationExportOptions {
   userId: string;
   locationId?: string;
+  asOfDate?: string;
   startDate?: string;
   endDate?: string;
   format: 'xlsx' | 'pdf';
@@ -56,6 +57,7 @@ export class StockValuationExportService {
   async queueReportPreview(opts: {
     userId: string;
     locationId?: string;
+    asOfDate?: string;
     startDate?: string;
     endDate?: string;
     summaryOnly?: boolean;
@@ -95,7 +97,11 @@ export class StockValuationExportService {
             );
             if (wJob.data?.jobId)
               this.cancelledPreviewJobIds.add(wJob.data.jobId);
-            await wJob.remove();
+            try {
+              await wJob.remove();
+            } catch (e) {
+              /* ignore removal errors */
+            }
           }
         }
 
@@ -126,6 +132,7 @@ export class StockValuationExportService {
         tenantId,
         tenantDbUrl,
         locationId: opts.locationId,
+        asOfDate: opts.asOfDate,
         startDate: opts.startDate,
         endDate: opts.endDate,
         summaryOnly: !!opts.summaryOnly,
@@ -309,6 +316,7 @@ export class StockValuationExportService {
         tenantId,
         tenantDbUrl,
         locationId: opts.locationId,
+        asOfDate: opts.asOfDate,
         startDate: opts.startDate,
         endDate: opts.endDate,
         format: opts.format,
@@ -437,6 +445,7 @@ export class StockValuationExportService {
   // Get report data in memory for inline UI rendering
   async getValuationReportData(opts: {
     locationId?: string;
+    asOfDate?: string;
     startDate?: string;
     endDate?: string;
     summaryOnly?: boolean;
@@ -459,8 +468,11 @@ export class StockValuationExportService {
     prisma: PrismaClient | PrismaService,
     opts: {
       locationId?: string;
+      asOfDate?: string;
       startDate?: string;
       endDate?: string;
+      previewJobId?: string;
+      isAborted?: () => boolean;
       summaryOnly?: boolean;
       showBrand?: boolean;
       showDivision?: boolean;
@@ -481,8 +493,11 @@ export class StockValuationExportService {
   ) {
     const {
       locationId,
+      asOfDate: asOfStr,
       startDate: startStr,
       endDate: endStr,
+      previewJobId,
+      isAborted,
       summaryOnly,
       showBrand,
       showDivision,
@@ -493,6 +508,20 @@ export class StockValuationExportService {
       showVariant,
       onProgress,
     } = opts;
+
+    const checkCancelled = () =>
+      Boolean(
+        isAborted?.() || (previewJobId && this.isJobCancelled(previewJobId)),
+      );
+
+    if (checkCancelled()) {
+      return {
+        root: [],
+        grandTotals: this.createEmptyValuationTotals(),
+        items: [],
+        itemMetricsMap: new Map(),
+      };
+    }
 
     await onProgress?.(10, 'Discovering distinct items from stock ledgers...');
 
@@ -505,10 +534,15 @@ export class StockValuationExportService {
       return new Date(fyYear, 6, 1, 0, 0, 0, 0);
     };
 
-    const startDate = startStr
-      ? new Date(startStr)
-      : getDefaultFiscalYearStart(now);
-    const endDate = endStr ? new Date(endStr) : new Date(now);
+    const endDate = asOfStr
+      ? new Date(asOfStr)
+      : endStr
+        ? new Date(endStr)
+        : new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    const fyStartDate = getDefaultFiscalYearStart(endDate);
+    const startDate = startStr ? new Date(startStr) : fyStartDate;
 
     // Resolve nearest Fiscal Opening Snapshot date to prune scanning closed historical fiscal years
     const snapshotDate =
@@ -558,33 +592,33 @@ export class StockValuationExportService {
       'Loading product catalog, brands, categories & valuation settings...',
     );
 
-    const itemChunks = chunkArray(uniqueItemIds, 1000);
-    const itemsNested = await Promise.all(
-      itemChunks.map((chunk) =>
-        prisma.item.findMany({
-          where: { id: { in: chunk } },
-          include: {
-            color: true,
-            size: true,
-            gender: true,
-            category: true,
-            division: true,
-            brand: true,
-            silhouette: true,
-          },
-        }),
-      ),
-    );
-    const items = itemsNested.flat();
+    const itemChunks = chunkArray(uniqueItemIds, 2500);
+    const items: any[] = [];
+    for (const chunk of itemChunks) {
+      if (checkCancelled()) break;
+      const batchItems = await prisma.item.findMany({
+        where: { id: { in: chunk } },
+        include: {
+          color: true,
+          size: true,
+          gender: true,
+          category: true,
+          division: true,
+          brand: true,
+          silhouette: true,
+        },
+      });
+      items.push(...batchItems);
+    }
 
-    const settingsNested = await Promise.all(
-      itemChunks.map((chunk) =>
-        prisma.tenantItemSetting.findMany({
-          where: { itemId: { in: chunk } },
-        }),
-      ),
-    );
-    const tenantSettings = settingsNested.flat();
+    const tenantSettings: any[] = [];
+    for (const chunk of itemChunks) {
+      if (checkCancelled()) break;
+      const batchSettings = await prisma.tenantItemSetting.findMany({
+        where: { itemId: { in: chunk } },
+      });
+      tenantSettings.push(...batchSettings);
+    }
 
     const settingMap = new Map(tenantSettings.map((s) => [s.itemId, s]));
 
@@ -662,6 +696,7 @@ export class StockValuationExportService {
     let chunkIndex = 0;
 
     for (const chunk of matchedItemChunks) {
+      if (checkCancelled()) break;
       chunkIndex++;
       const pct = 60 + Math.floor((chunkIndex / Math.max(1, totalChunks)) * 20);
       await onProgress?.(

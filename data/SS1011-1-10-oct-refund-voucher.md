@@ -1,3 +1,0 @@
-| Name                | Location ID | DocumentNumber       | DocumentDate  | FKInvoiceNumber_Sale | DocumentDate_Sale | Total_Net | Remarks |
-|---------------------|-------------|----------------------|---------------|----------------------|-------------------|-----------|---------|
-| SPEED SPORTS-ONLINE | SS1011      | REF-SSONLINE27-00873 | 10/8/26 14:08 | SI-SSONLINE27-04883  | 10/7/26           | 26600     |         |

@@ -35,22 +35,47 @@ export class InventoryAgingExportProcessor {
       `[InventoryAgingProcessor] Processing preview calculation for job ${jobId} (user: ${userId})`,
     );
 
+    const filePath =
+      this.inventoryAgingExportService.getPreviewFilePath(jobId);
+    if (fs.existsSync(filePath)) {
+      this.logger.log(
+        `[InventoryAgingProcessor] Preview result already generated for ${jobId}. Skipping.`,
+      );
+      return;
+    }
+
+    if (this.inventoryAgingExportService.isJobCancelled(jobId)) {
+      this.logger.log(
+        `[InventoryAgingProcessor] Job ${jobId} was cancelled before starting. Skipping.`,
+      );
+      return;
+    }
+
+    const safeProgress = async (percent: number, message: string) => {
+      try {
+        if (!this.inventoryAgingExportService.isJobCancelled(jobId)) {
+          await job.progress({ percent, message });
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[InventoryAgingProcessor] Progress update suppressed for ${jobId}: ${err.message}`,
+        );
+      }
+    };
+
     const prisma =
       tenantId && tenantDbUrl
         ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
         : this.prismaService;
 
     try {
-      await job.progress({
-        percent: 5,
-        message: 'Initializing aging engine...',
-      });
+      await safeProgress(5, 'Initializing aging engine...');
 
       const onProgress = async (percent: number, message: string) => {
         if (this.inventoryAgingExportService.isJobCancelled(jobId)) {
           throw new Error('JOB_CANCELLED');
         }
-        await job.progress({ percent, message });
+        await safeProgress(percent, message);
       };
 
       const reportData =
@@ -73,8 +98,6 @@ export class InventoryAgingExportProcessor {
 
       const dir = path.join(process.cwd(), 'uploads', 'previews');
       fs.mkdirSync(dir, { recursive: true });
-      const filePath =
-        this.inventoryAgingExportService.getPreviewFilePath(jobId);
 
       const payload =
         (reportData as any)?.status !== undefined
@@ -84,15 +107,15 @@ export class InventoryAgingExportProcessor {
       const gzipped = zlib.gzipSync(Buffer.from(jsonStr, 'utf-8'));
       fs.writeFileSync(filePath, gzipped);
 
-      await job.progress({
-        percent: 100,
-        message: 'Preview calculation completed.',
-      });
+      await safeProgress(100, 'Preview calculation completed.');
       this.logger.log(
         `[InventoryAgingProcessor] Successfully completed preview job ${jobId}`,
       );
     } catch (err: any) {
-      if (err.message === 'JOB_CANCELLED') {
+      if (
+        err.message === 'JOB_CANCELLED' ||
+        this.inventoryAgingExportService.isJobCancelled(jobId)
+      ) {
         this.logger.log(
           `[InventoryAgingProcessor] Job ${jobId} was superseded or cancelled.`,
         );

@@ -202,7 +202,11 @@ export class InventoryAgingExportService {
             );
             if (wJob.data?.jobId)
               this.cancelledPreviewJobIds.add(wJob.data.jobId);
-            await wJob.remove();
+            try {
+              await wJob.remove();
+            } catch (e) {
+              /* ignore removal errors */
+            }
           }
         }
 
@@ -363,6 +367,12 @@ export class InventoryAgingExportService {
       onProgress?: (percent: number, message: string) => Promise<void>;
     },
   ) {
+    const { previewJobId, isAborted } = opts;
+    const checkCancelled = () =>
+      Boolean(
+        isAborted?.() || (previewJobId && this.isJobCancelled(previewJobId)),
+      );
+
     const onProgress = opts.onProgress || (async () => {});
     await onProgress(5, 'Initializing inventory aging engine...');
 
@@ -478,17 +488,18 @@ export class InventoryAgingExportService {
       ...new Set(inventoryItems.map((inv: any) => inv.itemId).filter(Boolean)),
     ];
 
-    // Chunk items into 1,000 item batches to avoid database query parameter limits
-    const itemChunks = chunkArray(rawItemIds, 1000);
+    // Chunk items into 2,500 item batches to avoid database query parameter limits and connection pool spikes
+    const itemChunks = chunkArray(rawItemIds, 2500);
 
-    const [
-      itemsNested,
-      tenantSettingsNested,
-      latestLedgerCostsNested,
-      transitItemsNested,
-    ] = await Promise.all([
-      Promise.all(
-        itemChunks.map((chunk) =>
+    const items: any[] = [];
+    const tenantSettings: any[] = [];
+    const latestLedgerCosts: any[] = [];
+    const transitItems: any[] = [];
+
+    for (const chunk of itemChunks) {
+      if (checkCancelled()) break;
+      const [chunkItems, chunkSettings, chunkCosts, chunkTransit] =
+        await Promise.all([
           prisma.item.findMany({
             where: {
               id: { in: chunk },
@@ -502,17 +513,9 @@ export class InventoryAgingExportService {
               size: true,
             },
           }),
-        ),
-      ),
-      Promise.all(
-        itemChunks.map((chunk) =>
           prisma.tenantItemSetting.findMany({
             where: { itemId: { in: chunk } },
           }),
-        ),
-      ),
-      Promise.all(
-        itemChunks.map((chunk) =>
           prisma.stockLedger.findMany({
             where: {
               itemId: { in: chunk },
@@ -531,10 +534,6 @@ export class InventoryAgingExportService {
             orderBy: { createdAt: 'desc' },
             distinct: ['itemId'],
           }),
-        ),
-      ),
-      Promise.all(
-        itemChunks.map((chunk) =>
           prisma.transferRequestItem.findMany({
             where: {
               itemId: { in: chunk },
@@ -569,14 +568,13 @@ export class InventoryAgingExportService {
               },
             },
           }),
-        ),
-      ),
-    ]);
+        ]);
 
-    const items = itemsNested.flat();
-    const tenantSettings = tenantSettingsNested.flat();
-    const latestLedgerCosts = latestLedgerCostsNested.flat();
-    const transitItems = transitItemsNested.flat();
+      items.push(...chunkItems);
+      tenantSettings.push(...chunkSettings);
+      latestLedgerCosts.push(...chunkCosts);
+      transitItems.push(...chunkTransit);
+    }
 
     const transitMap = new Map<string, number>();
     for (const t of transitItems) {

@@ -44,9 +44,9 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       // Return a normal, standalone PrismaClient instance connected to that URL.
       const pool = new Pool({
         connectionString: options.tenantDbUrl,
-        max: 10,
+        max: 20,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 30000,
+        connectionTimeoutMillis: 60000,
       });
 
       pool.on('error', (err) => {
@@ -170,9 +170,9 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
 
       const pool = new Pool({
         connectionString: dbUrl,
-        max: 20, // Max 20 connections per tenant pool
+        max: 30, // Max 30 connections per tenant pool
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 30000, // 30 second connection timeout to prevent rapid pool exhaustion
+        connectionTimeoutMillis: 60000, // 60 second connection timeout to prevent rapid pool exhaustion under high concurrency
       });
 
       pool.on('error', (err) => {

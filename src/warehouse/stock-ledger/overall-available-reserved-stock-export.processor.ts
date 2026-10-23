@@ -46,14 +46,42 @@ export class OverallAvailableReservedStockExportProcessor {
   @Process('generate-report-preview')
   async handleReportPreview(job: Job<any>): Promise<void> {
     const { jobId, tenantId, tenantDbUrl, ...opts } = job.data;
+
+    const existing = this.reportService.getReportPreviewResult(jobId);
+    if (existing) {
+      this.logger.log(
+        `[ReportPreview ${jobId}] Preview result already generated and available. Skipping computation.`,
+      );
+      return;
+    }
+
+    if (this.reportService.isJobCancelled(jobId)) {
+      this.logger.log(
+        `[ReportPreview ${jobId}] Job was cancelled by user before starting. Skipping.`,
+      );
+      return;
+    }
+
+    const safeProgress = async (percent: number, message: string) => {
+      try {
+        if (!this.reportService.isJobCancelled(jobId)) {
+          await job.progress({ percent, message });
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[ReportPreview ${jobId}] Progress update suppressed: ${err.message}`,
+        );
+      }
+    };
+
     this.logger.log(
       `[ReportPreview ${jobId}] Starting background preview computation`,
     );
     try {
-      await job.progress({
-        percent: 5,
-        message: 'Worker thread started. Connecting to database...',
-      });
+      await safeProgress(
+        5,
+        'Worker thread started. Connecting to database...',
+      );
       const prisma =
         tenantId && tenantDbUrl
           ? PrismaService.getTenantClient(tenantId, tenantDbUrl)
@@ -66,7 +94,7 @@ export class OverallAvailableReservedStockExportProcessor {
             ...opts,
             previewJobId: jobId,
             onProgress: async (percent: number, message: string) => {
-              await job.progress({ percent, message });
+              await safeProgress(percent, message);
             },
           },
         );
@@ -78,20 +106,23 @@ export class OverallAvailableReservedStockExportProcessor {
         return;
       }
 
-      await job.progress({
-        percent: 90,
-        message: 'Compressing report payload & caching result...',
-      });
+      await safeProgress(
+        90,
+        'Compressing report payload & caching result...',
+      );
       this.reportService.saveReportPreviewResult(jobId, data);
 
-      await job.progress({
-        percent: 100,
-        message: 'Report computation complete!',
-      });
+      await safeProgress(100, 'Report computation complete!');
       this.logger.log(
         `[ReportPreview ${jobId}] Successfully generated and saved preview result`,
       );
     } catch (err: any) {
+      if (this.reportService.isJobCancelled(jobId)) {
+        this.logger.warn(
+          `[ReportPreview ${jobId}] Error during cancelled job: ${err.message}`,
+        );
+        return;
+      }
       this.logger.error(
         `[ReportPreview ${jobId}] Failed: ${err.message}`,
         err.stack,
@@ -272,6 +303,12 @@ export class OverallAvailableReservedStockExportProcessor {
           {
             header: 'Stock Reserved',
             key: 'reserved',
+            width: 14,
+            align: 'right',
+          },
+          {
+            header: 'Pending Invoice',
+            key: 'pendingInvoice',
             width: 14,
             align: 'right',
           },
@@ -498,6 +535,7 @@ export class OverallAvailableReservedStockExportProcessor {
             quantity: tot.quantity,
             transit: tot.transit,
             reserved: tot.reserved,
+            pendingInvoice: tot.pendingInvoice || 0,
             total: tot.total,
             unitPrice: unitPriceVal,
             discountRate: discountVal,
@@ -568,6 +606,7 @@ export class OverallAvailableReservedStockExportProcessor {
           quantity: grandTotals.quantity,
           transit: grandTotals.transit,
           reserved: grandTotals.reserved,
+          pendingInvoice: grandTotals.pendingInvoice || 0,
           total: grandTotals.total,
           unitPrice: '',
           discountRate: '',
@@ -719,6 +758,7 @@ export class OverallAvailableReservedStockExportProcessor {
             <td class="num">${formatVal(tot.quantity)}</td>
             <td class="num">${formatVal(tot.transit)}</td>
             <td class="num">${formatVal(tot.reserved)}</td>
+            <td class="num">${formatVal(tot.pendingInvoice || 0)}</td>
             <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">-</td>
             <td class="num">${tot.discountRate ? tot.discountRate.toFixed(2) : '-'}</td>
@@ -740,6 +780,7 @@ export class OverallAvailableReservedStockExportProcessor {
             <td class="num">${formatVal(tot.quantity)}</td>
             <td class="num">${formatVal(tot.transit)}</td>
             <td class="num">${formatVal(tot.reserved)}</td>
+            <td class="num">${formatVal(tot.pendingInvoice || 0)}</td>
             <td class="num highlight-tot">${formatVal(tot.total)}</td>
             <td class="num">-</td>
             <td class="num">-</td>
@@ -818,6 +859,7 @@ export class OverallAvailableReservedStockExportProcessor {
               <th class="num">Quantity</th>
               <th class="num">In Transit</th>
               <th class="num">Stock Reserved</th>
+              <th class="num">Pending Invoice</th>
               <th class="num">Total</th>
               <th class="num">Selling Price</th>
               <th class="num">Disc %</th>
@@ -835,6 +877,7 @@ export class OverallAvailableReservedStockExportProcessor {
               <td class="num">${formatVal(grandTotals.quantity)}</td>
               <td class="num">${formatVal(grandTotals.transit)}</td>
               <td class="num">${formatVal(grandTotals.reserved)}</td>
+              <td class="num">${formatVal(grandTotals.pendingInvoice || 0)}</td>
               <td class="num">${formatVal(grandTotals.total)}</td>
               <td class="num">-</td>
               <td class="num">-</td>

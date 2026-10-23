@@ -688,16 +688,15 @@ export class StockLedgerService {
       ...new Set(groupBy.map((r) => r.locationId).filter(Boolean)),
     ] as string[];
 
-    const itemChunks = chunkArray(itemIds, 1000);
-    const itemsNested = await Promise.all(
-      itemChunks.map((chunk) =>
-        (this.prisma as any).item.findMany({
-          where: { id: { in: chunk } },
-          select: { id: true, itemId: true, sku: true, description: true },
-        }),
-      ),
-    );
-    const items = itemsNested.flat();
+    const itemChunks = chunkArray(itemIds, 2500);
+    const items: any[] = [];
+    for (const chunk of itemChunks) {
+      const chunkItems = await (this.prisma as any).item.findMany({
+        where: { id: { in: chunk } },
+        select: { id: true, itemId: true, sku: true, description: true },
+      });
+      items.push(...chunkItems);
+    }
 
     const warehouses =
       warehouseIds.length > 0
@@ -715,9 +714,10 @@ export class StockLedgerService {
           })
         : [];
 
-    const reservationsNested = await Promise.all(
-      itemChunks.map((chunk) =>
-        this.prisma.stockReserve.groupBy({
+    const reservations: any[] = [];
+    if (warehouseIds.length > 0) {
+      for (const chunk of itemChunks) {
+        const chunkRes = await this.prisma.stockReserve.groupBy({
           by: ['itemId', 'warehouseId'],
           where: {
             itemId: { in: chunk },
@@ -727,10 +727,10 @@ export class StockLedgerService {
           _sum: {
             quantity: true,
           },
-        }),
-      ),
-    );
-    const reservations = reservationsNested.flat();
+        });
+        reservations.push(...chunkRes);
+      }
+    }
 
     const itemMap = new Map(items.map((i) => [i.id, i]));
     const warehouseMap = new Map(warehouses.map((w) => [w.id, w]));
