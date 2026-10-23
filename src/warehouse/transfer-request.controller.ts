@@ -111,6 +111,48 @@ export class TransferRequestController {
     return { status: true, data: result.data, meta: result.meta };
   }
 
+  @Get('report-summary')
+  @Permissions(
+    'erp.report.inventory.stock-transfers.view',
+    'erp.report.inventory.stock-transfers.export',
+    'erp.inventory.stock-transfer.read',
+  )
+  @ApiOperation({
+    summary:
+      'Get comprehensive stock transfer movement and status report summary across all outlets and warehouses',
+  })
+  async getTransferReportSummary(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('transferType') transferType?: string,
+    @Query('status') status?: string,
+    @Query('fromLocationId') fromLocationId?: string,
+    @Query('toLocationId') toLocationId?: string,
+    @Query('fromWarehouseId') fromWarehouseId?: string,
+    @Query('toWarehouseId') toWarehouseId?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Req() req?: any,
+  ) {
+    const result =
+      await this.transferRequestService.getTransferReportSummary({
+        startDate,
+        endDate,
+        transferType,
+        status,
+        fromLocationId,
+        toLocationId,
+        fromWarehouseId,
+        toWarehouseId,
+        search,
+        page: page ? parseInt(page, 10) : undefined,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        userContext: req?.user,
+      });
+    return { status: true, data: result };
+  }
+
   @Get('incoming')
   @Permissions('pos.inventory.receiving.view')
   @ApiOperation({ summary: 'Get incoming pending requests for a location' })

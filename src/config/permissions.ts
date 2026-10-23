@@ -2346,6 +2346,18 @@ export const PERMISSIONS = [
     description: 'View Stock Transaction Details',
   },
   {
+    name: 'erp.report.inventory.stock-transfers.view',
+    module: 'erp.report.inventory',
+    action: 'view',
+    description: 'View Stock Transfer Movement & Status Report (ERP)',
+  },
+  {
+    name: 'erp.report.inventory.stock-transfers.export',
+    module: 'erp.report.inventory',
+    action: 'export',
+    description: 'Export Stock Transfer Movement & Status Report',
+  },
+  {
     name: 'erp.report.sales.gross-summary.view',
     description: 'View Gross Sales Summary',
   },

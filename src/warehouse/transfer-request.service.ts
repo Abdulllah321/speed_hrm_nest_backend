@@ -1748,11 +1748,13 @@ export class TransferRequestService {
       }
     }
 
-    // Resolve User Names (Maker, Checker, Authorizer)
+    // Resolve User Names (Maker, Checker, Authorizer, Source Approver, Receiver)
     const userIds = [
       req.createdById,
       req.checkedById,
       req.authorizedById,
+      req.sourceApprovedById,
+      req.approvedById,
     ].filter(Boolean) as string[];
     if (userIds.length > 0) {
       const users = await this.prismaMaster.user.findMany({
@@ -1760,7 +1762,7 @@ export class TransferRequestService {
         select: { id: true, firstName: true, lastName: true },
       });
       const userMap = new Map(
-        users.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]),
+        users.map((u) => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim()]),
       );
       req.creatorName = req.createdById
         ? userMap.get(req.createdById) || 'Unknown User'
@@ -1771,10 +1773,18 @@ export class TransferRequestService {
       req.authorizerName = req.authorizedById
         ? userMap.get(req.authorizedById) || 'Unknown User'
         : null;
+      req.sourceApprovedByName = req.sourceApprovedById
+        ? userMap.get(req.sourceApprovedById) || 'Unknown User'
+        : null;
+      req.acceptedByName = req.approvedById
+        ? userMap.get(req.approvedById) || 'Unknown User'
+        : null;
     } else {
       req.creatorName = null;
       req.checkerName = null;
       req.authorizerName = null;
+      req.sourceApprovedByName = null;
+      req.acceptedByName = null;
     }
 
     return req;
@@ -3194,6 +3204,378 @@ export class TransferRequestService {
     return {
       data: await Promise.all(requests.map((req) => this.enrichRequest(req))),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /**
+   * Comprehensive report of all transfers across all outlets and warehouses
+   * including approval/accept status, user names, items breakdown, and KPI totals.
+   */
+  async getTransferReportSummary(params: {
+    startDate?: string;
+    endDate?: string;
+    transferType?: string;
+    status?: string;
+    fromLocationId?: string;
+    toLocationId?: string;
+    fromWarehouseId?: string;
+    toWarehouseId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+    userContext?: any;
+  }) {
+    const andClauses: any[] = [];
+
+    // Filter by dates
+    if (params.startDate || params.endDate) {
+      const dateFilter: any = {};
+      if (params.startDate) dateFilter.gte = new Date(params.startDate);
+      if (params.endDate) {
+        const d = new Date(params.endDate);
+        d.setHours(23, 59, 59, 999);
+        dateFilter.lte = d;
+      }
+      andClauses.push({ createdAt: dateFilter });
+    }
+
+    // Filter by transfer type
+    if (params.transferType && params.transferType !== 'all') {
+      andClauses.push({ transferType: params.transferType });
+    }
+
+    // Filter by status
+    if (params.status && params.status !== 'all') {
+      const s = params.status.toUpperCase();
+      if (s === 'PENDING') {
+        andClauses.push({
+          status: {
+            in: [
+              'PENDING',
+              'PENDING_CHECKER',
+              'CHECKED',
+              'AUTHORIZED',
+              'SOURCE_APPROVED',
+              'PENDING_AUTHORIZER',
+            ],
+          },
+        });
+      } else if (s === 'IN_TRANSIT') {
+        andClauses.push({
+          status: { in: ['IN_TRANSIT', 'SOURCE_APPROVED'] },
+        });
+      } else if (s === 'COMPLETED') {
+        andClauses.push({ status: 'COMPLETED' });
+      } else if (s === 'CANCELLED' || s === 'REJECTED') {
+        andClauses.push({ status: { in: ['CANCELLED', 'REJECTED'] } });
+      } else {
+        andClauses.push({ status: params.status });
+      }
+    }
+
+    // Source filtering (either warehouse or location)
+    if (params.fromLocationId && params.fromLocationId !== 'all') {
+      const fromIds = params.fromLocationId.includes(',')
+        ? params.fromLocationId.split(',').map((s) => s.trim()).filter(Boolean)
+        : [params.fromLocationId];
+      if (fromIds.length === 1) {
+        andClauses.push({
+          OR: [
+            { fromLocationId: fromIds[0] },
+            { fromWarehouseId: fromIds[0] },
+          ],
+        });
+      } else if (fromIds.length > 1) {
+        andClauses.push({
+          OR: [
+            { fromLocationId: { in: fromIds } },
+            { fromWarehouseId: { in: fromIds } },
+          ],
+        });
+      }
+    } else if (params.fromWarehouseId && params.fromWarehouseId !== 'all') {
+      andClauses.push({ fromWarehouseId: params.fromWarehouseId });
+    }
+
+    // Destination filtering (either warehouse or location)
+    if (params.toLocationId && params.toLocationId !== 'all') {
+      const toIds = params.toLocationId.includes(',')
+        ? params.toLocationId.split(',').map((s) => s.trim()).filter(Boolean)
+        : [params.toLocationId];
+      if (toIds.length === 1) {
+        andClauses.push({
+          OR: [
+            { toLocationId: toIds[0] },
+            { toWarehouseId: toIds[0] },
+          ],
+        });
+      } else if (toIds.length > 1) {
+        andClauses.push({
+          OR: [
+            { toLocationId: { in: toIds } },
+            { toWarehouseId: { in: toIds } },
+          ],
+        });
+      }
+    } else if (params.toWarehouseId && params.toWarehouseId !== 'all') {
+      andClauses.push({ toWarehouseId: params.toWarehouseId });
+    }
+
+    // Search query across request numbers, courier, rider, tracking, notes, and item attributes
+    if (params.search && params.search.trim()) {
+      const q = params.search.trim();
+      andClauses.push({
+        OR: [
+          { requestNo: { contains: q, mode: 'insensitive' } },
+          { trackingNumber: { contains: q, mode: 'insensitive' } },
+          { courierName: { contains: q, mode: 'insensitive' } },
+          { riderName: { contains: q, mode: 'insensitive' } },
+          { receiverPerson: { contains: q, mode: 'insensitive' } },
+          { notes: { contains: q, mode: 'insensitive' } },
+          { items: { some: { item: { sku: { contains: q, mode: 'insensitive' } } } } },
+          { items: { some: { item: { description: { contains: q, mode: 'insensitive' } } } } },
+          { items: { some: { item: { barCode: { contains: q, mode: 'insensitive' } } } } },
+        ],
+      });
+    }
+
+    const where = andClauses.length ? { AND: andClauses } : {};
+
+    const page = params.page ? Math.max(1, Number(params.page)) : 1;
+    // Default limit 1000 for full report view, or 0/null to fetch all
+    const limit = params.limit !== undefined ? Math.max(0, Number(params.limit)) : 1000;
+
+    const findOptions: Prisma.TransferRequestFindManyArgs = {
+      where,
+      include: {
+        items: {
+          include: {
+            item: {
+              include: {
+                brand: true,
+                color: true,
+                size: true,
+                category: true,
+                gender: true,
+                silhouette: true,
+                division: true,
+              },
+            },
+          },
+        },
+        fromWarehouse: { select: { id: true, name: true, code: true } },
+        toWarehouse: { select: { id: true, name: true, code: true } },
+        fromLocation: { select: { id: true, name: true, code: true } },
+        toLocation: { select: { id: true, name: true, code: true } },
+        stockRequisition: { select: { id: true, requisitionNo: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    };
+
+    if (limit > 0) {
+      findOptions.skip = (page - 1) * limit;
+      findOptions.take = limit;
+    }
+
+    const [total, requests] = await Promise.all([
+      this.prisma.transferRequest.count({ where }),
+      this.prisma.transferRequest.findMany(findOptions),
+    ]);
+
+    // Batch resolve all user IDs across all returned requests in ONE single query
+    const userIdsSet = new Set<string>();
+    for (const req of requests) {
+      if (req.createdById) userIdsSet.add(req.createdById);
+      if (req.checkedById) userIdsSet.add(req.checkedById);
+      if (req.authorizedById) userIdsSet.add(req.authorizedById);
+      if (req.sourceApprovedById) userIdsSet.add(req.sourceApprovedById);
+      if (req.approvedById) userIdsSet.add(req.approvedById);
+    }
+
+    const userMap = new Map<string, string>();
+    if (userIdsSet.size > 0) {
+      const users = await this.prismaMaster.user.findMany({
+        where: { id: { in: Array.from(userIdsSet) } },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      for (const u of users) {
+        userMap.set(u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User');
+      }
+    }
+
+    // Accumulators for Grand Totals
+    let totalSentQty = 0;
+    let totalReceivedQty = 0;
+    let totalPendingQty = 0;
+    let totalCostValue = 0;
+    let totalRetailValue = 0;
+    let totalItemLines = 0;
+
+    const statusCounts = {
+      completed: 0,
+      pending: 0,
+      inTransit: 0,
+      cancelled: 0,
+    };
+
+    const typeCounts = {
+      warehouseToOutlet: 0,
+      outletToWarehouse: 0,
+      outletToOutlet: 0,
+      warehouseToWarehouse: 0,
+      other: 0,
+    };
+
+    const formattedTransfers = requests.map((req) => {
+      // Status breakdown tally
+      const s = req.status.toUpperCase();
+      if (s === 'COMPLETED') statusCounts.completed++;
+      else if (s === 'CANCELLED' || s === 'REJECTED') statusCounts.cancelled++;
+      else if (s === 'IN_TRANSIT' || s === 'SOURCE_APPROVED') statusCounts.inTransit++;
+      else statusCounts.pending++;
+
+      // Type breakdown tally
+      if (req.transferType === 'WAREHOUSE_TO_OUTLET') typeCounts.warehouseToOutlet++;
+      else if (req.transferType === 'OUTLET_TO_WAREHOUSE') typeCounts.outletToWarehouse++;
+      else if (req.transferType === 'OUTLET_TO_OUTLET') typeCounts.outletToOutlet++;
+      else if (req.transferType === 'WAREHOUSE_TO_WAREHOUSE') typeCounts.warehouseToWarehouse++;
+      else typeCounts.other++;
+
+      // Route names
+      const sourceName = req.fromWarehouse?.name || req.fromLocation?.name || 'Unknown Source';
+      const sourceCode = req.fromWarehouse?.code || req.fromLocation?.code || '';
+      const destinationName = req.toWarehouse?.name || req.toLocation?.name || 'Unknown Destination';
+      const destinationCode = req.toWarehouse?.code || req.toLocation?.code || '';
+
+      let transferSentQty = 0;
+      let transferReceivedQty = 0;
+      let transferCostVal = 0;
+      let transferRetailVal = 0;
+
+      const items = (req.items || []).map((it) => {
+        const qty = Number(it.quantity || 0);
+        const fulfilled = Number(it.fulfilledQty || 0);
+        const pending = Math.max(0, qty - fulfilled);
+        const unitCost = Number(it.item?.unitCost || 0);
+        const unitPrice = Number(it.item?.unitPrice || 0);
+        const lineCost = qty * unitCost;
+        const lineRetail = qty * unitPrice;
+
+        transferSentQty += qty;
+        transferReceivedQty += fulfilled;
+        transferCostVal += lineCost;
+        transferRetailVal += lineRetail;
+        totalItemLines++;
+
+        return {
+          id: it.id,
+          itemId: it.itemId,
+          sku: it.item?.sku || '',
+          articleName: it.item?.description || '',
+          barCode: it.item?.barCode || '',
+          brand: it.item?.brand?.name || 'No Brand',
+          division: it.item?.division?.name || 'No Division',
+          category: it.item?.category?.name || 'No Category',
+          gender: it.item?.gender?.name || 'No Gender',
+          silhouette: it.item?.silhouette?.name || 'No Silhouette',
+          size: it.item?.size?.name || 'Default',
+          color: it.item?.color?.name || 'Default',
+          sentQty: qty,
+          receivedQty: fulfilled,
+          pendingQty: pending,
+          unitCost,
+          unitPrice,
+          totalCost: lineCost,
+          totalRetail: lineRetail,
+        };
+      });
+
+      const transferPendingQty = Math.max(0, transferSentQty - transferReceivedQty);
+
+      totalSentQty += transferSentQty;
+      totalReceivedQty += transferReceivedQty;
+      totalPendingQty += transferPendingQty;
+      totalCostValue += transferCostVal;
+      totalRetailValue += transferRetailVal;
+
+      return {
+        id: req.id,
+        requestNo: req.requestNo,
+        outboundNo: req.outboundNo || (req.requestNo.includes('STN') ? req.requestNo.replace('STN', 'TR-OUT') : `TR-OUT-${req.requestNo}`),
+        inboundNo: req.inboundNo || (req.requestNo.includes('STN') ? req.requestNo.replace('STN', 'TR-IN') : `TR-IN-${req.requestNo}`),
+        receiptNo: req.status === 'COMPLETED' ? (req.receiptNo || (req.requestNo.includes('STN') ? req.requestNo.replace('STN', 'REC') : `REC-${req.requestNo}`)) : null,
+        transferType: req.transferType,
+        status: req.status,
+        requestDate: req.requestDate || req.createdAt,
+        expectedDate: req.expectedDate,
+        createdAt: req.createdAt,
+        updatedAt: req.updatedAt,
+        sourceName,
+        sourceCode,
+        sourceType: req.fromWarehouse ? 'Warehouse' : 'Outlet',
+        destinationName,
+        destinationCode,
+        destinationType: req.toWarehouse ? 'Warehouse' : 'Outlet',
+        fromWarehouseId: req.fromWarehouseId,
+        toWarehouseId: req.toWarehouseId,
+        fromLocationId: req.fromLocationId,
+        toLocationId: req.toLocationId,
+        creatorName: req.createdById ? userMap.get(req.createdById) || 'Unknown User' : null,
+        createdById: req.createdById,
+        checkerName: req.checkedById ? userMap.get(req.checkedById) || 'Unknown User' : null,
+        checkedById: req.checkedById,
+        checkedAt: req.checkedAt,
+        authorizerName: req.authorizedById ? userMap.get(req.authorizedById) || 'Unknown User' : null,
+        authorizedById: req.authorizedById,
+        authorizedAt: req.authorizedAt,
+        sourceApprovedByName: req.sourceApprovedById ? userMap.get(req.sourceApprovedById) || 'Unknown User' : null,
+        sourceApprovedById: req.sourceApprovedById,
+        sourceApprovedAt: req.sourceApprovedAt,
+        acceptedByName: req.approvedById ? userMap.get(req.approvedById) || 'Unknown User' : null,
+        acceptedById: req.approvedById,
+        acceptedAt: req.status === 'COMPLETED' ? req.updatedAt : null,
+        dispatchType: req.dispatchType,
+        courierName: req.courierName,
+        trackingNumber: req.trackingNumber,
+        dispatchDate: req.dispatchDate,
+        estimatedDeliveryDate: req.estimatedDeliveryDate,
+        riderName: req.riderName,
+        riderPhone: req.riderPhone,
+        vehicleNumber: req.vehicleNumber,
+        receiverPerson: req.receiverPerson,
+        shippingCost: Number(req.shippingCost || 0),
+        dispatchNotes: req.dispatchNotes,
+        notes: req.notes,
+        requisitionNo: req.stockRequisition?.requisitionNo || null,
+        totalSentQty: transferSentQty,
+        totalReceivedQty: transferReceivedQty,
+        totalPendingQty: transferPendingQty,
+        totalCostValue: transferCostVal,
+        totalRetailValue: transferRetailVal,
+        itemCount: items.length,
+        items,
+      };
+    });
+
+    return {
+      grandTotals: {
+        totalTransfers: total,
+        totalItems: totalItemLines,
+        totalSentQty,
+        totalReceivedQty,
+        totalPendingQty,
+        totalCostValue,
+        totalRetailValue,
+        statusCounts,
+        typeCounts,
+      },
+      transfers: formattedTransfers,
+      meta: {
+        total,
+        page,
+        limit: limit > 0 ? limit : total,
+        totalPages: limit > 0 ? Math.ceil(total / limit) : 1,
+      },
     };
   }
 }
