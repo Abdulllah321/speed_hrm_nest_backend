@@ -197,15 +197,18 @@ export class PosSalesService implements OnModuleInit {
           { barCode: { equals: searchTerm, mode: 'insensitive' } },
           { sku: { equals: searchTerm, mode: 'insensitive' } },
           { itemId: { equals: searchTerm, mode: 'insensitive' } },
+          { uniqueNo: { equals: searchTerm, mode: 'insensitive' } },
           { barCode: { contains: searchTerm, mode: 'insensitive' } },
           { sku: { contains: searchTerm, mode: 'insensitive' } },
           { itemId: { contains: searchTerm, mode: 'insensitive' } },
+          { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
           { description: { contains: searchTerm, mode: 'insensitive' } },
         ],
       },
       take: 20,
       include: {
         brand: true,
+        division: true,
         size: true,
         color: true,
       },
@@ -226,10 +229,14 @@ export class PosSalesService implements OnModuleInit {
     const item = await this.prisma.item.findFirst({
       where: {
         isActive: true,
-        OR: [{ barCode: { equals: barcode.trim(), mode: 'insensitive' } }],
+        OR: [
+          { barCode: { equals: barcode.trim(), mode: 'insensitive' } },
+          { uniqueNo: { equals: barcode.trim(), mode: 'insensitive' } },
+        ],
       },
       include: {
         brand: true,
+        division: true,
         size: true,
         color: true,
       },
@@ -6760,6 +6767,7 @@ export class PosSalesService implements OnModuleInit {
         itemId: item.itemId,
         sku: item.sku,
         barCode: item.barCode,
+        uniqueNo: item.uniqueNo || null,
         description: item.description,
         unitPrice: latestPrice,
         taxRate1: Number(item.taxRate1 || 0),
@@ -6777,6 +6785,7 @@ export class PosSalesService implements OnModuleInit {
         effectiveDiscountPercent:
           Math.round(effectiveDiscountPercent * 100) / 100,
         brand: item.brand?.name || null,
+        division: item.division?.name || null,
         size: item.size?.name || null,
         color: item.color?.name || null,
         stockQty,
