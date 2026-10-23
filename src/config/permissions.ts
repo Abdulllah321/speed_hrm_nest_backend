@@ -1956,6 +1956,18 @@ export const PERMISSIONS = [
     name: 'erp.inventory.return-transfer.create',
     description: 'Create Return Transfer',
   },
+  {
+    name: 'erp.inventory.stock-adjustment.read',
+    module: 'erp.inventory.stock-adjustment',
+    action: 'read',
+    description: 'View Stock Adjustments',
+  },
+  {
+    name: 'erp.inventory.stock-adjustment.create',
+    module: 'erp.inventory.stock-adjustment',
+    action: 'create',
+    description: 'Create Stock Adjustment',
+  },
 
   // ── ERP Inventory — Warehouse ───────────────────────────────────────────────
   {
