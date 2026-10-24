@@ -33,6 +33,11 @@ model PaymentVoucher {
   invoices        PaymentVoucherToInvoice[]
   // Advances applied FROM this voucher (when this is an advance PV being consumed)
   advanceUsages   AdvanceApplication[]      @relation("SourceAdvance")
+
+  @@index([type, pvDate(sort: Desc)])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@index([creditAccountId])
 }
 
 model PaymentVoucherToInvoice {

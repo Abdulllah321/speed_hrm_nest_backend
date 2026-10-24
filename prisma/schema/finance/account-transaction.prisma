@@ -46,4 +46,7 @@ model AccountTransaction {
   @@index([sourceType, sourceId])       // Fetch all lines for a voucher
   @@index([transactionDate])
   @@index([accountId, transactionDate]) // Account ledger range queries
+  @@index([sourceType, transactionDate])
+  @@index([tagAccountId, transactionDate])
+  @@index([accountId, tagAccountId])
 }

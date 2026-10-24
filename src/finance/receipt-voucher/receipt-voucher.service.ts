@@ -372,6 +372,56 @@ export class ReceiptVoucherService {
     return data as any;
   }
 
+  async getStatusCounts(type?: string) {
+    const where: any = {};
+    if (type && type !== 'all') {
+      where.type = { equals: type, mode: 'insensitive' };
+    }
+
+    const grouped = await this.prisma.receiptVoucher.groupBy({
+      by: ['status'],
+      where,
+      _count: { id: true },
+      _sum: { debitAmount: true },
+    });
+
+    const counts: Record<string, { count: number; totalAmount: number }> = {
+      all: { count: 0, totalAmount: 0 },
+      pending_check: { count: 0, totalAmount: 0 },
+      pending_approval: { count: 0, totalAmount: 0 },
+      approved: { count: 0, totalAmount: 0 },
+      rejected: { count: 0, totalAmount: 0 },
+      draft: { count: 0, totalAmount: 0 },
+    };
+
+    for (const row of grouped) {
+      const st = (row.status || 'draft').toLowerCase();
+      const count = row._count.id;
+      const amount = Number(row._sum.debitAmount || 0);
+      counts.all.count += count;
+      counts.all.totalAmount += amount;
+
+      if (st === 'pending_check' || st === 'pending') {
+        counts.pending_check.count += count;
+        counts.pending_check.totalAmount += amount;
+      } else if (st === 'pending_approval' || st === 'pending_approve') {
+        counts.pending_approval.count += count;
+        counts.pending_approval.totalAmount += amount;
+      } else if (st === 'approved') {
+        counts.approved.count += count;
+        counts.approved.totalAmount += amount;
+      } else if (st === 'rejected') {
+        counts.rejected.count += count;
+        counts.rejected.totalAmount += amount;
+      } else if (st === 'draft') {
+        counts.draft.count += count;
+        counts.draft.totalAmount += amount;
+      }
+    }
+
+    return counts;
+  }
+
   async findMissingTagAccounts(type?: string) {
     const whereClause: any = {
       details: {
