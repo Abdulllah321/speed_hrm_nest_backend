@@ -16,6 +16,10 @@ model JournalVoucher {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   details         JournalVoucherDetail[]
+
+  @@index([jvDate(sort: Desc)])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
 }
 
 model JournalVoucherDetail {

@@ -76,6 +76,14 @@ export class ReceiptVoucherController {
     return this.receiptVoucherService.findMissingTagAccounts(type);
   }
 
+  @Get('status-counts')
+  @Permissions('erp.finance.receipt-voucher.read')
+  @ApiOperation({ summary: 'Get summary status counts and amounts' })
+  @ApiQuery({ name: 'type', required: false })
+  getStatusCounts(@Query('type') type?: string) {
+    return this.receiptVoucherService.getStatusCounts(type);
+  }
+
   @Get('customers')
   @Permissions('erp.finance.receipt-voucher.read')
   @ApiOperation({ summary: 'Get all customers for receipt voucher creation' })
