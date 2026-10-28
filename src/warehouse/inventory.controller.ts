@@ -27,6 +27,26 @@ export class InventoryController {
     return this.inventoryService.getStockLevel(itemId, warehouseId);
   }
 
+  @Post('bulk-stock-levels')
+  @ApiOperation({
+    summary: 'Get aggregated stock levels for multiple items',
+  })
+  async getBulkStockLevels(
+    @Body()
+    body: {
+      itemIds: string[];
+      warehouseId?: string;
+      locationId?: string;
+    },
+  ) {
+    const data = await this.inventoryService.getBulkStockLevels(
+      body.itemIds,
+      body.warehouseId,
+      body.locationId,
+    );
+    return { status: true, data };
+  }
+
   @Get('details/:itemId')
   @ApiOperation({ summary: 'Get detailed stock breakdown by location/batch' })
   async getDetailedStock(@Param('itemId') itemId: string) {

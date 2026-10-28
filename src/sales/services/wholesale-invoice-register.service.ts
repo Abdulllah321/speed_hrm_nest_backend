@@ -673,8 +673,9 @@ export class WholesaleInvoiceRegisterService {
         const discount = Math.round(Number(invItem.discount || 0));
         const taxableAmt = Math.max(0, valueExclTax - discount);
         const salesTax = Math.round(taxableAmt * (itemTaxRate / 100));
-        // Add tax if needed, assume 0 for now as not in item
-        const addTax = 0;
+        const addTax = Math.round(
+          Number((invItem as any).additionalTaxAmount || 0),
+        );
         const taxPayable = salesTax + addTax;
         const valueInclTax =
           invItem.total !== undefined

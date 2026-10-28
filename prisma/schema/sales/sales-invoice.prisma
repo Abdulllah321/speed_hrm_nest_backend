@@ -24,6 +24,8 @@ model ERPSalesInvoice {
   cashMarginAmount Decimal @default(0) @map("cash_margin_amount")
   taxRate          Decimal @default(0)
   taxAmount        Decimal @default(0)
+  additionalTaxRate   Decimal @default(0) @map("additional_tax_rate")
+  additionalTaxAmount Decimal @default(0) @map("additional_tax_amount")
   discount         Decimal @default(0)
   grandTotal       Decimal
   paidAmount       Decimal @default(0)
@@ -59,6 +61,8 @@ model ERPSalesInvoiceItem {
   salePrice Decimal // Final sale price
   quantity  Int
   discount  Decimal @default(0)
+  additionalTaxRate   Decimal @default(0) @map("additional_tax_rate")
+  additionalTaxAmount Decimal @default(0) @map("additional_tax_amount")
   total     Decimal // (salePrice * quantity) - discount
 
   salesReturnItems SalesReturnItem[]

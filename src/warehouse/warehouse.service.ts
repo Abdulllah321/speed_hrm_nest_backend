@@ -86,16 +86,21 @@ export class WarehouseService {
     });
   }
 
-  async findOneWarehouse(id: string): Promise<Warehouse> {
+  async findOneWarehouse(id: string): Promise<any> {
     const warehouse = await this.prisma.warehouse.findFirst({
       where: { id, isDeleted: false },
       include: {
-        inventoryItems: true,
+        WarehouseLocation: {
+          where: { isActive: true },
+        },
       },
     });
     if (!warehouse)
       throw new NotFoundException(`Warehouse with ID ${id} not found`);
-    return warehouse;
+    return {
+      ...warehouse,
+      locations: warehouse.WarehouseLocation || [],
+    };
   }
 
   async updateWarehouse(

@@ -762,6 +762,7 @@ export class StockRequisitionService {
     locationId?: string;
     brandId?: string;
     status?: string;
+    limit?: number;
   }) {
     const whereClause: Prisma.StockRequisitionWhereInput = {};
     if (filters?.warehouseId) whereClause.fromWarehouseId = filters.warehouseId;
@@ -775,24 +776,33 @@ export class StockRequisitionService {
         items: {
           include: {
             item: {
-              include: {
-                brand: true,
-                color: true,
-                size: true,
-                category: true,
-                gender: true,
-                segment: true,
+              select: {
+                id: true,
+                sku: true,
+                barCode: true,
+                description: true,
+                brand: { select: { id: true, name: true } },
+                color: { select: { id: true, name: true } },
+                size: { select: { id: true, name: true } },
+                category: { select: { id: true, name: true } },
               },
             },
           },
         },
-        fromWarehouse: true,
-        toLocation: true,
-        brand: true,
+        fromWarehouse: {
+          select: { id: true, name: true, code: true },
+        },
+        toLocation: {
+          select: { id: true, name: true, code: true },
+        },
+        brand: {
+          select: { id: true, name: true },
+        },
       },
       orderBy: {
         createdAt: 'desc',
       },
+      take: filters?.limit || (filters?.status === 'PENDING' ? 100 : 200),
     });
   }
 
@@ -886,24 +896,6 @@ export class StockRequisitionService {
           referenceId: requisitionId,
         },
       });
-
-      // Pre-fetch warehouse and locations once
-      const wh = await tx.warehouse.findUnique({
-        where: { id: requisition.fromWarehouseId! },
-      });
-      const locs = wh
-        ? await tx.location.findMany({
-            where: {
-              OR: [
-                { warehouseId: requisition.fromWarehouseId },
-                { id: requisition.fromWarehouseId },
-                { code: wh.code },
-                { code: `WH-${wh.code}` },
-              ],
-            },
-          })
-        : [];
-      const locIds = locs.map((l) => l.id);
 
       // 2. Validate physical stock availability for final quantities using bulk aggregation
       const itemIds = data.items.map((i) => i.itemId);
@@ -1007,7 +999,7 @@ export class StockRequisitionService {
 
       const ledgerEntries: any[] = [];
       const movementEntries: any[] = [];
-      const inventoryOps: any[] = [];
+      const inventoryDeductions: { id: string; deduct: number }[] = [];
       const timeNow = Date.now();
 
       let itemIndex = 0;
@@ -1021,12 +1013,7 @@ export class StockRequisitionService {
         for (const stock of itemStocks) {
           if (remainingToDeduct <= 0) break;
           const deduct = Math.min(Number(stock.quantity), remainingToDeduct);
-          inventoryOps.push(
-            tx.inventoryItem.update({
-              where: { id: stock.id },
-              data: { quantity: { decrement: deduct } },
-            }),
-          );
+          inventoryDeductions.push({ id: stock.id, deduct });
           remainingToDeduct -= deduct;
         }
 
@@ -1056,36 +1043,70 @@ export class StockRequisitionService {
         });
       }
 
-      const ops = [...inventoryOps];
+      // Execute inventory deductions in batch
+      if (inventoryDeductions.length > 0) {
+        try {
+          const invValues = inventoryDeductions.map(
+            (d) => Prisma.sql`(${d.id}::text, ${d.deduct}::numeric)`,
+          );
+          await tx.$executeRaw`
+            UPDATE "InventoryItem" AS inv
+            SET quantity = inv.quantity - v.deduct
+            FROM (VALUES ${Prisma.join(invValues)}) AS v(id, deduct)
+            WHERE inv.id = v.id
+          `;
+        } catch (rawError) {
+          // Safe fallback
+          await Promise.all(
+            inventoryDeductions.map((d) =>
+              tx.inventoryItem.update({
+                where: { id: d.id },
+                data: { quantity: { decrement: d.deduct } },
+              }),
+            ),
+          );
+        }
+      }
 
       if (ledgerEntries.length > 0) {
-        ops.push(tx.stockLedger.createMany({ data: ledgerEntries }));
+        await tx.stockLedger.createMany({ data: ledgerEntries });
       }
 
       if (movementEntries.length > 0) {
-        ops.push(tx.stockMovement.createMany({ data: movementEntries }));
+        await tx.stockMovement.createMany({ data: movementEntries });
       }
 
-      // 5. Update the fulfilled quantities and status in the Stock Requisition
-      for (const stnItem of data.items) {
-        ops.push(
-          tx.stockRequisitionItem.update({
-            where: {
-              stockRequisitionId_itemId: {
-                stockRequisitionId: requisitionId,
-                itemId: stnItem.itemId,
-              },
-            },
-            data: {
-              fulfilledQty: new Prisma.Decimal(stnItem.quantity),
-            },
-          }),
-        );
-      }
-
-      const chunkSize = 50;
-      for (let i = 0; i < ops.length; i += chunkSize) {
-        await Promise.all(ops.slice(i, i + chunkSize));
+      // 5. Update the fulfilled quantities in the Stock Requisition in batch
+      if (data.items.length > 0) {
+        try {
+          const srnValues = data.items.map(
+            (item) =>
+              Prisma.sql`(${requisitionId}::text, ${item.itemId}::text, ${item.quantity}::numeric)`,
+          );
+          await tx.$executeRaw`
+            UPDATE "stock_requisition_items" AS sri
+            SET "fulfilledQty" = v.qty
+            FROM (VALUES ${Prisma.join(srnValues)}) AS v(req_id, item_id, qty)
+            WHERE sri.stock_requisition_id = v.req_id AND sri.item_id = v.item_id
+          `;
+        } catch (rawError) {
+          // Safe fallback
+          await Promise.all(
+            data.items.map((stnItem) =>
+              tx.stockRequisitionItem.update({
+                where: {
+                  stockRequisitionId_itemId: {
+                    stockRequisitionId: requisitionId,
+                    itemId: stnItem.itemId,
+                  },
+                },
+                data: {
+                  fulfilledQty: new Prisma.Decimal(stnItem.quantity),
+                },
+              }),
+            ),
+          );
+        }
       }
 
       // Mark SRN status

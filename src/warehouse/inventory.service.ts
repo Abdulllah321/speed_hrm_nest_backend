@@ -51,6 +51,178 @@ export class InventoryService {
     };
   }
 
+  async getBulkStockLevels(
+    itemIds: string[],
+    warehouseId?: string,
+    locationId?: string,
+  ): Promise<
+    Record<
+      string,
+      {
+        totalQuantity: number;
+        physicalQuantity: number;
+        reservedQuantity: number;
+      }
+    >
+  > {
+    if (!itemIds || itemIds.length === 0) {
+      return {};
+    }
+
+    const resultMap: Record<
+      string,
+      {
+        totalQuantity: number;
+        physicalQuantity: number;
+        reservedQuantity: number;
+      }
+    > = {};
+
+    for (const id of itemIds) {
+      resultMap[id] = {
+        totalQuantity: 0,
+        physicalQuantity: 0,
+        reservedQuantity: 0,
+      };
+    }
+
+    if (locationId) {
+      const latestSnapshot = await this.prisma.monthlyStockSnapshot.findFirst({
+        where: {
+          locationId,
+          date: { lte: new Date() },
+        },
+        orderBy: { date: 'desc' },
+        select: { date: true },
+      });
+
+      const snapshotMap = new Map<string, number>();
+      let queryStartDate: Date | undefined = undefined;
+
+      if (latestSnapshot?.date) {
+        queryStartDate = latestSnapshot.date;
+        const snapshotEntries = await this.prisma.monthlyStockSnapshot.findMany({
+          where: {
+            date: latestSnapshot.date,
+            locationId,
+            itemId: { in: itemIds },
+          },
+          select: { itemId: true, closingQty: true },
+        });
+        for (const entry of snapshotEntries) {
+          snapshotMap.set(
+            entry.itemId,
+            (snapshotMap.get(entry.itemId) || 0) +
+              Number(entry.closingQty || 0),
+          );
+        }
+      }
+
+      const stockEntries = await this.prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: itemIds },
+          locationId,
+          ...(queryStartDate ? { createdAt: { gte: queryStartDate } } : {}),
+        },
+        _sum: { qty: true },
+      });
+
+      const ledgerMap = new Map<string, number>();
+      for (const entry of stockEntries) {
+        ledgerMap.set(entry.itemId, Number(entry._sum.qty || 0));
+      }
+
+      const fallbackItems = await this.prisma.inventoryItem.findMany({
+        where: {
+          itemId: { in: itemIds },
+          locationId,
+          status: 'AVAILABLE',
+        },
+        select: { itemId: true, quantity: true },
+      });
+      const fallbackMap = new Map<string, number>();
+      for (const inv of fallbackItems) {
+        fallbackMap.set(
+          inv.itemId,
+          (fallbackMap.get(inv.itemId) || 0) + Number(inv.quantity || 0),
+        );
+      }
+
+      for (const id of itemIds) {
+        const snapQty = snapshotMap.get(id);
+        const ledgQty = ledgerMap.get(id);
+        let total = 0;
+        if (snapQty !== undefined || ledgQty !== undefined) {
+          total = (snapQty || 0) + (ledgQty || 0);
+        } else {
+          total = fallbackMap.get(id) || 0;
+        }
+        resultMap[id] = {
+          totalQuantity: total,
+          physicalQuantity: total,
+          reservedQuantity: 0,
+        };
+      }
+    } else if (warehouseId) {
+      const stockEntries = await this.prisma.stockLedger.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: itemIds },
+          warehouseId,
+          locationId: null,
+        },
+        _sum: { qty: true },
+      });
+
+      const reservations = await this.prisma.stockReserve.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: itemIds },
+          warehouseId,
+          OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+        },
+        _sum: { quantity: true },
+      });
+
+      const resMap = new Map(
+        reservations.map((r) => [r.itemId, Number(r._sum.quantity || 0)]),
+      );
+      const ledgerMap = new Map(
+        stockEntries.map((s) => [s.itemId, Number(s._sum.qty || 0)]),
+      );
+
+      const fallbackItems = await this.prisma.inventoryItem.groupBy({
+        by: ['itemId'],
+        where: {
+          itemId: { in: itemIds },
+          warehouseId,
+          locationId: null,
+          status: 'AVAILABLE',
+        },
+        _sum: { quantity: true },
+      });
+      const fallbackMap = new Map(
+        fallbackItems.map((f) => [f.itemId, Number(f._sum.quantity || 0)]),
+      );
+
+      for (const id of itemIds) {
+        let physical = ledgerMap.has(id)
+          ? ledgerMap.get(id)!
+          : fallbackMap.get(id) || 0;
+        let reserved = resMap.get(id) || 0;
+        let available = Math.max(0, physical - reserved);
+        resultMap[id] = {
+          totalQuantity: available,
+          physicalQuantity: physical,
+          reservedQuantity: reserved,
+        };
+      }
+    }
+
+    return resultMap;
+  }
+
   async getDetailedStock(itemId: string): Promise<any[]> {
     const item = await this.prisma.item.findUnique({
       where: { id: itemId },

@@ -630,16 +630,34 @@ export class DeliveryChallanService {
           subtotal > 0 ? (orderDiscount / subtotal) * 100 : 0;
 
         let taxAmount = 0;
-        const processedItems = itemRecords.map((item) => {
+        let totalAdditionalTaxAmount = 0;
+        const inputItems = Array.isArray(data?.items) ? data.items : [];
+
+        const processedItems = itemRecords.map((item, idx) => {
           const marginDiscount = item.wostTotal * (marginPct / 100);
           const afterDiscount = item.wostTotal - marginDiscount;
 
           // Apply additional order discount percentage to the afterDiscount base
           const discountedBase = afterDiscount * (1 - orderDiscountPct / 100);
-          const itemTaxAmount = discountedBase * (item.taxRate / 100);
-          const itemTotal = discountedBase + itemTaxAmount;
+          const itemTaxAmount = Math.round(discountedBase * (item.taxRate / 100));
+
+          // Match item from input payload
+          const inputItem = inputItems.find(
+            (it: any) =>
+              it.itemId === item.itemId ||
+              it.challanItemId === item.itemId ||
+              it.index === idx,
+          );
+          const addTaxRate = Number(inputItem?.additionalTaxRate ?? 0);
+          const addTaxAmount =
+            inputItem?.additionalTaxAmount !== undefined
+              ? Number(inputItem.additionalTaxAmount)
+              : Math.round(discountedBase * (addTaxRate / 100));
+
+          const itemTotal = discountedBase + itemTaxAmount + addTaxAmount;
 
           taxAmount += itemTaxAmount;
+          totalAdditionalTaxAmount += addTaxAmount;
 
           return {
             itemId: item.itemId,
@@ -647,11 +665,14 @@ export class DeliveryChallanService {
             costPrice: item.costPrice,
             salePrice: item.salePrice,
             discount: marginDiscount,
+            additionalTaxRate: addTaxRate,
+            additionalTaxAmount: addTaxAmount,
             total: itemTotal,
           };
         });
 
-        const grandTotal = subtotal - orderDiscount + taxAmount;
+        const grandTotal =
+          subtotal - orderDiscount + taxAmount + totalAdditionalTaxAmount;
 
         const invoice = await tx.eRPSalesInvoice.create({
           data: {
@@ -671,6 +692,7 @@ export class DeliveryChallanService {
                 : deliveryChallan.salesOrder?.taxRate || 0,
             ),
             taxAmount,
+            additionalTaxAmount: totalAdditionalTaxAmount,
             discount: orderDiscount,
             grandTotal,
             balanceAmount: grandTotal,
@@ -682,6 +704,8 @@ export class DeliveryChallanService {
                 costPrice: item.costPrice,
                 salePrice: item.salePrice,
                 discount: item.discount,
+                additionalTaxRate: item.additionalTaxRate,
+                additionalTaxAmount: item.additionalTaxAmount,
                 total: item.total,
               })),
             },

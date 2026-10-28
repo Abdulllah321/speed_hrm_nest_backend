@@ -257,7 +257,10 @@ export class SalesInvoiceService {
         });
 
         // 2. Line: 40010013 SALES TAX-OUTPUT WHOLE SALES (Debit: Tax Amount)
-        const taxAmount = roundToTwo(Number(updatedInvoice.taxAmount));
+        const taxAmount = roundToTwo(
+          Number(updatedInvoice.taxAmount || 0) +
+            Number((updatedInvoice as any).additionalTaxAmount || 0),
+        );
         if (taxAmount > 0) {
           const taxAcc = await getAccountWithTag('40010013', 'C00001');
           detailsData.push({

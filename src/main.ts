@@ -11,6 +11,7 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { PrismaService } from './database/prisma.service';
 import 'dotenv/config';
 
+// Trigger reload for newly generated Prisma client schema
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
