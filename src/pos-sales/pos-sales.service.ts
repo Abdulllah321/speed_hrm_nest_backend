@@ -2106,6 +2106,15 @@ export class PosSalesService implements OnModuleInit {
     });
 
     const orderIds = rawOrders.map((o) => o.id);
+    const posReturnsList = await this.prisma.posReturn.findMany({
+      where: { salesOrderId: { in: orderIds } },
+      include: {
+        items: {
+          select: { itemId: true, quantity: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
     const returnEntries = await this.prisma.stockLedger.findMany({
       where: {
         referenceType: { in: ['POS_RETURN', 'POS_REFUND'] },
@@ -2124,13 +2133,43 @@ export class PosSalesService implements OnModuleInit {
       string,
       { hasReturn: boolean; hasRefund: boolean }
     >();
+
+    for (const pr of posReturnsList) {
+      if (!orderReturnFlags.has(pr.salesOrderId)) {
+        orderReturnFlags.set(pr.salesOrderId, {
+          hasReturn: false,
+          hasRefund: false,
+        });
+      }
+      const flags = orderReturnFlags.get(pr.salesOrderId)!;
+      if (
+        pr.returnType === 'REFUND' ||
+        pr.refundMode === 'CASH' ||
+        pr.returnNumber?.startsWith('RF-')
+      ) {
+        flags.hasRefund = true;
+      } else {
+        flags.hasReturn = true;
+      }
+
+      if (!returnedQtyMap.has(pr.salesOrderId)) {
+        returnedQtyMap.set(pr.salesOrderId, new Map());
+      }
+      const itemMap = returnedQtyMap.get(pr.salesOrderId)!;
+      for (const item of pr.items) {
+        const current = itemMap.get(item.itemId) || 0;
+        itemMap.set(item.itemId, current + Number(item.quantity));
+      }
+    }
+
     for (const entry of returnEntries) {
       if (!returnedQtyMap.has(entry.referenceId)) {
         returnedQtyMap.set(entry.referenceId, new Map());
       }
       const itemMap = returnedQtyMap.get(entry.referenceId)!;
-      const current = itemMap.get(entry.itemId) || 0;
-      itemMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
+      if (!itemMap.has(entry.itemId)) {
+        itemMap.set(entry.itemId, Math.abs(Number(entry.qty)));
+      }
 
       if (!orderReturnFlags.has(entry.referenceId)) {
         orderReturnFlags.set(entry.referenceId, {
@@ -2227,6 +2266,24 @@ export class PosSalesService implements OnModuleInit {
         hasReturn: false,
         hasRefund: false,
       };
+
+      const hasRefund =
+        returnFlags.hasRefund ||
+        !!order.refundNumber ||
+        order.status === 'refunded' ||
+        order.status === 'partially_refunded';
+
+      const hasReturn =
+        returnFlags.hasReturn ||
+        !!order.returnNumber ||
+        order.status === 'returned' ||
+        order.status === 'partially_returned';
+
+      const hasClaim =
+        orderClaims.length > 0 ||
+        order.status === 'claimed' ||
+        order.status === 'partially_claimed';
+
       const shopifyRef =
         order.onlineOrders?.[0]?.orderNumber ||
         (order.notes
@@ -2242,8 +2299,10 @@ export class PosSalesService implements OnModuleInit {
           : null,
         items: enrichedItems,
         claims: orderClaims,
-        hasReturn: returnFlags.hasReturn,
-        hasRefund: returnFlags.hasRefund,
+        hasReturn,
+        hasRefund,
+        hasClaim,
+        posReturns: posReturnsList.filter((pr) => pr.salesOrderId === order.id),
       };
     });
 
@@ -2449,13 +2508,43 @@ export class PosSalesService implements OnModuleInit {
       string,
       { hasReturn: boolean; hasRefund: boolean }
     >();
+
+    for (const pr of posReturnsList) {
+      if (!orderReturnFlags.has(pr.salesOrderId)) {
+        orderReturnFlags.set(pr.salesOrderId, {
+          hasReturn: false,
+          hasRefund: false,
+        });
+      }
+      const flags = orderReturnFlags.get(pr.salesOrderId)!;
+      if (
+        pr.returnType === 'REFUND' ||
+        pr.refundMode === 'CASH' ||
+        pr.returnNumber?.startsWith('RF-')
+      ) {
+        flags.hasRefund = true;
+      } else {
+        flags.hasReturn = true;
+      }
+
+      if (!returnedQtyMap.has(pr.salesOrderId)) {
+        returnedQtyMap.set(pr.salesOrderId, new Map());
+      }
+      const itemMap = returnedQtyMap.get(pr.salesOrderId)!;
+      for (const item of pr.items) {
+        const current = itemMap.get(item.itemId) || 0;
+        itemMap.set(item.itemId, current + Number(item.quantity));
+      }
+    }
+
     for (const entry of returnEntries) {
       if (!returnedQtyMap.has(entry.referenceId)) {
         returnedQtyMap.set(entry.referenceId, new Map());
       }
       const itemMap = returnedQtyMap.get(entry.referenceId)!;
-      const current = itemMap.get(entry.itemId) || 0;
-      itemMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
+      if (!itemMap.has(entry.itemId)) {
+        itemMap.set(entry.itemId, Math.abs(Number(entry.qty)));
+      }
 
       if (!orderReturnFlags.has(entry.referenceId)) {
         orderReturnFlags.set(entry.referenceId, {
@@ -2659,13 +2748,31 @@ export class PosSalesService implements OnModuleInit {
         (pr) => pr.salesOrderId === order.id,
       );
 
+      const hasRefund =
+        returnFlags.hasRefund ||
+        !!order.refundNumber ||
+        order.status === 'refunded' ||
+        order.status === 'partially_refunded';
+
+      const hasReturn =
+        returnFlags.hasReturn ||
+        !!order.returnNumber ||
+        order.status === 'returned' ||
+        order.status === 'partially_returned';
+
+      const hasClaim =
+        orderClaims.length > 0 ||
+        order.status === 'claimed' ||
+        order.status === 'partially_claimed';
+
       const mappedOrder = {
         ...order,
         tenders,
         items: enrichedItems,
         claims: orderClaims,
-        hasReturn: returnFlags.hasReturn,
-        hasRefund: returnFlags.hasRefund,
+        hasReturn,
+        hasRefund,
+        hasClaim,
         hasIssuedVoucher: issuedVouchersSet.has(order.id),
         posReturns: orderReturns,
       };
@@ -3819,6 +3926,17 @@ export class PosSalesService implements OnModuleInit {
       }
     }
 
+    // Fetch PosReturn records for this order
+    const posReturns = await this.prisma.posReturn.findMany({
+      where: { salesOrderId: id },
+      include: {
+        items: {
+          select: { itemId: true, quantity: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
     // Fetch returned quantities for this order
     const returnEntries = await this.prisma.stockLedger.findMany({
       where: {
@@ -3831,11 +3949,44 @@ export class PosSalesService implements OnModuleInit {
     let hasReturn = false;
     let hasRefund = false;
     const returnedQtyMap = new Map<string, number>();
+
+    for (const pr of posReturns) {
+      if (
+        pr.returnType === 'REFUND' ||
+        pr.refundMode === 'CASH' ||
+        pr.returnNumber?.startsWith('RF-')
+      ) {
+        hasRefund = true;
+      } else {
+        hasReturn = true;
+      }
+      for (const item of pr.items) {
+        const cur = returnedQtyMap.get(item.itemId) || 0;
+        returnedQtyMap.set(item.itemId, cur + Number(item.quantity));
+      }
+    }
+
     for (const entry of returnEntries) {
-      const current = returnedQtyMap.get(entry.itemId) || 0;
-      returnedQtyMap.set(entry.itemId, current + Math.abs(Number(entry.qty)));
+      if (!returnedQtyMap.has(entry.itemId)) {
+        returnedQtyMap.set(entry.itemId, Math.abs(Number(entry.qty)));
+      }
       if (entry.referenceType === 'POS_RETURN') hasReturn = true;
       if (entry.referenceType === 'POS_REFUND') hasRefund = true;
+    }
+
+    if (
+      order.returnNumber ||
+      order.status === 'returned' ||
+      order.status === 'partially_returned'
+    ) {
+      hasReturn = true;
+    }
+    if (
+      order.refundNumber ||
+      order.status === 'refunded' ||
+      order.status === 'partially_refunded'
+    ) {
+      hasRefund = true;
     }
 
     // Fetch claims for this order to compute claimedQty correctly
@@ -4010,6 +4161,11 @@ export class PosSalesService implements OnModuleInit {
         exchangeVouchers,
         hasReturn,
         hasRefund,
+        hasClaim:
+          orderClaims.length > 0 ||
+          order.status === 'claimed' ||
+          order.status === 'partially_claimed',
+        posReturns,
         cashier,
       },
     };
@@ -4738,9 +4894,9 @@ export class PosSalesService implements OnModuleInit {
 
       if (!order) return { status: false, message: 'Order not found' };
 
-      const posReturn =
-        specificPosReturn ||
-        (await this.prisma.posReturn.findFirst({
+      let posReturn = specificPosReturn || null;
+      if (!posReturn) {
+        posReturn = await this.prisma.posReturn.findFirst({
           where: {
             salesOrderId: orderId,
             ...(type === 'return'
@@ -4766,7 +4922,32 @@ export class PosSalesService implements OnModuleInit {
             },
           },
           orderBy: { createdAt: 'desc' },
-        }));
+        });
+
+        // Fallback: If no PosReturn found for specific type, find ANY PosReturn for this order
+        if (!posReturn) {
+          posReturn = await this.prisma.posReturn.findFirst({
+            where: { salesOrderId: orderId },
+            include: {
+              items: {
+                include: {
+                  item: {
+                    select: {
+                      description: true,
+                      sku: true,
+                      barCode: true,
+                      brand: { select: { name: true } },
+                      size: { select: { name: true } },
+                      color: { select: { name: true } },
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+        }
+      }
 
       if (posReturn && posReturn.items.length > 0) {
         const enrichedItems = posReturn.items.map((ri) => ({
@@ -4826,13 +5007,33 @@ export class PosSalesService implements OnModuleInit {
               orderBy: { createdAt: 'desc' },
             });
 
+        const isRefund =
+          posReturn.returnType === 'REFUND' ||
+          posReturn.refundMode === 'CASH' ||
+          posReturn.returnNumber?.startsWith('RF-') ||
+          order.status === 'refunded' ||
+          order.status === 'partially_refunded';
+
+        const returnRefNumber =
+          posReturn.returnNumber ||
+          (isRefund
+            ? (order as any).refundNumber
+            : (order as any).returnNumber) ||
+          order.orderNumber;
+        const refundRefNumber = isRefund
+          ? returnRefNumber
+          : (order as any).refundNumber || returnRefNumber;
+
         return {
           status: true,
           data: {
             orderId: order.id,
             orderNumber: order.orderNumber,
-            returnNumber: posReturn.returnNumber || (order as any).returnNumber,
-            refundNumber: (order as any).refundNumber,
+            returnNumber: returnRefNumber,
+            refundNumber: refundRefNumber,
+            isRefund,
+            returnType: posReturn.returnType,
+            refundMode: posReturn.refundMode,
             items: enrichedItems,
             subtotalWost: Number(posReturn.subtotalWost),
             discountAmount: Number(posReturn.discountWost),
@@ -4871,6 +5072,12 @@ export class PosSalesService implements OnModuleInit {
         }
       }
 
+      const isRefundFallback =
+        type === 'refund' ||
+        !!order.refundNumber ||
+        order.status === 'refunded' ||
+        order.status === 'partially_refunded';
+
       // If no returns found, return empty
       if (returnedQtyMap.size === 0) {
         return {
@@ -4878,8 +5085,12 @@ export class PosSalesService implements OnModuleInit {
           data: {
             orderId: order.id,
             orderNumber: order.orderNumber,
-            returnNumber: (order as any).returnNumber,
-            refundNumber: (order as any).refundNumber,
+            returnNumber:
+              (order as any).returnNumber || (order as any).refundNumber,
+            refundNumber:
+              (order as any).refundNumber || (order as any).returnNumber,
+            isRefund: isRefundFallback,
+            returnType: isRefundFallback ? 'REFUND' : 'RETURN',
             items: [],
             reason: order.notes,
             discountNotes: [],
@@ -5065,8 +5276,12 @@ export class PosSalesService implements OnModuleInit {
         data: {
           orderId: order.id,
           orderNumber: order.orderNumber,
-          returnNumber: (order as any).returnNumber,
-          refundNumber: (order as any).refundNumber,
+          returnNumber:
+            (order as any).returnNumber || (order as any).refundNumber,
+          refundNumber:
+            (order as any).refundNumber || (order as any).returnNumber,
+          isRefund: isRefundFallback,
+          returnType: isRefundFallback ? 'REFUND' : 'RETURN',
           items: enrichedItems,
           reason: order.notes,
           discountNotes,
@@ -8402,6 +8617,49 @@ export class PosSalesService implements OnModuleInit {
       const cardMatch = notesStr.match(/Card:\s*\*\*\*\*(\d{4})/i);
       if (cardMatch) {
         cardNo = cardMatch[1];
+      }
+
+      if (notesStr) {
+        if (giftVoucherAmt === 0) {
+          const giftMatch = notesStr.match(/\[Gift Voucher\] Amount:\s*([\d.]+)/i);
+          if (giftMatch) {
+            giftVoucherAmt = Number(giftMatch[1]);
+            const codeMatch = notesStr.match(/GftVch:\s*([^\s|]+)/i);
+            if (codeMatch) giftVoucherCodes.push(codeMatch[1]);
+          }
+        }
+        if (creditAmt === 0) {
+          const credMatch = notesStr.match(/\[Credit Voucher\] Amount:\s*([\d.]+)/i);
+          if (credMatch) {
+            creditAmt = Number(credMatch[1]);
+            const codeMatch = notesStr.match(/(?:CRDVch|IssuedCRD):\s*([^\s|]+)/i);
+            if (codeMatch) creditCodes.push(codeMatch[1]);
+          }
+        }
+        if (corporateAmt === 0) {
+          const corpMatch = notesStr.match(/\[Corporate Voucher\] Amount:\s*([\d.]+)/i);
+          if (corpMatch) {
+            corporateAmt = Number(corpMatch[1]);
+            const codeMatch = notesStr.match(/CorpVch:\s*([^\s|]+)/i);
+            if (codeMatch) corporateCodes.push(codeMatch[1]);
+          }
+        }
+        if (claimAmt === 0) {
+          const clmMatch = notesStr.match(/\[Claim Voucher\] Amount:\s*([\d.]+)/i);
+          if (clmMatch) {
+            claimAmt = Number(clmMatch[1]);
+            const codeMatch = notesStr.match(/ClmVch:\s*([^\s|]+)/i);
+            if (codeMatch) claimCodes.push(codeMatch[1]);
+          }
+        }
+        if (exchangeAmt === 0) {
+          const exMatch = notesStr.match(/\[Exchange Voucher\] Amount:\s*([\d.]+)/i);
+          if (exMatch) {
+            exchangeAmt = Number(exMatch[1]);
+            const codeMatch = notesStr.match(/ExcVch:\s*([^\s|]+)/i);
+            if (codeMatch) exchangeCodes.push(codeMatch[1]);
+          }
+        }
       }
 
       let allianceDetails = '';

@@ -490,7 +490,12 @@ export class SalesReturnListExportProcessor {
               const row = ws.addRow({
                 locationName: ret.locationName || '-',
                 returnNumber: ret.returnNumber,
-                originalOrderNumber: ret.originalOrderNumber || '-',
+                originalOrderNumber:
+                  ret.originalOrderNumber &&
+                  !ret.originalOrderNumber.startsWith('RET-') &&
+                  ret.originalOrderNumber !== '-'
+                    ? ret.originalOrderNumber
+                    : 'Direct Return',
                 subTypeLabel: ret.subTypeLabel || ret.subType,
                 returnDate: ret.createdAt
                   ? new Date(ret.createdAt)
@@ -531,7 +536,12 @@ export class SalesReturnListExportProcessor {
           } else {
             const row = ws.addRow({
               returnNumber: ret.returnNumber,
-              originalOrderNumber: ret.originalOrderNumber || '-',
+              originalOrderNumber:
+                ret.originalOrderNumber &&
+                !ret.originalOrderNumber.startsWith('RET-') &&
+                ret.originalOrderNumber !== '-'
+                  ? ret.originalOrderNumber
+                  : 'Direct Return',
               subTypeLabel: ret.subTypeLabel || ret.subType,
               date: ret.createdAt
                 ? new Date(ret.createdAt)
