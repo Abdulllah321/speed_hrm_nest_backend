@@ -728,7 +728,7 @@ export class VoucherService {
             code: v.code,
             faceValue: Number(v.faceValue),
             discount: Number(v.discount || 0),
-            voucherType: v.voucherType,
+            voucherType: v.voucherType as VoucherType,
             expiresAt: v.expiresAt,
           });
         }

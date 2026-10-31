@@ -778,6 +778,23 @@ export class SalesReturnListExportService {
     const locationNodesMap = new Map<string, SalesReturnLocationNode>();
     const returnNodesList: SalesReturnNode[] = [];
 
+    // Helper: Resolve Display Original Order Number
+    const resolveOriginalOrderDisplay = (
+      orderNumber?: string | null,
+      notes?: string | null,
+      reason?: string | null,
+    ): string => {
+      if (!orderNumber || orderNumber === '-') return '-';
+      if (!orderNumber.startsWith('RET-')) return orderNumber;
+      const noteMatch =
+        (notes || '').match(/Sale #(\d+)/i) ||
+        (reason || '').match(/OrigSale:\s*([^\s|,]+)/i);
+      if (noteMatch && noteMatch[1] && noteMatch[1] !== 'N/A') {
+        return `SI-INV-${noteMatch[1]}`;
+      }
+      return '-';
+    };
+
     // Helper: Determine Sub Type
     const classifySubType = (
       returnType: string,
@@ -785,13 +802,16 @@ export class SalesReturnListExportService {
       voucherType?: string,
       notes?: string,
       claimId?: string,
+      returnNumber?: string,
     ): {
       subType: 'EXCHANGE_SR' | 'REFUND_RF' | 'CLAIM_CLM';
       label: string;
     } => {
       if (
         claimId ||
+        returnType === 'CLAIM' ||
         voucherType === 'CLAIM' ||
+        (returnNumber && /^CLM-/i.test(returnNumber)) ||
         (notes && /claim|defect|_clm/i.test(notes))
       ) {
         return { subType: 'CLAIM_CLM', label: 'Claim (_CLM)' };
@@ -801,6 +821,7 @@ export class SalesReturnListExportService {
         refundMode === 'CASH' ||
         voucherType === 'REFUND' ||
         voucherType === 'CREDIT' ||
+        (returnNumber && /^RF-/i.test(returnNumber)) ||
         (notes && /refund|_rf/i.test(notes))
       ) {
         return { subType: 'REFUND_RF', label: 'Refund (RF)' };
@@ -819,6 +840,13 @@ export class SalesReturnListExportService {
         pr.refundMode,
         voucher?.voucherType,
         notes,
+        undefined,
+        pr.returnNumber,
+      );
+      const origOrderNumber = resolveOriginalOrderDisplay(
+        pr.salesOrder?.orderNumber,
+        pr.salesOrder?.notes,
+        pr.reason,
       );
 
       const itemsList: SalesReturnLineItem[] = [];
@@ -850,17 +878,23 @@ export class SalesReturnListExportService {
             : qty * unitPriceWost
           ).toFixed(2),
         );
-        const disc = Number(
-          it.discountPercent
-            ? (unitPrice * qty * Number(it.discountPercent)) / 100
-            : 0,
-        );
         const discWost = Number(
-          (it.discountWost ? Number(it.discountWost) : disc / 1.18).toFixed(2),
+          it.discountWost && Number(it.discountWost) > 0
+            ? Number(it.discountWost)
+            : it.discountPercent && Number(it.discountPercent) > 0
+              ? (valExcl * Number(it.discountPercent)) / 100
+              : 0,
+        );
+        const disc = Number(
+          it.discountPercent && Number(it.discountPercent) > 0
+            ? (unitPrice * qty * Number(it.discountPercent)) / 100
+            : discWost > 0
+              ? discWost * (1 + (Number(it.taxPercent) || 18) / 100)
+              : 0,
         );
         const amtAfterDisc = Number(Math.max(0, valExcl - discWost).toFixed(2));
         const tax = Number(it.taxAmount || 0);
-        const lineTotal = Number(it.lineTotal || unitPrice * qty - disc + tax);
+        const lineTotal = Number(it.lineTotal || (unitPrice * qty - disc + tax));
 
         retTotalQty += qty;
         retGross += unitPrice * qty;
@@ -873,7 +907,7 @@ export class SalesReturnListExportService {
         itemsList.push({
           id: it.id,
           returnNumber: pr.returnNumber,
-          originalOrderNumber: pr.salesOrder?.orderNumber || '-',
+          originalOrderNumber: origOrderNumber,
           sku: it.item?.sku || it.item?.barCode || 'NO-SKU',
           barCode: it.item?.barCode || it.item?.sku || '-',
           description: it.item?.description || 'Return Article',
@@ -905,7 +939,7 @@ export class SalesReturnListExportService {
         itemsList.push({
           id: pr.id,
           returnNumber: pr.returnNumber,
-          originalOrderNumber: pr.salesOrder?.orderNumber || '-',
+          originalOrderNumber: origOrderNumber,
           sku: '-',
           barCode: '-',
           description: 'Return Summary Record',
@@ -966,7 +1000,7 @@ export class SalesReturnListExportService {
       const returnNode: SalesReturnNode = {
         id: pr.id,
         returnNumber: pr.returnNumber,
-        originalOrderNumber: pr.salesOrder?.orderNumber || '-',
+        originalOrderNumber: origOrderNumber,
         createdAt: pr.createdAt.toISOString(),
         subType,
         subTypeLabel,
@@ -1034,6 +1068,12 @@ export class SalesReturnListExportService {
       const voucher = clm.voucher;
       const approvedAmt = Number(clm.approvedAmount || clm.claimedAmount || 0);
 
+      const clmOrigOrderNumber = resolveOriginalOrderDisplay(
+        clm.salesOrder?.orderNumber,
+        (clm.salesOrder as any)?.notes,
+        clm.reasonNotes,
+      );
+
       const itemsList: SalesReturnLineItem[] = [];
       let claimQty = 0;
 
@@ -1048,7 +1088,7 @@ export class SalesReturnListExportService {
         itemsList.push({
           id: it.id,
           returnNumber: clm.claimNumber,
-          originalOrderNumber: clm.salesOrder?.orderNumber || '-',
+          originalOrderNumber: clmOrigOrderNumber,
           sku: it.item?.sku || it.item?.barCode || 'NO-SKU',
           barCode: it.item?.barCode || it.item?.sku || '-',
           description: it.item?.description || 'Claim Article',
@@ -1073,7 +1113,7 @@ export class SalesReturnListExportService {
         itemsList.push({
           id: clm.id,
           returnNumber: clm.claimNumber,
-          originalOrderNumber: clm.salesOrder?.orderNumber || '-',
+          originalOrderNumber: clmOrigOrderNumber,
           sku: '-',
           barCode: '-',
           description: 'Claim Record',
@@ -1132,7 +1172,7 @@ export class SalesReturnListExportService {
       const returnNode: SalesReturnNode = {
         id: clm.id,
         returnNumber: clm.claimNumber,
-        originalOrderNumber: clm.salesOrder?.orderNumber || '-',
+        originalOrderNumber: clmOrigOrderNumber,
         createdAt: clm.createdAt.toISOString(),
         subType: 'CLAIM_CLM',
         subTypeLabel: 'Claim (_CLM)',
@@ -1731,7 +1771,12 @@ export class SalesReturnListExportService {
               const row = sheet.addRow({
                 locationName: ret.locationName || '-',
                 returnNumber: ret.returnNumber,
-                originalOrderNumber: ret.originalOrderNumber || '-',
+                originalOrderNumber:
+                  ret.originalOrderNumber &&
+                  !ret.originalOrderNumber.startsWith('RET-') &&
+                  ret.originalOrderNumber !== '-'
+                    ? ret.originalOrderNumber
+                    : 'Direct Return',
                 subTypeLabel: ret.subTypeLabel || ret.subType,
                 returnDate: ret.createdAt
                   ? new Date(ret.createdAt)
@@ -1796,7 +1841,12 @@ export class SalesReturnListExportService {
 
             const row = sheet.addRow({
               returnNumber: ret.returnNumber,
-              originalOrderNumber: ret.originalOrderNumber || '-',
+              originalOrderNumber:
+                ret.originalOrderNumber &&
+                !ret.originalOrderNumber.startsWith('RET-') &&
+                ret.originalOrderNumber !== '-'
+                  ? ret.originalOrderNumber
+                  : 'Direct Return',
               subTypeLabel: ret.subTypeLabel || ret.subType,
               date: ret.createdAt
                 ? new Date(ret.createdAt)

@@ -66,12 +66,15 @@ export class GiftVoucherSaleRegisterExportService {
     const { locationId, startDate: startStr, endDate: endStr, search } = params;
 
     const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const startYear = currentMonth >= 6 ? currentYear : currentYear - 1;
     const startDate = startStr
       ? new Date(startStr)
-      : new Date(now.getFullYear(), now.getMonth(), 1);
+      : new Date(startYear, 6, 1, 0, 0, 0, 0);
     const endDate = endStr
       ? new Date(endStr)
-      : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      : new Date(startYear + 1, 5, 30, 23, 59, 59, 999);
 
     const where: any = {
       isDeleted: false,
@@ -91,6 +94,7 @@ export class GiftVoucherSaleRegisterExportService {
         where.OR = [
           { issuedByLocationId: { in: locationIds } },
           { locations: { some: { locationId: { in: locationIds } } } },
+          { locations: { none: {} } },
         ];
       }
     }
