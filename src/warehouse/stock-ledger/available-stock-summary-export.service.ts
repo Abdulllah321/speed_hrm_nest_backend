@@ -9,6 +9,7 @@ import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
+import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../../upload/upload.service';
@@ -108,6 +109,36 @@ export class AvailableStockSummaryExportService {
     return { jobId, status: 'COMPLETED' };
   }
 
+  getCacheKey(
+    tenantId: string,
+    opts: {
+      locationId?: string;
+      warehouseId?: string;
+      asOfDate?: string;
+      reportType?: string;
+      summaryOnly?: boolean;
+    },
+  ): string {
+    const raw = `${tenantId || 'default'}_${opts.locationId || 'all'}_${opts.warehouseId || 'all'}_${opts.asOfDate || 'today'}_${opts.reportType || 'merged'}_${!!opts.summaryOnly}`;
+    return crypto.createHash('md5').update(raw).digest('hex');
+  }
+
+  getCachedReportPreview(
+    cacheKey: string,
+    maxAgeMs: number = 15 * 60 * 1000,
+  ): boolean {
+    const cacheDir = path.join(process.cwd(), 'uploads', 'previews');
+    const filePath = path.join(cacheDir, `cache-${cacheKey}.json.gz`);
+    if (!fs.existsSync(filePath)) return false;
+    try {
+      const stat = fs.statSync(filePath);
+      const age = Date.now() - stat.mtimeMs;
+      return age < maxAgeMs;
+    } catch {
+      return false;
+    }
+  }
+
   isJobCancelled(jobId?: string): boolean {
     if (!jobId) return false;
     return this.cancelledPreviewJobIds.has(jobId);
@@ -129,10 +160,26 @@ export class AvailableStockSummaryExportService {
     showSilhouette?: boolean;
     showArticle?: boolean;
     showVariant?: boolean;
-  }): Promise<{ jobId: string; queuePosition: number; waitingCount: number }> {
-    const jobId = uuidv4();
+    forceRefresh?: boolean;
+  }): Promise<{ jobId: string; queuePosition: number; waitingCount: number; cached?: boolean }> {
     const tenantId = this.prisma.getTenantId() ?? '';
     const tenantDbUrl = this.prisma.getTenantDbUrl() ?? '';
+
+    // Fast-path: Check zero-RAM SSD disk cache (< 15 mins) unless forceRefresh is requested
+    const cacheKey = this.getCacheKey(tenantId, opts);
+    if (!opts.forceRefresh && this.getCachedReportPreview(cacheKey)) {
+      this.logger.log(
+        `[ReportPreview] Serving instant zero-RAM disk cache for key ${cacheKey} (user: ${opts.userId})`,
+      );
+      return {
+        jobId: `cache-${cacheKey}`,
+        queuePosition: 0,
+        waitingCount: 0,
+        cached: true,
+      };
+    }
+
+    const jobId = uuidv4();
 
     // Cancel any waiting or active preview jobs previously queued by this user to prevent queue buildup
     if (opts.userId) {
@@ -229,6 +276,16 @@ export class AvailableStockSummaryExportService {
     waitingCount: number;
     failedReason?: string;
   }> {
+    if (jobId.startsWith('cache-')) {
+      return {
+        state: 'completed',
+        progress: 100,
+        message: 'Report ready (instant cache)',
+        queuePosition: 0,
+        waitingCount: 0,
+      };
+    }
+
     const job = await this.exportQueue.getJob(jobId);
     if (!job) {
       return {
@@ -276,7 +333,7 @@ export class AvailableStockSummaryExportService {
     };
   }
 
-  saveReportPreviewResult(jobId: string, data: any): void {
+  saveReportPreviewResult(jobId: string, data: any, cacheKey?: string): void {
     const previewDir = path.join(process.cwd(), 'uploads', 'previews');
     fs.mkdirSync(previewDir, { recursive: true });
 
@@ -327,6 +384,27 @@ export class AvailableStockSummaryExportService {
     const filePath = path.join(previewDir, `preview-${jobId}.json.gz`);
     fs.writeFileSync(filePath, gzipped);
 
+    if (cacheKey) {
+      const cacheFilePath = path.join(previewDir, `cache-${cacheKey}.json.gz`);
+      try {
+        fs.writeFileSync(cacheFilePath, gzipped);
+        setTimeout(
+          () => {
+            if (fs.existsSync(cacheFilePath)) {
+              try {
+                fs.unlinkSync(cacheFilePath);
+              } catch (e) {
+                /* ignore */
+              }
+            }
+          },
+          15 * 60 * 1000,
+        );
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
     // Auto cleanup temp file after 1 hour
     setTimeout(
       () => {
@@ -343,12 +421,11 @@ export class AvailableStockSummaryExportService {
   }
 
   getReportPreviewResult(jobId: string): any {
-    const filePath = path.join(
-      process.cwd(),
-      'uploads',
-      'previews',
-      `preview-${jobId}.json.gz`,
-    );
+    const previewDir = path.join(process.cwd(), 'uploads', 'previews');
+    let filePath = path.join(previewDir, `preview-${jobId}.json.gz`);
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(previewDir, `${jobId}.json.gz`);
+    }
     if (!fs.existsSync(filePath)) {
       return null;
     }
@@ -723,6 +800,17 @@ export class AvailableStockSummaryExportService {
     const locationOrWarehouseWhere =
       orConditions.length > 0 ? { OR: orConditions } : {};
 
+    const isOutletOnly =
+      uniqueTargetLocationIds.length > 0 && whIds.length === 0;
+
+    const withLocationFilter = (extraWhere: any = {}) => {
+      if (orConditions.length === 0) return extraWhere;
+      if (Object.keys(extraWhere).length === 0) return { OR: orConditions };
+      return {
+        AND: [{ OR: orConditions }, extraWhere],
+      };
+    };
+
     const locationNameMap = new Map<string, string>();
     for (const l of allLocations) {
       if (
@@ -772,18 +860,15 @@ export class AvailableStockSummaryExportService {
     // Concurrent discovery of inventory items and ledger items within query date window
     const [inventoryItems, ledgerItems] = await Promise.all([
       prisma.inventoryItem.findMany({
-        where: {
-          ...locationOrWarehouseWhere,
-        },
+        where: withLocationFilter(),
         select: { itemId: true, locationId: true, warehouseId: true },
       }),
       prisma.stockLedger.findMany({
-        where: {
-          ...locationOrWarehouseWhere,
+        where: withLocationFilter({
           createdAt: queryStartDate
             ? { gte: queryStartDate, lte: endDate }
             : { lte: endDate },
-        },
+        }),
         select: { itemId: true },
         distinct: ['itemId'],
       }),
@@ -858,7 +943,7 @@ export class AvailableStockSummaryExportService {
       'Executing relational JOIN aggregations for stock movements, transit & reserves...',
     );
 
-    // Single-batch execution of 6 indexed DB queries bounded strictly by active Fiscal Year
+    // Single-batch execution of indexed DB queries bounded strictly by active Fiscal Year & location scope
     const [
       bfGroupResults,
       inRangeOpeningResults,
@@ -872,39 +957,36 @@ export class AvailableStockSummaryExportService {
       // 1. Compute B/F Opening balance before startDate
       prisma.stockLedger.groupBy({
         by: groupByCols,
-        where: {
-          ...locationOrWarehouseWhere,
+        where: withLocationFilter({
           createdAt: queryStartDate
             ? { gte: queryStartDate, lt: startDate }
             : { lt: startDate },
-        },
+        }),
         _sum: { qty: true },
       }),
       // 2. Query OPENING_BALANCE entries within date range
       prisma.stockLedger.groupBy({
         by: groupByCols,
-        where: {
-          ...locationOrWarehouseWhere,
+        where: withLocationFilter({
           createdAt: { gte: startDate, lte: endDate },
           OR: [
             { movementType: MovementType.OPENING_BALANCE },
             { referenceType: 'OPENING_BALANCE' },
             { referenceType: 'BULK_STOCK_UPLOAD' },
           ],
-        },
+        }),
         _sum: { qty: true },
       }),
       // 3. Query in-period stock ledger movements
       prisma.stockLedger.findMany({
-        where: {
-          ...locationOrWarehouseWhere,
+        where: withLocationFilter({
           createdAt: { gte: startDate, lte: endDate },
           NOT: [
             { movementType: MovementType.OPENING_BALANCE },
             { referenceType: 'OPENING_BALANCE' },
             { referenceType: 'BULK_STOCK_UPLOAD' },
           ],
-        },
+        }),
         select: {
           itemId: true,
           qty: true,
@@ -950,15 +1032,17 @@ export class AvailableStockSummaryExportService {
           },
         },
       }),
-      // 5. Query active stock reserves
-      prisma.stockReserve.groupBy({
-        by: ['itemId', 'warehouseId'],
-        where: {
-          ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-          OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-        },
-        _sum: { quantity: true },
-      }),
+      // 5. Query active stock reserves (only relevant if warehouses are targeted or overall)
+      isOutletOnly
+        ? Promise.resolve([])
+        : prisma.stockReserve.groupBy({
+            by: ['itemId', 'warehouseId'],
+            where: {
+              ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+              OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+            },
+            _sum: { quantity: true },
+          }),
       // 6. Query tenant item settings
       prisma.tenantItemSetting.findMany({
         select: {
@@ -967,51 +1051,55 @@ export class AvailableStockSummaryExportService {
           standardCost: true,
         },
       }),
-      // 7. Query pending invoices (DCs not invoiced)
-      prisma.deliveryChallanItem.findMany({
-        where: {
-          deliveryChallan: {
-            status: { in: ['PENDING', 'DELIVERED'] },
-            ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-          },
-        },
-        select: {
-          itemId: true,
-          deliveredQty: true,
-          deliveryChallan: {
-            select: { warehouseId: true },
-          },
-        },
-      }),
-      // 8. Query Sales Order Reserved stock
-      prisma.eRPSalesOrderItem.findMany({
-        where: {
-          salesOrder: {
-            status: { in: ['DRAFT', 'CONFIRMED', 'WAREHOUSE_VERIFIED'] },
-            ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
-          },
-        },
-        select: {
-          itemId: true,
-          quantity: true,
-          salesOrder: {
+      // 7. Query pending invoices (DCs not invoiced, warehouse only)
+      isOutletOnly
+        ? Promise.resolve([])
+        : prisma.deliveryChallanItem.findMany({
+            where: {
+              deliveryChallan: {
+                status: { in: ['PENDING', 'DELIVERED'] },
+                ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+              },
+            },
             select: {
-              warehouseId: true,
-              deliveryChallans: {
-                where: { status: { not: 'CANCELLED' } },
+              itemId: true,
+              deliveredQty: true,
+              deliveryChallan: {
+                select: { warehouseId: true },
+              },
+            },
+          }),
+      // 8. Query Sales Order Reserved stock (warehouse only)
+      isOutletOnly
+        ? Promise.resolve([])
+        : prisma.eRPSalesOrderItem.findMany({
+            where: {
+              salesOrder: {
+                status: { in: ['DRAFT', 'CONFIRMED', 'WAREHOUSE_VERIFIED'] },
+                ...(warehouseWhere ? { warehouseId: warehouseWhere } : {}),
+              },
+            },
+            select: {
+              itemId: true,
+              quantity: true,
+              salesOrder: {
                 select: {
-                  items: {
+                  warehouseId: true,
+                  deliveryChallans: {
+                    where: { status: { not: 'CANCELLED' } },
                     select: {
-                      itemId: true,
-                      deliveredQty: true,
+                      items: {
+                        select: {
+                          itemId: true,
+                          deliveredQty: true,
+                        },
+                      },
                     },
                   },
                 },
               },
             },
-          },
-        },
-      }),
+          }),
     ]);
 
     if (isAborted?.()) {
@@ -1043,7 +1131,7 @@ export class AvailableStockSummaryExportService {
 
     if (activeItemIdsSet.size === 0) {
       const inventoryFallback = await prisma.inventoryItem.findMany({
-        where: { ...locationOrWarehouseWhere },
+        where: withLocationFilter(),
         select: { itemId: true },
         take: 2000,
       });
@@ -1067,27 +1155,37 @@ export class AvailableStockSummaryExportService {
       `Joining product catalog, brands, categories & size details for ${activeItemIds.length} active items...`,
     );
 
-    const CHUNK_SIZE = 2500;
-    const items: any[] = [];
+    const CHUNK_SIZE = 4000;
+    const chunkPromises: Promise<any[]>[] = [];
     for (let i = 0; i < activeItemIds.length; i += CHUNK_SIZE) {
       if (checkCancelled()) break;
       const chunk = activeItemIds.slice(i, i + CHUNK_SIZE);
-      const batchItems = await prisma.item.findMany({
-        where: {
-          OR: [{ id: { in: chunk } }, { itemId: { in: chunk } }],
-        },
-        include: {
-          brand: true,
-          division: true,
-          category: true,
-          gender: true,
-          silhouette: true,
-          size: true,
-          color: true,
-        },
-      });
-      items.push(...batchItems);
+      chunkPromises.push(
+        prisma.item.findMany({
+          where: {
+            id: { in: chunk },
+          },
+          select: {
+            id: true,
+            sku: true,
+            description: true,
+            barCode: true,
+            unitPrice: true,
+            unitCost: true,
+            fob: true,
+            brand: { select: { id: true, name: true } },
+            division: { select: { id: true, name: true } },
+            category: { select: { id: true, name: true } },
+            gender: { select: { id: true, name: true } },
+            silhouette: { select: { id: true, name: true } },
+            size: { select: { id: true, name: true } },
+            color: { select: { id: true, name: true } },
+          },
+        }),
+      );
     }
+    const chunkResults = await Promise.all(chunkPromises);
+    const items = chunkResults.flat();
     if (items.length === 0 || isAborted?.()) {
       return {
         root: [],
@@ -1350,14 +1448,19 @@ export class AvailableStockSummaryExportService {
     if (!isSeparate) {
       locKeysSet.add('all');
     } else {
-      for (const k of bfMap.keys()) locKeysSet.add(k.split('_')[0]);
-      for (const k of movementMetricsMap.keys())
-        locKeysSet.add(k.split('_')[0]);
-      for (const k of transitMap.keys()) locKeysSet.add(k.split('_')[0]);
-      for (const k of reserveMap.keys()) locKeysSet.add(k.split('_')[0]);
-      for (const inv of inventoryItems) {
-        if (inv.locationId) locKeysSet.add(`loc:${inv.locationId}`);
-        if (inv.warehouseId) locKeysSet.add(`wh:${inv.warehouseId}`);
+      if (uniqueTargetLocationIds.length > 0 || whIds.length > 0) {
+        for (const lid of uniqueTargetLocationIds) locKeysSet.add(`loc:${lid}`);
+        for (const wid of whIds) locKeysSet.add(`wh:${wid}`);
+      } else {
+        for (const k of bfMap.keys()) locKeysSet.add(k.split('_')[0]);
+        for (const k of movementMetricsMap.keys())
+          locKeysSet.add(k.split('_')[0]);
+        for (const k of transitMap.keys()) locKeysSet.add(k.split('_')[0]);
+        for (const k of reserveMap.keys()) locKeysSet.add(k.split('_')[0]);
+        for (const inv of inventoryItems) {
+          if (inv.locationId) locKeysSet.add(`loc:${inv.locationId}`);
+          if (inv.warehouseId) locKeysSet.add(`wh:${inv.warehouseId}`);
+        }
       }
     }
 

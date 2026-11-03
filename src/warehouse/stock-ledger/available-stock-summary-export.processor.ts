@@ -141,7 +141,15 @@ export class AvailableStockSummaryExportProcessor {
         90,
         'Compressing report payload & caching result...',
       );
-      this.availableStockSummaryService.saveReportPreviewResult(jobId, data);
+      const cacheKey = this.availableStockSummaryService.getCacheKey(
+        tenantId,
+        opts,
+      );
+      this.availableStockSummaryService.saveReportPreviewResult(
+        jobId,
+        data,
+        cacheKey,
+      );
 
       await safeProgress(100, 'Report computation complete!');
       this.logger.log(

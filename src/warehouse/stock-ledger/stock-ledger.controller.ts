@@ -208,6 +208,7 @@ export class StockLedgerController {
       showSilhouette?: boolean;
       showArticle?: boolean;
       showVariant?: boolean;
+      forceRefresh?: boolean;
     },
   ) {
     const userId = req.user?.id || req.user?.userId;
