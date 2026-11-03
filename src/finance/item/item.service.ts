@@ -9,7 +9,7 @@ import {
 } from './dto/item.dto';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
-import { runInBackground } from '../../common/utils/run-in-background.util';
+
 const includeMasterData = {
   brand: true,
   division: true,
@@ -155,16 +155,23 @@ export class ItemService {
       stockMap.set(entry.itemId, Number(entry._sum.qty ?? 0));
     }
 
-    // Stock by location
+    // Stock by location (aggregated across all variants of this article)
     const locationStockAgg = await this.prisma.stockLedger.groupBy({
+      by: ['locationId'],
+      where: { itemId: { in: itemUuids }, locationId: { not: null } },
+      _sum: { qty: true },
+    });
+
+    // Detailed variant stock per location (for Size x Location Matrix)
+    const variantLocationStockAgg = await this.prisma.stockLedger.groupBy({
       by: ['itemId', 'locationId'],
       where: { itemId: { in: itemUuids }, locationId: { not: null } },
       _sum: { qty: true },
     });
 
-    const locationIds = Array.from(
-      new Set(locationStockAgg.map((l) => l.locationId).filter(Boolean)),
-    ) as string[];
+    const locationIds = locationStockAgg
+      .map((l) => l.locationId)
+      .filter(Boolean) as string[];
 
     const locations = locationIds.length
       ? await this.prisma.location.findMany({
@@ -181,20 +188,67 @@ export class ItemService {
       }),
     );
 
-    // Build location stock breakdown
-    const locationStockBreakdown = locationStockAgg.map((l) => {
-      const locInfo = locationNameMap.get(l.locationId!) || {
-        name: 'Unknown Location',
-        code: 'UNK',
-      };
-      return {
-        itemId: l.itemId,
-        locationId: l.locationId,
-        locationName: locInfo.name,
-        locationCode: locInfo.code,
-        quantity: Number(l._sum.qty ?? 0),
-      };
+    // Build variant size lookup map
+    const itemInfoMap = new Map<string, { size: string; color: string; barcode: string; uniqueNo?: string }>();
+    items.forEach((it) => {
+      itemInfoMap.set(it.id, {
+        size: it.size?.name || 'Standard',
+        color: it.color?.name || '',
+        barcode: it.barCode || it.itemId,
+        uniqueNo: it.uniqueNo || undefined,
+      });
     });
+
+    // Map variant breakdown per location
+    const locVariantsMap = new Map<string, Array<{ itemId: string; size: string; color: string; barcode: string; uniqueNo?: string; quantity: number }>>();
+    for (const vl of variantLocationStockAgg) {
+      if (!vl.locationId) continue;
+      const itInfo = itemInfoMap.get(vl.itemId);
+      const list = locVariantsMap.get(vl.locationId) || [];
+      const qty = Number(vl._sum.qty ?? 0);
+      if (qty !== 0) {
+        list.push({
+          itemId: vl.itemId,
+          size: itInfo?.size || 'Standard',
+          color: itInfo?.color || '',
+          barcode: itInfo?.barcode || '',
+          uniqueNo: itInfo?.uniqueNo,
+          quantity: qty,
+        });
+      }
+      locVariantsMap.set(vl.locationId, list);
+    }
+
+    // Calculate total stock across all locations
+    const totalLocationStock = locationStockAgg.reduce(
+      (sum, l) => sum + Number(l._sum.qty ?? 0),
+      0,
+    );
+
+    // Build clean location stock breakdown (aggregated per store with size distribution)
+    const locationStockBreakdown = locationStockAgg
+      .map((l) => {
+        const locInfo = locationNameMap.get(l.locationId!) || {
+          name: 'Unknown Location',
+          code: 'UNK',
+        };
+        const qty = Number(l._sum.qty ?? 0);
+        const percent = totalLocationStock > 0 ? Math.round((qty / totalLocationStock) * 100) : 0;
+        const sizeBreakdown = locVariantsMap.get(l.locationId!) || [];
+        // Sort size breakdown by size name
+        sizeBreakdown.sort((a, b) => a.size.localeCompare(b.size, undefined, { numeric: true }));
+
+        return {
+          locationId: l.locationId,
+          locationName: locInfo.name,
+          locationCode: locInfo.code,
+          quantity: qty,
+          percentage: percent,
+          sizeBreakdown,
+        };
+      })
+      .filter((l) => l.quantity !== 0)
+      .sort((a, b) => b.quantity - a.quantity);
 
     const leadItem = items[0];
     const prices = items
