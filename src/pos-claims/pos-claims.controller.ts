@@ -40,11 +40,19 @@ export class PosClaimsController {
     @Query('status') status?: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string,
+    @Query('locationId') locationId?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     return this.service.findAll({
       status,
       limit: limit !== undefined ? parseInt(limit, 10) : 50,
       page: page ? parseInt(page, 10) : 1,
+      locationId,
+      search,
+      startDate,
+      endDate,
     });
   }
 
