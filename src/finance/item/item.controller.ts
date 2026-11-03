@@ -148,6 +148,15 @@ export class ItemController {
 
   // ── Standard CRUD ───────────────────────────────────────────────────────────
 
+  @Get('article/:sku')
+  @Permissions('erp.item.read')
+  @ApiOperation({
+    summary: 'Get full article details with all variants and stock by SKU',
+  })
+  async findArticleBySku(@Param('sku') sku: string, @GetUser() user: any) {
+    return this.itemService.findArticleBySku(sku, user);
+  }
+
   @Get('code/:code')
   @Permissions('erp.item.read')
   @ApiOperation({ summary: 'Get item by code (itemId)' })

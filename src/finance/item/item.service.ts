@@ -99,6 +99,156 @@ export class ItemService {
     return { status: true, data: enrichedItems[0] };
   }
 
+  async findArticleBySku(sku: string, user?: any) {
+    if (!sku) {
+      return { status: false, message: 'SKU parameter is required' };
+    }
+
+    // Role / Brand restriction check
+    const roleName = user?.roleName?.toLowerCase();
+    const isAdmin =
+      roleName === 'super_admin' ||
+      roleName === 'super-admin' ||
+      roleName === 'admin';
+    let allowedBrandIds: string[] | null = null;
+
+    if (!isAdmin && user?.id) {
+      const userBrands = await this.prisma.userBrand.findMany({
+        where: { userId: user.id },
+        select: { brandId: true },
+      });
+      allowedBrandIds = userBrands.map((ub) => ub.brandId);
+    }
+
+    const where: any = {
+      sku: { equals: sku.trim(), mode: 'insensitive' },
+    };
+
+    if (allowedBrandIds !== null) {
+      where.brandId = { in: allowedBrandIds };
+    }
+
+    const items = await this.prisma.item.findMany({
+      where,
+      include: includeMasterData,
+      orderBy: [
+        { size: { name: 'asc' } },
+        { color: { name: 'asc' } },
+        { itemId: 'asc' },
+      ],
+    });
+
+    if (!items || items.length === 0) {
+      return { status: false, message: `Article with SKU '${sku}' not found` };
+    }
+
+    // Stock aggregation per variant
+    const itemUuids = items.map((it) => it.id);
+    const stockAgg = await this.prisma.stockLedger.groupBy({
+      by: ['itemId'],
+      where: { itemId: { in: itemUuids } },
+      _sum: { qty: true },
+    });
+
+    const stockMap = new Map<string, number>();
+    for (const entry of stockAgg) {
+      stockMap.set(entry.itemId, Number(entry._sum.qty ?? 0));
+    }
+
+    // Stock by location
+    const locationStockAgg = await this.prisma.stockLedger.groupBy({
+      by: ['itemId', 'locationId'],
+      where: { itemId: { in: itemUuids }, locationId: { not: null } },
+      _sum: { qty: true },
+    });
+
+    const locationIds = Array.from(
+      new Set(locationStockAgg.map((l) => l.locationId).filter(Boolean)),
+    ) as string[];
+
+    const locations = locationIds.length
+      ? await this.prisma.location.findMany({
+          where: { id: { in: locationIds } },
+          select: { id: true, name: true, code: true },
+        })
+      : [];
+
+    const locationNameMap = new Map<string, { name: string; code: string }>();
+    locations.forEach((loc) =>
+      locationNameMap.set(loc.id, {
+        name: loc.name,
+        code: loc.code || loc.name,
+      }),
+    );
+
+    // Build location stock breakdown
+    const locationStockBreakdown = locationStockAgg.map((l) => {
+      const locInfo = locationNameMap.get(l.locationId!) || {
+        name: 'Unknown Location',
+        code: 'UNK',
+      };
+      return {
+        itemId: l.itemId,
+        locationId: l.locationId,
+        locationName: locInfo.name,
+        locationCode: locInfo.code,
+        quantity: Number(l._sum.qty ?? 0),
+      };
+    });
+
+    const leadItem = items[0];
+    const prices = items
+      .map((i) => Number(i.unitPrice))
+      .filter((p) => !isNaN(p));
+    const priceMin = prices.length ? Math.min(...prices) : 0;
+    const priceMax = prices.length ? Math.max(...prices) : 0;
+
+    let totalStock = 0;
+    const enrichedVariants = items.map((it) => {
+      const stock = stockMap.get(it.id) ?? 0;
+      totalStock += stock;
+      return {
+        ...it,
+        stockQuantity: stock,
+      };
+    });
+
+    return {
+      status: true,
+      data: {
+        sku: leadItem.sku,
+        description: leadItem.description,
+        imageUrl: items.find((i) => i.imageUrl)?.imageUrl || null,
+        brand: leadItem.brand,
+        category: leadItem.category,
+        subCategory: leadItem.subCategory,
+        division: leadItem.division,
+        gender: leadItem.gender,
+        season: leadItem.season,
+        silhouette: leadItem.silhouette,
+        channelClass: leadItem.channelClass,
+        itemClass: leadItem.itemClass,
+        itemSubclass: leadItem.itemSubclass,
+        segment: leadItem.segment,
+        hsCode: leadItem.hsCode,
+        hsCodeStr: leadItem.hsCodeStr,
+        totalVariants: items.length,
+        activeVariants: items.filter((i) => i.isActive).length,
+        totalStock,
+        priceMin,
+        priceMax,
+        sizes: Array.from(
+          new Set(items.map((i) => i.size?.name).filter(Boolean)),
+        ),
+        colors: Array.from(
+          new Set(items.map((i) => i.color?.name).filter(Boolean)),
+        ),
+        variants: enrichedVariants,
+        locationStock: locationStockBreakdown,
+      },
+    };
+  }
+
   async findAll(
     user: any,
     page: number = 1,
@@ -154,23 +304,6 @@ export class ItemService {
     // ── Build WHERE clause ─────────────────────────────────────────────
     const andClauses: any[] = [];
 
-    // Text search
-    if (search) {
-      const searchTerm = search.trim();
-      andClauses.push({
-        OR: [
-          { itemId: { contains: searchTerm, mode: 'insensitive' } },
-          { sku: { contains: searchTerm, mode: 'insensitive' } },
-          { description: { contains: searchTerm, mode: 'insensitive' } },
-          { barCode: { contains: searchTerm, mode: 'insensitive' } },
-          { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
-          { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
-          { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
-          { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
-        ],
-      });
-    }
-
     // Attribute filters — each is an AND condition (item must match ALL selected filters)
     let finalBrandFilter: string[] | undefined = filters?.brandIds;
 
@@ -206,6 +339,59 @@ export class ItemService {
     }
     if (filters?.genderIds?.length) {
       andClauses.push({ genderId: { in: filters.genderIds } });
+    }
+
+    // Text search — with smart SKU auto-resolution for barcodes, item IDs, and unique numbers
+    if (search) {
+      const searchTerm = search.trim();
+      
+      // If the query could match a barcode, item code, or unique number, find matching parent SKUs
+      const directMatches = await this.prisma.item.findMany({
+        where: {
+          OR: [
+            { barCode: { contains: searchTerm, mode: 'insensitive' } },
+            { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
+            { itemId: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+          ...(finalBrandFilter?.length ? { brandId: { in: finalBrandFilter } } : {}),
+        },
+        select: { sku: true },
+        take: 50,
+      });
+
+      const matchedSkus = Array.from(
+        new Set(directMatches.map((m) => m.sku).filter(Boolean)),
+      );
+
+      if (matchedSkus.length > 0) {
+        // Expand search so ALL variants of the matched SKU(s) are included in the results!
+        andClauses.push({
+          OR: [
+            { sku: { in: matchedSkus } },
+            { sku: { contains: searchTerm, mode: 'insensitive' } },
+            { description: { contains: searchTerm, mode: 'insensitive' } },
+            { barCode: { contains: searchTerm, mode: 'insensitive' } },
+            { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
+            { itemId: { contains: searchTerm, mode: 'insensitive' } },
+            { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
+          ],
+        });
+      } else {
+        andClauses.push({
+          OR: [
+            { itemId: { contains: searchTerm, mode: 'insensitive' } },
+            { sku: { contains: searchTerm, mode: 'insensitive' } },
+            { description: { contains: searchTerm, mode: 'insensitive' } },
+            { barCode: { contains: searchTerm, mode: 'insensitive' } },
+            { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
+            { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
+          ],
+        });
+      }
     }
 
     const where: any = andClauses.length > 0 ? { AND: andClauses } : {};
