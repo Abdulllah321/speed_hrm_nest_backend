@@ -30,6 +30,7 @@ import { GiftVoucherSaleRegisterExportService } from './gift-voucher-sale-regist
 import { CorporateVoucherExportService } from './corporate-voucher-export.service';
 import { CreditVoucherExportService } from './credit-voucher-export.service';
 import { VoucherRegisterExportService } from './voucher-register-export.service';
+import { CkPedroSalesReportService } from './ck-pedro-sales-report.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PosSalesService } from './pos-sales.service';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
@@ -69,6 +70,7 @@ export class PosSalesController {
     private readonly corporateVoucherExportService: CorporateVoucherExportService,
     private readonly creditVoucherExportService: CreditVoucherExportService,
     private readonly voucherRegisterExportService: VoucherRegisterExportService,
+    private readonly ckPedroSalesReportService: CkPedroSalesReportService,
   ) {}
 
   // ─── POS Customer Endpoints ────────────────────────────────────────
@@ -1317,6 +1319,72 @@ export class PosSalesController {
       search,
     });
     return { status: true, data };
+  }
+
+  // ─── Charles & Keith & Pedro Sales Report Endpoints ─────────────────────
+
+  @Get('reports/ck-pedro-sale')
+  @ApiOperation({ summary: 'Get C&K & Pedro Sales report data preview' })
+  async getCkPedroSalesReport(
+    @Query('locationId') locationId?: string,
+    @Query('asOfDate') asOfDate?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.ckPedroSalesReportService.getReportData({
+      locationId,
+      asOfDate,
+      startDate,
+      endDate,
+      search,
+    });
+    return { status: true, data };
+  }
+
+  @Get('reports/ck-pedro-sale/export')
+  @ApiOperation({ summary: 'Export C&K & Pedro Sales report to Excel (.xlsx)' })
+  async exportCkPedroSalesReport(
+    @Query('locationId') locationId?: string,
+    @Query('asOfDate') asOfDate?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+    @Res() res?: any,
+  ) {
+    return this.ckPedroSalesReportService.streamExcelReport(
+      { locationId, asOfDate, startDate, endDate, search },
+      res,
+    );
+  }
+
+  @Get('reports/ck-pedro-stock')
+  @ApiOperation({ summary: 'Get C&K & Pedro Stock report data preview' })
+  async getCkPedroStockReport(
+    @Query('locationId') locationId?: string,
+    @Query('asOfDate') asOfDate?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.ckPedroSalesReportService.getStockReportData({
+      locationId,
+      asOfDate,
+      search,
+    });
+    return { status: true, data };
+  }
+
+  @Get('reports/ck-pedro-stock/export')
+  @ApiOperation({ summary: 'Export C&K & Pedro Stock report to Excel (.xlsx)' })
+  async exportCkPedroStockReport(
+    @Query('locationId') locationId?: string,
+    @Query('asOfDate') asOfDate?: string,
+    @Query('search') search?: string,
+    @Res() res?: any,
+  ) {
+    return this.ckPedroSalesReportService.streamStockExcelReport(
+      { locationId, asOfDate, search },
+      res,
+    );
   }
 
   @Post('reports/cost-of-sales/queue')

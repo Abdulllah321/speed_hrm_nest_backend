@@ -47,6 +47,7 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
 import { ReportPreviewCleanupService } from '../common/services/report-preview-cleanup.service';
 import { OnlineOrderManagementService } from './online-order-management.service';
 import { OnlineOrderManagementController } from './online-order-management.controller';
+import { CkPedroSalesReportService } from './ck-pedro-sales-report.service';
 
 @Module({
   imports: [
@@ -138,6 +139,7 @@ import { OnlineOrderManagementController } from './online-order-management.contr
     VoucherRegisterExportProcessor,
     ReportPreviewCleanupService,
     OnlineOrderManagementService,
+    CkPedroSalesReportService,
   ],
   exports: [
     PosSalesService,
@@ -156,6 +158,7 @@ import { OnlineOrderManagementController } from './online-order-management.contr
     VoucherRegisterExportService,
     ReportPreviewCleanupService,
     OnlineOrderManagementService,
+    CkPedroSalesReportService,
   ],
 })
 export class PosSalesModule {}
