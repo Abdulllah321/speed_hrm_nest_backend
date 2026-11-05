@@ -230,10 +230,82 @@ export class PosClaimsService {
     }
   }
 
-  async findAll(params: { status?: string; limit?: number; page?: number }) {
-    const { status, limit = 50, page = 1 } = params;
+  async findAll(params: {
+    status?: string;
+    limit?: number;
+    page?: number;
+    locationId?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const {
+      status,
+      limit = 50,
+      page = 1,
+      locationId,
+      search,
+      startDate,
+      endDate,
+    } = params;
     const where: any = {};
     if (status && status !== 'ALL') where.status = status;
+
+    if (locationId && locationId !== 'ALL') {
+      where.salesOrder = {
+        ...(where.salesOrder || {}),
+        locationId: locationId,
+      };
+    }
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        const sDate = new Date(startDate);
+        sDate.setHours(0, 0, 0, 0);
+        where.createdAt.gte = sDate;
+      }
+      if (endDate) {
+        const eDate = new Date(endDate);
+        eDate.setHours(23, 59, 59, 999);
+        where.createdAt.lte = eDate;
+      }
+    }
+
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.AND = where.AND || [];
+      where.AND.push({
+        OR: [
+          { claimNumber: { contains: q, mode: 'insensitive' } },
+          { salesOrder: { orderNumber: { contains: q, mode: 'insensitive' } } },
+          {
+            salesOrder: {
+              customer: {
+                OR: [
+                  { name: { contains: q, mode: 'insensitive' } },
+                  { contactNo: { contains: q, mode: 'insensitive' } },
+                ],
+              },
+            },
+          },
+          { reasonNotes: { contains: q, mode: 'insensitive' } },
+          {
+            items: {
+              some: {
+                item: {
+                  OR: [
+                    { sku: { contains: q, mode: 'insensitive' } },
+                    { barCode: { contains: q, mode: 'insensitive' } },
+                    { description: { contains: q, mode: 'insensitive' } },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      });
+    }
 
     const limitNum = limit !== undefined ? Number(limit) : 50;
     const findOptions: any = {
@@ -254,12 +326,24 @@ export class PosClaimsService {
             },
           },
         },
+        voucher: {
+          select: {
+            id: true,
+            code: true,
+            voucherType: true,
+            faceValue: true,
+            expiresAt: true,
+            isActive: true,
+            isRedeemed: true,
+          },
+        },
         items: {
           include: {
             item: {
               select: {
                 id: true,
                 sku: true,
+                barCode: true,
                 description: true,
                 brand: { select: { name: true } },
                 color: { select: { name: true } },
@@ -326,6 +410,7 @@ export class PosClaimsService {
           select: {
             orderNumber: true,
             grandTotal: true,
+            locationId: true,
             customer: {
               select: {
                 id: true,
@@ -385,6 +470,14 @@ export class PosClaimsService {
       if (fallbackVoucher) {
         (claim as any).voucher = fallbackVoucher;
       }
+    }
+
+    if (claim.salesOrder?.locationId) {
+      const location = await this.prisma.location.findUnique({
+        where: { id: claim.salesOrder.locationId },
+        select: { id: true, name: true, code: true, shortCode: true },
+      });
+      (claim.salesOrder as any).location = location;
     }
 
     return { status: true, data: claim };

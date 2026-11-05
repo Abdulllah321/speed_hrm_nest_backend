@@ -9,7 +9,7 @@ import {
 } from './dto/item.dto';
 
 import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
-import { runInBackground } from '../../common/utils/run-in-background.util';
+
 const includeMasterData = {
   brand: true,
   division: true,
@@ -99,6 +99,210 @@ export class ItemService {
     return { status: true, data: enrichedItems[0] };
   }
 
+  async findArticleBySku(sku: string, user?: any) {
+    if (!sku) {
+      return { status: false, message: 'SKU parameter is required' };
+    }
+
+    // Role / Brand restriction check
+    const roleName = user?.roleName?.toLowerCase();
+    const isAdmin =
+      roleName === 'super_admin' ||
+      roleName === 'super-admin' ||
+      roleName === 'admin';
+    let allowedBrandIds: string[] | null = null;
+
+    if (!isAdmin && user?.id) {
+      const userBrands = await this.prisma.userBrand.findMany({
+        where: { userId: user.id },
+        select: { brandId: true },
+      });
+      allowedBrandIds = userBrands.map((ub) => ub.brandId);
+    }
+
+    const where: any = {
+      sku: { equals: sku.trim(), mode: 'insensitive' },
+    };
+
+    if (allowedBrandIds !== null) {
+      where.brandId = { in: allowedBrandIds };
+    }
+
+    const items = await this.prisma.item.findMany({
+      where,
+      include: includeMasterData,
+      orderBy: [
+        { size: { name: 'asc' } },
+        { color: { name: 'asc' } },
+        { itemId: 'asc' },
+      ],
+    });
+
+    if (!items || items.length === 0) {
+      return { status: false, message: `Article with SKU '${sku}' not found` };
+    }
+
+    // Stock aggregation per variant
+    const itemUuids = items.map((it) => it.id);
+    const stockAgg = await this.prisma.stockLedger.groupBy({
+      by: ['itemId'],
+      where: { itemId: { in: itemUuids } },
+      _sum: { qty: true },
+    });
+
+    const stockMap = new Map<string, number>();
+    for (const entry of stockAgg) {
+      stockMap.set(entry.itemId, Number(entry._sum.qty ?? 0));
+    }
+
+    // Stock by location (aggregated across all variants of this article)
+    const locationStockAgg = await this.prisma.stockLedger.groupBy({
+      by: ['locationId'],
+      where: { itemId: { in: itemUuids }, locationId: { not: null } },
+      _sum: { qty: true },
+    });
+
+    // Detailed variant stock per location (for Size x Location Matrix)
+    const variantLocationStockAgg = await this.prisma.stockLedger.groupBy({
+      by: ['itemId', 'locationId'],
+      where: { itemId: { in: itemUuids }, locationId: { not: null } },
+      _sum: { qty: true },
+    });
+
+    const locationIds = locationStockAgg
+      .map((l) => l.locationId)
+      .filter(Boolean) as string[];
+
+    const locations = locationIds.length
+      ? await this.prisma.location.findMany({
+          where: { id: { in: locationIds } },
+          select: { id: true, name: true, code: true },
+        })
+      : [];
+
+    const locationNameMap = new Map<string, { name: string; code: string }>();
+    locations.forEach((loc) =>
+      locationNameMap.set(loc.id, {
+        name: loc.name,
+        code: loc.code || loc.name,
+      }),
+    );
+
+    // Build variant size lookup map
+    const itemInfoMap = new Map<string, { size: string; color: string; barcode: string; uniqueNo?: string }>();
+    items.forEach((it) => {
+      itemInfoMap.set(it.id, {
+        size: it.size?.name || 'Standard',
+        color: it.color?.name || '',
+        barcode: it.barCode || it.itemId,
+        uniqueNo: it.uniqueNo || undefined,
+      });
+    });
+
+    // Map variant breakdown per location
+    const locVariantsMap = new Map<string, Array<{ itemId: string; size: string; color: string; barcode: string; uniqueNo?: string; quantity: number }>>();
+    for (const vl of variantLocationStockAgg) {
+      if (!vl.locationId) continue;
+      const itInfo = itemInfoMap.get(vl.itemId);
+      const list = locVariantsMap.get(vl.locationId) || [];
+      const qty = Number(vl._sum.qty ?? 0);
+      if (qty !== 0) {
+        list.push({
+          itemId: vl.itemId,
+          size: itInfo?.size || 'Standard',
+          color: itInfo?.color || '',
+          barcode: itInfo?.barcode || '',
+          uniqueNo: itInfo?.uniqueNo,
+          quantity: qty,
+        });
+      }
+      locVariantsMap.set(vl.locationId, list);
+    }
+
+    // Calculate total stock across all locations
+    const totalLocationStock = locationStockAgg.reduce(
+      (sum, l) => sum + Number(l._sum.qty ?? 0),
+      0,
+    );
+
+    // Build clean location stock breakdown (aggregated per store with size distribution)
+    const locationStockBreakdown = locationStockAgg
+      .map((l) => {
+        const locInfo = locationNameMap.get(l.locationId!) || {
+          name: 'Unknown Location',
+          code: 'UNK',
+        };
+        const qty = Number(l._sum.qty ?? 0);
+        const percent = totalLocationStock > 0 ? Math.round((qty / totalLocationStock) * 100) : 0;
+        const sizeBreakdown = locVariantsMap.get(l.locationId!) || [];
+        // Sort size breakdown by size name
+        sizeBreakdown.sort((a, b) => a.size.localeCompare(b.size, undefined, { numeric: true }));
+
+        return {
+          locationId: l.locationId,
+          locationName: locInfo.name,
+          locationCode: locInfo.code,
+          quantity: qty,
+          percentage: percent,
+          sizeBreakdown,
+        };
+      })
+      .filter((l) => l.quantity !== 0)
+      .sort((a, b) => b.quantity - a.quantity);
+
+    const leadItem = items[0];
+    const prices = items
+      .map((i) => Number(i.unitPrice))
+      .filter((p) => !isNaN(p));
+    const priceMin = prices.length ? Math.min(...prices) : 0;
+    const priceMax = prices.length ? Math.max(...prices) : 0;
+
+    let totalStock = 0;
+    const enrichedVariants = items.map((it) => {
+      const stock = stockMap.get(it.id) ?? 0;
+      totalStock += stock;
+      return {
+        ...it,
+        stockQuantity: stock,
+      };
+    });
+
+    return {
+      status: true,
+      data: {
+        sku: leadItem.sku,
+        description: leadItem.description,
+        imageUrl: items.find((i) => i.imageUrl)?.imageUrl || null,
+        brand: leadItem.brand,
+        category: leadItem.category,
+        subCategory: leadItem.subCategory,
+        division: leadItem.division,
+        gender: leadItem.gender,
+        season: leadItem.season,
+        silhouette: leadItem.silhouette,
+        channelClass: leadItem.channelClass,
+        itemClass: leadItem.itemClass,
+        itemSubclass: leadItem.itemSubclass,
+        segment: leadItem.segment,
+        hsCode: leadItem.hsCode,
+        hsCodeStr: leadItem.hsCodeStr,
+        totalVariants: items.length,
+        activeVariants: items.filter((i) => i.isActive).length,
+        totalStock,
+        priceMin,
+        priceMax,
+        sizes: Array.from(
+          new Set(items.map((i) => i.size?.name).filter(Boolean)),
+        ),
+        colors: Array.from(
+          new Set(items.map((i) => i.color?.name).filter(Boolean)),
+        ),
+        variants: enrichedVariants,
+        locationStock: locationStockBreakdown,
+      },
+    };
+  }
+
   async findAll(
     user: any,
     page: number = 1,
@@ -154,23 +358,6 @@ export class ItemService {
     // ── Build WHERE clause ─────────────────────────────────────────────
     const andClauses: any[] = [];
 
-    // Text search
-    if (search) {
-      const searchTerm = search.trim();
-      andClauses.push({
-        OR: [
-          { itemId: { contains: searchTerm, mode: 'insensitive' } },
-          { sku: { contains: searchTerm, mode: 'insensitive' } },
-          { description: { contains: searchTerm, mode: 'insensitive' } },
-          { barCode: { contains: searchTerm, mode: 'insensitive' } },
-          { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
-          { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
-          { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
-          { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
-        ],
-      });
-    }
-
     // Attribute filters — each is an AND condition (item must match ALL selected filters)
     let finalBrandFilter: string[] | undefined = filters?.brandIds;
 
@@ -206,6 +393,59 @@ export class ItemService {
     }
     if (filters?.genderIds?.length) {
       andClauses.push({ genderId: { in: filters.genderIds } });
+    }
+
+    // Text search — with smart SKU auto-resolution for barcodes, item IDs, and unique numbers
+    if (search) {
+      const searchTerm = search.trim();
+      
+      // If the query could match a barcode, item code, or unique number, find matching parent SKUs
+      const directMatches = await this.prisma.item.findMany({
+        where: {
+          OR: [
+            { barCode: { contains: searchTerm, mode: 'insensitive' } },
+            { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
+            { itemId: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+          ...(finalBrandFilter?.length ? { brandId: { in: finalBrandFilter } } : {}),
+        },
+        select: { sku: true },
+        take: 50,
+      });
+
+      const matchedSkus = Array.from(
+        new Set(directMatches.map((m) => m.sku).filter(Boolean)),
+      );
+
+      if (matchedSkus.length > 0) {
+        // Expand search so ALL variants of the matched SKU(s) are included in the results!
+        andClauses.push({
+          OR: [
+            { sku: { in: matchedSkus } },
+            { sku: { contains: searchTerm, mode: 'insensitive' } },
+            { description: { contains: searchTerm, mode: 'insensitive' } },
+            { barCode: { contains: searchTerm, mode: 'insensitive' } },
+            { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
+            { itemId: { contains: searchTerm, mode: 'insensitive' } },
+            { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
+          ],
+        });
+      } else {
+        andClauses.push({
+          OR: [
+            { itemId: { contains: searchTerm, mode: 'insensitive' } },
+            { sku: { contains: searchTerm, mode: 'insensitive' } },
+            { description: { contains: searchTerm, mode: 'insensitive' } },
+            { barCode: { contains: searchTerm, mode: 'insensitive' } },
+            { uniqueNo: { contains: searchTerm, mode: 'insensitive' } },
+            { brand: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
+            { division: { name: { contains: searchTerm, mode: 'insensitive' } } },
+          ],
+        });
+      }
     }
 
     const where: any = andClauses.length > 0 ? { AND: andClauses } : {};
